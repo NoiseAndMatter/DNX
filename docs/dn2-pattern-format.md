@@ -277,6 +277,13 @@ them through a stable one-to-one function; every mapping observed in the corpus:
 
 The mapping from either numbering to a **named** synth parameter is UNKNOWN.
 
+**They are not NRPN numbers.** Elektron's Appendix C gives each parameter an NRPN LSB, and the
+DN2 ids 73-79, 89-96 and 104 resemble the SYN pages' NRPN block closely — both schemes allocate
+eight consecutive numbers per page. But the same corpus locks ids 30-41, whose NRPN numbers are
+audio-input mixer parameters that a converted DN1 project cannot have locked. Checked and
+rejected 2026-07-26; `docs/dn2-capture-plan.md` §5 has the capture that would settle it
+properly.
+
 No record in the corpus locks a step above 63, because every source is a 64-step DN1
 pattern. Steps 64..127 are structurally present and `0xFFFF`-filled — **INFERRED** that
 they behave like steps 0..63.

@@ -19,6 +19,11 @@ changing one thing at a time is what makes the results usable.
 Save as `00_Examples/01_DN1/patterns/<Experiment>/NN_description.syx`, numbered so they sort
 in capture order. `diff --chain` sorts numerically, so `2_x.syx` correctly precedes `10_x.syx`.
 
+> **For the Digitone II, see [dn2-capture-plan.md](dn2-capture-plan.md) first.** Where the
+> changed things are independent and can hold distinct values, one capture can carry many
+> changes at once and a single diff maps them all. One variable per file is the fallback for
+> toggles, enums, and anything whose value the device transforms on the way in.
+
 ## The rules that make this work
 
 - **One variable per file.** If you change two things, the diff cannot tell you which bytes
