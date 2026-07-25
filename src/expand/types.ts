@@ -85,6 +85,20 @@ export interface PlanOptions {
    */
   useFreedMidiTracks?: boolean;
   /**
+   * Offer the DN2 counterparts of DN1 synth tracks the project never uses.
+   *
+   * Such a track fires no trig anywhere and holds the factory init sound in every kit, so
+   * reserving its slot protects nothing. Across the corpus this frees 35 tracks in 25 of 55
+   * projects.
+   *
+   * **Defaults to `compactPerPattern`**, because the measured benefit is layout, not
+   * capacity: enabling it promotes exactly the same sounds in every one of the 55 projects,
+   * in both modes. The projects with a spare synth track are not the projects that run out
+   * of tracks. So compact mode, whose whole point is removing holes, takes them; the global
+   * layout, whose point is mirroring Elektron's, does not.
+   */
+  useEmptySourceTracks?: boolean;
+  /**
    * Allocate destinations per pattern instead of once for the whole project.
    *
    * Off by default, which keeps the global map: a sound gets the same DN2 track in every
@@ -126,6 +140,8 @@ export interface ExpansionPlan {
   usedMidiTracks: number[];
   /** 1-based DN2 tracks available to promoted sounds, in fill order. */
   freeTracks: number[];
+  /** DN1 synth tracks (0-based) found unused, whose DN2 counterparts were offered. */
+  unusedSourceTracks: number[];
   assignments: Assignment[];
   /**
    * Per-pattern allocation, present only when `compactPerPattern` was requested. The writer

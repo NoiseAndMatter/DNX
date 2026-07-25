@@ -46,6 +46,7 @@ untransferred fields, then a user interface.
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
 | Expansion writer | done, **hardware validation in progress** |
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
+| Reusing unused DN1 source tracks | done, on in compact mode |
 | Hardware test sheet generator | done (`npm run sheet`) |
 | Remaining field transfers | in progress, see KNOWN-ISSUES |
 | Web UI | not started |
@@ -126,25 +127,6 @@ DN1 order. Blocked on the DN1 song-row layout: the tail contains per-track refer
 position is unknown because every corpus row is empty. Moving a sound from track 2 to track
 11 could desync a song. Preserve mode is also the only mode that can be verified against
 Elektron's output, so it stays the default regardless.
-
-**Freeing empty DN1 source tracks — worth doing, and the "shift down" half is not.** A DN1
-synth track with no trigs anywhere and an untouched default sound still reserves its DN2
-counterpart today. Measured across the corpus: **48 synth tracks are empty across a whole
-project, in 25 of 55 projects**, and per live pattern an average of **1.37 of the four** are
-empty. Freeing them is real capacity, and `expansion-design.md` already claims the expander
-does it — it does not, so this is closing a gap between document and code.
-
-Renumbering the survivors to close the hole is a separate proposition and a worse one. It
-buys nothing in capacity, since the number of free destinations is the same whether the hole
-is at track 2 or at track 5, and it costs the 1:1 property, a permutation of the per-track
-MIDI channel array at DN1 `0x299A1B`, and a song-table guard for the eight per-track bytes
-whose position inside a song row is unknown. Free the track; leave the indices alone. If
-contiguity is wanted for its own sake, it belongs in the manager, where a user is asking for
-a layout change and can be shown one.
-
-The definition matters: a track counts as free only when it has **no trigs and no
-user-modified sound**, because reusing the slot of a track someone loaded a sound onto would
-lose that sound.
 
 **A promotion-ranking metric better than trig count** — 44 of 53 projects expand with no
 overflow at all, so ranking rarely matters. The comparator is isolated for the day it does.

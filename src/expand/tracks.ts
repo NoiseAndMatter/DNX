@@ -26,16 +26,23 @@ export function midiTrackDestination(dn1TrackIndex: number): number {
  * Destinations available to promoted sounds, in fill order.
  *
  * Tracks 9-16 are guaranteed free regardless of MIDI usage, because the import reserves
- * 5-8 for MIDI whether or not they are used. Freed MIDI tracks are appended AFTER them, so
- * enabling `useFreedMidiTracks` only adds capacity at the tail and never changes which
- * sounds win.
+ * 5-8 for MIDI whether or not they are used. Everything else is appended AFTER them, so the
+ * extra capacity only ever changes how many sounds fit, never which ones win.
+ *
+ * `unusedSynthTracks` are DN1 synth tracks (0-based) the project does not use at all — see
+ * `sourcetracks.ts` for what that requires. Their DN2 counterparts hold a silent init sound
+ * and are free for the taking.
  */
 export function defaultDestinations(
   usedMidiTracks: readonly number[],
   useFreedMidiTracks: boolean,
+  unusedSynthTracks: readonly number[] = [],
 ): number[] {
   const tracks: number[] = [];
   for (let t = FIRST_ALWAYS_FREE_TRACK; t <= DN2_TRACK_COUNT; t++) tracks.push(t);
+
+  // DN1 synth track N is DN2 track N, so a 0-based index becomes a 1-based destination.
+  for (const dn1 of unusedSynthTracks) tracks.push(dn1 + 1);
 
   if (useFreedMidiTracks) {
     for (let dn1 = SYNTH_TRACK_COUNT; dn1 < TRACK_COUNT; dn1++) {
