@@ -31,14 +31,26 @@ import { allocate } from "./allocate.js";
 import { byTrigCount, rank } from "./ranking.js";
 import { defaultDestinations } from "./tracks.js";
 import { collectSoundUsage } from "./usage.js";
+import { findUnusedSynthTracks } from "./sourcetracks.js";
 import type { ExpansionPlan, PlanOptions } from "./types.js";
 
 export function planExpansion(image: Uint8Array, options: PlanOptions = {}): ExpansionPlan {
-  const { sourceTrackOrder = [0, 1, 2, 3], useFreedMidiTracks = false } = options;
+  const {
+    sourceTrackOrder = [0, 1, 2, 3],
+    useFreedMidiTracks = false,
+    // Defaults to whatever compaction is doing: compact mode exists to remove holes, so it
+    // wants these tracks; the global layout exists to mirror Elektron's, so it does not.
+    // Measured across the corpus, the choice costs and gains no promotions either way — the
+    // projects with a spare synth track are not the projects that overflow — so this is a
+    // layout decision, not a capacity one.
+    useEmptySourceTracks = options.compactPerPattern ?? false,
+  } = options;
   const { usage, livePatterns, usedMidiTracks } = collectSoundUsage(image);
 
+  const unusedSourceTracks = useEmptySourceTracks ? findUnusedSynthTracks(image) : [];
   const destinations =
-    options.destinationTracks ?? defaultDestinations(usedMidiTracks, useFreedMidiTracks);
+    options.destinationTracks ??
+    defaultDestinations(usedMidiTracks, useFreedMidiTracks, unusedSourceTracks);
 
   const { assignments, overflow } = allocate({
     ranked: rank(usage, byTrigCount(sourceTrackOrder)),
@@ -52,6 +64,7 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     livePatterns,
     usedMidiTracks,
     freeTracks: [...destinations],
+    unusedSourceTracks,
     assignments,
     overflow,
     overflowTrigs: overflow.reduce((n, u) => n + u.trigCount, 0),
@@ -80,6 +93,7 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
 // Convenience re-exports so callers need one import for the common case.
 export { collectSoundUsage } from "./usage.js";
 export { midiTrackDestination, defaultDestinations } from "./tracks.js";
+export { findUnusedSynthTracks } from "./sourcetracks.js";
 export { PERCUSSION_LOW_RULES } from "./rules.js";
 export { DN2_TRACK_COUNT } from "./types.js";
 export type {

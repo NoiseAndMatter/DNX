@@ -6,7 +6,8 @@ import { test } from "node:test";
 import { parseProject } from "../src/project/container.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { collectSoundUsage, midiTrackDestination, planExpansion } from "../src/expand/plan.js";
-import { SYNTH_TRACK_COUNT, readPattern } from "../src/project/dn1.js";
+import { SYNTH_TRACK_COUNT, readKit, readPattern } from "../src/project/dn1.js";
+import { DN1_INIT_SOUND_FINGERPRINT, soundFingerprint } from "../src/expand/sourcetracks.js";
 
 const DIR = NO_CORPUS ? "" : corpusPath(DN1_PROJECTS);
 
@@ -32,15 +33,67 @@ test("by default only the guaranteed-free tracks 9-16 are used", { skip }, () =>
   for (const { name, image } of all) {
     const plan = planExpansion(image);
     assert.deepEqual(plan.freeTracks, [9, 10, 11, 12, 13, 14, 15, 16], `${name}`);
+    assert.deepEqual(plan.unusedSourceTracks, [], `${name}`);
     for (const a of plan.assignments) {
       assert.ok(a.dn2Track >= 9 && a.dn2Track <= 16, `${name}: assigned out-of-range T${a.dn2Track}`);
     }
   }
 });
 
+test("compact mode also takes source tracks the project never uses", { skip }, () => {
+  let sawFreed = false;
+
+  for (const { name, image } of all) {
+    const plan = planExpansion(image, { compactPerPattern: true });
+    assert.deepEqual(plan.freeTracks.slice(0, 8), [9, 10, 11, 12, 13, 14, 15, 16], `${name}`);
+
+    // Anything below 9 must be the counterpart of a source track the project does not use.
+    for (const t of plan.freeTracks.slice(8)) {
+      assert.ok(
+        plan.unusedSourceTracks.includes(t - 1),
+        `${name}: T${t} offered but its DN1 source track is in use`,
+      );
+      sawFreed = true;
+    }
+    // Opting out restores the strict layout even in compact mode.
+    const strict = planExpansion(image, { compactPerPattern: true, useEmptySourceTracks: false });
+    assert.deepEqual(strict.freeTracks, [9, 10, 11, 12, 13, 14, 15, 16], `${name}`);
+  }
+
+  assert.ok(sawFreed, "expected the corpus to yield at least one freed source track");
+});
+
+test("a freed source track fires no trig and holds only the factory init sound", { skip }, () => {
+  let freed = 0;
+
+  for (const { name, image } of all) {
+    for (const track of planExpansion(image, { compactPerPattern: true }).unusedSourceTracks) {
+      freed++;
+      for (let p = 0; p < 128; p++) {
+        assert.equal(
+          readPattern(image, p).tracks[track]!.trigs.length,
+          0,
+          `${name} T${track + 1}: freed but pattern ${p + 1} has trigs`,
+        );
+      }
+      for (let k = 0; k < 128; k++) {
+        const sound = readKit(image, k).sounds[track];
+        assert.ok(sound, `${name} T${track + 1}: kit ${k + 1} has no sound`);
+        assert.equal(
+          soundFingerprint(sound!.data),
+          DN1_INIT_SOUND_FINGERPRINT,
+          `${name} T${track + 1}: kit ${k + 1} carries a real patch, freeing it would lose the sound`,
+        );
+      }
+    }
+  }
+
+  assert.ok(freed > 0, "expected the corpus to contain unused source tracks");
+});
+
 test("freed MIDI tracks are appended, so 9-16 still fill first", { skip }, () => {
   for (const { name, image } of all) {
-    const plan = planExpansion(image, { useFreedMidiTracks: true });
+    const plan = planExpansion(image, { useFreedMidiTracks: true, useEmptySourceTracks: false });
     assert.deepEqual(plan.freeTracks.slice(0, 8), [9, 10, 11, 12, 13, 14, 15, 16], `${name}`);
 
     // Every extra destination must be the counterpart of an UNUSED DN1 MIDI track.
