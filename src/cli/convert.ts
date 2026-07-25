@@ -16,9 +16,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseProject } from "../project/container.js";
+import { parseProject } from "../project/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile } from "../project/write.js";
+import { buildProjectFile } from "../project/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";

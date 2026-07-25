@@ -49,7 +49,7 @@ untransferred fields, then a user interface.
 | Reusing unused DN1 source tracks | done, on in compact mode |
 | Hardware test sheet generator | done (`npm run sheet`) |
 | Remaining field transfers | in progress, see KNOWN-ISSUES |
-| Web UI | not started |
+| Web UI | first version done — load, plan, export |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
@@ -104,11 +104,19 @@ bytes per project to about 3. Pattern metadata is **also done** and now matches 
 byte. What is left is the kit FX residue (~152, down from
 397), the kit gap at 10252 (~117) and the tail project settings (~19).
 
-### 3. Web UI
+### 3. Web UI — first version done
 
-Load a `.dnprj`, show the proposed track assignment, let the user pin and reorder, export a
-`.dn2prj`. Local-only, no server. The planning layer already produces everything the UI
-needs to display, and `--dry-run` on the CLIs mirrors the intended flow.
+`npm run web`. Loads a `.dnprj` and a template, shows the plan, exports a stamped `.dn2prj`.
+Entirely in the browser, publishable as static files.
+
+Making it work forced a split worth knowing about: `container.ts` mixed the pure payload
+format with ZIP decompression, so importing it in a browser pulled in `node:zlib` and failed
+at load. The ZIP wrapper now lives in `projectfile.ts` and the browser brings its own, built
+on `CompressionStream`. `test/web.test.ts` walks the import graph from the app entry point and
+fails if anything reachable needs Node, so the boundary cannot rot.
+
+Still to do here: pinning and reordering by hand, a per-pattern preview like the hardware test
+sheet, and remembering the template between sessions.
 
 ### 3a. A device-authored test project, to crack what the corpus cannot
 

@@ -35,7 +35,8 @@ speculative or unknown.
 | Hardware test sheet generator | done (`npm run sheet`) |
 | Compact per-pattern allocation | done, opt-in |
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
-| Web UI, WebMIDI, CI | not started |
+| Web UI | first version — load, plan, export, all in the browser |
+| WebMIDI | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
 gaps and the traps that have already cost time.
@@ -71,6 +72,9 @@ npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17 --apply --out 
 # What changed between two captures?
 npm run diff -- --chain --stride captures/
 
+# The web UI: pick a project, see the plan, export a .dn2prj
+npm run web
+
 npm test
 ```
 
@@ -95,6 +99,19 @@ ranking and allocation.
 
 `.gitignore` refuses project and sound files outright, as a safety net.
 
+## The web UI
+
+`npm run web` builds the page and serves it at `http://127.0.0.1:8173`. Pick a `.dnprj` and a
+`.dn2prj` to use as the template, choose the options, and export.
+
+Everything happens in the browser: the page parses the ZIP, decompresses the LZ4 chain, plans
+the expansion and writes the new project locally. **No project ever leaves the machine**, and
+there is no server to speak of — the local one exists only because ES modules cannot load over
+`file://`. It deploys to any static host as-is; `.gitlab-ci.yml` publishes it to GitLab Pages.
+
+The only platform requirement is `CompressionStream`, for writing the ZIP — Chrome 80+,
+Firefox 113+, Safari 16.4+.
+
 ## Layout
 
 ```
@@ -103,8 +120,13 @@ src/project/     Project files: ZIP, LZ4, CRC, images, patterns, kits, sounds, t
 src/expand/      Planning, routing, translation tables, the DN1 to DN2 converter
 src/librarian/   Pattern copy with sound-dependency resolution
 src/cli/         Command-line entry points
+web/             The browser UI: its own ZIP layer, then the same library as the CLI
 docs/            Format documentation, roadmap, known issues
 ```
+
+`src/project/container.ts` holds the payload format and is platform-free; `projectfile.ts`
+holds the ZIP wrapper and is Node-only. That split is what lets the browser share every byte
+of format knowledge with the CLI while bringing its own compression.
 
 ## Format notes
 
