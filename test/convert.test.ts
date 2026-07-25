@@ -209,7 +209,7 @@ test("unwritten regions stay within their known budget", { skip }, () => {
     "track settings": 20, // was 5,158 before the field map
     "kit FX region": 500, // was 1,016
     "kit header": 20, // was 48, before track levels were transferred
-    "pattern metadata": 200,
+    "pattern metadata": 5, // was 135: mostly one constant the device writes as 1
     "kit MIDI records": 20, // was 10,112: sixteen inherited names plus untransferred config
   };
   const seen: Record<string, number> = {};

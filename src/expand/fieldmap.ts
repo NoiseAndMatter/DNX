@@ -127,6 +127,33 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
 export const UNPLACED_FX_BYTES: readonly number[] = [0x34, 0x36, 0x37, 0x3a, 0x46, 0x47, 0x4c];
 
 /**
+ * Pattern metadata: DN1 trailer at `pattern+0x4724`, DN2 44-byte block at `pattern+0x15AD4`.
+ *
+ * Offsets are relative to each block's start, and the two blocks share a layout for every
+ * field identified so far — name at +0, tempo at +0x12, master length at +0x14, change length
+ * at +0x16, scale mode at +0x19, speed at +0x1A. These two are the same story: unanimous
+ * across all 1,152 matched pattern pairs, at the same relative offset on both devices.
+ *
+ * Their meaning is UNKNOWN on both sides. `docs/dn1-project-format.md` §3 lists
+ * `0x4735` and `0x473C` among the DN1 trailer bytes that vary with no known purpose; this
+ * says where they go, not what they are.
+ */
+export const PATTERN_META_MAP: readonly FieldCopy[] = [
+  { from: 0x11, to: 0x11 },
+  { from: 0x18, to: 0x18 },
+];
+
+/**
+ * Pattern-metadata byte the importer always sets, which no DN1 field explains.
+ *
+ * `+0x21` reads 7 in all 1,152 records Elektron converted and 1 in all 419 native captures.
+ * A template written by the device therefore holds 1, and inheriting it accounted for 768 of
+ * the 810 bytes this block used to differ by — the "constant across the corpus is not the
+ * same as nothing to write" trap, again.
+ */
+export const PATTERN_META_CONSTANTS: readonly FieldConstant[] = [{ at: 0x21, value: 7 }];
+
+/**
  * MIDI track configuration: DN1 172 bytes at `kit+0x54E`, DN2 268 bytes at `kit+5964`.
  *
  * DN1 MIDI track *n* lands on DN2 track *4+n*, the same positional rule the pattern records

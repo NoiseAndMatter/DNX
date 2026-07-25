@@ -97,7 +97,7 @@ The strides are not just arithmetic. Independent confirmation:
 | `0x1E84` | 80 × 130 | **parameter-lock table** — see §5 |
 | `0x4724` | 16 | pattern name, `"UNTITLED"` in 6,625 of 6,784 records |
 | `0x4736` | u16be | **tempo × 120** |
-| `0x4735`, `0x4739`, `0x473B`, `0x473C`, `0x473D` | u8 each | vary per pattern — **UNKNOWN** (defaults `0x00`, `0x10`, `0x01`, `0x00`, `0x00`) |
+| `0x4735`, `0x4739`, `0x473B`, `0x473C`, `0x473D` | u8 each | vary per pattern — **UNKNOWN** (defaults `0x00`, `0x10`, `0x01`, `0x00`, `0x00`). Two of them have a known DN2 destination even though their meaning is not known: `0x4735` and `0x473C` are copied to DN2 pattern metadata `+0x11` and `+0x18`, at the same relative offset, unanimously across 1,152 matched pattern pairs. |
 | `0x4741` | u8 | own slot index |
 | `0x4742` | 190 | zero in every record |
 
