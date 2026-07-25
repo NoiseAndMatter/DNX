@@ -12,7 +12,8 @@
     "plan": "tsx src/cli/plan.ts",
     "copy": "tsx src/cli/copy.ts",
     "tags": "tsx src/cli/tags.ts",
-    "convert": "tsx src/cli/convert.ts"
+    "convert": "tsx src/cli/convert.ts",
+    "sheet": "tsx src/cli/sheet.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

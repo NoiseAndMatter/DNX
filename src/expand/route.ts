@@ -43,9 +43,26 @@ export interface PatternRouting {
   destinationsUsed: Set<number>;
 }
 
-/** Pool slot -> destination DN2 track, 0-based, from the plan's assignments. */
-export function destinationsBySound(plan: ExpansionPlan): Map<number, number> {
-  return new Map(plan.assignments.map((a) => [a.usage.poolSlot, a.dn2Track - 1]));
+/**
+ * Key for a promotion: a sound *as locked on a particular source track*.
+ *
+ * The sound alone is not enough. When a sound's source tracks disagree on length or speed
+ * they cannot share a destination (see `usage.ts`), so the same pool slot can be promoted to
+ * two different DN2 tracks depending on where the trig came from.
+ */
+export function promotionKey(poolSlot: number, sourceTrack: number): string {
+  return `${poolSlot}@${sourceTrack}`;
+}
+
+/** Promotion key -> destination DN2 track, 0-based, from the plan's assignments. */
+export function destinationsBySound(plan: ExpansionPlan): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const a of plan.assignments) {
+    for (const sourceTrack of a.usage.sourceTracks) {
+      map.set(promotionKey(a.usage.poolSlot, sourceTrack), a.dn2Track - 1);
+    }
+  }
+  return map;
 }
 
 /**
@@ -56,7 +73,7 @@ export function destinationsBySound(plan: ExpansionPlan): Map<number, number> {
  */
 export function routePattern(
   pattern: Dn1Pattern,
-  destinations: ReadonlyMap<number, number>,
+  destinations: ReadonlyMap<string, number>,
 ): PatternRouting {
   const routed: RoutedTrig[] = [];
   const byDestination = new Map<number, RoutedTrig[]>();
@@ -67,7 +84,7 @@ export function routePattern(
     for (const trig of track.trigs) {
       const promoted =
         track.index < SYNTH_TRACK_COUNT && trig.soundLock !== undefined
-          ? destinations.get(trig.soundLock)
+          ? destinations.get(promotionKey(trig.soundLock, track.index))
           : undefined;
 
       const destinationTrack = promoted ?? track.index;
