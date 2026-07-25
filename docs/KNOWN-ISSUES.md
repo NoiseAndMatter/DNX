@@ -58,13 +58,21 @@ Two useful facts came out of chasing it anyway, and both are now recorded proper
 Measured as bytes per project differing from Elektron's conversion, with `EMPTY` as
 template. All are bounded by the budget test.
 
-### Kit MIDI track records — ~3,072 bytes/project
+### Kit MIDI track records — ~3 bytes/project, was 10,112
 
-DN1 `kit+0x54E`, 4 × 172 bytes. DN2 `kit+5964`, 16 × 268 bytes. **Not transferred at all.**
+**Solved 2026-07-26.** DN1 `kit+0x54E`, 4 × 172 bytes, onto DN2 `kit+5964` record 4+n of 16 ×
+268. Derived from 7,168 record samples (14 pairs × 128 kits × 4 tracks): of the 18 DN2 bytes
+that vary, 14 have exactly one DN1 source agreeing on every sample, three are ambiguous by
+value and assigned positionally, and one has none. See `MIDI_TRACK_MAP` in
+`src/expand/fieldmap.ts`.
 
-A DN1 project using its MIDI tracks loses channel and CC configuration. Impact is limited —
-only 3 of 9 sampled projects use MIDI tracks at all — but for those it is a real loss.
-Derivable by the usual correlation method.
+Two thirds of the old divergence was not the configuration at all but the **track name**: a
+native DN2 names its MIDI records `MIDI 1`..`MIDI 16` and the importer clears all sixteen, so
+a template contributed sixteen names we inherited. Textbook "constant across the corpus is not
+the same as nothing to write".
+
+What remains: `dn2[54]` varies across 0, 41 and 42 with no DN1 source — `UNPLACED_MIDI_BYTES`.
+Two projects show a residue of 2 and 11 bytes per project; the other pairs are exact.
 
 ### Pattern metadata — ~131 bytes/project
 

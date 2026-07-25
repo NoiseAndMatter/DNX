@@ -95,8 +95,11 @@ so the device says which one is loaded.
 
 ### 2. Finish the field transfers
 
-See [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The largest is the kit MIDI track records: a DN1
-project using its MIDI tracks currently loses channel and CC configuration.
+See [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The kit MIDI track records — the largest gap, and the
+one that most plainly broke the 1:1 promise — are **done**: channel and CC configuration now
+transfer, and the sixteen inherited track names with them, taking that region from 10,112
+bytes per project to about 3. What is left is pattern metadata (~131), the kit FX residue
+(~397), the kit gap at 10252 (~117) and the tail project settings (~19).
 
 ### 3. Web UI
 
@@ -124,12 +127,42 @@ position is unknown because every corpus row is empty. Moving a sound from track
 11 could desync a song. Preserve mode is also the only mode that can be verified against
 Elektron's output, so it stays the default regardless.
 
+**Freeing empty DN1 source tracks — worth doing, and the "shift down" half is not.** A DN1
+synth track with no trigs anywhere and an untouched default sound still reserves its DN2
+counterpart today. Measured across the corpus: **48 synth tracks are empty across a whole
+project, in 25 of 55 projects**, and per live pattern an average of **1.37 of the four** are
+empty. Freeing them is real capacity, and `expansion-design.md` already claims the expander
+does it — it does not, so this is closing a gap between document and code.
+
+Renumbering the survivors to close the hole is a separate proposition and a worse one. It
+buys nothing in capacity, since the number of free destinations is the same whether the hole
+is at track 2 or at track 5, and it costs the 1:1 property, a permutation of the per-track
+MIDI channel array at DN1 `0x299A1B`, and a song-table guard for the eight per-track bytes
+whose position inside a song row is unknown. Free the track; leave the indices alone. If
+contiguity is wanted for its own sake, it belongs in the manager, where a user is asking for
+a layout change and can be shown one.
+
+The definition matters: a track counts as free only when it has **no trigs and no
+user-modified sound**, because reusing the slot of a track someone loaded a sound onto would
+lose that sound.
+
 **A promotion-ranking metric better than trig count** — 44 of 53 projects expand with no
 overflow at all, so ranking rarely matters. The comparator is isolated for the day it does.
 
 **DN2 pattern record version 2** — the factory `PRESETS.dn2prj` uses it and our reader
-assumes version 3. Not blocking, since conversion targets version 3, but a librarian working
-on native DN2 projects will hit it.
+assumes version 3. Not blocking for conversion, which always targets version 3. It **is** a
+prerequisite for the manager: the moment it opens a native DN2 project it may meet a version
+2 record, and `checkDn2PatternRecord` currently fails on all 128 of that project's patterns.
+Cheap to do properly — version the struct the way elk-herd does rather than branching inside
+the reader.
+
+**Manager prerequisites, so they are not discovered late.** Beyond version 2: any operation
+that moves a track between indices must refuse when the song table is non-empty, because the
+eight per-track bytes inside a 21-byte song row are located but not identified, and must
+refuse when the 1,024-slot DN1 array is occupied, because its outer dimension may be the
+track. `isSongTableEmpty()` and `isSlotArrayEmpty()` exist for exactly this and are currently
+called by nothing — wiring them into the manager's guard path is the first thing to do, not
+the last.
 
 **Sound-pool clean-up** — collapsing byte-identical duplicates in a project's 128-slot pool.
 `002 MORNING_JAM` holds 64 named slots and 57 distinct sounds, one of them repeated across
