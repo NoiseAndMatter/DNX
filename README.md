@@ -1,1 +1,119 @@
 # DNX
+
+Tools for Elektron **Digitone** and **Digitone II** project files.
+
+Read, modify and write `.dnprj` / `.dn2prj` projects: patterns, kits, sounds, trigs,
+parameter locks and sound locks. Files produced by this code have been loaded and played by
+a real Digitone II.
+
+Two things are being built on top:
+
+- **Expander** — take a DN1 sketch, where extra sounds are crammed onto four tracks by
+  sound-locking individual trigs, and give each sound its own track on the DN2's 16.
+- **Librarian** — copy and rearrange patterns across slots, banks and projects, carrying
+  their sound dependencies with them.
+
+Elektron publishes no format documentation for the Digitone family. Everything here was
+derived from real files; `docs/` records how, with every claim tagged verified, inferred,
+speculative or unknown.
+
+## Status
+
+| | |
+|---|---|
+| SysEx container (DN1 + DN2) | done |
+| Project container, LZ4 codec, CRC | done |
+| DN1 pattern internals — trigs, sound locks, p-locks | done |
+| DN2 pattern internals | done |
+| DN1 → DN2 sound conversion | done, reproduces Elektron's own output byte-for-byte |
+| Writing project files | done, **loaded by a real Digitone II** |
+| Pattern librarian (DN1) | done, hardware-validated |
+| Expansion planning | done |
+| Expansion writer | next |
+| Web UI | |
+
+## Usage
+
+```bash
+npm install
+
+# What is in this file?
+npm run project -- --objects path/to/project.dnprj
+npm run inspect -- --hex 64 path/to/dump.syx
+
+# What would expansion do?
+npm run plan -- path/to/project.dnprj
+npm run plan -- --summary --rules path/to/*.dnprj
+
+# What tags does this library use?
+npm run tags -- --locked path/to/project.dnprj
+
+# Copy a pattern between projects (dry run by default)
+npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17
+npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17 --apply --out new.dnprj
+
+# What changed between two captures?
+npm run diff -- --chain --stride captures/
+
+npm test
+```
+
+## Tests and the corpus
+
+Many tests validate against real Digitone projects. **Those files are not in this
+repository** — they are the author's own music. The corpus is located at run time:
+
+1. `DN_CORPUS`, if set — an absolute path to a folder laid out like `00_Examples/` below.
+2. otherwise a sibling `dn_sysex/00_Examples/` next to this repository.
+
+Without it, corpus-dependent tests **skip** rather than fail, so a fresh clone still runs a
+green suite over the 8-in-7 codec, the SysEx container, LZ4 round-tripping, placement rules,
+ranking and allocation.
+
+```
+<corpus>/01_DN1/01_Projects/*.dnprj       Digitone 1 projects
+<corpus>/01_DN1/02_Sounds/*.syx           Digitone 1 sound banks
+<corpus>/02_DN2/01_Projects/*.dn2prj      Digitone II projects
+<corpus>/02_DN2/reference_captures/*.syx  native DN2 SysEx pattern captures
+```
+
+`.gitignore` refuses project and sound files outright, as a safety net.
+
+## Layout
+
+```
+src/sysex/       SysEx dumps: 8-in-7 codec, container, device IDs
+src/project/     Project files: ZIP, LZ4, CRC, images, patterns, kits, sounds, tags
+src/expand/      Expansion planning: usage, track budget, rules, ranking, allocation
+src/librarian/   Pattern copy with sound-dependency resolution
+src/cli/         Command-line entry points
+docs/            Format documentation, per-claim evidence
+```
+
+## Format notes
+
+Full detail in `docs/`. The headlines:
+
+- **Digitone II product ID is `0x15`** — established here; it appears in no public source.
+- Project payloads are **LZ4-compressed** (linked blocks, 32 KB, shared dictionary) inside a
+  ZIP. Windowed entropy reads 3.7–6.2 bits and looks nothing like compressed data, which is
+  a trap worth knowing about.
+- The check field is `crc32(payload[0x1F : len-12])` with a **zero init** — same polynomial
+  as CRC-32 but not the standard parameterisation.
+- SysEx payloads are **8-in-7, MSB-first**, and the length field keeps only the low 14 bits,
+  so it wraps on large dumps.
+- A SysEx pattern payload equals a project pattern record plus its kit record, byte-for-byte,
+  so findings transfer between the two with no offset translation.
+
+## Prior art
+
+- [`emnyeca/digitone-syx-toolkit`](https://github.com/emnyeca/digitone-syx-toolkit) — 424
+  single-variable DN2 pattern captures. The most valuable public artifact for this work.
+- [`mzero/elk-herd`](https://github.com/mzero/elk-herd) — Digitakt project editor; the model
+  for versioned structs and preserving unknown regions verbatim.
+- [`bsp2/libanalogrytm`](https://github.com/bsp2/libanalogrytm) — Analog Rytm structures.
+- [`ashojaeddini/digitools`](https://github.com/ashojaeddini/digitools) — DN1 sound tags.
+
+## Licence
+
+See `LICENSE.md`.

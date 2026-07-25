@@ -1,0 +1,454 @@
+# Digitone II pattern record
+
+The 89,088-byte pattern record: tracks, trigs, sound locks, parameter locks, metadata.
+
+Companion to `docs/dn2-format.md` (container, image geometry, kit record) and
+`docs/dn1-project-format.md` (the DN1 equivalents). Implementation:
+`src/project/dn2pattern.ts`. Cross-validation: `test/dn2pattern.test.ts`.
+
+Every claim below carries a status tag:
+
+- **VERIFIED** — checked programmatically against the whole corpus, evidence stated inline.
+- **INFERRED** — follows from verified facts plus one stated assumption.
+- **SPECULATIVE** — a plausible reading of the bytes, not tested. Do not build on it.
+- **UNKNOWN** — the bytes are located and their behaviour bounded, but not explained.
+
+## Corpora
+
+| Corpus | Size | What it proves |
+|---|---|---|
+| **Matched pairs** — nine DN1 `.dnprj` projects and Elektron's own DN2 conversions of them | 1,152 pattern pairs, 7,713 trigs, 2,131 sound locks, 392 lock records, 544 chord notes | Semantics. `dn1.readPattern` already decodes the DN1 side exactly, so the correct answer is known before looking at the DN2 bytes. |
+| **Single-variable SysEx captures** — `emnyeca/digitone-syx-toolkit`, 419 native DN2 pattern dumps in 34 folders | 419 records | Field locations, native defaults, and what the *device* writes as opposed to what the *importer* writes. |
+
+A SysEx pattern payload maps onto the project with no offset translation:
+
+```
+sysex pattern payload (99,840) = project pattern record (89,088) ++ project kit record (10,752)
+```
+
+so an offset established in one corpus is the same offset in the other. Totals below of
+"1,571 records" mean 1,152 project records plus 419 captures.
+
+---
+
+## 1. Record geometry — VERIFIED
+
+| Offset | Size | Count | Stride | Contents |
+|---|---|---|---|---|
+| `0x00000` | 4 | 1 | — | u32be record version, **3** in all 1,571 records |
+| `0x00004` | 18,992 | 16 | **1,187** | track records |
+| `0x04A34` | 49,152 | 8,192 | **6** | trigger slots |
+| `0x10A34` | 20,640 | 80 | **258** | parameter-lock records |
+| `0x15AD4` | 44 | 1 | — | pattern metadata |
+| `0x15B00` | 256 | — | — | `0xFF` padding to the end of the record |
+
+The three array bases were found independently — the track base and stride from the
+`40 40 40` marker recurring 16 times at 1,187-byte spacing, the trigger base from the
+SysEx corpus, the lock base by hunting known DN1 lock values inside a DN2 conversion — and
+then each array's end landed exactly on the next array's start:
+
+```
+0x0004 + 16 × 1187 = 0x4A34      0x4A34 + 8192 × 6 = 0x10A34      0x10A34 + 80 × 258 = 0x15AD4
+```
+
+Three independent closures with zero slack. The 80-record lock capacity is the same as the
+DN1's; the 258-byte record is the DN1's 130-byte record widened from 64 to 128 steps.
+
+Both `0x4A34` and `0x10A34` are also confirmed structurally: in
+`captures/BASE/BASE_EMPTY.syx` the run `0x004A34 .. 0x010A36` is 49,154 consecutive `0xFF`
+bytes — the whole trigger array plus the first lock header — and the 80 × 258 grid of
+`FFFF` + 256 zero bytes that follows lands exactly on the name field.
+
+---
+
+## 2. Track record, 1,187 bytes
+
+Offsets relative to the start of the track record (`0x0004 + 1187 × track`).
+
+| Offset | Size | Field | Status |
+|---|---|---|---|
+| `+0x000` | 128 × u16be | step flag words, one per step | VERIFIED |
+| `+0x100` | 128 × u8 | trig condition, primary family (`0xFF` = none) | INFERRED |
+| `+0x180` | 128 × u8 | trig condition, second family (`0xFF` = none) | UNKNOWN |
+| `+0x200` | 128 × u8 | per-trig probability, percent (`0xFF` = none) | INFERRED |
+| `+0x280` | 128 × u8 | unidentified | UNKNOWN |
+| `+0x300` | 128 × u8 | unidentified | UNKNOWN |
+| `+0x380` | 128 × u8 | unidentified | UNKNOWN |
+| `+0x400` | 128 × u8 | **sound lock**, pool index (`0xFF` = none) | VERIFIED |
+| `+0x480` | 35 | track settings | partly VERIFIED, see §5 |
+
+`0x480 + 35 = 1187`, so the block accounts for the record exactly.
+
+The three arrays at `+0x280`, `+0x300` and `+0x380` are `0xFF` in **every byte of every
+track of all 1,571 records**. They exist by arithmetic, not by observation.
+
+### 2.1 Step flag words — VERIFIED
+
+128 u16be words, one per step. Not the DN1's 32 u32be words holding two steps each.
+
+Evidence: `Track_Step_State_Table` and `Trigger_Add_1_to_16` add exactly one trig at a
+time; adding a trig on track 1 step 1 flips exactly the u16be at `track+0`, on step 16 the
+u16be at `track+30`, on track 8 step 1 the u16be at `track7base+0`.
+
+| Bit | Name | Meaning | Status |
+|---|---|---|---|
+| `0x0001` | `trig` | a trig of some kind occupies this step | VERIFIED |
+| `0x0010` | `oddStep` | set on odd-numbered steps | see below |
+| `0x0080` + `0x0100` | `note` | set together on a note trig, by device and importer alike | UNKNOWN individually |
+| `0x0200` | `deviceNote` | set on a note trig by the device, never by the importer | UNKNOWN |
+| `0x0800` | `lockTrig` | trigless "lock" trig: locks but no note | VERIFIED |
+| `0x2000` | `untouched` | see below | UNKNOWN |
+
+**`0x0001` — VERIFIED.** Across all 1,571 records, this bit is set on exactly the steps
+that have a trigger slot, in both directions, with zero exceptions
+(`checkDn2PatternRecord` asserts this).
+
+**`0x0800` — VERIFIED.** All 1,517 DN1 trigless lock trigs (`hasNote=false`,
+`isLockTrig=true`) became DN2 words `0x0801` (even step) or `0x0811` (odd step); no DN1
+note trig ever produced this bit. 1,514 of the 1,517 also have `0xFF` in the note byte of
+their trigger slot; the other three carry a stale note that their DN1 originals carry too
+(see §8).
+
+**Observed complete flag words.** The whole matched corpus produces only:
+
+| Word | Meaning | Count |
+|---|---|---|
+| `0x0000` / `0x0010` | empty step, even / odd | ~2.6 M |
+| `0x0181` / `0x0191` | note trig, even / odd (importer) | 3,618 / 2,575 |
+| `0x0801` / `0x0811` | lock trig, even / odd (importer) | 731 / 786 |
+| `0x0380` / `0x0390` | empty step, even / odd (device, some patterns) | 556 / 522 |
+| `0x0381` / `0x0391` | note trig, even / odd (device) | 522 / 418 |
+| `0x2000` | every step of an importer-untouched track | 589,824 |
+| `0x6181`, `0x2381` | three records with high bits inherited verbatim from unusual DN1 flag words | 3 |
+
+Masking away `0x0010`, `0x0200` and the top nibble leaves exactly two shapes: `0x0181` for
+a note trig and `0x0801` for a lock trig. The test asserts this.
+
+**`0x0010`.** Set on odd steps of every track the device wrote and of tracks 1-8 of an
+import; clear on even steps. It is not needed to decode anything, and its purpose is
+UNKNOWN — calling it a parity bit is a description, not an explanation.
+
+**`0x2000`.** Present on every step of DN2 tracks 9-16 in a DN1 import — exactly the eight
+tracks the importer never populated — and on no other track: 1,149 of 1,152 patterns show
+it on tracks 9-16 only, the other three add track 3. Those tracks carry `0x2000` on both
+parities and no `0x0010`. Best guess is "step never initialised", SPECULATIVE. It does not
+affect trig detection.
+
+**For writing:** the importer's shapes are proven to load on hardware — these DN2 files
+*are* Elektron's own conversions. Use base `0x0000` / `0x0010` per parity, OR in `0x0181`
+for a note trig or `0x0801` for a lock trig, and do **not** leave `0x2000` on a track you
+populate. INFERRED for the write direction; untested on hardware.
+
+### 2.2 Sound locks — VERIFIED
+
+`+0x400 + step`, one u8 per step, `0xFF` = no lock, otherwise an index 0..127 into the
+project's 128-slot sound pool at `tailBase + 10756` (see `src/project/soundmap.ts`).
+
+This is the single most important field for the expander and it is the most strongly
+verified one. All 2,131 sound locks in the matched corpus agree with the DN1 source
+byte-for-byte, on the same track and the same step, with zero exceptions. It is the direct
+analogue of the DN1's `track+0x380+step`, widened from 64 to 128 steps.
+
+None of the 419 SysEx captures exercises a sound lock, so this field rests entirely on the
+matched pairs — which is the stronger evidence anyway, since it comes with known answers.
+
+### 2.3 Trig conditions and probability — INFERRED
+
+DN1 trig conditions land in **three different arrays** depending on the condition's family.
+Each affected trig writes exactly one array and leaves the other two at `0xFF`. Complete
+observed mapping over the matched corpus (nothing else was ever seen):
+
+| DN1 condition | DN2 array | DN2 value | Count |
+|---|---|---|---|
+| 6, 7, 8, 9, 10, 11, 12, 13, 15, 21 | `+0x200` | 19, 25, 33, 41, 50, 59, 67, 75, 87, 100 | 170 |
+| 22 | `+0x180` | 1 | 240 |
+| 23 | `+0x180` | 0 | 103 |
+| 24 … 38, 40, 42 | `+0x100` | 0,1,2,3,4,5,8,9,10,12,14,16,18,20,22,26,30 | 736 |
+
+The `+0x200` values are read as a **probability percentage**: they reproduce the Elektron
+percentage ladder (…13, 19, 25, 33, 41, 50, 59, 67, 75, 81, 87…) at exactly the right
+indices — DN1 condition 6 → 19 %, 15 → 87 %. The top entry, DN1 condition 21 → 100, sits
+one past the 99 % end of the ladder as usually documented, so the `100` is INFERRED rather
+than confirmed.
+
+`+0x100` and `+0x180` hold the non-probability conditions, but which DN2 code means which
+condition is **UNKNOWN**: the DN1→DN2 value map is not linear (increments of +1, then +3,
+then +2), so the two devices enumerate their condition lists differently and the mapping
+cannot be derived from the DN1 numbering alone.
+
+**None of the 419 SysEx captures sets any of these three arrays**, so there is no
+single-variable evidence at all — only the matched pairs. Treat the mapping table above as
+the full extent of what is known and do not extrapolate to unlisted values.
+
+---
+
+## 3. Trigger slots — VERIFIED
+
+8,192 slots of 6 bytes at `0x4A34`.
+
+```
++0  u8   track    0..15;  0xFF marks the slot unused
++1  u8   step     0..127
++2  u8   note     MIDI note, or 0xFF on a trigless lock trig
++3  u8   velocity 0..127, or 0xFF to inherit the track default
++4  u8   noteLength       or 0xFF to inherit the track default
++5  i8   microTiming      signed; 0xFF is -1, NOT "unset"
+```
+
+Every byte is confirmed twice. Single-variable captures isolate each one
+(`Pitch_Field` moves only `+2`, `Velocity_Field` only `+3`, `Length_Field` only `+4`,
+`Track08_Chord_Trigger_Notes/21..26` only `+5`), and the matched pairs check all four
+payload bytes against the DN1 for all 7,713 trigs.
+
+The micro-timing byte deserves emphasis: capture `13_REPRESENTATIVE_E5_TIME_MINUS1`
+sets it to `0xFF` for a time of −1, and `14_..._RETURN_TIME0` sets it back to `0x00`. So
+`0xFF` here is a value, not a sentinel — unlike every other `0xFF` in the record.
+
+### 3.1 Chords — VERIFIED
+
+A chord is stored as **extra slots repeating the same `(track, step)`**, each carrying an
+absolute MIDI note, placed immediately after the root. The root is first.
+
+- Capture evidence: `Track08_Chord_Trigger_Notes` grows a chord one note at a time and
+  each new note appears as the next slot with the same track and step, up to 16 notes.
+- Matched-pair evidence: all 544 chord notes reconstruct the DN1's signed chord offsets.
+- Chord slots copy the root's velocity, note length and micro timing verbatim — 544/544.
+
+**One importer behaviour to know:** a DN1 chord offset of `0`, which would duplicate the
+root note, is not re-emitted. `[-7, 0, 1]` becomes notes `[root, root-7, root+1]`. Seven
+chord notes across seven trigs in the corpus are dropped this way.
+
+### 3.2 Allocation and ordering — VERIFIED
+
+The array is a **single global pool shared by all 16 tracks**, not per-track: 128 notes on
+track 1 plus 1 on track 2 occupy slots 0..128 contiguously (`over_129_notes/03`).
+
+**Slots are allocated in edit order and freed in place, leaving holes.** In
+`order_compaction/4_step1deleded.syx`, slot 0 is `FF`-filled while slot 1 still holds a
+live trig. So a reader must **scan all 8,192 slots and skip `0xFF`-headed ones**; stopping
+at the first `0xFF` would silently drop trigs from a device-written pattern.
+`readTrigSlots` does the full scan.
+
+Scanning the whole array is safe: across all 1,571 records, every slot past the live set
+has `0xFF` in its first byte — even in regions holding uncleared residue from an earlier
+edit (some DN1 conversions leave what looks like a shifted copy of the track data in the
+unused tail of the array, but never with a non-`FF` first byte).
+
+Elektron's importer, unlike the device, writes a **dense prefix sorted by (track, step)**:
+verified for all 1,152 converted patterns.
+
+**Capacity 8,192 is INFERRED** from `(0x10A34 − 0x4A34) / 6`, and confirmed only as far as
+144 used slots (`over_129_notes/04`). 16 tracks × 128 steps = 2,048 single-note trigs, so
+the pool allows an average of four notes per step across a completely full pattern.
+
+---
+
+## 4. Parameter locks — VERIFIED
+
+80 records of 258 bytes at `0x10A34`.
+
+```
++0    u8         parameter id
++1    u8         track 0..15
++2    128 × u16le  value per step; 0xFFFF = step not locked
+```
+
+A record whose first u16le is `0xFFFF` is unused. In a native empty pattern the unused
+records read `FF FF` followed by 256 zero bytes; DN1 conversions leave 128 zeros then 128
+`0xFF`. Either way the header is the only reliable "unused" marker.
+
+The table is a flat pool shared by all tracks, allocated from slot 0 upwards — the DN1
+design, widened.
+
+**Evidence.** 392 lock records across the matched corpus were compared to the DN1
+originals. All 392 agree on track, on the exact set of locked steps, and on record
+position in the table. 389 also agree on every value; the remaining three differ only in
+value (17→25, 43→51 in one record, 71→89, 1→0 — six values in total), which is the
+importer rescaling parameters whose range changed between the devices.
+
+**Parameter ids are the DN2's own numbering and are NOT the DN1's.** The importer remaps
+them through a stable one-to-one function; every mapping observed in the corpus:
+
+```
+2→2  4→6  8→14  10→18  16→30  17→33  18→34  19→35  20→36  21→37  22→38  23→39  24→40
+25→41  30→46  34→50  50→73  51→74  52→75  53→76  54→78  55→79  60→87  61→89  62→90
+63→91  64→104  65→95  66→96  67→94  68→93  69→92  71→99
+```
+
+The mapping from either numbering to a **named** synth parameter is UNKNOWN.
+
+No record in the corpus locks a step above 63, because every source is a 64-step DN1
+pattern. Steps 64..127 are structurally present and `0xFFFF`-filled — **INFERRED** that
+they behave like steps 0..63.
+
+---
+
+## 5. Track settings, 35 bytes at `+0x480`
+
+Native default (all 16 tracks of every capture):
+
+```
+3c 64 0e 07 80 00 40 40 40 0e 0c 40 00 10 00 02 64 05 ff 00 00 40 00 00 00 00 00 00 00 00 7f 00 7f 00 7f
+```
+
+| Offset | Field | Status | Evidence |
+|---|---|---|---|
+| `+0x00` | default note, `0x3C` (C5) | VERIFIED | equals DN1 `settings[2]` on all 9,216 importer-populated tracks |
+| `+0x01` | default velocity, `0x64` (100) | VERIFIED | equals DN1 `settings[3]` on all 9,216 |
+| `+0x02` | default note length, `0x0E` | INFERRED | equals DN1 `settings[4]` on all 9,216; the *name* is from position in the DN1 block, not proven |
+| `+0x03` | `7` native / `6` on importer-touched tracks | UNKNOWN | exactly `6` on the 9,216 tracks the importer populated (9 × 128 × 8), `7` everywhere else |
+| `+0x04` | constant `0x80` | UNKNOWN | 25,136/25,136 |
+| `+0x05` | `0` | UNKNOWN | 4 values, 25,129 are `0` |
+| `+0x06..08` | `40 40 40` native, `00 00 00` on every converted track | UNKNOWN | exactly two states, 6,704 native (419 × 16) vs 18,432 converted |
+| `+0x09` | constant `0x0E` | UNKNOWN | |
+| `+0x0A` | constant `0x0C` | UNKNOWN | |
+| `+0x0B` | constant `0x40` | UNKNOWN | |
+| `+0x0C` | constant `0x00` | UNKNOWN | possibly the high byte of the length below |
+| **`+0x0D`** | **track length in steps, 1..128** | **VERIFIED** | `Per_Track_Length_T01` walks 2,3,4,8,15,17,32,33,64,128 and moves only this byte; matches the DN1 track length on all 9,216 importer-populated tracks |
+| `+0x0E` | `0`, `0x64` in 14 tracks | UNKNOWN | |
+| **`+0x0F`** | **track speed enum** | **VERIFIED** | `Per_Track_Speed_T01` walks all seven and moves only this byte; matches the DN1 speed on all 9,216 |
+| `+0x10` | `0x64` (100) | SPECULATIVE: track level | 25,107/25,136 are `0x64` |
+| `+0x11` | `5` native, `4` converted, rises to `6`/`7` | UNKNOWN | rose 5→6 when a chord reached 5 notes and fell back at 3 (`Track08_Chord…/06` and `/08`), so plausibly a voice count |
+| `+0x12` | `0xFF` | UNKNOWN | |
+| `+0x13`, `+0x14` | `0` | UNKNOWN | |
+| `+0x15..0x22` | constants `40 00 00 00 00 00 00 00 00 00 7f 00 7f 00 7f` | UNKNOWN | never varies in 25,136 samples |
+
+Speed enum (`+0x0F`, and the pattern-level speed at meta `+0x1A`) — VERIFIED, same codes
+on DN1 and DN2:
+
+| Code | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| Speed | 2× | 3/2× | **1× (default)** | 3/4× | 1/2× | 1/4× | 1/8× |
+
+---
+
+## 6. Pattern metadata, 44 bytes at `0x15AD4`
+
+| Offset | Size | Field | Status |
+|---|---|---|---|
+| `+0x00` | 16 | **pattern name**, NUL-padded | VERIFIED |
+| `+0x10`, `+0x11` | 2 | `00 00`; `+0x11` takes 6 other values rarely | UNKNOWN |
+| `+0x12` | u16be | **tempo × 120** | VERIFIED |
+| `+0x14` | u16be | **master pattern length**, 1..1024 | VERIFIED |
+| `+0x16` | u16be | **pattern change length (CHNG)**, 1..1024, `1` = off | VERIFIED |
+| `+0x18` | u8 | `0` normally, small values in some converted patterns | UNKNOWN |
+| `+0x19` | u8 | **scale mode**: 0 = one length for the pattern, 1 = per-track | VERIFIED |
+| `+0x1A` | u8 | **pattern speed**, same enum as the per-track speed | VERIFIED |
+| `+0x1B` | u8 | constant `0` | UNKNOWN |
+| `+0x1C` | u8 | **own slot index**, 0..127 | VERIFIED |
+| `+0x1D` | u8 | constant `0xFF` | UNKNOWN |
+| `+0x1E..0x20` | 3 | constant `0` | UNKNOWN |
+| `+0x21` | u8 | `7` in all 1,152 project records, `1` in all 419 captures | UNKNOWN |
+| `+0x22` | u8 | constant `0` | UNKNOWN |
+| `+0x23..0x2B` | 9 | constant `0xFF` | UNKNOWN |
+
+**Name — VERIFIED and it is stored twice.** `Pattern_Name_Position` changes one character
+at a time and each edit moves exactly two bytes: one at `0x15AD4 + n` and one at
+`0x15C08 + n`. The second is the **kit record's name field** (kit `+8`), which is why the
+name appears to have a "shadow": pattern and kit carry the same 16-byte string. Both
+copies must be written.
+
+**Tempo — VERIFIED**, same encoding as the DN1: u16be of `bpm × 120`. 120 BPM → `0x3840`
+(14,400); 120.1 → `0x384C`; 300 → `0x8CA0`. Cross-checked against `readPattern`'s tempo on
+all 1,152 pattern pairs.
+
+**Master length — VERIFIED** by `Pattern_Wide`, which changes the pattern length and moves
+this u16be together with `+0x0D` of all 16 track settings. Values 2, 3, 16, 33, 64, 128
+observed; 1,024 reachable via the u16be.
+
+**Change length — VERIFIED** by `Pattern_Change_Encoding_20260605` and
+`Per_Track_Change_T01`, which walk 2, 3, 4, 12, 16, 17, 32, 64, 128, 256, 512, 1024 and
+"OFF"; "OFF" stores `1`.
+
+**Scale mode — VERIFIED** by `Track_Wide_Mode_Field` and `Per_Track_Length_T01`, both of
+which toggle PER-PTN ↔ PER-TRK and move only this byte.
+
+**Slot index — VERIFIED**: equals `readPattern(...).slotIndex` on all 1,152 pattern pairs,
+including `ODD XS`, whose DN1 slot indices are scrambled (48, 1, 96, 96, 80, 1, 1, …) and
+whose DN2 records reproduce the same scrambling.
+
+---
+
+## 7. Synth vs MIDI tracks — VERIFIED, and it is not in the pattern record
+
+The pattern record carries **no** per-track synth/MIDI discriminator. Every field of the
+track record is populated identically for a DN1 synth track and a DN1 MIDI track, and the
+kit allocates a sound slot *and* a MIDI record for all 16 tracks unconditionally.
+
+The discriminator is a **u16be bitmask at kit offset 10,260** (`kitRecord + 10260`, i.e.
+`0x15C00 + 10260` in a SysEx pattern payload). Bit *t* set means track *t* is a MIDI track.
+
+Evidence: `0x00F0` — tracks 5-8, 1-based — in **all 1,152 kits of all nine DN1
+conversions**, which is exactly right because a DN1 project is always four synth tracks
+then four MIDI tracks; and `0x0000` in all 419 native captures, none of which has a MIDI
+track configured.
+
+The corpus therefore proves the field takes those two values in exactly the right
+circumstances, but has never shown an arbitrary mask (e.g. one MIDI track in the middle).
+That the mask is per-bit rather than, say, a count is **INFERRED** from the value `0x00F0`
+being precisely bits 4..7.
+
+`007 ORION_MIDI_TEST` independently corroborates the reading: its kit's MIDI records 5-8
+carry edited data while 1-4 and 9-16 are at defaults, matching the mask.
+
+---
+
+## 8. Two importer quirks worth knowing
+
+Both are asserted in the test suite so they cannot regress into silent bugs.
+
+1. **Stale notes on trigless trigs.** Three trigs (`TECNO_EXP` patterns 33, 40, 41, track
+   2, step 28) have the trigless flag `0x0801` *and* a note byte of 53. Their DN1
+   originals have the same contradiction — DN1 flag `0x0002` with an uncleared note record
+   — and the importer copied it faithfully. `hasNote` is therefore derived from the flag
+   word, never from the note byte.
+2. **Zero chord offsets are dropped**, §3.1.
+
+---
+
+## 9. What is still unknown
+
+Ordered by how much it blocks writing a valid DN2 pattern.
+
+1. **The three condition arrays' code tables** (§2.3). Probability is readable; the two
+   condition families are located but their DN2 code → UI condition mapping is unknown,
+   and no single-variable capture exercises them. Copying a DN1 trig's condition through
+   the observed table is safe; inventing a code is not.
+2. **Parameter id → named parameter** (§4), for both devices.
+3. **Track settings `+0x03`, `+0x06..08`, `+0x11`** (§5) — the three fields where the
+   importer's output differs from the device's default. Elektron's own conversions load on
+   hardware with the importer's values, so copying them is safe; the meanings are unknown.
+4. **The three unused per-track arrays** at `+0x280`, `+0x300`, `+0x380` (§2). `0xFF` in
+   every byte of both corpora.
+5. **Flag bits `0x0080`, `0x0100`, `0x0200`, `0x2000`** (§2.1).
+6. **Meta `+0x11`, `+0x18`, `+0x21`** (§6).
+7. **Trigger-slot capacity above 144** (§3.2) — the 8,192 figure is arithmetic.
+8. **Lock-table steps 64..127** (§4) — structurally present, never exercised.
+9. Whether the device rejects a pattern whose trigger slots are ordered differently from
+   its own edit-order allocation. Writing a sorted, dense array matches what Elektron's
+   importer produces, which is the safest available precedent, but is untested on hardware.
+
+## 10. Code
+
+| Symbol | Purpose |
+|---|---|
+| `readDn2Pattern(image, index)` | decode pattern `index` of a decompressed project image |
+| `readDn2PatternRecord(record, index?, midiMask?)` | decode a bare 89,088-byte record (e.g. from SysEx) |
+| `readTrigSlots(record)` | the raw 6-byte trigger slots, holes skipped |
+| `readLockTable(record)` | the 80-record parameter-lock table, order preserved |
+| `readTrackSettings(track)` | the 35-byte settings block, decoded and verbatim |
+| `stepFlags(track, step)` / `soundLockAt(track, step)` | single-field accessors |
+| `readMidiTrackMask(image, index)` / `midiTrackMaskOf(kit)` | the kit-side synth/MIDI mask |
+| `checkDn2PatternRecord(record)` | assert the documented geometry; passes on all 1,571 records |
+
+```ts
+const project = parseProject(new Uint8Array(readFileSync(path)));
+const { image } = decodeProjectImage(project.payload.raw);
+
+const pattern = readDn2Pattern(image, 0);
+pattern.name;                                  // "250319"
+pattern.tempo;                                 // 40
+pattern.tracks[0]!.trigs[1]!.note;             // 60
+pattern.tracks[0]!.trigs[1]!.soundLock;        // 3
+pattern.tracks[0]!.trigs[1]!.microTiming;      // -23
+```
