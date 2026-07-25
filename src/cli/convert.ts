@@ -28,6 +28,20 @@ function load(path: string) {
   return { manifest, payload, image: decodeProjectImage(payload.raw).image };
 }
 
+/**
+ * Stamp a build time into the project name, so the name shown on the device says which
+ * build is loaded.
+ *
+ * Two files that differ only in a fix are otherwise indistinguishable once they are on the
+ * hardware, and a hardware test that validates the wrong build is worse than no test. The
+ * name field holds 15 characters, so the base name is truncated to leave room for " HHMM".
+ */
+function stampName(name: string, when = new Date()): string {
+  const hhmm = `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
+  const room = 15 - (hhmm.length + 1);
+  return `${name.slice(0, room).trimEnd()} ${hhmm}`;
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -41,12 +55,15 @@ function main(): void {
   const expand = argv.includes("--expand");
   const useRules = argv.includes("--rules");
   const freeMidi = argv.includes("--free-midi");
+  const compact = argv.includes("--compact");
   const dryRun = argv.includes("--dry-run") || outPath === undefined;
+  const nameOverride = arg("name");
+  const stamp = argv.includes("--stamp");
 
   if (!fromPath || !templatePath) {
     console.error(
       "usage: npm run convert -- --from <a.dnprj> --template <t.dn2prj> [--out <b.dn2prj>]\n" +
-        "       [--expand] [--rules] [--free-midi] [--dry-run]",
+        "       [--expand] [--rules] [--free-midi] [--compact] [--stamp] [--name <text>] [--dry-run]",
     );
     process.exit(1);
   }
@@ -57,16 +74,22 @@ function main(): void {
   const plan = expand
     ? planExpansion(source.image, {
         useFreedMidiTracks: freeMidi,
+        compactPerPattern: compact,
         ...(useRules ? { rules: PERCUSSION_LOW_RULES } : {}),
       })
     : undefined;
 
+  const base = nameOverride ?? readProjectName(source.image);
+  const projectName = stamp ? stampName(base) : nameOverride;
+
   const { image, report } = convertProject(source.image, template.image, {
     ...(plan ? { plan } : {}),
+    ...(projectName === undefined ? {} : { projectName }),
   });
 
   console.log(`\n${basename(fromPath)} "${readProjectName(source.image)}"`);
   console.log(`  template: ${basename(templatePath)}`);
+  if (projectName !== undefined) console.log(`  project name: "${projectName}"`);
   console.log(
     `  ${report.patternsWritten} patterns, ${report.trigsWritten} trigs, ` +
       `${report.soundLocksWritten} sound locks, ${report.soundsConverted} sounds`,
@@ -81,6 +104,13 @@ function main(): void {
       `  ${plan.assignments.length} sounds promoted, ${plan.overflow.length} stay sound-locked` +
         (plan.overflow.length ? " (lossless)" : ""),
     );
+    if (plan.perPattern) {
+      const holes = [...plan.perPattern.values()].reduce((n, a) => n + a.overflow.length, 0);
+      console.log(
+        `  compact: destinations allocated per pattern, ` +
+          `${plan.perPattern.size} live patterns, ${holes} per-pattern overflow(s)`,
+      );
+    }
     for (const a of plan.assignments) {
       console.log(
         `    T${String(a.dn2Track).padStart(2)} <- ${(a.usage.name || "(unnamed)").padEnd(17)} ` +

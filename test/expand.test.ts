@@ -27,7 +27,7 @@ import {
 import { readKit, readPattern, readSoundPool, SYNTH_TRACK_COUNT } from "../src/project/dn1.js";
 import { convertProject } from "../src/expand/convert.js";
 import { planExpansion } from "../src/expand/plan.js";
-import { destinationsBySound, findCollisions, routePattern } from "../src/expand/route.js";
+import { destinationsBySound, findCollisions, promotionKey, routePattern } from "../src/expand/route.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;
@@ -83,7 +83,7 @@ test("routing moves exactly the trigs whose sound was promoted", { skip }, () =>
       assert.equal(entry.clearSoundLock, shouldMove, `pattern ${p} step ${entry.trig.step}`);
       if (shouldMove) {
         moved++;
-        assert.equal(entry.destinationTrack, destinations.get(lock!));
+        assert.equal(entry.destinationTrack, destinations.get(promotionKey(lock!, entry.sourceTrack)));
       } else {
         assert.equal(entry.destinationTrack, entry.sourceTrack);
       }
@@ -201,9 +201,10 @@ test("collisions are detected rather than silently merged", { skip }, () => {
   // Force every sound onto one track so same-step trigs from different sources collide.
   const source = image(`${CORPUS}01_DN1/01_Projects/049 JAM.dnprj`);
   const pool = readSoundPool(source);
-  const everything = new Map<number, number>();
+  const everything = new Map<string, number>();
   pool.forEach((s, i) => {
-    if (s.name) everything.set(i, 8);
+    if (!s.name) return;
+    for (let track = 0; track < SYNTH_TRACK_COUNT; track++) everything.set(promotionKey(i, track), 8);
   });
 
   let collisions = 0;

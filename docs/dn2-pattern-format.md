@@ -356,6 +356,20 @@ all 1,152 pattern pairs.
 this u16be together with `+0x0D` of all 16 track settings. Values 2, 3, 16, 33, 64, 128
 observed; 1,024 reachable via the u16be.
 
+**Both fields are pattern-level, and the device UI calls them RESET and CHNG.**
+`Per_Track_Reset_T01` and `Per_Track_Change_T01` walk what the panel presents as per-track
+settings while track 1 is selected, and each moves exactly one of these two pattern-level
+u16be fields and nothing inside any track record: RESET → `+0x14` (2, 3, 4, 12, 17, 1024,
+and `INF` → 1), CHNG → `+0x16` (2, 3, 4, 12, 16, 17, 1024, and `OFF` → 1). So a track cannot
+carry its own reset or change length; only LEN (`settings+0x0D`) and speed
+(`settings+0x0F`) are per track.
+
+**Track length is written the same way on all 16 tracks — VERIFIED.**
+`Per_Track_Field_Mapping_T01_T16/L_MSB_MAP_T{01..16}_LEN128` sets a length on each track in
+turn, and every one moves exactly `settings+0x0D` of that track, including tracks 9-16 that
+no Elektron import ever populates. Nothing accompanies it. See `docs/KNOWN-ISSUES.md` for an
+unresolved hardware observation where a written 62 on track 9 nevertheless displays as 48.
+
 **Change length — VERIFIED** by `Pattern_Change_Encoding_20260605` and
 `Per_Track_Change_T01`, which walk 2, 3, 4, 12, 16, 17, 32, 64, 128, 256, 512, 1024 and
 "OFF"; "OFF" stores `1`.

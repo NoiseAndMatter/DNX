@@ -116,7 +116,19 @@ export interface ConvertOptions {
    * own importer does. With it, promoted sounds move to their own tracks.
    */
   plan?: ExpansionPlan;
+  /**
+   * Override the project name instead of carrying the DN1's across.
+   *
+   * Written the way the DN2 stores a name: up to 15 characters then a NUL, with the rest of
+   * the 16-byte field zeroed. That differs from the default path, which transplants the DN1
+   * field verbatim including its uncleared residue — so use this only when the name is
+   * meant to change, never as a round-trip of a name read back out.
+   */
+  projectName?: string;
 }
+
+/** DN2 project and pattern name fields are 16 bytes, NUL-terminated. */
+const NAME_FIELD_SIZE = 16;
 
 function assertImage(image: Uint8Array, expected: number, what: string): void {
   if (image.length !== expected) {
@@ -401,6 +413,23 @@ function copyNameField(out: Uint8Array, to: number, source: Uint8Array, from: nu
 }
 
 /**
+ * Write a name the device did not produce: up to 15 characters, NUL, then zeros.
+ *
+ * The zero fill is deliberate and is the opposite of `copyNameField`'s discipline. There is
+ * no residue to preserve because there is no source field — leaving the template's bytes
+ * after the terminator would splice a stranger's project name onto the tail of ours.
+ *
+ * Characters outside the DN1's single-byte set are dropped rather than mangled; the device
+ * charset is not plain ASCII (`docs/sysex-format.md`) and guessing an encoding for a name
+ * that gets written to hardware is not worth the risk.
+ */
+function writeNameField(out: Uint8Array, to: number, name: string): void {
+  out.fill(0, to, to + NAME_FIELD_SIZE);
+  const bytes = [...name].map((c) => c.codePointAt(0)!).filter((c) => c >= 0x20 && c <= 0xff);
+  out.set(Uint8Array.from(bytes.slice(0, NAME_FIELD_SIZE - 1)), to);
+}
+
+/**
  * Pattern metadata.
  *
  * The DN1's metadata block mirrors the DN2's field for field, at the same offsets relative
@@ -459,6 +488,7 @@ function writeKit(
   out: Uint8Array,
   dn1Image: Uint8Array,
   index: number,
+  /** Destination DN2 track -> the pool slot promoted onto it. */
   promotions: ReadonlyMap<number, number>,
   levelSources: ReadonlyMap<number, number>,
   report: ConversionReport,
@@ -511,7 +541,7 @@ function writeKit(
 
   // Promoted sounds become their destination track's own sound.
   const pool = readSoundPool(dn1Image);
-  for (const [poolSlot, destinationTrack] of promotions) {
+  for (const [destinationTrack, poolSlot] of promotions) {
     const source = pool[poolSlot];
     if (!source?.name) continue;
     const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);
@@ -530,7 +560,7 @@ function writeKit(
   // A claimed track in 5-8 was configured as MIDI by the import and must be switched to
   // synth, which is one bit in the kit's mask.
   let mask = DN1_MIDI_MASK;
-  for (const destinationTrack of promotions.values()) mask &= ~(1 << destinationTrack) & 0xffff;
+  for (const destinationTrack of promotions.keys()) mask &= ~(1 << destinationTrack) & 0xffff;
   new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(
     kitBase + KIT_MIDI_MASK_OFFSET,
     mask,
@@ -584,17 +614,26 @@ export function convertProject(
   };
 
   // The project name lives at image+8 on both devices, 16 bytes including residue.
-  copyNameField(out, 8, dn1Image, 8, 16);
+  if (options.projectName === undefined) copyNameField(out, 8, dn1Image, 8, NAME_FIELD_SIZE);
+  else writeNameField(out, 8, options.projectName);
 
   // Empty when no plan is given, which makes routing the identity and the whole conversion
   // faithful rather than expanded.
-  const destinations = options.plan ? destinationsBySound(options.plan) : new Map<number, number>();
+  const destinations = options.plan ? destinationsBySound(options.plan) : new Map<string, number>();
+
+  // A per-pattern plan overrides the global one pattern by pattern. Patterns it does not
+  // mention have no trigs, so the global map applies harmlessly.
+  const perPattern = options.plan?.perPattern;
 
   const limit = Math.min(options.patternLimit ?? DN1_LAYOUT.patternCount, DN1_LAYOUT.patternCount);
   for (let index = 0; index < limit; index++) {
     const patternBase = DN2_LAYOUT.headerSize + index * DN2_LAYOUT.patternSize;
     const pattern = readPattern(dn1Image, index);
-    const routing = routePattern(pattern, destinations);
+    const local = perPattern?.get(index);
+    const routing = routePattern(
+      pattern,
+      local ? destinationsBySound({ ...options.plan!, ...local }) : destinations,
+    );
 
     for (const collision of findCollisions(routing)) {
       report.warnings.push({
@@ -640,10 +679,13 @@ export function convertProject(
 
     writePatternMetadata(out, patternBase, pattern, dn1Image);
 
+    // Keyed by destination, not by pool slot: a sound whose source tracks could not be
+    // merged occupies two destinations, and keying the other way round would write only one
+    // of them.
     const promotions = new Map<number, number>();
     for (const entry of routing.routed) {
       if (entry.clearSoundLock && entry.trig.soundLock !== undefined) {
-        promotions.set(entry.trig.soundLock, entry.destinationTrack);
+        promotions.set(entry.destinationTrack, entry.trig.soundLock);
       }
     }
     // Which source track each promoted destination should inherit its level from.
