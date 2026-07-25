@@ -46,6 +46,7 @@ import {
   STEP_COUNT as DN2_STEP_COUNT,
   STEP_FLAG,
   TRACK as DN2_TRACK,
+  TRACK_COUNT as DN2_TRACK_COUNT,
 } from "../project/dn2pattern.js";
 import {
   DN2_SOUND_SIZE,
@@ -53,6 +54,8 @@ import {
   type ConversionWarning as SoundWarning,
 } from "../project/soundmap.js";
 import { NO_CONDITION, translateParameterId, translateTrigCondition } from "./translate.js";
+import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } from "./route.js";
+import type { ExpansionPlan } from "./types.js";
 
 /** DN1 kit sound slots, and therefore the DN2 slots they occupy. */
 const DN1_KIT_SOUNDS = SYNTH_TRACK_COUNT;
@@ -79,6 +82,10 @@ export interface ConvertWarning {
 
 export interface ConversionReport {
   patternsWritten: number;
+  /** Trigs relocated to a promoted track. Zero for a faithful conversion. */
+  trigsPromoted: number;
+  /** DN2 tracks that received a promoted sound. */
+  tracksUsed: Set<number>;
   trigsWritten: number;
   soundLocksWritten: number;
   lockRecordsWritten: number;
@@ -92,6 +99,12 @@ export interface ConvertOptions {
    * development; leave unset to convert the whole project.
    */
   patternLimit?: number;
+  /**
+   * Expansion plan to apply. Without it the conversion is faithful: every DN1 track lands
+   * on its DN2 counterpart and every sound lock is preserved, reproducing what Elektron's
+   * own importer does. With it, promoted sounds move to their own tracks.
+   */
+  plan?: ExpansionPlan;
 }
 
 function assertImage(image: Uint8Array, expected: number, what: string): void {
@@ -130,29 +143,40 @@ function stepFlagWord(
   return parity | kind | STEP_FLAG.trig | (trig.flags & DN1_UNKNOWN_FLAG_BITS);
 }
 
-/** Write one DN1 track's per-step data into its DN2 track record. */
+/**
+ * Write one DN2 track record from the trigs routed to it.
+ *
+ * `entries` may come from more than one DN1 track when a sound locked on several tracks was
+ * merged onto one destination. `settingsSource` is the DN1 track whose length and speed the
+ * destination inherits, so a promoted track stays in sync with the music it came from.
+ */
 function writeTrack(
   out: Uint8Array,
   patternBase: number,
-  track: Dn1Track,
+  destinationTrack: number,
+  entries: readonly RoutedTrig[],
+  settingsSource: Dn1Track | undefined,
   patternIndex: number,
   report: ConversionReport,
 ): void {
-  const base = patternBase + DN2_PATTERN.trackOffset + track.index * DN2_TRACK.size;
+  const base = patternBase + DN2_PATTERN.trackOffset + destinationTrack * DN2_TRACK.size;
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
-  const byStep = new Map(track.trigs.map((t) => [t.step, t]));
-  const hasTrigs = track.trigs.length > 0;
+  const byStep = new Map(entries.map((e) => [e.trig.step, e]));
+  const hasTrigs = entries.length > 0;
 
   for (let step = 0; step < DN2_STEP_COUNT; step++) {
-    const trig = byStep.get(step);
+    const entry = byStep.get(step);
+    const trig = entry?.trig;
     view.setUint16(
       base + DN2_TRACK.flagsOffset + step * 2,
       stepFlagWord(trig, step, hasTrigs),
       false,
     );
 
-    out[base + DN2_TRACK.soundLockOffset + step] = trig?.soundLock ?? NO_BYTE;
-    if (trig?.soundLock !== undefined) report.soundLocksWritten++;
+    // A promoted trig loses its lock: the destination track now carries the sound itself.
+    const lock = entry?.clearSoundLock ? undefined : trig?.soundLock;
+    out[base + DN2_TRACK.soundLockOffset + step] = lock ?? NO_BYTE;
+    if (lock !== undefined) report.soundLocksWritten++;
 
     let condition = NO_CONDITION;
     if (trig?.trigCondition !== undefined) {
@@ -163,7 +187,7 @@ function writeTrack(
         report.warnings.push({
           kind: "condition",
           pattern: patternIndex,
-          track: track.index,
+          track: destinationTrack,
           step,
           message: `DN1 trig condition ${trig.trigCondition} has no known DN2 equivalent; dropped`,
         });
@@ -176,51 +200,61 @@ function writeTrack(
 
   // Per-track settings: only the fields we have verified are overwritten, so the template's
   // values survive everywhere else.
-  const settings = base + DN2_TRACK.settingsOffset;
-  out[settings + DN2_TRACK.settingsLengthOffset] = track.length;
-  out[settings + DN2_TRACK.settingsSpeedOffset] = track.speed;
+  if (settingsSource) {
+    const settings = base + DN2_TRACK.settingsOffset;
+    out[settings + DN2_TRACK.settingsLengthOffset] = settingsSource.length;
+    out[settings + DN2_TRACK.settingsSpeedOffset] = settingsSource.speed;
+  }
 }
 
-/** Build and write the trigger slot array from every track's trigs. */
+/**
+ * Build and write the trigger slot array.
+ *
+ * The array is flat across all tracks, so it is written from the routing rather than from
+ * the DN1 tracks directly — a promoted trig must name its destination track here too.
+ * Order is destination track then step, matching Elektron's own output.
+ */
 function writeTrigSlots(
   out: Uint8Array,
   patternBase: number,
-  pattern: Dn1Pattern,
+  routed: readonly RoutedTrig[],
+  patternIndex: number,
   report: ConversionReport,
 ): void {
   const slots: number[][] = [];
+  const ordered = [...routed].sort(
+    (a, b) => a.destinationTrack - b.destinationTrack || a.trig.step - b.trig.step,
+  );
 
-  for (const track of pattern.tracks) {
-    for (const trig of track.trigs) {
-      const note = trig.hasNote && trig.note !== undefined ? trig.note : NO_BYTE;
-      slots.push([
-        track.index,
-        trig.step,
-        note,
-        trig.velocity ?? NO_BYTE,
-        trig.noteLength ?? NO_BYTE,
-        trig.microTiming & 0xff,
-      ]);
-      // A chord is extra slots repeating (track, step) with absolute notes.
-      if (trig.hasNote && trig.note !== undefined) {
-        for (const offset of trig.chord) {
-          if (offset === 0) continue; // the importer does not re-emit the root
-          slots.push([
-            track.index,
-            trig.step,
-            (trig.note + offset) & 0x7f,
-            trig.velocity ?? NO_BYTE,
-            trig.noteLength ?? NO_BYTE,
-            trig.microTiming & 0xff,
-          ]);
-        }
+  for (const { trig, destinationTrack } of ordered) {
+    const note = trig.hasNote && trig.note !== undefined ? trig.note : NO_BYTE;
+    slots.push([
+      destinationTrack,
+      trig.step,
+      note,
+      trig.velocity ?? NO_BYTE,
+      trig.noteLength ?? NO_BYTE,
+      trig.microTiming & 0xff,
+    ]);
+    // A chord is extra slots repeating (track, step) with absolute notes.
+    if (trig.hasNote && trig.note !== undefined) {
+      for (const offset of trig.chord) {
+        if (offset === 0) continue; // the importer does not re-emit the root
+        slots.push([
+          destinationTrack,
+          trig.step,
+          (trig.note + offset) & 0x7f,
+          trig.velocity ?? NO_BYTE,
+          trig.noteLength ?? NO_BYTE,
+          trig.microTiming & 0xff,
+        ]);
       }
     }
   }
 
   if (slots.length > DN2_PATTERN.trigCount) {
     throw new ConversionError(
-      `Pattern ${pattern.index} needs ${slots.length} trigger slots, capacity is ${DN2_PATTERN.trigCount}`,
+      `Pattern ${patternIndex} needs ${slots.length} trigger slots, capacity is ${DN2_PATTERN.trigCount}`,
     );
   }
 
@@ -230,12 +264,31 @@ function writeTrigSlots(
   report.trigsWritten += slots.length;
 }
 
-/** Copy the parameter-lock table across, translating ids and widening 64 steps to 128. */
+/** One output lock record: a parameter, a destination track, and its per-step values. */
+interface LockRecord {
+  parameter: number;
+  track: number;
+  /** Step -> value, DN1 step numbering (0..63). Absent steps are unset. */
+  values: Map<number, number>;
+}
+
+/**
+ * Copy the parameter-lock table across, translating ids and widening 64 steps to 128.
+ *
+ * A DN1 record covers one (parameter, track) pair across all steps. When promotion sends
+ * some of a track's trigs to a different destination, that record has to SPLIT: the steps
+ * that moved need their own record naming the destination track. Splitting consumes table
+ * slots, and there are only 80, so overflow is reported rather than silently truncated.
+ *
+ * With no plan the routing is the identity, every record yields exactly one output record
+ * with its original track, and the table is byte-identical to Elektron's.
+ */
 function writeLockTable(
   out: Uint8Array,
   patternBase: number,
   dn1Image: Uint8Array,
   patternIndex: number,
+  destinationOf: (track: number, step: number) => number,
   report: ConversionReport,
 ): void {
   const dn1Base =
@@ -244,19 +297,12 @@ function writeLockTable(
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   const base = patternBase + DN2_PATTERN.lockOffset;
 
+  const records: LockRecord[] = [];
+
   for (let record = 0; record < DN2_PATTERN.lockCount; record++) {
     const from = dn1Base + record * DN1_PATTERN.lockSize;
-    const to = base + record * DN2_PATTERN.lockSize;
     const parameter = dn1Image[from]!;
-
-    if (parameter === NO_BYTE) {
-      out[to] = NO_BYTE;
-      out[to + 1] = NO_BYTE;
-      for (let step = 0; step < DN2_STEP_COUNT; step++) {
-        view.setUint16(to + 2 + step * 2, NO_WORD, true);
-      }
-      continue;
-    }
+    if (parameter === NO_BYTE) continue;
 
     const translated = translateParameterId(parameter);
     if (translated === undefined) {
@@ -266,6 +312,48 @@ function writeLockTable(
         track: dn1Image[from + 1]!,
         message: `DN1 parameter id ${parameter} has no known DN2 equivalent; lock record dropped`,
       });
+      continue;
+    }
+
+    const sourceTrack = dn1Image[from + 1]!;
+    const byDestination = new Map<number, Map<number, number>>();
+
+    for (let step = 0; step < 64; step++) {
+      const value = dn1View.getUint16(from + 2 + step * 2, true);
+      if (value === NO_WORD) continue;
+      const destination = destinationOf(sourceTrack, step);
+      const bucket = byDestination.get(destination);
+      if (bucket) bucket.set(step, value);
+      else byDestination.set(destination, new Map([[step, value]]));
+    }
+
+    if (byDestination.size === 0) {
+      // A record with a parameter but no active steps. Preserved so the table matches
+      // Elektron's byte for byte rather than being quietly compacted away.
+      records.push({ parameter: translated, track: sourceTrack, values: new Map() });
+      continue;
+    }
+    for (const [destination, values] of byDestination) {
+      records.push({ parameter: translated, track: destination, values });
+    }
+  }
+
+  if (records.length > DN2_PATTERN.lockCount) {
+    report.warnings.push({
+      kind: "capacity",
+      pattern: patternIndex,
+      message:
+        `promotion split the parameter-lock table into ${records.length} records but only ` +
+        `${DN2_PATTERN.lockCount} fit; ${records.length - DN2_PATTERN.lockCount} dropped`,
+    });
+    records.length = DN2_PATTERN.lockCount;
+  }
+
+  for (let record = 0; record < DN2_PATTERN.lockCount; record++) {
+    const to = base + record * DN2_PATTERN.lockSize;
+    const entry = records[record];
+
+    if (!entry) {
       out[to] = NO_BYTE;
       out[to + 1] = NO_BYTE;
       for (let step = 0; step < DN2_STEP_COUNT; step++) {
@@ -274,12 +362,11 @@ function writeLockTable(
       continue;
     }
 
-    out[to] = translated;
-    out[to + 1] = dn1Image[from + 1]!;
+    out[to] = entry.parameter;
+    out[to + 1] = entry.track;
     for (let step = 0; step < DN2_STEP_COUNT; step++) {
       // The DN1 holds 64 steps; the DN2's upper half has no source and stays unset.
-      const value = step < 64 ? dn1View.getUint16(from + 2 + step * 2, true) : NO_WORD;
-      view.setUint16(to + 2 + step * 2, value, true);
+      view.setUint16(to + 2 + step * 2, entry.values.get(step) ?? NO_WORD, true);
     }
     report.lockRecordsWritten++;
   }
@@ -288,10 +375,10 @@ function writeLockTable(
 /**
  * Copy a name field verbatim rather than re-encoding the decoded string.
  *
- * Elektron never clears a name field on rename, so the bytes after the NUL keep whatever
- * the previous name left behind — "GROOVY JECT " is GROOVY written over NEW PROJECT.
- * Re-encoding would zero that residue and diverge from the device's own output, so the DN1
- * bytes are transplanted as they are.
+ * Elektron never clears a name field on rename, so the bytes after the terminator keep
+ * whatever the previous name left behind: renaming NEW PROJECT to GROOVY leaves the trailing
+ * "JECT" in place after the NUL. Re-encoding would zero that residue and diverge from the
+ * device's own output, so the DN1 bytes are transplanted as they are.
  */
 function copyNameField(out: Uint8Array, to: number, source: Uint8Array, from: number, size: number): void {
   out.set(source.subarray(from, from + size), to);
@@ -323,6 +410,7 @@ function writeKit(
   out: Uint8Array,
   dn1Image: Uint8Array,
   index: number,
+  promotions: ReadonlyMap<number, number>,
   report: ConversionReport,
 ): void {
   const kitBase = DN2_LAYOUT.kitBase + index * DN2_LAYOUT.kitSize;
@@ -344,9 +432,31 @@ function writeKit(
     }
   }
 
+  // Promoted sounds become their destination track's own sound.
+  const pool = readSoundPool(dn1Image);
+  for (const [poolSlot, destinationTrack] of promotions) {
+    const source = pool[poolSlot];
+    if (!source?.name) continue;
+    const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);
+    out.set(sound, kitBase + DN2_KIT_SOUND_OFFSET + destinationTrack * DN2_SOUND_SIZE);
+    report.soundsConverted++;
+    for (const w of warnings) {
+      report.warnings.push({
+        kind: "sound",
+        pattern: index,
+        track: destinationTrack,
+        message: `promoted sound on track ${destinationTrack + 1}: ${describeSoundWarning(w)}`,
+      });
+    }
+  }
+
+  // A claimed track in 5-8 was configured as MIDI by the import and must be switched to
+  // synth, which is one bit in the kit's mask.
+  let mask = DN1_MIDI_MASK;
+  for (const destinationTrack of promotions.values()) mask &= ~(1 << destinationTrack) & 0xffff;
   new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(
     kitBase + KIT_MIDI_MASK_OFFSET,
-    DN1_MIDI_MASK,
+    mask,
     false,
   );
 }
@@ -387,6 +497,8 @@ export function convertProject(
   const out = Uint8Array.from(template);
   const report: ConversionReport = {
     patternsWritten: 0,
+    trigsPromoted: 0,
+    tracksUsed: new Set<number>(),
     trigsWritten: 0,
     soundLocksWritten: 0,
     lockRecordsWritten: 0,
@@ -397,19 +509,70 @@ export function convertProject(
   // The project name lives at image+8 on both devices, 16 bytes including residue.
   copyNameField(out, 8, dn1Image, 8, 16);
 
+  // Empty when no plan is given, which makes routing the identity and the whole conversion
+  // faithful rather than expanded.
+  const destinations = options.plan ? destinationsBySound(options.plan) : new Map<number, number>();
+
   const limit = Math.min(options.patternLimit ?? DN1_LAYOUT.patternCount, DN1_LAYOUT.patternCount);
   for (let index = 0; index < limit; index++) {
     const patternBase = DN2_LAYOUT.headerSize + index * DN2_LAYOUT.patternSize;
     const pattern = readPattern(dn1Image, index);
+    const routing = routePattern(pattern, destinations);
 
-    for (const track of pattern.tracks) {
-      if (track.index >= DN1_TRACK_COUNT) continue;
-      writeTrack(out, patternBase, track, index, report);
+    for (const collision of findCollisions(routing)) {
+      report.warnings.push({
+        kind: "capacity",
+        pattern: index,
+        track: collision.destinationTrack,
+        step: collision.step,
+        message:
+          `tracks ${collision.sourceTracks.map((t) => t + 1).join(" and ")} both place a trig on ` +
+          `step ${collision.step} of track ${collision.destinationTrack + 1}: ${collision.reason}`,
+      });
     }
-    writeTrigSlots(out, patternBase, pattern, report);
-    writeLockTable(out, patternBase, dn1Image, index, report);
+
+    const sourceByTrack = new Map(pattern.tracks.map((t) => [t.index, t]));
+    for (let destination = 0; destination < DN2_TRACK_COUNT; destination++) {
+      const entries = routing.byDestination.get(destination) ?? [];
+      // Tracks 0-7 are always written, so the template's contents cannot leak through.
+      // Tracks 8-15 are only touched when promotion puts something there.
+      if (destination >= DN1_TRACK_COUNT && entries.length === 0) continue;
+
+      // A promoted track inherits the settings of the track its trigs came from, so it stays
+      // in sync with the music it was lifted out of.
+      const settingsSource =
+        sourceByTrack.get(destination) ??
+        (entries.length ? sourceByTrack.get(entries[0]!.sourceTrack) : undefined);
+
+      writeTrack(out, patternBase, destination, entries, settingsSource, index, report);
+    }
+
+    writeTrigSlots(out, patternBase, routing.routed, index, report);
+
+    const routedByKey = new Map(
+      routing.routed.map((e) => [`${e.sourceTrack}:${e.trig.step}`, e.destinationTrack]),
+    );
+    writeLockTable(
+      out,
+      patternBase,
+      dn1Image,
+      index,
+      (track, step) => routedByKey.get(`${track}:${step}`) ?? track,
+      report,
+    );
+
     writePatternMetadata(out, patternBase, pattern, dn1Image);
-    writeKit(out, dn1Image, index, report);
+
+    const promotions = new Map<number, number>();
+    for (const entry of routing.routed) {
+      if (entry.clearSoundLock && entry.trig.soundLock !== undefined) {
+        promotions.set(entry.trig.soundLock, entry.destinationTrack);
+      }
+    }
+    writeKit(out, dn1Image, index, promotions, report);
+
+    report.trigsPromoted += routing.moved;
+    for (const t of routing.destinationsUsed) report.tracksUsed.add(t + 1);
     report.patternsWritten++;
   }
 
