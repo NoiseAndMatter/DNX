@@ -74,11 +74,16 @@ the same as nothing to write".
 What remains: `dn2[54]` varies across 0, 41 and 42 with no DN1 source — `UNPLACED_MIDI_BYTES`.
 Two projects show a residue of 2 and 11 bytes per project; the other pairs are exact.
 
-### Pattern metadata — ~131 bytes/project
+### Pattern metadata — closed, 0 bytes/project
 
-Residual after the scale-mode fix. The identified fields (name, tempo, length, change
-length, scale mode, speed, slot index) are all correct; something else in the 44-byte block
-is not. Not yet investigated.
+**Solved 2026-07-26**, and 95% of it was one byte. `+0x21` reads 7 in every record Elektron
+converted and 1 in every native capture, so a device-written template contributed 1 and we
+inherited it — 768 of the 810 differing bytes. The other two were exact copies at the same
+relative offset the rest of the block already uses: `+0x11` from DN1 `0x4735` and `+0x18`
+from DN1 `0x473C`, unanimous across all 1,152 matched pattern pairs.
+
+The block now matches Elektron byte for byte on every pair. What the three fields *mean* is
+still unknown on both devices.
 
 ### Kit FX region — ~397 bytes/project
 

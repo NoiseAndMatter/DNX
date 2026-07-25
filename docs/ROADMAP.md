@@ -99,8 +99,9 @@ so the device says which one is loaded.
 See [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The kit MIDI track records — the largest gap, and the
 one that most plainly broke the 1:1 promise — are **done**: channel and CC configuration now
 transfer, and the sixteen inherited track names with them, taking that region from 10,112
-bytes per project to about 3. What is left is pattern metadata (~131), the kit FX residue
-(~397), the kit gap at 10252 (~117) and the tail project settings (~19).
+bytes per project to about 3. Pattern metadata is **also done** and now matches byte for
+byte. What is left is the kit FX residue (~397), the kit gap at 10252 (~117) and the tail
+project settings (~19).
 
 ### 3. Web UI
 
