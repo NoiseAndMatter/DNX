@@ -118,7 +118,9 @@ fails if anything reachable needs Node, so the boundary cannot rot.
 Still to do here: pinning and reordering by hand, a per-pattern preview like the hardware test
 sheet, and remembering the template between sessions.
 
-### 3a. A device-authored test project, to crack what the corpus cannot
+### 3a. A device-authored test project, to crack what the corpus cannot — PLANNED
+
+The table is written: [dn2-capture-plan.md](dn2-capture-plan.md).
 
 **Queued by the user for straight after the first UI.** Build a DN2 project on the device in
 which sounds and parameters are set to deliberate, known values from a test table, dump it,
@@ -134,8 +136,15 @@ It is the only remaining tool for the residue we keep hitting:
 - The 500-byte kit gap and the ~98,800 unidentified bytes of the DN2 tail.
 - What the DN2 trig-condition codes at `+0x100` and `+0x180` actually mean.
 
-The wider point the user made is the right one: knowing what we clone is worth more than the
-bytes it fixes, because it turns a transplant into an editor and unlocks the manager.
+The wider point is the right one: knowing what we clone is worth more than the bytes it fixes,
+because it turns a transplant into an editor and unlocks the manager.
+
+The plan uses **one capture carrying many distinct values** rather than one capture per change.
+If every parameter holds a value no other parameter has, a single dump maps them all — the
+changed bytes say where, the values say which. That collapses an evening of captures into
+minutes, and `npm run diff` now names every offset in a pattern payload, so a clean capture
+reads as a sentence. Blocked only on the Digitone manuals, which are needed to enumerate the
+parameters of each page.
 
 ### 4. WebMIDI transfer
 

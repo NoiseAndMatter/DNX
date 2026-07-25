@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseFile } from "../sysex/container.js";
+import { PATTERN_PAYLOAD_SIZE, describeOffset } from "../project/locate.js";
 
 interface Change {
   offset: number;
@@ -103,9 +104,15 @@ function reportPair(labelA: string, labelB: string, a: Uint8Array, b: Uint8Array
   console.log(`\n${labelA}  ->  ${labelB}`);
   console.log(`  ${list.length} byte(s) changed in ${runs.length} run(s)${sizeNote}`);
 
+  // A payload of exactly this size is a DN2 pattern dump, so every offset can be named.
+  // Reading "track 3 settings +0x0d track length" instead of "0x4f8d" is the whole point of a
+  // differential capture, and doing that lookup by hand is where the time goes.
+  const nameable = a.length === PATTERN_PAYLOAD_SIZE;
+
   for (const run of runs) {
     const at = `0x${run.start.toString(16).padStart(4, "0")}`;
-    console.log(`    ${at} (${run.from.length}B)  ${hex(run.from)}  ->  ${hex(run.to)}`);
+    const where = nameable ? `   ${describeOffset(run.start)}` : "";
+    console.log(`    ${at} (${run.from.length}B)  ${hex(run.from)}  ->  ${hex(run.to)}${where}`);
   }
   return runs;
 }
