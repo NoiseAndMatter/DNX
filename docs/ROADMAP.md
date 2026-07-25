@@ -44,7 +44,7 @@ untransferred fields, then a user interface.
 | Pattern librarian (DN1) | done, **hardware-validated** |
 | Expansion planning, rules, pins | done |
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
-| Expansion writer | done, **hardware validation in progress** |
+| Expansion writer | done, **hardware-validated** |
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
 | Reusing unused DN1 source tracks | done, on in compact mode |
 | Hardware test sheet generator | done (`npm run sheet`) |
@@ -81,13 +81,14 @@ correctly, carrying exactly the four sounds it needed and no others.
 
 Roughly in order of value.
 
-### 1. Finish hardware-validating the expander
+### 1. Hardware validation — passed
 
-`MORNING_JAM_EXPANDED.dn2prj` has been loaded on a real Digitone II: **tracks 9-16 carry
-their sounds and honour their own per-track lengths.** The largest unproven assumption in the
-project is no longer unproven. What remains is checking, by ear and per pattern, that the
-detail which travelled with a promoted trig still plays — conditions, probability, micro
-timing, chords, parameter locks — and the same for the compact build.
+`MORNING_JAM_EXPANDED.dn2prj` loads on a real Digitone II, tracks 9-16 carry their sounds and
+honour their own per-track lengths, and every check run from the generated test sheet cleared
+on the machine. The largest unproven assumption in the project is closed.
+
+Still worth running when convenient: the same pass over the **compact** build, whose
+per-pattern layout no Elektron file resembles.
 
 `npm run sheet` generates a per-pattern test sheet from a converted file — positions named
 as the device names them, A1..H16 and page·step — so a hardware session has something to
@@ -100,14 +101,33 @@ See [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The kit MIDI track records — the large
 one that most plainly broke the 1:1 promise — are **done**: channel and CC configuration now
 transfer, and the sixteen inherited track names with them, taking that region from 10,112
 bytes per project to about 3. Pattern metadata is **also done** and now matches byte for
-byte. What is left is the kit FX residue (~397), the kit gap at 10252 (~117) and the tail
-project settings (~19).
+byte. What is left is the kit FX residue (~152, down from
+397), the kit gap at 10252 (~117) and the tail project settings (~19).
 
 ### 3. Web UI
 
 Load a `.dnprj`, show the proposed track assignment, let the user pin and reorder, export a
 `.dn2prj`. Local-only, no server. The planning layer already produces everything the UI
 needs to display, and `--dry-run` on the CLIs mirrors the intended flow.
+
+### 3a. A device-authored test project, to crack what the corpus cannot
+
+**Queued by the user for straight after the first UI.** Build a DN2 project on the device in
+which sounds and parameters are set to deliberate, known values from a test table, dump it,
+and diff against a baseline. It is the `emnyeca` single-variable method, run for our own
+purposes and aimed at the fields the matched pairs can never explain, because a matched pair
+only shows what the *importer* does — never what a field *means*.
+
+It is the only remaining tool for the residue we keep hitting:
+
+- kit+5858, kit+5860, kit+5878 — the FX bytes no DN1 byte predicts.
+- `dn2[54]` in the MIDI track record.
+- The 16 x 5-byte per-track array at kit+10264.
+- The 500-byte kit gap and the ~98,800 unidentified bytes of the DN2 tail.
+- What the DN2 trig-condition codes at `+0x100` and `+0x180` actually mean.
+
+The wider point the user made is the right one: knowing what we clone is worth more than the
+bytes it fixes, because it turns a transplant into an editor and unlocks the manager.
 
 ### 4. WebMIDI transfer
 

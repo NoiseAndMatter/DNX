@@ -59,6 +59,7 @@ import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } fr
 import {
   applyFieldConstants,
   applyFieldCopies,
+  FX_SCALED_FIELD,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
   MIDI_TRACK_CONSTANTS,
@@ -549,6 +550,7 @@ function writeKit(
   // project keeps the template's effects rather than its own.
   applyFieldCopies(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, KIT_FX_MAP);
   applyFieldConstants(out, kitBase, KIT_FX_CONSTANTS);
+  writeScaledFxField(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, index, report);
 
   // Promoted sounds become their destination track's own sound.
   const pool = readSoundPool(dn1Image);
@@ -579,6 +581,38 @@ function writeKit(
     mask,
     false,
   );
+}
+
+/**
+ * The one FX field the importer rescales rather than copies.
+ *
+ * An unknown source value leaves the destination as the template had it and reports it,
+ * because a plausible interpolation into a field whose meaning is unknown is exactly the kind
+ * of guess that ends up on hardware.
+ */
+function writeScaledFxField(
+  out: Uint8Array,
+  kitBase: number,
+  dn1Image: Uint8Array,
+  dn1FxBase: number,
+  patternIndex: number,
+  report: ConversionReport,
+): void {
+  const source = dn1Image[dn1FxBase + FX_SCALED_FIELD.from]!;
+  const scaled = FX_SCALED_FIELD.table.get(source);
+
+  if (scaled === undefined) {
+    report.warnings.push({
+      kind: "parameter",
+      pattern: patternIndex,
+      message:
+        `kit FX +0x${FX_SCALED_FIELD.from.toString(16)} = ${source} is outside the known ` +
+        "rescaling table, so the destination keeps the template's value",
+    });
+    return;
+  }
+
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(kitBase + FX_SCALED_FIELD.to, scaled, false);
 }
 
 /**
