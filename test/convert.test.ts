@@ -210,7 +210,7 @@ test("unwritten regions stay within their known budget", { skip }, () => {
     "kit FX region": 500, // was 1,016
     "kit header": 20, // was 48, before track levels were transferred
     "pattern metadata": 200,
-    "kit MIDI records": 3_500, // not transferred at all yet
+    "kit MIDI records": 20, // was 10,112: sixteen inherited names plus untransferred config
   };
   const seen: Record<string, number> = {};
   const bump = (k: string, n: number) => (seen[k] = (seen[k] ?? 0) + n);
@@ -238,7 +238,9 @@ test("unwritten regions stay within their known budget", { skip }, () => {
       const theirKit = kitRecord(elektron, p);
       bump("kit FX region", diff(myKit, theirKit, 5804, 160));
       bump("kit header", diff(myKit, theirKit, 0, 60));
-      for (let m = 0; m < 4; m++) bump("kit MIDI records", diff(myKit, theirKit, 5964 + m * 268, 268));
+      // All sixteen records, not just the four the importer fills: the other twelve carry
+      // names the template would otherwise leak through.
+      for (let m = 0; m < 16; m++) bump("kit MIDI records", diff(myKit, theirKit, 5964 + m * 268, 268));
     }
   }
 
@@ -348,4 +350,43 @@ test("a mis-sized image is rejected rather than producing garbage", { skip }, ()
   const template = image(`${CORPUS}02_DN2/01_Projects/MORNING_JAM.dn2prj`);
   assert.throws(() => convertProject(new Uint8Array(10), template), /DN1 image must be/);
   assert.throws(() => convertProject(source, new Uint8Array(10)), /DN2 template must be/);
+});
+
+/**
+ * MIDI track configuration must survive the conversion.
+ *
+ * `048 ORION_MIDI_TEST` exists precisely because someone sat down and configured MIDI tracks,
+ * so it is the one project in the corpus where this can fail visibly. Before the field map
+ * these records were not written at all and the converted project inherited the template's
+ * channels and CC assignments.
+ */
+test("MIDI track configuration lands on DN2 tracks 5-8", { skip }, () => {
+  const template = image(`${CORPUS}02_DN2/01_Projects/EMPTY.dn2prj`);
+  const source = image(`${CORPUS}01_DN1/01_Projects/048 ORION_MIDI_TEST.dnprj`);
+  const elektron = image(`${CORPUS}02_DN2/01_Projects/007 ORION_MIDI_TEST.dn2prj`);
+  const { image: ours } = convertProject(source, template);
+
+  const MIDI_BASE = 5_964;
+  const RECORD = 268;
+  let differing = 0;
+  let configured = 0;
+
+  for (let p = 0; p < 128; p++) {
+    const mine = kitRecord(ours, p);
+    const theirs = kitRecord(elektron, p);
+    const fromTemplate = kitRecord(template, p);
+
+    for (let record = 0; record < 16; record++) {
+      const at = MIDI_BASE + record * RECORD;
+      for (let i = 0; i < RECORD; i++) {
+        if (mine[at + i] !== theirs[at + i]) differing++;
+        // Something the template got wrong and we now get right — proof the transfer does
+        // real work rather than agreeing with the template by luck.
+        if (theirs[at + i] !== fromTemplate[at + i] && mine[at + i] === theirs[at + i]) configured++;
+      }
+    }
+  }
+
+  assert.ok(configured > 1_000, `expected the transfer to correct the template, corrected ${configured} bytes`);
+  assert.ok(differing <= 5, `${differing} MIDI-record bytes differ from Elektron across 128 kits`);
 });

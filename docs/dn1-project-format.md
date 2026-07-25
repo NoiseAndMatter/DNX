@@ -377,6 +377,15 @@ In `ORION_MIDI_TEST` those CC numbers become 3, 4 and 9 in different records, so
 channel field is **UNKNOWN**; `+0x0C` and `+0x30` both change when a MIDI track is
 configured and are the best candidates.
 
+**VERIFIED, and the record base with it.** Correlating these records against the DN2 records
+Elektron's importer produced — 7,168 samples, 14 matched pairs × 128 kits × 4 tracks — places
+17 of the 18 varying DN2 bytes on a DN1 source with no counterexample. That the map holds at
+all confirms the `0x54E` base and the 172-byte stride, which §8.2 could previously only pin
+to ±3 bytes. The correspondences are in `MIDI_TRACK_MAP` (`src/expand/fieldmap.ts`): DN1
+`+0` `+1` `+2` `+4` `+16` `+28` `+29` `+32` `+34` `+36` `+38` `+48` `+50` `+64` `+66` `+158`
+`+159`. Which of them is the channel is still **UNKNOWN** — the mapping says where a byte
+goes, not what it means.
+
 **INFERRED, ±3 bytes.** The record array is anchored by its 172-byte stride, but its exact
 start and end are uncertain by a few bytes: `0x54E + 4 × 172 = 0x7FE`, while the next
 identified structure (a four-entry array with stride 5) begins at `0x7FB`. Treat the

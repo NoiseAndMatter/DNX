@@ -127,6 +127,63 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
 export const UNPLACED_FX_BYTES: readonly number[] = [0x34, 0x36, 0x37, 0x3a, 0x46, 0x47, 0x4c];
 
 /**
+ * MIDI track configuration: DN1 172 bytes at `kit+0x54E`, DN2 268 bytes at `kit+5964`.
+ *
+ * DN1 MIDI track *n* lands on DN2 track *4+n*, the same positional rule the pattern records
+ * follow. Both `to` and `from` are relative to their own record.
+ *
+ * Derived from 7,168 record samples — 14 matched pairs x 128 kits x 4 MIDI tracks. Of the 18
+ * DN2 bytes that vary across the corpus, 14 have exactly one DN1 source that agrees on every
+ * sample, three are ambiguous and resolved below, and one has no DN1 source at all.
+ *
+ * Until this existed a DN1 project's MIDI channels and CC assignments were dropped entirely —
+ * about 3,072 bytes per project, the largest single gap in the conversion.
+ */
+export const MIDI_TRACK_MAP: readonly FieldCopy[] = [
+  { from: 0, to: 30 },
+  { from: 1, to: 31 },
+  { from: 2, to: 32 },
+  { from: 4, to: 38 },
+  { from: 16, to: 62 },
+  { from: 28, to: 86 },
+  { from: 29, to: 87 },
+  { from: 32, to: 94 },
+  // Ambiguous by value — dn1[34], [36] and [38] hold the same value as each other in all
+  // 7,168 samples, so the corpus cannot tell them apart. Both sides run at stride 2, and the
+  // positional assignment holds on every sample; the alternative orderings do too, which is
+  // exactly why this is INFERRED rather than verified. Nothing observed changes either way.
+  { from: 34, to: 96 },
+  { from: 36, to: 98 },
+  { from: 38, to: 100 },
+  { from: 48, to: 110 },
+  { from: 50, to: 112 },
+  { from: 64, to: 142, name: "CC number 1" },
+  { from: 66, to: 144, name: "CC number 2" },
+  { from: 158, to: 256 },
+  { from: 159, to: 257 },
+];
+
+/**
+ * DN2 MIDI-record bytes with no DN1 source that the importer nevertheless fixes.
+ *
+ * The 16-byte track name at `+0x0C`: a native DN2 track is named `MIDI 1`..`MIDI 16`, and
+ * Elektron's importer **clears it** on every imported MIDI track. Constant in all 7,168
+ * samples, and different from what the template holds — the failure mode this file exists to
+ * prevent. Only `+12..+17` are non-zero in the template, the rest of the field already being
+ * zero on both sides; the whole field is cleared because that is what the name *is*.
+ */
+export const MIDI_TRACK_CONSTANTS: readonly FieldConstant[] = Array.from(
+  { length: 16 },
+  (_, i) => ({ at: 12 + i, value: 0 }),
+);
+
+/**
+ * DN2 MIDI-record byte that varies with no DN1 source: `dn2[54]`, taking 0, 41 and 42.
+ * Left to the template rather than guessed, and recorded so the gap stays visible.
+ */
+export const UNPLACED_MIDI_BYTES: readonly number[] = [54];
+
+/**
  * A byte the importer always writes to a fixed value, which the template gets wrong.
  *
  * Distinct from a copy: there is no DN1 source, either because the DN1 field is constant
