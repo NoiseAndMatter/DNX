@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { parseProject } from "../src/project/container.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { collectSoundUsage, midiTrackDestination, planExpansion } from "../src/expand/plan.js";
+import { SYNTH_TRACK_COUNT, readPattern } from "../src/project/dn1.js";
 
 const DIR = NO_CORPUS ? "" : corpusPath(DN1_PROJECTS);
 
@@ -78,13 +79,13 @@ test("enabling freed MIDI tracks never promotes fewer sounds", { skip }, () => {
 test("no locked trig is ever lost — promoted plus overflow accounts for all", { skip }, () => {
   for (const { name, image } of all) {
     const { usage } = collectSoundUsage(image);
-    const total = [...usage.values()].reduce((n, u) => n + u.trigCount, 0);
+    const total = usage.reduce((n, u) => n + u.trigCount, 0);
     for (const opts of [{}, { useFreedMidiTracks: true }]) {
       const plan = planExpansion(image, opts);
       assert.equal(plan.promotedTrigs + plan.overflowTrigs, total, `${name}: trig count mismatch`);
       assert.equal(
         plan.assignments.length + plan.overflow.length,
-        usage.size,
+        usage.length,
         `${name}: sound count mismatch`,
       );
     }
@@ -103,4 +104,78 @@ test("a sound locked on several source tracks is merged onto one destination", {
     }
   }
   assert.ok(sawMerge, "expected at least one multi-source-track sound in the corpus");
+});
+
+test("source tracks that disagree on length or speed are never merged", { skip }, () => {
+  let sawSplit = false;
+
+  for (const { name, image } of all) {
+    const { usage } = collectSoundUsage(image);
+
+    for (let p = 0; p < 128; p++) {
+      const pattern = readPattern(image, p);
+      // What each source track would impose on a shared destination, in this pattern.
+      const profiles = new Map<number, Map<number, string>>();
+      for (const track of pattern.tracks) {
+        if (track.index >= SYNTH_TRACK_COUNT) continue;
+        for (const trig of track.trigs) {
+          if (trig.soundLock === undefined) continue;
+          const byTrack = profiles.get(trig.soundLock) ?? new Map<number, string>();
+          byTrack.set(track.index, `${track.length}/${track.speed}`);
+          profiles.set(trig.soundLock, byTrack);
+        }
+      }
+
+      for (const [slot, byTrack] of profiles) {
+        if (new Set(byTrack.values()).size < 2) continue;
+        sawSplit = true;
+
+        // Every candidate covering this slot must hold source tracks that all agree.
+        for (const candidate of usage.filter((u) => u.poolSlot === slot)) {
+          const covered = candidate.sourceTracks.filter((t) => byTrack.has(t));
+          const distinct = new Set(covered.map((t) => byTrack.get(t)!));
+          assert.ok(
+            distinct.size <= 1,
+            `${name} pattern ${p + 1} slot ${slot}: merged tracks ${covered.join()} disagree (${[...distinct].join(" vs ")})`,
+          );
+        }
+      }
+    }
+  }
+
+  assert.ok(sawSplit, "expected the corpus to contain at least one incompatible pair");
+});
+
+test("compact mode packs each pattern from the first free track, losing nothing", { skip }, () => {
+  for (const { name, image } of all) {
+    const plan = planExpansion(image, { compactPerPattern: true });
+    assert.ok(plan.perPattern, `${name}: no per-pattern allocation`);
+
+    for (const [p, allocation] of plan.perPattern!) {
+      const used = allocation.assignments.map((a) => a.dn2Track).sort((a, b) => a - b);
+      const expected = plan.freeTracks.slice(0, used.length);
+      assert.deepEqual(used, expected, `${name} pattern ${p + 1}: destinations are not packed`);
+
+      // Every sound locked in this pattern is accounted for: promoted or explicitly left.
+      const local = collectSoundUsage(image, [p]).usage;
+      assert.equal(
+        allocation.assignments.length + allocation.overflow.length,
+        local.length,
+        `${name} pattern ${p + 1}: candidate count mismatch`,
+      );
+    }
+  }
+});
+
+test("compact mode promotes at least as much as the global map", { skip }, () => {
+  for (const { name, image } of all) {
+    const global = planExpansion(image);
+    const compact = planExpansion(image, { compactPerPattern: true });
+    const compactOverflow = [...compact.perPattern!.values()].reduce((n, a) => n + a.overflow.length, 0);
+    const globalOverflowPerPattern = global.overflow.reduce((n, u) => n + u.patterns.length, 0);
+    assert.ok(
+      compactOverflow <= globalOverflowPerPattern,
+      `${name}: compact left ${compactOverflow} behind vs global ${globalOverflowPerPattern}`,
+    );
+  }
 });
