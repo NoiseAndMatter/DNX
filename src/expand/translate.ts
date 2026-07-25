@@ -13,6 +13,27 @@
  * Values not in these tables were never exercised by the corpus. They are UNKNOWN, not
  * identity: `translateParameterId` and `translateTrigCondition` return undefined so the
  * caller can flag them. Guessing would write a plausible-looking wrong knob to hardware.
+ *
+ * ## Coverage, measured across all 53 DN1 projects
+ *
+ * The nine matched pairs do not exercise everything the library uses:
+ *
+ * | | mapped | total | records covered |
+ * |---|---|---|---|
+ * | parameter ids | 33 | 58 | 1,599 / 1,871 = **85.5%** |
+ * | trig conditions | 29 | 35 | 2,615 / 2,645 = **98.9%** |
+ *
+ * The gap is real but narrow, and it is *reported* rather than silently mistranslated — a
+ * conversion that hits an unmapped value drops that lock record and says so.
+ *
+ * Closing it needs more matched pairs, i.e. more DN1 projects imported on a DN2 and
+ * exported back. Greedy set cover over the unconverted projects says five would do it:
+ *
+ *   1. `001 PRESETS`      24 of the 31 unmapped values
+ *   2. `013 CRAZARP`      3 more
+ *   3. `003 AMBZ`         2 more
+ *   4. `005 SEA_GROOVE`   1 more
+ *   5. `016 WATERMELON-2` 1 more
  */
 
 /**
