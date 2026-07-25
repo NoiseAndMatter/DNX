@@ -47,8 +47,6 @@
  * two transports.
  */
 
-import { inflateRawSync } from "node:zlib";
-
 export const CONTAINER_MAGIC = Uint8Array.of(0xac, 0x11, 0xd3, 0x03);
 export const FOOTER_MAGIC = Uint8Array.of(0xaa, 0xa1, 0xda, 0xaa);
 export const OBJECT_MAGIC = Uint8Array.of(0xbe, 0xef, 0xba, 0xce);
@@ -157,52 +155,4 @@ export function isLengthValid(payload: ProjectPayload): boolean {
  * Project ZIPs hold two small entries that are either stored or deflated, so walking
  * the local file headers is enough — no need for the central directory.
  */
-function readZipEntries(data: Uint8Array): Map<string, Uint8Array> {
-  const entries = new Map<string, Uint8Array>();
-  const view = dv(data);
-  let at = 0;
 
-  while (at + 30 <= data.length && view.getUint32(at, true) === 0x04034b50) {
-    const method = view.getUint16(at + 8, true);
-    let compressedSize = view.getUint32(at + 18, true);
-    const nameLength = view.getUint16(at + 26, true);
-    const extraLength = view.getUint16(at + 28, true);
-    const nameStart = at + 30;
-    const name = new TextDecoder().decode(data.subarray(nameStart, nameStart + nameLength));
-    const dataStart = nameStart + nameLength + extraLength;
-
-    if (compressedSize === 0 && (view.getUint16(at + 6, true) & 0x08) !== 0) {
-      throw new ProjectParseError(
-        `ZIP entry "${name}" uses a streaming data descriptor, which this reader does not support`,
-      );
-    }
-
-    const chunk = data.subarray(dataStart, dataStart + compressedSize);
-    if (method === 0) entries.set(name, chunk);
-    else if (method === 8) entries.set(name, new Uint8Array(inflateRawSync(chunk)));
-    else throw new ProjectParseError(`ZIP entry "${name}" uses unsupported method ${method}`);
-
-    at = dataStart + compressedSize;
-  }
-
-  if (entries.size === 0) throw new ProjectParseError("No ZIP entries found — not a project file");
-  return entries;
-}
-
-/** Parse a complete .dnprj / .dn2prj file. */
-export function parseProject(file: Uint8Array): Project {
-  const entries = readZipEntries(file);
-
-  const manifestBytes = entries.get("manifest.json");
-  if (!manifestBytes) throw new ProjectParseError("Project ZIP has no manifest.json");
-  const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as ProjectManifest;
-
-  const payloadBytes = entries.get(manifest.Payload);
-  if (!payloadBytes) {
-    throw new ProjectParseError(
-      `manifest names payload "${manifest.Payload}" but the ZIP has: ${[...entries.keys()].join(", ")}`,
-    );
-  }
-
-  return { manifest, payload: parsePayload(payloadBytes) };
-}

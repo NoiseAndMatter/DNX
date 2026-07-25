@@ -13,7 +13,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseProject } from "../project/container.js";
+import { parseProject } from "../project/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { projectName } from "../project/dn2image.js";
 import { collectSheet } from "../sheet/collect.js";
