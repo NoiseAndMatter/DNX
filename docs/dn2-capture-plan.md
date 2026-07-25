@@ -1,0 +1,187 @@
+# Digitone II capture plan
+
+A test table for the device, aimed at the fields the matched pairs can never explain.
+
+## Why this exists
+
+Fourteen DN1 projects sit beside Elektron's own DN2 conversions of them, and that pairing
+solved almost everything. But a matched pair only ever shows **what the importer does** — never
+what a field *means*. Every remaining unknown is one the corpus cannot reach:
+
+- Bytes no DN1 field explains, because the DN1 has no such feature.
+- Codes whose numbering differs between the devices, where the DN1 value says nothing about
+  the DN2 one.
+- Whole regions Elektron's importer never touches.
+
+## The method: one file, many known values
+
+The obvious approach is one capture per change — the discipline the `emnyeca` corpus used, and
+the one `docs/capture-protocol.md` describes. It is also slow, and mostly unnecessary here.
+
+**If every parameter is set to a value no other parameter has, a single dump maps them all at
+once.** The diff shows which bytes changed; the value in each byte says which parameter put it
+there. Fourteen captures collapse into one, and the work at the device drops from an evening
+to a few minutes.
+
+This holds wherever the changed things are independent and the values are distinguishable.
+Three cases break it, and each has a cheap fix:
+
+| Problem | Why | Fix |
+|---|---|---|
+| **Toggles and short enums** | An on/off field can only be 0 or 1, so two of them are indistinguishable by value | Capture a **second file with the complementary pattern** — the byte that flips in both is the one that belongs to the toggle you flipped in both |
+| **Rescaled fields** | Some values are transformed on the way in — one FX field is stored at roughly x201.57 of its UI value, so "73" never appears in the bytes | Assign values as a **strictly increasing ramp**, so a scaled field is still recognisable by its order among its neighbours |
+| **Wide fields** | A `u16` holding 300 writes two bytes, one of them 0 | Prefer values **between 1 and 127** so each lands in a single byte, and reserve larger values for fields known to be wide |
+
+Two more rules make the result unambiguous:
+
+- **Avoid the defaults.** Never assign 0, 64, 100 or 127 — those are what the untouched fields
+  already hold, so a byte carrying one tells you nothing.
+- **Always capture the baseline first**, unchanged, so the diff has something to be relative to.
+
+## Reading the result
+
+```bash
+npm run diff -- --chain captures/<Experiment>/
+```
+
+Offsets inside a 99,840-byte pattern payload are named automatically — `track 3 settings +0x0d
+track length in steps`, not `0x4f8d`. A byte landing in a region marked unidentified is a new
+finding, and the value in it says which parameter you set.
+
+---
+
+## 1. Trig conditions — one file, fourteen trigs
+
+**Target:** the code tables for the two condition arrays at track `+0x100` and `+0x180`. We can
+copy a DN1 trig's condition through an observed table but cannot author one, and no public
+capture exercises these arrays at all.
+
+The arrays are indexed by step, so one pattern can carry every condition at once: put a trig on
+each of the first fourteen steps of track 1 and give each a different condition.
+
+| Step | Condition | Step | Condition |
+|---|---|---|---|
+| 1 | FILL | 8 | 2:2 |
+| 2 | FILL inverted | 9 | 1:4 |
+| 3 | PRE | 10 | 3:4 |
+| 4 | PRE inverted | 11 | 1:8 |
+| 5 | NEI | 12 | 1% |
+| 6 | 1ST | 13 | 50% |
+| 7 | 1:2 | 14 | 99% |
+
+One dump, and the step index gives the mapping for every code.
+
+## 2. The kit FX bytes no DN1 byte explains
+
+**Target:** kit+5858, kit+5860 and kit+5878 — Elektron writes them, no single DN1 kit byte
+predicts them, and they are the last of the FX residue.
+
+FX parameters are one value each per kit, so again a single file does it. Suggested values,
+all away from the defaults and strictly increasing so a rescaled field stays recognisable:
+
+| Parameter | Value | Parameter | Value |
+|---|---|---|---|
+| Delay TIME | 11 | Reverb TONE | 41 |
+| Delay FEEDBACK | 17 | Chorus DEPTH | 47 |
+| Delay HP filter | 23 | Chorus SPEED | 53 |
+| Delay LP filter | 29 | Compressor THRESHOLD | 59 |
+| Reverb SIZE | 35 | Compressor RATIO | (next setting up) |
+
+Then a **second file** toggling the compressor off, and a **third** with it on again.
+kit+5878 takes only 0 and 1 across the whole corpus, so a toggle is its likely source.
+
+## 3. The per-track array at kit+10264
+
+**Target:** sixteen 5-byte entries whose default is `00 00 81 20 00`. Elektron writes
+non-default values into individual entries; we never write it at all.
+
+Per-track, so one file can carry a different change on each track:
+
+- Track 2: a different machine type
+- Track 3: switched to a MIDI track
+- Track 5: muted
+- Track 7: a different machine type again, distinct from track 2's
+
+Machine type is the strongest candidate — the DN2 has selectable machines and the DN1 does
+not, which is exactly the shape of a field no DN1 byte can explain.
+
+Then one complementary file with all four reverted, since these are enums and toggles rather
+than free values.
+
+## 4. `dn2[54]` in the MIDI track record
+
+**Target:** one byte taking 0, 41 and 42, with no DN1 source.
+
+Configure MIDI track 5 with distinct values in one go: channel 3, program change 5, bank 7,
+plus aftertouch and pitch bend enabled. The eight CC assignments are already mapped, so
+anything else that moves is the answer. A second file with aftertouch and pitch bend disabled
+separates the two toggles.
+
+## 5. Parameter-lock ids — one pattern names them all
+
+**Target:** the parameter id table. A lock record is `{parameter id, track, value per step}`, and
+we can copy an id through an observed DN1-to-DN2 table but cannot say what any of them *is*.
+`docs/dn2-pattern-format.md` §4 lists this as unknown, and the manager needs it: "lock
+parameter 19 to 40" is not something to show a user.
+
+The lock table is the index here, exactly as the step arrays were for conditions. **Lock a
+different parameter on each step of one track**, in a known order, and each produces its own
+record — one dump maps every id at once.
+
+The Digitone II has eight knobs per page, so one pass over the pages is 8 locks each:
+
+| Steps | Page | Steps | Page |
+|---|---|---|---|
+| 1-8 | SYN page 1, knobs A-H | 33-40 | AMP |
+| 9-16 | SYN page 2, knobs A-H | 41-48 | FX |
+| 17-24 | SYN page 3, knobs A-H | 49-56 | MOD page 1 |
+| 25-32 | FLTR page 1 | 57-64 | MOD page 2 |
+
+Give each lock a **different value** as well as a different step, from the ramp in the method
+above. Then the record's id says which parameter, its step says which knob, and its value
+confirms the pairing independently.
+
+Two passes cover the rest: a second pattern for SYN page 4, FLTR page 2, MOD page 3 and the
+TRIG pages, and a third with a **different machine selected**, since the SYN knobs are machine
+dependent and their ids may or may not move with the machine — which is itself worth knowing.
+
+### Ruled out: the ids are not NRPN numbers
+
+Worth recording so nobody spends the evening on it. Elektron's manual (Appendix C) gives every
+parameter an NRPN LSB, and the observed DN2 lock ids 73-79, 89-96 and 104 line up suspiciously
+well with the SYN pages' NRPN numbering, which is eight consecutive values per page.
+
+It does not hold. The same corpus locks ids 30 to 41, and those NRPN numbers belong to the
+**audio input mixer** — parameters a converted DN1 project cannot possibly have locked, since
+the DN1 has no audio inputs. The resemblance in the 70s and 90s is a coincidence of two
+schemes that both allocate eight consecutive numbers per page.
+
+## 6. Sound parameters — the long game
+
+**Target:** the parameter map inside the 359-byte DN2 sound object, and with it the
+parameter-lock id table. This is the largest unknown left, and the one that unlocks the
+manager: "lock parameter 19 to 40" cannot be shown to a user as anything but "parameter 19"
+until it is done.
+
+Same method, at scale. One sound, every parameter on the SYN, FLTR, AMP and FX pages set to a
+distinct value from a ramp, one dump. A second file with the toggles and enums in their
+complementary positions.
+
+The pages, from Elektron's manual chapter 11, are TRIG 1-2, SYN 1-4, FLTR 1-2, AMP, FX and
+MOD 1-3, at eight knobs each. That is the order to walk, and combined with section 5 the same
+capture serves twice: the sound object shows where each value landed, and the lock records say
+what the device calls it.
+
+**Sources.** Elektron's own manuals are the reference for parameter names and order —
+[Digitone](https://www.elektron.se/wp-content/uploads/2024/09/Digitone_User_Manual_ENG_OS1.41_231108.pdf)
+(OS 1.41) and
+[Digitone II](https://elektron.se/wp-content/uploads/2024/10/Digitone-2-User-Manual_ENG_OS1.00A_241023.pdf)
+(OS 1.00A). Third-party guides are useful for cross-checking but their text stays out of this
+repository.
+
+---
+
+## What to send back
+
+The `.syx` files, numbered, in a folder per experiment. Nothing else: the diff tool reads the
+dumps directly and names the offsets itself.
