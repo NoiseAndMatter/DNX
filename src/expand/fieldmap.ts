@@ -121,10 +121,46 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
   { from: 0x45, to: 5873 },
   { from: 0x4a, to: 5880 },
   { from: 0x4b, to: 5881 },
+  // Found later, by correlating what remained against the whole DN1 kit: all three sit at
+  // 5804 + their own FX offset, the same rule most of the block above follows.
+  { from: 0x37, to: 5859 },
+  { from: 0x46, to: 5874 },
+  { from: 0x47, to: 5875 },
 ];
 
-/** DN1 FX bytes that vary but have no consistent DN2 home. Recorded, not guessed. */
-export const UNPLACED_FX_BYTES: readonly number[] = [0x34, 0x36, 0x37, 0x3a, 0x46, 0x47, 0x4c];
+/**
+ * DN1 FX bytes that vary but have no consistent DN2 home. Recorded, not guessed.
+ *
+ * Was seven; `0x34`, `0x37`, `0x46` and `0x47` have since been placed — the first through
+ * `FX_SCALED_FIELD` below, the other three as ordinary copies in `KIT_FX_MAP`.
+ */
+export const UNPLACED_FX_BYTES: readonly number[] = [0x36, 0x3a, 0x4c];
+
+/**
+ * A DN1 FX byte the importer rescales into a DN2 `u16be`.
+ *
+ * DN1 `FX+0x34` holds 0..127; the DN2 pair at kit+5898 holds a wide value that tracks it at
+ * roughly x201.57 — 64 to 12,900, 73 to 14,714, 94 to 18,948, 100 to 20,157, 127 to 25,599.
+ * The ratio is consistent to within a unit but no arithmetic rule reproduces all five
+ * exactly, so this is a table, as every other rescaled field in this project has turned out
+ * to be. The corpus offers exactly these five values, 1,008 of the 1,024 sampled kits sitting
+ * on the default 100.
+ *
+ * A value outside the table leaves the destination alone and reports a warning, rather than
+ * interpolating a plausible number into a field whose meaning is unknown.
+ */
+export const FX_SCALED_FIELD = {
+  from: 0x34,
+  /** Destination, relative to the DN2 kit record. Big-endian, unlike most of this format. */
+  to: 5898,
+  table: new Map<number, number>([
+    [64, 12_900],
+    [73, 14_714],
+    [94, 18_948],
+    [100, 20_157],
+    [127, 25_599],
+  ]),
+} as const;
 
 /**
  * Pattern metadata: DN1 trailer at `pattern+0x4724`, DN2 44-byte block at `pattern+0x15AD4`.

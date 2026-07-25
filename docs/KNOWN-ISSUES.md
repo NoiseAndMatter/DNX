@@ -35,11 +35,17 @@ the budget test exists specifically to cover that blind spot. Keep budgets tight
 
 ---
 
-## Hardware validation: first session, 2026-07-25
+## Hardware validation: passed, 2026-07-25/26
 
 `MORNING_JAM_EXPANDED.dn2prj` has been loaded on a real Digitone II. **Expanded tracks 9-16
 exist and carry their sounds**, which was the single largest unproven assumption in the
-project.
+project — and on 2026-07-26 the user reported that **every check they ran from the test sheet
+cleared on the machine**: track lengths, levels, trigs still sound-locked where they should
+be, and the per-trig detail that travelled with promoted trigs.
+
+That closes the expansion writer as an unproven component. It is not a claim that every
+pattern of every project is correct — the sheet covers what was checked — but the mechanism
+is validated end to end on hardware.
 
 One reported defect did not survive checking: track 9's length in pattern A1 appeared to read
 48 against the 62 in the file, and on reload it reads **62**, as written. The first reading
@@ -85,11 +91,25 @@ from DN1 `0x473C`, unanimous across all 1,152 matched pattern pairs.
 The block now matches Elektron byte for byte on every pair. What the three fields *mean* is
 still unknown on both devices.
 
-### Kit FX region — ~397 bytes/project
+### Kit FX region — ~152 bytes/project, was ~409
 
-49 of the 56 varying bytes are mapped. Seven DN1 FX bytes vary with no consistent DN2
-destination — `UNPLACED_FX_BYTES` in `src/expand/fieldmap.ts`: `0x34, 0x36, 0x37, 0x3A,
-0x46, 0x47, 0x4C`. Either the importer drops them or they land outside the region searched.
+Four of the seven unplaced DN1 bytes were found on 2026-07-26 by correlating what still
+differed against the **whole** DN1 kit rather than only the FX block:
+
+- `FX+0x37`, `FX+0x46`, `FX+0x47` are ordinary copies to kit+5859, +5874, +5875 — each at
+  `5804 +` its own FX offset, the rule most of the block already follows.
+- `FX+0x34` is **rescaled**, not copied: 0..127 becomes a `u16be` at kit+5898 at roughly
+  x201.57 (64 to 12,900, 100 to 20,157, 127 to 25,599). Five values appear in the corpus and
+  they are stored as a table; anything outside it keeps the template's value and warns, since
+  no arithmetic rule reproduces all five exactly. This alone was 256 bytes/project, because
+  the field differs in **every** kit.
+
+`UNPLACED_FX_BYTES` is now `0x36, 0x3A, 0x4C`.
+
+Three DN2 bytes remain unexplained: **kit+5858** (values 0, 6, 94, 100, 102), **kit+5860**
+(0, 100) and **kit+5878** (0, 1). None is an exact copy of, or a function of, any single byte
+of the DN1 kit — checked over all 2,560 offsets across 1,024 kit pairs. They either combine
+several sources or come from outside the kit record.
 
 ### Kit gap 10252-10751 — ~117 bytes/project
 
@@ -144,12 +164,6 @@ needed to decode anything, and never differs on a step that carries a trig.
 ---
 
 ## Untrusted or unverified
-
-**The expansion writer is partly hardware-validated.** A converted, expanded project loads on
-a Digitone II and its tracks 9-16 carry their sounds and honour their own lengths. What has
-not yet been checked by ear, track by track, is the per-trig detail that travelled with a
-promoted trig: conditions, probability, micro timing, chords and parameter locks. The test
-sheet `npm run sheet` generates lists exactly those per pattern.
 
 **DN2 pattern record version 2.** The factory `PRESETS.dn2prj` uses version 2; our reader
 assumes 3 and its structural check fails on all 128 of its patterns. Conversion always
