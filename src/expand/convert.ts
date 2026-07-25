@@ -63,6 +63,8 @@ import {
   KIT_FX_MAP,
   MIDI_TRACK_CONSTANTS,
   MIDI_TRACK_MAP,
+  PATTERN_META_CONSTANTS,
+  PATTERN_META_MAP,
   TRACK_SETTINGS_CONSTANTS,
   TRACK_SETTINGS_MAP,
 } from "./fieldmap.js";
@@ -481,6 +483,10 @@ function writePatternMetadata(
   // The DN1 record carries its own idea of which slot it occupies, and that is usually but
   // not always the array position. Elektron preserves the record's value, so we do too.
   out[patternBase + DN2_PATTERN.slotIndexOffset] = pattern.slotIndex;
+
+  // Two more fields that travel at the same relative offset, and one the importer fixes.
+  applyFieldCopies(out, patternBase + DN2_PATTERN.metaOffset, dn1Image, dn1Meta, PATTERN_META_MAP);
+  applyFieldConstants(out, patternBase + DN2_PATTERN.metaOffset, PATTERN_META_CONSTANTS);
 }
 
 /** Render a sound-mapping warning as one line, keeping its provenance visible. */
