@@ -30,6 +30,7 @@
  */
 
 import {
+  KIT as DN1_KIT,
   PATTERN as DN1_PATTERN,
   SYNTH_TRACK_COUNT,
   TRACK_COUNT as DN1_TRACK_COUNT,
@@ -61,6 +62,8 @@ import type { ExpansionPlan } from "./types.js";
 const DN1_KIT_SOUNDS = SYNTH_TRACK_COUNT;
 /** DN2 kit: 60-byte header, then 16 sound slots. */
 const DN2_KIT_SOUND_OFFSET = 60;
+/** 16 x u16le track levels in the DN2 kit header. The DN1's four sit at its kit+0x14. */
+const DN2_KIT_LEVEL_OFFSET = 0x1c;
 /** DN2 sound pool sits after a full kit record at the head of the tail. */
 const DN2_POOL_OFFSET = 10_756;
 const POOL_SLOTS = 128;
@@ -444,6 +447,7 @@ function writeKit(
   dn1Image: Uint8Array,
   index: number,
   promotions: ReadonlyMap<number, number>,
+  levelSources: ReadonlyMap<number, number>,
   report: ConversionReport,
 ): void {
   const kitBase = DN2_LAYOUT.kitBase + index * DN2_LAYOUT.kitSize;
@@ -463,6 +467,28 @@ function writeKit(
         message: `kit sound ${slot}: ${describeSoundWarning(w)}`,
       });
     }
+  }
+
+  // Track levels. DN1 kit+0x14 holds four u16le levels, the DN2 sixteen at kit+0x1C, and the
+  // first four correspond exactly (verified on 2,048 kit/track pairs). Without this a
+  // converted project loses its mix: every track sits at the template's default of 100.
+  const dn1KitBase = DN1_LAYOUT.kitBase + index * DN1_LAYOUT.kitSize;
+  const kitView = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  const dn1Level = (track: number) =>
+    dn1Image[dn1KitBase + DN1_KIT.levelOffset + track * 2]! |
+    (dn1Image[dn1KitBase + DN1_KIT.levelOffset + track * 2 + 1]! << 8);
+
+  for (let track = 0; track < DN1_KIT_SOUNDS; track++) {
+    kitView.setUint16(kitBase + DN2_KIT_LEVEL_OFFSET + track * 2, dn1Level(track), true);
+  }
+  // A promoted track inherits the level of the track its trigs were lifted out of, so the
+  // mix balance survives expansion instead of every new track jumping to the default.
+  for (const [destination, source] of levelSources) {
+    kitView.setUint16(
+      kitBase + DN2_KIT_LEVEL_OFFSET + destination * 2,
+      dn1Level(source),
+      true,
+    );
   }
 
   // Promoted sounds become their destination track's own sound.
@@ -602,7 +628,14 @@ export function convertProject(
         promotions.set(entry.trig.soundLock, entry.destinationTrack);
       }
     }
-    writeKit(out, dn1Image, index, promotions, report);
+    // Which source track each promoted destination should inherit its level from.
+    const levelSources = new Map<number, number>();
+    for (const entry of routing.routed) {
+      if (entry.clearSoundLock && !levelSources.has(entry.destinationTrack)) {
+        levelSources.set(entry.destinationTrack, entry.sourceTrack);
+      }
+    }
+    writeKit(out, dn1Image, index, promotions, levelSources, report);
 
     report.trigsPromoted += routing.moved;
     for (const t of routing.destinationsUsed) report.tracksUsed.add(t + 1);
