@@ -35,34 +35,21 @@ the budget test exists specifically to cover that blind spot. Keep budgets tight
 
 ---
 
-## Open defect: an expanded track's LEN reads wrong on the device
+## Hardware validation: first session, 2026-07-25
 
-**Found on hardware, 2026-07-25. Unresolved, and it is the first thing to chase.**
+`MORNING_JAM_EXPANDED.dn2prj` has been loaded on a real Digitone II. **Expanded tracks 9-16
+exist and carry their sounds**, which was the single largest unproven assumption in the
+project.
 
-In `MORNING_JAM` expanded, pattern **A1**, the device shows track 9's length as **48** where
-the file holds **62**. Track 3 holds the same value at the same offset and displays 62.
+One reported defect did not survive checking: track 9's length in pattern A1 appeared to read
+48 against the 62 in the file, and on reload it reads **62**, as written. The first reading
+was of another track or page. Nothing was wrong and nothing was changed.
 
-What is established:
+Two useful facts came out of chasing it anyway, and both are now recorded properly:
 
-- The value is written at `settings+0x0D`, which is where the device itself writes it —
-  confirmed against `Per_Track_Field_Mapping_T01_T16/L_MSB_MAP_T09_LEN128`, a native capture
-  that sets track 9's length and moves that byte and nothing else.
-- Our T3 and T9 35-byte settings blocks are **byte-identical**. So does the whole track
-  record except the step flags, which differ only where the trigs differ.
-- Elektron's own conversion of the same project has no track showing 48 anywhere in A1.
-- 48 is 62 rounded down to a whole page, which suggests the device is deriving the length
-  from something page-shaped rather than reading our byte.
-
-The likely shape of the answer is a field that tracks 9-16 need and tracks 1-8 already have
-from the template — the failure mode this document opens with. One candidate is unexplored:
-a **16 × 5-byte per-track array at kit+10264**, inside the "kit gap 10252-10751" below.
-Elektron's importer writes non-default values into it for individual tracks (in A1, track 2
-reads `00 00 01 20 00` and track 3 `00 00 81 20 01` against a default of `00 00 81 20 00`);
-we never write it, so every track inherits the template's default. It has not been shown to
-carry length, and the corpus has no example of it being set on tracks 9-16.
-
-**The experiment that settles it:** on the device, set track 9's LEN to 62 by hand in A1,
-save, dump the pattern over SysEx, and diff against our build. Whatever differs is the field.
+- Track length is written at `settings+0x0D` **on all 16 tracks**, tracks 9-16 included, with
+  nothing accompanying it — `docs/dn2-pattern-format.md` §6.
+- RESET and CHNG are pattern-level fields, not per-track — same section.
 
 ---
 
@@ -125,6 +112,13 @@ Effectively closed, but four DN1 bytes vary with no consistent destination:
 
 Deliberate, bounded, and asserted so they cannot grow.
 
+**Duplicate sounds in the project pool.** A DN1 pool accumulates byte-identical copies from
+repeated saves — `002 MORNING_JAM` holds 64 named slots but only 57 distinct sounds, one of
+them occupying seven consecutive slots. We copy the pool across verbatim, which is exactly
+what Elektron's own importer does. **Deliberately not deduplicated:** the conversion is a
+transplant, not a clean-up, and collapsing slots would mean rewriting every sound lock that
+addresses the pool by index. Decided 2026-07-26.
+
 **Unused trigger slots and unused lock records.** Elektron leaves uncleared residue there —
 fragments of whatever previously occupied the memory. We write a clean `0xFF` fill, which is
 what a natively empty DN2 pattern contains. Our output is arguably more correct than the
@@ -138,9 +132,11 @@ needed to decode anything, and never differs on a step that carries a trig.
 
 ## Untrusted or unverified
 
-**The expansion writer has never been loaded on hardware.** It writes into DN2 tracks 9-16
-in a shape no Elektron file we possess has ever used. This is the single largest unverified
-assumption in the project.
+**The expansion writer is partly hardware-validated.** A converted, expanded project loads on
+a Digitone II and its tracks 9-16 carry their sounds and honour their own lengths. What has
+not yet been checked by ear, track by track, is the per-trig detail that travelled with a
+promoted trig: conditions, probability, micro timing, chords and parameter locks. The test
+sheet `npm run sheet` generates lists exactly those per pattern.
 
 **DN2 pattern record version 2.** The factory `PRESETS.dn2prj` uses version 2; our reader
 assumes 3 and its structural check fails on all 128 of its patterns. Conversion always

@@ -367,8 +367,8 @@ carry its own reset or change length; only LEN (`settings+0x0D`) and speed
 **Track length is written the same way on all 16 tracks — VERIFIED.**
 `Per_Track_Field_Mapping_T01_T16/L_MSB_MAP_T{01..16}_LEN128` sets a length on each track in
 turn, and every one moves exactly `settings+0x0D` of that track, including tracks 9-16 that
-no Elektron import ever populates. Nothing accompanies it. See `docs/KNOWN-ISSUES.md` for an
-unresolved hardware observation where a written 62 on track 9 nevertheless displays as 48.
+no Elektron import ever populates. Nothing accompanies it, and a length of 62 written this
+way onto track 9 was confirmed on hardware.
 
 **Change length — VERIFIED** by `Pattern_Change_Encoding_20260605` and
 `Per_Track_Change_T01`, which walk 2, 3, 4, 12, 16, 17, 32, 64, 128, 256, 512, 1024 and
