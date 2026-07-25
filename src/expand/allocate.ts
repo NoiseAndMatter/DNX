@@ -33,23 +33,28 @@ export function allocate(input: AllocationInput): AllocationResult {
   const assignments: Assignment[] = [];
   const overflow: SoundUsage[] = [];
   const taken = new Set<number>();
-  const placed = new Set<number>();
+  // Candidate identity, not pool slot: one sound can yield several candidates when its
+  // source tracks cannot be merged, and each needs its own track.
+  const placed = new Set<SoundUsage>();
 
   // Pins win outright, before ranking is consulted, so an explicit user choice is never
   // outbid by a heuristic. A pin onto an already-taken track is ignored rather than
   // silently displacing the other sound.
+  //
+  // A pin names a sound, so when that sound has several candidates only the highest-ranked
+  // one takes the pinned track; the rest fall through to the normal path.
   if (pins) {
     for (const usage of ranked) {
       const track = pins.get(usage.poolSlot);
       if (track === undefined || taken.has(track)) continue;
       taken.add(track);
-      placed.add(usage.poolSlot);
+      placed.add(usage);
       assignments.push({ usage, dn2Track: track, reason: "pinned" });
     }
   }
 
   for (const usage of ranked) {
-    if (placed.has(usage.poolSlot)) continue;
+    if (placed.has(usage)) continue;
 
     const rule = rules.length ? matchRule(usage, rules, mixedPolicy) : undefined;
     const preferred = rule?.tracks.find((t) => destinations.includes(t) && !taken.has(t));

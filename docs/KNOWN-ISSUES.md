@@ -35,6 +35,37 @@ the budget test exists specifically to cover that blind spot. Keep budgets tight
 
 ---
 
+## Open defect: an expanded track's LEN reads wrong on the device
+
+**Found on hardware, 2026-07-25. Unresolved, and it is the first thing to chase.**
+
+In `MORNING_JAM` expanded, pattern **A1**, the device shows track 9's length as **48** where
+the file holds **62**. Track 3 holds the same value at the same offset and displays 62.
+
+What is established:
+
+- The value is written at `settings+0x0D`, which is where the device itself writes it —
+  confirmed against `Per_Track_Field_Mapping_T01_T16/L_MSB_MAP_T09_LEN128`, a native capture
+  that sets track 9's length and moves that byte and nothing else.
+- Our T3 and T9 35-byte settings blocks are **byte-identical**. So does the whole track
+  record except the step flags, which differ only where the trigs differ.
+- Elektron's own conversion of the same project has no track showing 48 anywhere in A1.
+- 48 is 62 rounded down to a whole page, which suggests the device is deriving the length
+  from something page-shaped rather than reading our byte.
+
+The likely shape of the answer is a field that tracks 9-16 need and tracks 1-8 already have
+from the template — the failure mode this document opens with. One candidate is unexplored:
+a **16 × 5-byte per-track array at kit+10264**, inside the "kit gap 10252-10751" below.
+Elektron's importer writes non-default values into it for individual tracks (in A1, track 2
+reads `00 00 01 20 00` and track 3 `00 00 81 20 01` against a default of `00 00 81 20 00`);
+we never write it, so every track inherits the template's default. It has not been shown to
+carry length, and the corpus has no example of it being set on tracks 9-16.
+
+**The experiment that settles it:** on the device, set track 9's LEN to 62 by hand in A1,
+save, dump the pattern over SysEx, and diff against our build. Whatever differs is the field.
+
+---
+
 ## Open gaps, largest first
 
 Measured as bytes per project differing from Elektron's conversion, with `EMPTY` as
@@ -62,7 +93,17 @@ destination — `UNPLACED_FX_BYTES` in `src/expand/fieldmap.ts`: `0x34, 0x36, 0x
 
 ### Kit gap 10252-10751 — ~117 bytes/project
 
-500 bytes of unidentified kit data, never investigated.
+500 bytes of unidentified kit data. Two things are now known inside it:
+
+- **kit+10260** is the `u16be` synth/MIDI track mask (`docs/dn2-pattern-format.md` §7). We
+  write it.
+- **kit+10264 looks like a 16 × 5-byte per-track array**, default `00 00 81 20 00`. Elektron's
+  importer writes non-default values into individual entries — in `MORNING_JAM` A1, entry 2
+  reads `00 00 01 20 00` and entry 3 `00 00 81 20 01` — and we never write any of it. The
+  values do not correlate with track length or speed in the samples checked, so what they are
+  is unknown. Alignment of the array start is inferred from the repeat, not proven.
+
+The rest is uninvestigated.
 
 ### Tail project settings — ~19 bytes/project
 

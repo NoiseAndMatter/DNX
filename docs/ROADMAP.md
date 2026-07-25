@@ -26,7 +26,9 @@ untransferred fields, then a user interface.
 | Pattern librarian (DN1) | done, **hardware-validated** |
 | Expansion planning, rules, pins | done |
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
-| Expansion writer | done, **awaiting hardware validation** |
+| Expansion writer | done, **hardware validation in progress** |
+| Compact per-pattern allocation | done, opt-in (`--compact`) |
+| Hardware test sheet generator | done (`npm run sheet`) |
 | Remaining field transfers | in progress, see KNOWN-ISSUES |
 | Web UI | not started |
 | WebMIDI device transfer | not started |
@@ -60,12 +62,18 @@ correctly, carrying exactly the four sounds it needed and no others.
 
 Roughly in order of value.
 
-### 1. Hardware-validate the expander
+### 1. Finish hardware-validating the expander
 
-`99_HardwareTest/MORNING_JAM_EXPANDED.dn2prj` has never been loaded on a device. Everything
-is validated against our own readers and against Elektron's output, but expansion writes
-into tracks 9-16 in a shape no Elektron file we have has ever used. This is the last
-unproven assumption in the core product.
+`MORNING_JAM_EXPANDED.dn2prj` has now been loaded on a real Digitone II and the first defect
+is already out of it: **track 9 displays LEN 48 where the file holds 62**, documented in
+[KNOWN-ISSUES.md](KNOWN-ISSUES.md) with the capture that will settle it. Expansion writes
+into tracks 9-16 in a shape no Elektron file has ever used, so this is where the remaining
+unknowns are.
+
+`npm run sheet` generates a per-pattern test sheet from a converted file — positions named
+as the device names them, A1..H16 and page·step — so a hardware session has something to
+follow. Regenerate it after every build; every build stamps its time into the project name
+so the device says which one is loaded.
 
 ### 2. Finish the field transfers
 

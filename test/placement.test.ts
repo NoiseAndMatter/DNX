@@ -11,6 +11,7 @@ function sound(name: string, tags: TagName[], trigCount = 1): SoundUsage {
   const tagBits = encodeTags(tags);
   return {
     poolSlot: nextSlot++,
+    variant: 0,
     name,
     trigCount,
     patterns: [0],

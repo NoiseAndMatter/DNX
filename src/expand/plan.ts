@@ -41,14 +41,14 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     options.destinationTracks ?? defaultDestinations(usedMidiTracks, useFreedMidiTracks);
 
   const { assignments, overflow } = allocate({
-    ranked: rank(usage.values(), byTrigCount(sourceTrackOrder)),
+    ranked: rank(usage, byTrigCount(sourceTrackOrder)),
     destinations,
     rules: options.rules,
     pins: options.pins,
     mixedPolicy: options.mixedPolicy,
   });
 
-  return {
+  const plan: ExpansionPlan = {
     livePatterns,
     usedMidiTracks,
     freeTracks: [...destinations],
@@ -57,6 +57,24 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     overflowTrigs: overflow.reduce((n, u) => n + u.trigCount, 0),
     promotedTrigs: assignments.reduce((n, a) => n + a.usage.trigCount, 0),
   };
+
+  if (options.compactPerPattern) {
+    plan.perPattern = new Map(
+      livePatterns.map((p) => {
+        const { usage: candidates } = collectSoundUsage(image, [p]);
+        const allocation = allocate({
+          ranked: rank(candidates, byTrigCount(sourceTrackOrder)),
+          destinations,
+          rules: options.rules,
+          pins: options.pins,
+          mixedPolicy: options.mixedPolicy,
+        });
+        return [p, allocation];
+      }),
+    );
+  }
+
+  return plan;
 }
 
 // Convenience re-exports so callers need one import for the common case.

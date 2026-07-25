@@ -11,14 +11,23 @@ import type { TagName } from "../project/tags.js";
 export const DN2_TRACK_COUNT = 16;
 
 export interface SoundUsage {
-  /** Sound-pool slot, 0..127. This is the sound's identity for planning purposes. */
+  /** Sound-pool slot, 0..127. */
   poolSlot: number;
+  /**
+   * Distinguishes candidates that share a pool slot, 0 for the first.
+   *
+   * A sound whose source tracks disagree on length or speed cannot have them merged onto
+   * one destination, so it yields one candidate per compatible group of source tracks. The
+   * identity for planning and routing is therefore `(poolSlot, sourceTracks)`, not the slot
+   * alone. See `usage.ts` for why, and how rare it is.
+   */
+  variant: number;
   name: string;
   /** Total number of trigs across the whole project that lock this sound. */
   trigCount: number;
   /** Patterns in which the sound appears at least once. */
   patterns: number[];
-  /** DN1 synth tracks it is locked on, 0..3. */
+  /** DN1 synth tracks this candidate covers, 0..3. All mutually merge-compatible. */
   sourceTracks: number[];
   /** Raw tag bitfield from the sound object. */
   tagBits: number;
@@ -76,6 +85,19 @@ export interface PlanOptions {
    */
   useFreedMidiTracks?: boolean;
   /**
+   * Allocate destinations per pattern instead of once for the whole project.
+   *
+   * Off by default, which keeps the global map: a sound gets the same DN2 track in every
+   * pattern, so a mute or a level tweak still means the same thing after a pattern change,
+   * at the cost of leaving a promoted track silent in patterns that do not use its sound.
+   *
+   * On, each pattern is packed independently from the lowest free destination up. No holes,
+   * and a pattern needing three extra tracks gets them even when the project as a whole
+   * overflows — but the same sound can land on different tracks in different patterns, so
+   * mutes and mixer positions stop carrying across a pattern change.
+   */
+  compactPerPattern?: boolean;
+  /**
    * Tag-based placement preferences, tried in order. A sound matching no rule, or whose
    * preferred tracks are all taken, falls back to the next free destination.
    */
@@ -105,6 +127,12 @@ export interface ExpansionPlan {
   /** 1-based DN2 tracks available to promoted sounds, in fill order. */
   freeTracks: number[];
   assignments: Assignment[];
+  /**
+   * Per-pattern allocation, present only when `compactPerPattern` was requested. The writer
+   * prefers it over `assignments`, which then describes the global layout for reporting
+   * only. Keyed by pattern index; patterns with no trigs are absent.
+   */
+  perPattern?: Map<number, { assignments: Assignment[]; overflow: SoundUsage[] }>;
   /** Sounds that could not be promoted. They stay sound-locked on their origin track. */
   overflow: SoundUsage[];
   /** Trigs that stay sound-locked because their sound was not promoted. */

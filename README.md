@@ -30,7 +30,10 @@ speculative or unknown.
 | Pattern librarian (DN1) | done, hardware-validated |
 | Expansion planning, rules, pins | done |
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
-| Expansion writer | done, awaiting hardware validation |
+| Expansion writer | done, hardware validation in progress |
+| Compact per-pattern allocation | done, opt-in (`--compact`) |
+| Hardware test sheet generator | done (`npm run sheet`) |
+| Compact per-pattern allocation | done, opt-in |
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI, WebMIDI, CI | not started |
 
@@ -56,6 +59,10 @@ npm run tags -- --locked path/to/project.dnprj
 # Convert to Digitone II, optionally expanding across 16 tracks (dry run by default)
 npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj
 npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj --expand
+npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj --expand --compact --stamp
+
+# What should this converted file do on the device?
+npm run sheet -- --from a.dnprj --file b.dn2prj --out sheet.html
 
 # Copy a pattern between projects (dry run by default)
 npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17

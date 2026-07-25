@@ -142,9 +142,58 @@ gets lucky. Equally, a destination track counts as available only if it is free 
 patterns, which is considerably more restrictive than per-pattern availability. This is the
 price of cross-pattern consistency and it was accepted knowingly.
 
+## Scope option: compact per pattern — IMPLEMENTED, opt-in
+
+`planExpansion(image, { compactPerPattern: true })`, or `--compact` on `npm run convert`.
+
+The global map's cost is visible the moment you look at a single pattern: `MORNING_JAM` A1
+uses three expanded tracks, and T10, T11 and T12 sit empty because their sounds belong to
+patterns in bank B. Nothing is wrong, but the layout looks sparse and the free tracks are
+not doing any work in that pattern.
+
+With this option each pattern is allocated independently, from the first free destination
+up, so there are no holes. It is not only cosmetic: allocation happens against a pattern's
+own candidates, so a pattern that needs three tracks gets them **even when the project as a
+whole overflows**. On `MORNING_JAM` the global map leaves 8 sounds sound-locked; compact
+leaves zero, and promotes 223 trigs instead of 201.
+
+**What it costs**, and why it is not the default: a sound can land on a different track in
+different patterns, so a mute, a level or a mixer position stops meaning the same thing after
+a pattern change. That is precisely the property the global map exists to protect. The two
+modes are a genuine trade — live performance wants the global map, a dense arrangement wants
+compact — so the choice belongs to the user, not to us.
+
+Unchanged either way: overflow stays lossless, and a sound that misses a slot keeps playing
+from its origin track.
+
 ## Dedup: one sound locked on several source tracks
 
 **Merge into one shared destination track, splitting only on genuine conflict.**
+
+### Hard constraint: merged source tracks must share length and speed — IMPLEMENTED
+
+A destination track carries **one** length and speed per pattern, written from one source
+track. So two source tracks may only be merged when they agree, otherwise half the trigs run
+at the wrong period — a failure that loses nothing and corrupts nothing, and is therefore
+inaudible in any byte test and obvious to the ear.
+
+The comparison is per pattern and covers what a destination inherits: **track length and
+track speed**. The pattern-level scale settings — master length (RESET), change length
+(CHNG), and PER PTN vs PER TRK — need no comparison, because they belong to the pattern:
+two tracks in the same pattern always agree on them.
+
+Measured across the 53-project corpus: 70 sounds are locked on more than one source track,
+15 (sound, pattern) pairs draw on two at once, and only **2** of those disagree — both in
+`040 250314-D&B`, where slot 0 is locked on a 64-step T1 and a 16-step T2. So the split
+costs a destination track almost nowhere, and where it does the merge was wrong.
+
+A sound whose source tracks conflict becomes **two candidates**, one per compatible group,
+each competing for its own destination. Identity for planning and routing is therefore
+`(pool slot, source track)`, not the pool slot alone.
+
+Later, a smarter mechanism could make incompatible tracks compatible — repeating a 16-step
+part across the pages of a 64-step destination, for instance. Until that exists, refusing
+the merge is the honest behaviour.
 
 A clap sound-locked on both track 1 (steps 5, 13) and track 3 (steps 8, 16) becomes a
 single DN2 track carrying steps 5, 8, 13, 16 — the same musical result for one slot
@@ -182,9 +231,11 @@ guaranteed-free tracks always fill first and the extras are only reached on over
 Enabling the option never changes which sounds win, only how many fit — there is a test
 asserting exactly that.
 
-Off by default for one reason: the per-track synth/MIDI discriminator on the DN2 has not
-been located, so we cannot yet confirm an unused track 5-8 is usable as a synth track
-without switching its type. Once that is resolved this can default on.
+Off by default. The original reason — that the per-track synth/MIDI discriminator had not
+been located — **no longer applies**: it is the `u16be` at kit+10260, the writer clears the
+bit when it claims a track, and `docs/dn2-pattern-format.md` §7 has the evidence. What is
+left is a plain policy question, not a blocker, and it is still off pending hardware
+confirmation that a switched track behaves.
 
 Measured impact across the 53 projects: it raises promotions on already-overflowing
 projects (`TECNO_EXP` 8 -> 12) but flips **none** from overflowing to clean. The headline
