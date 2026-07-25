@@ -25,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseProject } from "../src/project/container.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
 import {
   checkDn2PatternRecord,
   PATTERN,
@@ -191,6 +191,64 @@ test("pattern metadata is written, not inherited from the template", { skip }, (
     }
   }
   assert.equal(compared, PAIRS.length * 128);
+});
+
+/**
+ * A budget per region, measured against Elektron's output with a NEUTRAL template.
+ *
+ * Anything we do not write inherits the template, so these numbers are the honest size of
+ * what is still unmapped. They are asserted as ceilings rather than zeroes because several
+ * regions are genuinely not transferred yet — the point is that they cannot silently grow,
+ * and that a region we have fixed cannot regress.
+ *
+ * Budgets are bytes per project, averaged over the pairs, with a little headroom.
+ */
+test("unwritten regions stay within their known budget", { skip }, () => {
+  const template = image(`${CORPUS}02_DN2/01_Projects/EMPTY.dn2prj`);
+  const budgets: Record<string, number> = {
+    "track settings": 20, // was 5,158 before the field map
+    "kit FX region": 500, // was 1,016
+    "kit header": 20, // was 48, before track levels were transferred
+    "pattern metadata": 200,
+    "kit MIDI records": 3_500, // not transferred at all yet
+  };
+  const seen: Record<string, number> = {};
+  const bump = (k: string, n: number) => (seen[k] = (seen[k] ?? 0) + n);
+  const diff = (a: Uint8Array, b: Uint8Array, at: number, len: number) => {
+    let n = 0;
+    for (let i = 0; i < len; i++) if (a[at + i] !== b[at + i]) n++;
+    return n;
+  };
+
+  for (const [dn1, dn2] of PAIRS) {
+    const source = image(`${CORPUS}01_DN1/01_Projects/${dn1}.dnprj`);
+    const elektron = image(`${CORPUS}02_DN2/01_Projects/${dn2}.dn2prj`);
+    const { image: ours } = convertProject(source, template);
+
+    for (let p = 0; p < 128; p++) {
+      const mine = patternRecord(ours, p);
+      const theirs = patternRecord(elektron, p);
+      for (let t = 0; t < 8; t++) {
+        const at = PATTERN.trackOffset + t * TRACK.size + TRACK.settingsOffset;
+        bump("track settings", diff(mine, theirs, at, TRACK.settingsSize));
+      }
+      bump("pattern metadata", diff(mine, theirs, PATTERN.metaOffset, 44));
+
+      const myKit = kitRecord(ours, p);
+      const theirKit = kitRecord(elektron, p);
+      bump("kit FX region", diff(myKit, theirKit, 5804, 160));
+      bump("kit header", diff(myKit, theirKit, 0, 60));
+      for (let m = 0; m < 4; m++) bump("kit MIDI records", diff(myKit, theirKit, 5964 + m * 268, 268));
+    }
+  }
+
+  for (const [region, budget] of Object.entries(budgets)) {
+    const perProject = Math.round((seen[region] ?? 0) / PAIRS.length);
+    assert.ok(
+      perProject <= budget,
+      `${region}: ${perProject} bytes/project differ from Elektron, budget is ${budget}`,
+    );
+  }
 });
 
 test("every trig, note and sound lock survives the conversion", { skip }, () => {

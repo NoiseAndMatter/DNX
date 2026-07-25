@@ -56,6 +56,14 @@ import {
 } from "../project/soundmap.js";
 import { NO_CONDITION, translateParameterId, translateTrigCondition } from "./translate.js";
 import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } from "./route.js";
+import {
+  applyFieldConstants,
+  applyFieldCopies,
+  KIT_FX_CONSTANTS,
+  KIT_FX_MAP,
+  TRACK_SETTINGS_CONSTANTS,
+  TRACK_SETTINGS_MAP,
+} from "./fieldmap.js";
 import type { ExpansionPlan } from "./types.js";
 
 /** DN1 kit sound slots, and therefore the DN2 slots they occupy. */
@@ -201,12 +209,17 @@ function writeTrack(
     out[base + DN2_TRACK.probabilityOffset + step] = condition.probability;
   }
 
-  // Per-track settings: only the fields we have verified are overwritten, so the template's
-  // values survive everywhere else.
+  // Per-track settings. Only the correspondences verified against Elektron's own output are
+  // copied, so DN2-only fields and anything still unplaced keep the template's value.
   if (settingsSource) {
-    const settings = base + DN2_TRACK.settingsOffset;
-    out[settings + DN2_TRACK.settingsLengthOffset] = settingsSource.length;
-    out[settings + DN2_TRACK.settingsSpeedOffset] = settingsSource.speed;
+    applyFieldCopies(
+      out,
+      base + DN2_TRACK.settingsOffset,
+      settingsSource.settings,
+      0,
+      TRACK_SETTINGS_MAP,
+    );
+    applyFieldConstants(out, base + DN2_TRACK.settingsOffset, TRACK_SETTINGS_CONSTANTS);
   }
 }
 
@@ -490,6 +503,11 @@ function writeKit(
       true,
     );
   }
+
+  // Kit-level FX: delay, chorus and reverb device settings. Without this a converted
+  // project keeps the template's effects rather than its own.
+  applyFieldCopies(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, KIT_FX_MAP);
+  applyFieldConstants(out, kitBase, KIT_FX_CONSTANTS);
 
   // Promoted sounds become their destination track's own sound.
   const pool = readSoundPool(dn1Image);
