@@ -8,6 +8,24 @@ format notes in this folder for the byte-level detail.
 
 ---
 
+## Scope
+
+Two things, and everything is judged against them:
+
+1. **A 1:1 Digitone 1 → Digitone II translation.** Whatever the source project holds should
+   arrive on the DN2 unchanged. Where we cannot yet transfer a field, that is a gap to close,
+   not a licence to improvise.
+2. **Expansion** — the one deliberate departure from 1:1: sounds crammed onto the DN1's four
+   tracks by sound-locking get their own tracks on the DN2's sixteen.
+
+A **project / pattern / track / sound manager** comes later, and is where editorial features
+belong. The distinction matters when judging a proposal: conversion is a *transplant* and
+should not clean anything up, while a manager is exactly where a user asks for changes and
+can be shown what changed. Tidying the sound pool, re-laying-out tracks by tag, and merging
+libraries all sit on the manager side of that line.
+
+---
+
 ## Where things stand
 
 Reading and writing both formats is solved and validated on hardware. Conversion reproduces
@@ -112,6 +130,29 @@ overflow at all, so ranking rarely matters. The comparator is isolated for the d
 **DN2 pattern record version 2** — the factory `PRESETS.dn2prj` uses it and our reader
 assumes version 3. Not blocking, since conversion targets version 3, but a librarian working
 on native DN2 projects will hit it.
+
+**Sound-pool clean-up** — collapsing byte-identical duplicates in a project's 128-slot pool.
+`002 MORNING_JAM` holds 64 named slots and 57 distinct sounds, one of them repeated across
+seven consecutive slots, so the saving is real. Deferred to the **manager**, not the
+converter: conversion is a transplant and Elektron's own importer copies the duplicates too,
+so doing it during conversion would be an unrequested edit.
+
+The feature is only safe once **every** reference to a collapsed slot is repointed, and the
+honest position is that we can enumerate the references we know about, not all of them:
+
+- **Sound locks** address the pool by index and are fully enumerable — this part is easy.
+- **Kit sounds are stored inline**, not referenced, so they are unaffected.
+- **The DN1 tail holds no pool references at all** — verified across the 53-project corpus,
+  `docs/dn1-tail-format.md` §0.
+- **The DN2 tail's ~98,800 unidentified bytes are not ruled out.** Nothing says the device
+  does not keep a reference there, and we cannot yet say it does not.
+- **The 1,024 × 11-byte DN1 slot array** is UNKNOWN and empty in 50 of 53 projects; its
+  populated values look like note numbers rather than pool indices, but that is a reading,
+  not a proof.
+
+So: collapse rather than compact (a duplicate's references move to the surviving copy, every
+other slot keeps its index), and guard with `isSlotArrayEmpty()` the way rearrange mode is
+guarded. Report what was removed rather than doing it silently.
 
 ---
 
