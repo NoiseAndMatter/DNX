@@ -327,18 +327,18 @@ on DN1 and DN2:
 | Offset | Size | Field | Status |
 |---|---|---|---|
 | `+0x00` | 16 | **pattern name**, NUL-padded | VERIFIED |
-| `+0x10`, `+0x11` | 2 | `00 00`; `+0x11` takes 6 other values rarely | UNKNOWN |
+| `+0x10`, `+0x11` | 2 | `00 00`. `+0x11` is a copy of DN1 `0x4735` — same relative offset, unanimous on 1,152 pairs; meaning still UNKNOWN | VERIFIED as a copy |
 | `+0x12` | u16be | **tempo × 120** | VERIFIED |
 | `+0x14` | u16be | **master pattern length**, 1..1024 | VERIFIED |
 | `+0x16` | u16be | **pattern change length (CHNG)**, 1..1024, `1` = off | VERIFIED |
-| `+0x18` | u8 | `0` normally, small values in some converted patterns | UNKNOWN |
+| `+0x18` | u8 | copy of DN1 `0x473C`, same relative offset, unanimous on 1,152 pairs; meaning UNKNOWN | VERIFIED as a copy |
 | `+0x19` | u8 | **scale mode**: 0 = one length for the pattern, 1 = per-track | VERIFIED |
 | `+0x1A` | u8 | **pattern speed**, same enum as the per-track speed | VERIFIED |
 | `+0x1B` | u8 | constant `0` | UNKNOWN |
 | `+0x1C` | u8 | **own slot index**, 0..127 | VERIFIED |
 | `+0x1D` | u8 | constant `0xFF` | UNKNOWN |
 | `+0x1E..0x20` | 3 | constant `0` | UNKNOWN |
-| `+0x21` | u8 | `7` in all 1,152 project records, `1` in all 419 captures | UNKNOWN |
+| `+0x21` | u8 | `7` in all 1,152 project records, `1` in all 419 captures. The importer always writes 7, so a conversion must write it rather than inherit the template's 1 | UNKNOWN, but must be written |
 | `+0x22` | u8 | constant `0` | UNKNOWN |
 | `+0x23..0x2B` | 9 | constant `0xFF` | UNKNOWN |
 
