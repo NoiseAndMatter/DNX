@@ -26,7 +26,12 @@ import { test } from "node:test";
 import { parseProject } from "../src/project/container.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
-import { checkDn2PatternRecord, readDn2PatternRecord } from "../src/project/dn2pattern.js";
+import {
+  checkDn2PatternRecord,
+  PATTERN,
+  readDn2PatternRecord,
+  TRACK,
+} from "../src/project/dn2pattern.js";
 import { readPattern, readProjectName } from "../src/project/dn1.js";
 import { convertProject } from "../src/expand/convert.js";
 import { knownParameterIds, knownTrigConditions } from "../src/expand/translate.js";
@@ -118,6 +123,74 @@ test("conversion is byte-identical outside the residue regions", { skip }, () =>
     // Bounded, so a regression that widens this shows up rather than hiding in the allowance.
     assert.ok(parityOnly <= 146, `${dn1}: parity-only differences grew to ${parityOnly}`);
   }
+});
+
+/**
+ * Converting with a NEUTRAL template and comparing against Elektron's output.
+ *
+ * The byte-diff test above uses Elektron's own conversion as the template, which makes any
+ * field we never write match by construction — it is structurally blind to "we forgot to
+ * write this". That blindness shipped a real bug: per-track lengths were written correctly
+ * but the scale mode was not, so the device ignored them and used the template's master
+ * length. A 32-step bass line played as 16 — audibly wrong, while every byte we believed we
+ * owned was correct.
+ *
+ * Using EMPTY.dn2prj as the template exposes that whole class of bug, because its metadata
+ * differs from any real project's. A field we fail to write shows up as EMPTY's value rather
+ * than Elektron's.
+ */
+test("pattern metadata is written, not inherited from the template", { skip }, () => {
+  const template = image(`${CORPUS}02_DN2/01_Projects/EMPTY.dn2prj`);
+  const u16 = (buffer: Uint8Array, at: number) => (buffer[at]! << 8) | buffer[at + 1]!;
+  let compared = 0;
+
+  for (const [dn1, dn2] of PAIRS) {
+    const source = image(`${CORPUS}01_DN1/01_Projects/${dn1}.dnprj`);
+    const elektron = image(`${CORPUS}02_DN2/01_Projects/${dn2}.dn2prj`);
+    const { image: ours } = convertProject(source, template);
+
+    for (let p = 0; p < 128; p++) {
+      const mine = patternRecord(ours, p);
+      const theirs = patternRecord(elektron, p);
+
+      assert.equal(
+        u16(mine, PATTERN.lengthOffset),
+        u16(theirs, PATTERN.lengthOffset),
+        `${dn1} pattern ${p}: master length`,
+      );
+      assert.equal(
+        u16(mine, PATTERN.changeLengthOffset),
+        u16(theirs, PATTERN.changeLengthOffset),
+        `${dn1} pattern ${p}: change length`,
+      );
+      assert.equal(
+        mine[PATTERN.scaleModeOffset],
+        theirs[PATTERN.scaleModeOffset],
+        `${dn1} pattern ${p}: scale mode decides whether per-track lengths are honoured`,
+      );
+      assert.equal(
+        mine[PATTERN.speedOffset],
+        theirs[PATTERN.speedOffset],
+        `${dn1} pattern ${p}: pattern speed`,
+      );
+
+      for (let t = 0; t < 8; t++) {
+        const at = PATTERN.trackOffset + t * TRACK.size + TRACK.settingsOffset;
+        assert.equal(
+          mine[at + TRACK.settingsLengthOffset],
+          theirs[at + TRACK.settingsLengthOffset],
+          `${dn1} pattern ${p} track ${t + 1}: length`,
+        );
+        assert.equal(
+          mine[at + TRACK.settingsSpeedOffset],
+          theirs[at + TRACK.settingsSpeedOffset],
+          `${dn1} pattern ${p} track ${t + 1}: speed`,
+        );
+      }
+      compared++;
+    }
+  }
+  assert.equal(compared, PAIRS.length * 128);
 });
 
 test("every trig, note and sound lock survives the conversion", { skip }, () => {

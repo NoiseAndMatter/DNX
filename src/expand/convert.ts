@@ -384,6 +384,21 @@ function copyNameField(out: Uint8Array, to: number, source: Uint8Array, from: nu
   out.set(source.subarray(from, from + size), to);
 }
 
+/**
+ * Pattern metadata.
+ *
+ * The DN1's metadata block mirrors the DN2's field for field, at the same offsets relative
+ * to the block start — the DN1's block begins at `nameOffset`, the DN2's at `metaOffset`.
+ * Verified across 1,792 pattern pairs: length, change length, scale mode and speed all match
+ * exactly, with no exceptions.
+ *
+ * **Scale mode is the one that bites.** 1 means "each track has its own length", 0 means
+ * "one length for the whole pattern". Writing the per-track lengths but leaving the mode at
+ * the template's 0 makes the device ignore them and use the template's master length
+ * instead — the per-track values sit there correctly and are simply not consulted. The
+ * result is audibly wrong (a 32-step bass line playing as 16) while every byte we thought
+ * we were responsible for is correct.
+ */
 function writePatternMetadata(
   out: Uint8Array,
   patternBase: number,
@@ -391,10 +406,28 @@ function writePatternMetadata(
   dn1Image: Uint8Array,
 ): void {
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
-  const dn1Name =
-    DN1_LAYOUT.headerSize + pattern.index * DN1_PATTERN.size + DN1_PATTERN.nameOffset;
-  copyNameField(out, patternBase + DN2_PATTERN.nameOffset, dn1Image, dn1Name, DN2_PATTERN.nameSize);
+  const dn1View = new DataView(dn1Image.buffer, dn1Image.byteOffset, dn1Image.byteLength);
+  const dn1Meta = DN1_LAYOUT.headerSize + pattern.index * DN1_PATTERN.size + DN1_PATTERN.nameOffset;
+
+  copyNameField(out, patternBase + DN2_PATTERN.nameOffset, dn1Image, dn1Meta, DN2_PATTERN.nameSize);
   view.setUint16(patternBase + DN2_PATTERN.tempoOffset, Math.round(pattern.tempo * 120), false);
+
+  // Each field sits the same distance from its block's start on both devices.
+  const from = (dn2Offset: number) => dn1Meta + (dn2Offset - DN2_PATTERN.metaOffset);
+
+  view.setUint16(
+    patternBase + DN2_PATTERN.lengthOffset,
+    dn1View.getUint16(from(DN2_PATTERN.lengthOffset), false),
+    false,
+  );
+  view.setUint16(
+    patternBase + DN2_PATTERN.changeLengthOffset,
+    dn1View.getUint16(from(DN2_PATTERN.changeLengthOffset), false),
+    false,
+  );
+  out[patternBase + DN2_PATTERN.scaleModeOffset] = dn1Image[from(DN2_PATTERN.scaleModeOffset)]!;
+  out[patternBase + DN2_PATTERN.speedOffset] = dn1Image[from(DN2_PATTERN.speedOffset)]!;
+
   // The DN1 record carries its own idea of which slot it occupies, and that is usually but
   // not always the array position. Elektron preserves the record's value, so we do too.
   out[patternBase + DN2_PATTERN.slotIndexOffset] = pattern.slotIndex;
