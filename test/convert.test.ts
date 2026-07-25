@@ -87,8 +87,8 @@ function isParityOnly(offset: number, ours: number, theirs: number): boolean {
 }
 
 test("translation tables cover what the corpus exercises", () => {
-  assert.equal(knownParameterIds().length, 33);
-  assert.equal(knownTrigConditions().length, 29);
+  assert.equal(knownParameterIds().length, 58);
+  assert.equal(knownTrigConditions().length, 35);
   // Non-monotonic on purpose: no arithmetic rule fits, so a table is required.
   assert.ok(knownParameterIds().includes(67));
 });
