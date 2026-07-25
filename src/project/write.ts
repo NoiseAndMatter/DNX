@@ -20,10 +20,8 @@
  */
 
 import { crc32ZeroInit } from "./checksum.js";
-import type { ProjectManifest } from "./container.js";
 import { BLOCK_CHAIN_START, TRAILER_SIZE } from "./dn2codec.js";
 import { encodeBlockChain } from "./lz4encode.js";
-import { buildZip } from "./zip.js";
 
 const FOOTER_MAGIC = Uint8Array.of(0xaa, 0xa1, 0xda, 0xaa);
 
@@ -55,21 +53,4 @@ export function buildPayload(sourcePayload: Uint8Array, image: Uint8Array): Uint
   out.set(FOOTER_MAGIC, total - 4);
 
   return out;
-}
-
-/**
- * Build a complete .dnprj / .dn2prj file from a modified image.
- *
- * Takes the manifest and source payload from the project the image came from, so the
- * container header, payload entry name and firmware version all carry over unchanged.
- */
-export function buildProjectFile(
-  manifest: ProjectManifest,
-  sourcePayload: Uint8Array,
-  image: Uint8Array,
-): Uint8Array {
-  return buildZip([
-    { name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) },
-    { name: manifest.Payload, data: buildPayload(sourcePayload, image) },
-  ]);
 }

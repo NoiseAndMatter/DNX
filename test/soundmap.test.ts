@@ -3,7 +3,7 @@ import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseProject } from "../src/project/container.js";
+import { parseProject } from "../src/project/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, kitRecord } from "../src/project/dn2image.js";
 import {

@@ -13,7 +13,9 @@
     "copy": "tsx src/cli/copy.ts",
     "tags": "tsx src/cli/tags.ts",
     "convert": "tsx src/cli/convert.ts",
-    "sheet": "tsx src/cli/sheet.ts"
+    "sheet": "tsx src/cli/sheet.ts",
+    "build:web": "tsc -p tsconfig.web.json",
+    "web": "npm run build:web && tsx src/cli/serve.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "web/dist",
+    "rootDir": ".",
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "types": [],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "web/src/**/*.ts"
+  ],
+  "exclude": [
+    "src/cli/**/*.ts",
+    "test/**/*.ts",
+    "src/project/projectfile.ts",
+    "src/project/zip.ts"
+  ]
+}
