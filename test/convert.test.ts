@@ -23,7 +23,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseProject } from "../src/project/container.js";
+import { parseProject } from "../src/project/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
 import {

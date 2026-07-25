@@ -7,7 +7,8 @@
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { isLengthValid, parseProject } from "../project/container.js";
+import { isLengthValid } from "../project/container.js";
+import { parseProject } from "../project/projectfile.js";
 
 function ascii(bytes: Uint8Array): string {
   return [...bytes].map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");
