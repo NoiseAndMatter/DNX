@@ -117,7 +117,46 @@ plus aftertouch and pitch bend enabled. The eight CC assignments are already map
 anything else that moves is the answer. A second file with aftertouch and pitch bend disabled
 separates the two toggles.
 
-## 5. Sound parameters — the long game
+## 5. Parameter-lock ids — one pattern names them all
+
+**Target:** the parameter id table. A lock record is `{parameter id, track, value per step}`, and
+we can copy an id through an observed DN1-to-DN2 table but cannot say what any of them *is*.
+`docs/dn2-pattern-format.md` §4 lists this as unknown, and the manager needs it: "lock
+parameter 19 to 40" is not something to show a user.
+
+The lock table is the index here, exactly as the step arrays were for conditions. **Lock a
+different parameter on each step of one track**, in a known order, and each produces its own
+record — one dump maps every id at once.
+
+The Digitone II has eight knobs per page, so one pass over the pages is 8 locks each:
+
+| Steps | Page | Steps | Page |
+|---|---|---|---|
+| 1-8 | SYN page 1, knobs A-H | 33-40 | AMP |
+| 9-16 | SYN page 2, knobs A-H | 41-48 | FX |
+| 17-24 | SYN page 3, knobs A-H | 49-56 | MOD page 1 |
+| 25-32 | FLTR page 1 | 57-64 | MOD page 2 |
+
+Give each lock a **different value** as well as a different step, from the ramp in the method
+above. Then the record's id says which parameter, its step says which knob, and its value
+confirms the pairing independently.
+
+Two passes cover the rest: a second pattern for SYN page 4, FLTR page 2, MOD page 3 and the
+TRIG pages, and a third with a **different machine selected**, since the SYN knobs are machine
+dependent and their ids may or may not move with the machine — which is itself worth knowing.
+
+### Ruled out: the ids are not NRPN numbers
+
+Worth recording so nobody spends the evening on it. Elektron's manual (Appendix C) gives every
+parameter an NRPN LSB, and the observed DN2 lock ids 73-79, 89-96 and 104 line up suspiciously
+well with the SYN pages' NRPN numbering, which is eight consecutive values per page.
+
+It does not hold. The same corpus locks ids 30 to 41, and those NRPN numbers belong to the
+**audio input mixer** — parameters a converted DN1 project cannot possibly have locked, since
+the DN1 has no audio inputs. The resemblance in the 70s and 90s is a coincidence of two
+schemes that both allocate eight consecutive numbers per page.
+
+## 6. Sound parameters — the long game
 
 **Target:** the parameter map inside the 359-byte DN2 sound object, and with it the
 parameter-lock id table. This is the largest unknown left, and the one that unlocks the
@@ -128,11 +167,17 @@ Same method, at scale. One sound, every parameter on the SYN, FLTR, AMP and FX p
 distinct value from a ramp, one dump. A second file with the toggles and enums in their
 complementary positions.
 
-**This is the part that needs the manuals.** The value table has to name every parameter on
-every page in order, and guessing a device's parameter list from the outside is exactly the
-kind of assumption this project does not make. With the DN1 and DN2 help files, and the
-third-party DN2 guide, the table can be written out in full — and once written, it is the same
-table for anyone else who wants to repeat this.
+The pages, from Elektron's manual chapter 11, are TRIG 1-2, SYN 1-4, FLTR 1-2, AMP, FX and
+MOD 1-3, at eight knobs each. That is the order to walk, and combined with section 5 the same
+capture serves twice: the sound object shows where each value landed, and the lock records say
+what the device calls it.
+
+**Sources.** Elektron's own manuals are the reference for parameter names and order —
+[Digitone](https://www.elektron.se/wp-content/uploads/2024/09/Digitone_User_Manual_ENG_OS1.41_231108.pdf)
+(OS 1.41) and
+[Digitone II](https://elektron.se/wp-content/uploads/2024/10/Digitone-2-User-Manual_ENG_OS1.00A_241023.pdf)
+(OS 1.00A). Third-party guides are useful for cross-checking but their text stays out of this
+repository.
 
 ---
 
