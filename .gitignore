@@ -1,0 +1,24 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# --------------------------------------------------------------------------
+# Never commit Digitone project, pattern or sound data.
+#
+# The test corpus is real music and stays private — see test/corpus.ts, which
+# locates it at run time via DN_CORPUS or a sibling folder. These rules are a
+# safety net so an accidental copy cannot be committed.
+#
+# Purpose-built example files created specifically to document the tool are the
+# only exception, and must be added with `git add -f` after a deliberate check.
+# --------------------------------------------------------------------------
+*.dnprj
+*.dn2prj
+*.syx
+*.dtprj
+*.dt2prj
+*.dnsnd
+*.dn2pst
+00_Examples/
+99_HardwareTest/

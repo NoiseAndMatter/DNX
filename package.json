@@ -1,0 +1,21 @@
+{
+  "name": "dn-sysex",
+  "version": "0.1.0",
+  "description": "Expand Elektron Digitone 1 patterns across the 16 tracks of the Digitone II",
+  "type": "module",
+  "scripts": {
+    "inspect": "tsx src/cli/inspect.ts",
+    "diff": "tsx src/cli/diff.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "project": "tsx src/cli/project.ts",
+    "plan": "tsx src/cli/plan.ts",
+    "copy": "tsx src/cli/copy.ts",
+    "tags": "tsx src/cli/tags.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.0"
+  }
+}
