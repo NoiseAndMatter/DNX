@@ -166,6 +166,40 @@ compact — so the choice belongs to the user, not to us.
 Unchanged either way: overflow stays lossless, and a sound that misses a slot keeps playing
 from its origin track.
 
+## Reusing source tracks the project never uses — IMPLEMENTED
+
+`planExpansion(image, { useEmptySourceTracks: true })`; on by default whenever
+`compactPerPattern` is set.
+
+A DN1 synth track with no trigs still reserves its DN2 counterpart, because the layout is
+positional. When that track also holds nothing but the factory init sound, the reservation
+protects nothing.
+
+**The trig count alone is not a safe test.** Of the 48 trigless synth tracks in the 55-project
+corpus, **13 hold a real patch** — `WHALE_O1`, `FAVPAD`, `TX BASS 1 MF`, `SHY DREAMER` — most
+plausibly loaded to play live from a keyboard. Taking those tracks would lose the sound. The
+other **35** carry the factory init sound in all 128 kits and are genuinely free.
+
+Detection compares the sound itself, not its name: CRC-32 of the 302-byte sound object with
+its 16-byte name field blanked, against the init sound's fingerprint. A name test ("still
+called `SOUND 3` and identical in every kit") selects the same 35 tracks on this corpus, but
+it would throw away a sound whose parameters were edited and which was never renamed. If a
+future DN1 OS ships a different init sound, nothing matches and nothing is freed — the right
+direction to fail.
+
+**Measured benefit: layout, not capacity.** Enabling this promotes exactly the same sounds in
+every one of the 55 projects, in both global and compact mode — 149 overflowing sounds either
+way, and 56 per-pattern overflows either way. The projects with a spare synth track are simply
+not the projects that run out of tracks. So it defaults on only in compact mode, whose purpose
+is to remove holes, and stays off in the global layout, whose purpose is to mirror Elektron's.
+
+**Not done: shifting the survivors down.** Freeing track 2 offers exactly as many destinations
+as moving tracks 3 and 4 into it. Renumbering would cost the positional 1:1 property, require
+permuting the per-track MIDI channel array at DN1 `0x299A1B`, and need a song-table guard for
+the eight per-track bytes whose position in a song row is unknown — all for contiguity. If
+contiguity is wanted for its own sake it belongs in the manager, where the user is asking for
+a layout change and can see it.
+
 ## Dedup: one sound locked on several source tracks
 
 **Merge into one shared destination track, splitting only on genuine conflict.**
