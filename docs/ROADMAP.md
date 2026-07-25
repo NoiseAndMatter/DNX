@@ -64,11 +64,11 @@ Roughly in order of value.
 
 ### 1. Finish hardware-validating the expander
 
-`MORNING_JAM_EXPANDED.dn2prj` has now been loaded on a real Digitone II and the first defect
-is already out of it: **track 9 displays LEN 48 where the file holds 62**, documented in
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md) with the capture that will settle it. Expansion writes
-into tracks 9-16 in a shape no Elektron file has ever used, so this is where the remaining
-unknowns are.
+`MORNING_JAM_EXPANDED.dn2prj` has been loaded on a real Digitone II: **tracks 9-16 carry
+their sounds and honour their own per-track lengths.** The largest unproven assumption in the
+project is no longer unproven. What remains is checking, by ear and per pattern, that the
+detail which travelled with a promoted trig still plays — conditions, probability, micro
+timing, chords, parameter locks — and the same for the compact build.
 
 `npm run sheet` generates a per-pattern test sheet from a converted file — positions named
 as the device names them, A1..H16 and page·step — so a hardware session has something to
