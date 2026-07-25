@@ -61,6 +61,8 @@ import {
   applyFieldCopies,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
+  MIDI_TRACK_CONSTANTS,
+  MIDI_TRACK_MAP,
   TRACK_SETTINGS_CONSTANTS,
   TRACK_SETTINGS_MAP,
 } from "./fieldmap.js";
@@ -72,6 +74,9 @@ const DN1_KIT_SOUNDS = SYNTH_TRACK_COUNT;
 const DN2_KIT_SOUND_OFFSET = 60;
 /** 16 x u16le track levels in the DN2 kit header. The DN1's four sit at its kit+0x14. */
 const DN2_KIT_LEVEL_OFFSET = 0x1c;
+/** DN2 kit: 16 MIDI track records of 268 bytes, one per track, after the sounds. */
+const DN2_KIT_MIDI_OFFSET = 5_964;
+const DN2_MIDI_RECORD_SIZE = 268;
 /** DN2 sound pool sits after a full kit record at the head of the tail. */
 const DN2_POOL_OFFSET = 10_756;
 const POOL_SLOTS = 128;
@@ -557,6 +562,8 @@ function writeKit(
     }
   }
 
+  writeMidiTrackRecords(out, kitBase, dn1Kit);
+
   // A claimed track in 5-8 was configured as MIDI by the import and must be switched to
   // synth, which is one bit in the kit's mask.
   let mask = DN1_MIDI_MASK;
@@ -566,6 +573,33 @@ function writeKit(
     mask,
     false,
   );
+}
+
+/**
+ * Carry the four DN1 MIDI track configurations onto DN2 tracks 5-8.
+ *
+ * Positional, exactly as the pattern records are: DN1 MIDI track n to DN2 track 4+n. Without
+ * this a project that uses its MIDI tracks arrives with the template's channels and CC
+ * assignments — silently, since nothing is missing, it is just someone else's configuration.
+ */
+function writeMidiTrackRecords(out: Uint8Array, kitBase: number, dn1Kit: ReturnType<typeof readKit>): void {
+  // The importer clears the track name on ALL sixteen records, not just the four it fills.
+  // A native DN2 names them "MIDI 1".."MIDI 16", so a template contributes sixteen names we
+  // would otherwise inherit — 10,112 bytes per project, and the largest single divergence
+  // from Elektron's output once the configuration itself is transferred.
+  for (let track = 0; track < DN2_TRACK_COUNT; track++) {
+    const record = kitBase + DN2_KIT_MIDI_OFFSET + track * DN2_MIDI_RECORD_SIZE;
+    applyFieldConstants(out, record, MIDI_TRACK_CONSTANTS);
+  }
+
+  for (let track = 0; track < DN1_KIT_SOUNDS; track++) {
+    const source = dn1Kit.midi[track];
+    if (!source) continue;
+
+    // DN1 MIDI track n lands on DN2 track 4+n, the same positional rule as the pattern.
+    const destination = kitBase + DN2_KIT_MIDI_OFFSET + (SYNTH_TRACK_COUNT + track) * DN2_MIDI_RECORD_SIZE;
+    applyFieldCopies(out, destination, source, 0, MIDI_TRACK_MAP);
+  }
 }
 
 /** Convert the 128-slot sound pool. Sound locks index it, so it must travel intact. */
