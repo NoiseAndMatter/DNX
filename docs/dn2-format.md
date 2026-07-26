@@ -442,9 +442,37 @@ knowing the AMP `MODE`.** Had the byte been shared, every read would have needed
 | 202-220 | AMP — ATK, HOLD, DEC, SUS, REL, then PAN and VOL |
 | 212-216, 232, 236 | the per-sound FX sends: CHR, DEL, REV, SRR, OVER |
 
-**`HARM` is the one anomaly.** Its baseline is 63 and it stored 86 for a setting of +23, so its
-centre is 63 where every other bipolar control uses 64. Recorded as measured rather than
-normalised.
+**`HARM` centres on 63, not 64** — the one control that does. Two points agree: the untouched
+baseline reads 63 for a value of 0, and +23 stored 86, slope exactly 1. With its range of
+-26..+26 confirmed on the device, it occupies 37..89. Recorded as measured rather than
+normalised to match the others.
+
+#### SYN pages 1 and 3, and the fine tunes — added 2026-07-26
+
+Knowing `HARM` sat at +102 made SYN page 1 fall out in **knob order across consecutive even
+offsets**:
+
+| 94 | 96 | 98 | 100 | 102 | 104 | 106 | 108 |
+|---|---|---|---|---|---|---|---|
+| ALGO | RATIO C | RATIO A | RATIO B | HARM | DTUN | FDBK | MIX |
+
+**`RATIO B` never moved its coarse byte** — only the fine byte beside it, 120 to 147. That fits
+the manual's account of B1 and B2 *revolving* through combinations: a fine-grained index rather
+than a coarse value.
+
+SYN page 3 is the same, in knob order but skipping `PHRT`: **130 ADEL, 132 ATRG, 134 ARST,
+136 BDEL, 138 BTRG, 140 BRST**. `PHRT` is knob D but lives at **+110**, away from the
+per-operator block, which fits its being a setting shared by both operators.
+
+**The TRG and RST switches were separated by a device behaviour.** A track with all four "set
+off" moved only **two** bytes, +132 and +138. Turning a `TRG` off evidently makes its `RST`
+unavailable — a reset is meaningless with no trig to reset — so the two that moved must be the
+TRGs. That confirms the knob-order reading by an independent route rather than by assumption.
+
+**The operator fine tunes** are at **160, 162, 164, 166**, storing `value * 64 + 64`. Set to
+-0.500, +0.250, -0.750 and +0.875, they stored 32, 80, 16 and 120 — four exact hits. Choosing
+powers-of-two fractions is what made the *scale* readable and not merely the offsets; arbitrary
+decimals would have located the bytes and taught us nothing about the encoding.
 
 **`FX BR` was not placed.** It was set to 11 and no byte took that value; `+230` moved to 19,
 which is the nearest candidate and does not match, so it is left unclaimed in
