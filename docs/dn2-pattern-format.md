@@ -805,3 +805,35 @@ not been captured. `32` and `86` are the genuinely odd ones.
 `HOLD` at 88 is **not** `DEC` at 89, and `HOLD` occupies knob B in AHD exactly where `DEC` sits
 in ADSR. So the **AMP page is parameter-addressed** while the machine pages are slot-like: the
 DN2 does both, in different places. `AMP MODE` reads **0 for AHD and 1 for ADSR**.
+
+### FM DRUM, SWARMER and the filters — 2026-07-26, pattern H3
+
+**FM DRUM uses ids 33..62 with no gaps** — 30 controls, 30 consecutive ids — and it fills exactly
+the holes FM TONE left: 42, and 57..62. So the SYN id space is a **shared pool that each machine
+draws from densely**, where one machine's gap is another machine's control. It is not a layout.
+
+Its SYN page 2 is two operator envelopes like FM TONE's, the same four labels twice with operator
+A on knobs A-D and B on E-H. SYN page 3 has blanks at E and F.
+
+**Knob A is id 33 and knob B is 34 on FM TONE, WAVETONE and FM DRUM alike** — and knob C already
+diverges (35, 37, 35). So the low ids look positional and are not; the allocation follows each
+machine's own internal parameter order.
+
+**`EQUALIZER` gives id 73 a third meaning.** It is `TYPE` on MULTI-MODE, `LPF` on COMB- and **`Q`
+on EQUALIZER**, 0-127; id 75 is `RESO`, `FDBK` and `GAIN` respectively. Three machines, three
+meanings, one id — the machine-relative finding at its clearest.
+
+**FLTR page 2 is identical on every filter machine**, confirmed on the device. So its six ids
+(`DEL` 77, `KEY.T` 82, `BASE` 83, `WDTH` 84, `RSET` 85, `BW.RT` 105) are genuinely absolute, and
+the earlier worry that they might only hold for the machine selected during the H1 capture is
+closed.
+
+**SWARMER's ids are 33..40** and eight controls, but **which knob each belongs to is not known.**
+The capture placed its locks on steps 17..24 rather than the 1..8 the sheet asked for, and reading
+step order as knob order would put id 36 at knob B where every other machine puts 34. Recorded as
+ids-without-positions rather than guessed: a wrong knob here would be silently wrong forever.
+
+### Still unmapped
+
+`32`, `63..65`, `86` — down from twelve. `63..65` sit inside the SYN range and no captured machine
+claims them.
