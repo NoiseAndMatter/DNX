@@ -31,7 +31,10 @@ export const PRODUCT_NAMES: Record<number, string> = {
  * Dump type byte. Values follow the Elektron family convention of a 0x50 base for
  * dumps and 0x60 for the matching requests.
  *
- * PATTERN_KIT (0x50) and SOUND (0x53) are confirmed against real files. The others
+ * PATTERN_KIT (0x50) and SOUND (0x53) are confirmed against real files. KIT (0x52) is
+ * corroborated independently: elk-herd implements Digitakt Kit Request 0x62 / Kit Response 0x52
+ * as working message types, so the convention holds on a sibling device even though no file we
+ * hold uses it. See docs/references.md. The others
  * follow the documented Digitakt table and are unverified for Digitone — do not rely
  * on them without checking against a real dump.
  */
