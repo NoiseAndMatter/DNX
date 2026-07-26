@@ -227,10 +227,21 @@ makes it structurally different from every other gap here, and the most valuable
 Set up a distinctive chord and record exactly what was done — slot, chord, notes. If chords can be
 assigned per track, use a different one on two tracks: a per-track structure announces itself in a diff.
 
-**The arpeggiator needs no capture.** Both devices have one and its settings live inside the preset
-("part of the Sound and saved together", per the DN1 manual). Since `002 MORNING_JAM` uses arpeggios
-heavily, is one of the matched pairs, and converts byte for byte, those fields are demonstrably already
-mapped — see `docs/sound-mapping.md` §8a for the audit across all 29,509 corpus sounds.
+### The arpeggiator: transferred already, but not understood
+
+Both devices have one and its settings live inside the preset ("part of the Sound and saved together",
+per the DN1 manual). `002 MORNING_JAM` uses arpeggios heavily, is one of the matched pairs, and converts
+byte for byte — so MODE, SPEED, RANGE, N.LEN, LEN and OFS are demonstrably among the mapped bytes
+already. See `docs/sound-mapping.md` §8a for the audit across all 29,509 corpus sounds.
+
+**That is enough for the converter and not enough for the manager.** Fidelity and comprehension are
+different goals: we can copy a byte perfectly while being unable to tell a user what it does, and an
+editor cannot offer "MODE: UP, SPEED: 1/16" without knowing which byte is which. Nothing in the corpus
+can say, because both sides simply agree.
+
+So capture one preset with every arp parameter at a distinctive value, and a second differing only in
+MODE — two presets one parameter apart isolate that field outright, and confirm the settings are per
+preset rather than per pattern.
 
 ## 6. Sound parameters — the long game
 
