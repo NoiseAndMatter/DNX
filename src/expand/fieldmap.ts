@@ -367,6 +367,27 @@ export const KIT_FX_CONSTANTS: readonly FieldConstant[] = [
   { at: 5856, value: 1 }, // unidentified, but unanimous
   { at: 5857, value: 0 },
   { at: 5876, value: 0 }, // input right reverb send
+  // The compressor page. **The DN1 has no compressor** — it is a DN2 feature — so there is
+  // nothing to transfer, and every one of these is constant across all 1,152 converted kits,
+  // agreeing with both `EMPTY.dn2prj` and the device's own defaults. Writing them reproduces
+  // Elektron rather than inheriting whatever compressor a non-blank template happened to have.
+  // `VOL` at 5898 is the exception and is handled by `FX_COMPRESSOR_VOLUME`.
+  { at: 5882, value: 32 }, // THR
+  { at: 5883, value: 0 },
+  { at: 5884, value: 24 }, // ATK
+  { at: 5885, value: 0 },
+  { at: 5886, value: 32 }, // REL
+  { at: 5887, value: 0 },
+  { at: 5888, value: 64 }, // MUP
+  { at: 5889, value: 0 },
+  { at: 5890, value: 3 }, // RAT
+  { at: 5891, value: 0 },
+  { at: 5892, value: 0 }, // SCS
+  { at: 5893, value: 0 },
+  { at: 5894, value: 80 }, // SCF
+  { at: 5895, value: 0 },
+  { at: 5896, value: 0 }, // DRY/CMP
+  { at: 5897, value: 0 },
 ];
 
 /** Write a set of fixed values into a block. */
