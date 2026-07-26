@@ -427,3 +427,35 @@ Tracks 5 and 6 ask the same question of `HOLD` against `SUS`, which is already k
 
 Tracks 5 and 6 are separate on purpose: the gating selector is never moved on a track whose
 gated control is being captured.
+
+### Machine-page capture — findings as they arrive, 2026-07-26
+
+Reported from the device during the capture, and worth keeping whatever the ids turn out to be.
+
+**FM TONE, SYN page 3.** Knob **H is empty** — the page has seven controls, not eight.
+`PHRT` at knob D is a **five-state enum**: `OFF`, `ALL`, `C`, `A+B`, `A+B2`. Captured in the
+last state.
+
+**FM TONE, SYN page 4** — and the sheet's guesses for this page were **wrong**:
+
+| Knob | Actually |
+|---|---|
+| A, B, C, D | fine tune for operators **C, A, B1, B2** |
+| E | **empty** |
+| F, G, H | key tracking for operators **A, B1, B2** |
+
+The manual's three `KEY TRACK` entries are real but sit at F, G, H, not A, B, C. The extraction
+also missed the four fine-tune controls entirely. **Nothing captured was affected**, because the
+sheet identifies controls by position and the positions were right — which is the case for
+capturing by position rather than by name, made concrete.
+
+Note the operator order: `C, A, B1, B2`, matching SYN page 1's `RATIO C, RATIO A, RATIO B`.
+There is no key tracking for operator C, which is why there are four fine tunes and three key
+tracks.
+
+**Ranges.** Fine tune runs **-1 to 0.999**; key tracking **0 to 127**. Fine tune is therefore a
+fine-resolution parameter and should arrive as a coarse byte plus a fine one, like LFO `SPD` and
+`DEP` — but note the display suggests thousandths while the lock quantum measured on `DEP` is
+1/128. Worth checking against the captured bytes rather than assuming either.
+
+**Empty knobs are skipped**, no trig: `p2·8` (SYN 3 H) and `p2·13` (SYN 4 E).
