@@ -464,10 +464,14 @@ SYN page 3 is the same, in knob order but skipping `PHRT`: **130 ADEL, 132 ATRG,
 136 BDEL, 138 BTRG, 140 BRST**. `PHRT` is knob D but lives at **+110**, away from the
 per-operator block, which fits its being a setting shared by both operators.
 
-**The TRG and RST switches were separated by a device behaviour.** A track with all four "set
-off" moved only **two** bytes, +132 and +138. Turning a `TRG` off evidently makes its `RST`
-unavailable — a reset is meaningless with no trig to reset — so the two that moved must be the
-TRGs. That confirms the knob-order reading by an independent route rather than by assumption.
+**The four switches are INFERRED, and the ordering is all that supports them.** All four bytes
+moved together when all four switches were set, so the *set* of four is certain. Nothing observed
+distinguishes them individually — a later track moved only +132 and +138, but only two switches
+were changed on it, so that says nothing about which two.
+
+The assignment rests on knob order alone. That ordering holds for `ADEL` and `BDEL` either side
+of them on the same page, and for the whole of SYN page 1, which is why it is plausible — but it
+is not confirmed. Setting **exactly one** switch on a spare track would settle it outright.
 
 **The operator fine tunes** are at **160, 162, 164, 166**, storing `value * 64 + 64`. Set to
 -0.500, +0.250, -0.750 and +0.875, they stored 32, 80, 16 and 120 — four exact hits. Choosing

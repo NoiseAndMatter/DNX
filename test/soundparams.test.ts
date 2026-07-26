@@ -128,13 +128,16 @@ test("SYN 3 is in knob order, with PHRT stored apart", () => {
   assert.equal(soundParameterAt(110)?.name, "PHRT");
 });
 
-test("the TRG switches are separable from the RST switches", () => {
-  // Turning a TRG off makes its RST unavailable, so a track with all four "set off" moved only
-  // the two TRG bytes. That is what tells 132/138 apart from 134/140.
-  for (const [offset, name] of [[132, "ATRG"], [138, "BTRG"]] as const) {
-    assert.equal(soundParameterAt(offset)?.name, name);
+test("the four SYN 3 switches are marked as inferred, not observed", () => {
+  // The set of four bytes is certain: all four moved together when all four switches were set.
+  // Which byte is which is knob order alone -- nothing observed separates them, so none of the
+  // four may claim to be measured.
+  for (const offset of [132, 134, 138, 140]) {
+    const p = soundParameterAt(offset)!;
+    assert.equal(p.page, "SYN 3");
+    assert.equal(p.inferred, true, `${p.name} at ${offset} must not claim to be observed`);
   }
-  for (const [offset, name] of [[134, "ARST"], [140, "BRST"]] as const) {
-    assert.equal(soundParameterAt(offset)?.name, name);
-  }
+  // The two delays either side are measured, and they are what fix the ordering's plausibility.
+  assert.equal(soundParameterAt(130)?.inferred, undefined);
+  assert.equal(soundParameterAt(136)?.inferred, undefined);
 });

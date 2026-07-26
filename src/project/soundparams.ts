@@ -124,12 +124,17 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
   { offset: 110, page: "SYN 3", name: "PHRT", encoding: "enum" },
 
   // SYN page 3 in knob order, skipping PHRT: A, B, C then E, F, G.
+  //
+  // The four switches are INFERRED. All four bytes moved together when all four switches were
+  // set, so the *set* is certain, but nothing observed distinguishes them individually. The
+  // assignment below is knob order alone -- the same ordering that holds for ADEL and BDEL on
+  // this page, and for the whole of SYN page 1, but not independently confirmed here.
   { offset: 130, page: "SYN 3", name: "ADEL", encoding: "unipolar" },
-  { offset: 132, page: "SYN 3", name: "ATRG", encoding: "enum" },
-  { offset: 134, page: "SYN 3", name: "ARST", encoding: "enum" },
+  { offset: 132, page: "SYN 3", name: "ATRG", encoding: "enum", inferred: true },
+  { offset: 134, page: "SYN 3", name: "ARST", encoding: "enum", inferred: true },
   { offset: 136, page: "SYN 3", name: "BDEL", encoding: "unipolar" },
-  { offset: 138, page: "SYN 3", name: "BTRG", encoding: "enum" },
-  { offset: 140, page: "SYN 3", name: "BRST", encoding: "enum" },
+  { offset: 138, page: "SYN 3", name: "BTRG", encoding: "enum", inferred: true },
+  { offset: 140, page: "SYN 3", name: "BRST", encoding: "enum", inferred: true },
 
   // The operator fine tunes, -1.000 to 0.999. Set to -0.500, +0.250, -0.750 and +0.875 and
   // stored as 32, 80, 16 and 120 -- all four exact under `value * 64 + 64`. Choosing
