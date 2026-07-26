@@ -146,6 +146,30 @@ minutes, and `npm run diff` now names every offset in a pattern payload, so a cl
 reads as a sentence. Blocked only on the Digitone manuals, which are needed to enumerate the
 parameters of each page.
 
+### 3b. Web UI and kit builder — PLANNED, queued for discussion
+
+The plan is written: [ui-plan.md](ui-plan.md). **Queued by the user for after the format work
+finishes**, to be discussed and refined rather than built from the document as it stands.
+
+The short version. A clean, minimal, genuinely dual-theme UI, taking the eight-knob page and the
+track strip from Overbridge while leaving behind its dark-only density. Static and offline, with
+the user's projects never leaving the machine.
+
+The new feature is a **kit builder**: filter and search the sound list, then assign sounds to
+the sixteen slots of a kit. It is a good first target because it needs **no format knowledge we
+lack** — a sound is a self-contained 359-byte object, so assigning one is a copy rather than an
+edit — while exercising the searchable list, the slot grid and the write path that everything
+else reuses.
+
+Two limits worth knowing now. Sound locks address the pool by index, so rearranging it means
+remapping them; `src/librarian/copy.ts` already does this for pattern copy and should be reused.
+And a standalone named kit cannot be written to the +Drive, because only kits *inside* a project
+are understood — the standalone kit file format is unknown.
+
+What still blocks a parameter **editor**, as opposed to a builder, is the sound object's
+semantics: 139 offsets are structurally mapped but nothing says which byte is `CUTOFF`. One more
+capture of the kind that has now worked three times.
+
 ### 4. WebMIDI transfer
 
 Elektron's Transfer protocol over USB, so projects move without files. Larger than it
