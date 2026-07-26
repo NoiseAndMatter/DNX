@@ -135,11 +135,14 @@ differed against the **whole** DN1 kit rather than only the FX block:
 
 - `FX+0x37`, `FX+0x46`, `FX+0x47` are ordinary copies to kit+5859, +5874, +5875 — each at
   `5804 +` its own FX offset, the rule most of the block already follows.
-- `FX+0x34` is **rescaled**, not copied: 0..127 becomes a `u16be` at kit+5898 at roughly
-  x201.57 (64 to 12,900, 100 to 20,157, 127 to 25,599). Five values appear in the corpus and
-  they are stored as a table; anything outside it keeps the template's value and warns, since
-  no arithmetic rule reproduces all five exactly. This alone was 256 bytes/project, because
-  the field differs in **every** kit.
+- `FX+0x34` is **rescaled**, not copied. It lands on the DN2 compressor volume at kit+5898 and
+  its fine byte at kit+5899 — two fields, not one `u16be`, corrected once the capture showed
+  the device writing 5899 as zero and 5898 as a plain 0-127 byte. With the pair split, one rule
+  reproduces all five observed inputs exactly: `min(floor(dn1 × 25600/127), 25599) / 256`. The
+  five pairs are still stored as a **table** because *why* a 0-127 source lands on a 0-100 scale
+  is unexplained; anything outside the table keeps the template's value and warns. This alone
+  was 256 bytes/project, because the field differs in **every** kit. Full working in
+  `docs/dn2-pattern-format.md` §6a.
 
 `UNPLACED_FX_BYTES` is now `0x36, 0x3A, 0x4C`.
 
