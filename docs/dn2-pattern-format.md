@@ -853,3 +853,26 @@ is a coincidence of allocation order rather than a layout rule.
 
 `32`, `63..65`, `86` — down from twelve. `63..65` sit inside the SYN range and no captured machine
 claims them.
+
+### Machine coverage is complete — all ten machines
+
+Four SYN machines and six FLTR machines now have knob tables. `UNCAPTURED_MACHINES` is empty.
+
+The three filter machines added last needed **no locks**: MULTI-MODE, COMB- and EQUALIZER already
+proved the knob->id mapping is identical on every filter machine, so a fourth cannot produce a new
+id. Only their names were missing, and those were read off the device.
+
+**All six filters agree on knobs A-E and H** — `ATK`, `DEC`, `SUS`, `REL`, `FREQ`, `ENV` — and
+differ only at F and G:
+
+| Knob | MULTI-MODE | LOWPASS 4 | LEGACY LP/HP | COMB- | COMB+ | EQUALIZER |
+|---|---|---|---|---|---|---|
+| F (75) | RESO | RESO | RESO | FDBK | FDBK | GAIN |
+| G (73) | TYPE | *blank* | TYPE | LPF | LPF | Q |
+
+Two knobs out of eight are the entire reason machine-page ids cannot be treated as absolute. Six
+of eight would have looked like a fixed layout.
+
+**`LOWPASS 4` has seven controls, not eight**: knob G is blank, so id 73 is *unused* on that
+machine. An id absent from a machine is a different thing from an id present but unnamed, and the
+tables distinguish them.

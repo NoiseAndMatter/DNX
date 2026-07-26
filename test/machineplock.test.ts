@@ -13,6 +13,7 @@ import {
   COMB_MINUS_PLOCKS,
   FM_DRUM_PLOCKS,
   FM_TONE_PLOCKS,
+  LOWPASS_4_PLOCKS,
   SWARMER_PLOCKS,
   MACHINE_PLOCKS,
   MACHINE_RELATIVE_IDS,
@@ -81,8 +82,9 @@ test("resolving an id requires the machine", () => {
   assert.equal(machinePlock("COMB-", 75)!.name, "FDBK");
   assert.equal(machinePlock("EQUALIZER", 75)!.name, "GAIN");
 
-  assert.equal(machinePlock("COMB+", 73), undefined, "an uncaptured machine must not resolve");
-  assert.ok(UNCAPTURED_MACHINES.includes("COMB+"));
+  // COMB+ is captured now, and agrees with COMB- as expected.
+  assert.equal(machinePlock("COMB+", 73)!.name, "LPF");
+  assert.equal(machinePlock("NOT A MACHINE", 73), undefined, "an unknown machine must not resolve");
 });
 
 test("FM DRUM fills the holes FM TONE left", () => {
@@ -106,7 +108,6 @@ test("SWARMER uses 33..40 and breaks the knob-B pattern", () => {
   // never be derived from a position.
   assert.equal(SWARMER_PLOCKS.find((p) => p.knob === "B")!.id, 36);
   assert.ok(MACHINE_PLOCKS["SWARMER"], "it now has a knob table");
-  assert.ok(!UNCAPTURED_MACHINES.includes("SWARMER"));
 });
 
 test("only knob A is stable across the four SYN machines", () => {
@@ -138,4 +139,33 @@ test("FM TONE's SYN 2 is two operator envelopes, distinguished by position", () 
   ]);
   const stems = syn2.map((p) => p.name!.split(" ")[1]);
   assert.deepEqual(stems.slice(0, 4), stems.slice(4), "both halves carry the same four stems");
+});
+
+test("every machine the DN2 offers has a knob table", () => {
+  const syn = ["FM TONE", "FM DRUM", "WAVETONE", "SWARMER"];
+  const fltr = ["MULTI-MODE", "LOWPASS 4", "LEGACY LP/HP", "COMB-", "COMB+", "EQUALIZER"];
+  for (const m of [...syn, ...fltr]) assert.ok(MACHINE_PLOCKS[m], `${m} has no table`);
+  assert.deepEqual([...UNCAPTURED_MACHINES], [], "nothing left uncaptured");
+});
+
+test("LOWPASS 4 leaves id 73 unused rather than unnamed", () => {
+  // An id being absent from a machine is different from being present but unnamed. Knob G is
+  // blank on this machine, so 73 simply has no meaning here.
+  const ids = LOWPASS_4_PLOCKS.map((p) => p.id);
+  assert.equal(ids.length, 7, "seven controls, not eight");
+  assert.ok(!ids.includes(73));
+  assert.ok(!LOWPASS_4_PLOCKS.some((p) => p.knob === "G"));
+});
+
+test("all six filter machines agree on every knob but F and G", () => {
+  const machines = ["MULTI-MODE", "LOWPASS 4", "LEGACY LP/HP", "COMB-", "COMB+", "EQUALIZER"];
+  for (const knob of ["A", "B", "C", "D", "E", "H"]) {
+    const names = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === knob)!.name);
+    assert.equal(new Set(names).size, 1, `knob ${knob} should agree: ${names.join(", ")}`);
+  }
+  // F and G are where the machines differ, which is the whole reason ids are machine-relative.
+  const f = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === "F")!.name);
+  assert.deepEqual(f, ["RESO", "RESO", "RESO", "FDBK", "FDBK", "GAIN"]);
+  const g = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === "G")?.name);
+  assert.deepEqual(g, ["TYPE", undefined, "TYPE", "LPF", "LPF", "Q"]);
 });
