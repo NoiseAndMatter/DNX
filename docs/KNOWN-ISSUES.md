@@ -56,6 +56,17 @@ That closes the expansion writer as an unproven component. It is not a claim tha
 pattern of every project is correct — the sheet covers what was checked — but the mechanism
 is validated end to end on hardware.
 
+**The MIDI machine fix is validated, 2026-07-26.** Build `MORNING_JA 1640`, converted from a
+neutral `EMPTY.dn2prj` template. The user confirmed on the device that **tracks 5-8 all read as
+MIDI tracks**, which is what the new write at `sound+244` exists to guarantee. Before the fix a
+conversion from a blank template gave those four tracks an FM TONE machine.
+
+Note the limit of that check: `002 MORNING_JAM` has **zero trigs on tracks 5-8 in all 128
+patterns** — that DN1 project never used its MIDI tracks — so it validates the machine
+assignment and nothing further. For MIDI *behaviour*, `048 ORION_MIDI_TEST` is the project to
+use: its pattern A1 track 6 carries 16 MIDI trigs, one per step of page 1, and it is a matched
+pair so Elektron's own conversion is available to compare against.
+
 One reported defect did not survive checking: track 9's length in pattern A1 appeared to read
 48 against the 62 in the file, and on reload it reads **62**, as written. The first reading
 was of another track or page. Nothing was wrong and nothing was changed.
