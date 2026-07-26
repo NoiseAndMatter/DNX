@@ -55,12 +55,14 @@ import {
   type ConversionWarning as SoundWarning,
 } from "../project/soundmap.js";
 import { MACHINE, SOUND_MACHINE_OFFSET } from "../project/machine.js";
+import { TAIL as DN1_TAIL } from "../project/dn1tail.js";
 import { NO_CONDITION, translateParameterId, translateTrigCondition } from "./translate.js";
 import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } from "./route.js";
 import {
   applyFieldConstants,
   applyFieldCopies,
   FX_COMPRESSOR_VOLUME,
+  INPUT_LEFT_LEVEL,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
   MIDI_TRACK_CONSTANTS,
@@ -571,6 +573,14 @@ function writeKit(
   applyFieldCopies(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, KIT_FX_MAP);
   applyFieldConstants(out, kitBase, KIT_FX_CONSTANTS);
   writeScaledFxField(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, index, report);
+
+  // The one field that needs more than its own source byte: a project-level flag in the DN1
+  // tail decides whether the per-kit byte is used at all. See INPUT_LEFT_LEVEL.
+  const inputFlag = dn1Image[DN1_LAYOUT.tailBase + DN1_TAIL.mixerOffset + INPUT_LEFT_LEVEL.flagAt]!;
+  out[kitBase + INPUT_LEFT_LEVEL.to] =
+    inputFlag === 0
+      ? INPUT_LEFT_LEVEL.whenFlagClear
+      : dn1Image[dn1KitBase + DN1_KIT.fxOffset + INPUT_LEFT_LEVEL.from]!;
 
   // Promoted sounds become their destination track's own sound.
   const pool = readSoundPool(dn1Image);
