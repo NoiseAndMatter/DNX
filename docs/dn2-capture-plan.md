@@ -459,3 +459,28 @@ fine-resolution parameter and should arrive as a coarse byte plus a fine one, li
 1/128. Worth checking against the captured bytes rather than assuming either.
 
 **Empty knobs are skipped**, no trig: `p2·8` (SYN 3 H) and `p2·13` (SYN 4 E).
+
+### WAVETONE — and a stale manual, 2026-07-26
+
+**The parameter lists in the first sheets came from DN2 manual OS 1.00A while the device runs a
+later OS.** Controls move and disappear between releases: WAVETONE SYN page 2 lists `SYNC` in
+1.00A and does not in 1.10D, and the device agrees with 1.10D. Always check the OS version of
+the manual against the device before building a sheet.
+
+**SYN page 2** — confirmed on the device, and matching 1.10D exactly:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| OFS1 | TBL1 | MOD | RSET | OFS2 | TBL2 | *blank* | DRIF |
+
+Several of these are multi-state selectors.
+
+**SYN page 3** is a noise generator: an envelope in `ATK`, `HOLD`, `DEC`, then `NLEV` for level,
+then a filter as `BASE` and `WDTH`, a noise `TYPE` selector and `CHAR` for character.
+
+**SYN page 1 is unresolved.** The manual lists ten names for eight knobs — `TUN1`, `WAV1`,
+`TBL1.`, `PD1`, `LEV1` and the same five for oscillator 2 — so two of them are not separate
+knobs. `PD1` is oscillator 1 phase distortion, 0-100%, default 50%. Whether knobs D and H are
+`TBL1`/`TBL2` or `LEV1`/`LEV2` needs reading off the device; note the manual writes `TBL1.` with
+a trailing dot, which may mean it is an alternate label the same knob shows in wavetable mode
+rather than a knob of its own.
