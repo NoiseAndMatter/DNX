@@ -672,3 +672,59 @@ pattern.tracks[0]!.trigs[1]!.note;             // 60
 pattern.tracks[0]!.trigs[1]!.soundLock;        // 3
 pattern.tracks[0]!.trigs[1]!.microTiming;      // -23
 ```
+
+---
+
+## 4a. Parameter-lock ids, by name — VERIFIED 2026-07-26
+
+Named by a device-authored capture: 61 controls, each locked on its **own step** of one pattern
+(`H1` of `MORNING_JA 1640.dn2prj`), so a record's single locked step identifies it by position.
+47 records came back, every one with exactly one locked step. Implementation:
+`src/project/plockparams.ts`.
+
+### The LFO block is arithmetic, not a list
+
+The three LFOs are **interleaved with a stride of 4**:
+
+```
+id = 4 * slot + lfo          slot 0..7 in page order, lfo 1..3
+
+SPD   1  2  3        DEST  13 14 15        MODE  25 26 27
+MULT  5  6  7        WAVE  17 18 19        DEP   29 30 31
+FADE  9 10 11        SPH   21 22 23
+```
+
+All 24 ids fit with no exceptions. **`4 * slot + 0` is never used** — ids 0, 4, 8, 12, 16, 20,
+24, 28 belong to no LFO — so the layout has room for a fourth. Whether that is reserved or
+belongs to something else is UNKNOWN.
+
+This independently confirms the A3 capture, where `DEP` read id 29, and settles the ambiguity
+it left: **id 9 is `FADE`, not `VFAD`**, because `VFAD` produces no lock record at all.
+
+### The rest
+
+| Page | Ids |
+|---|---|
+| TRIG 2 | PORT 99, PTIM 100 |
+| FLTR 2 | DEL 77, KEY.T 82, BASE 83, WDTH 84, RSET 85, BW.RT 105 |
+| AMP | ATK 87, **HOLD 88***, DEC 89, SUS 90, REL 91, PAN 95, VOL 96, **MODE 97***, RSET 98 |
+| FX | CHR 92, DEL 93, REV 94, BR 101, SRR 102, SR.RT 103, OVER 104, OD.RT 106 |
+
+\* INFERRED, not observed. Both were skipped during the capture because `AMP MODE` decides
+whether `HOLD` exists, so locking it alongside the controls it gates was unsafe. The AMP
+envelope runs 87..91 in page order with 88 the only gap, and 97 is the only gap around the
+other AMP controls. A short follow-up capture confirms or breaks both.
+
+### Twelve controls are not in the lock table at all
+
+`NOTE`, `VEL`, `LEN`, `PROB`, `COND` and `FILL` on TRIG 1, and `RTRG`, `VFAD`, `LEN`, `RATE` on
+TRIG 2, plus `LFO.T` and `FLT.T` — every one was locked on its own step and produced **no
+record**. Note, velocity and length live in the trigger slot; probability and the two condition
+families live in the track record's own per-step arrays (§2). Where the remaining seven are
+stored is UNKNOWN — they are in no array this project has identified.
+
+### Ids 32..76 are unaccounted for
+
+Everything named sits in 1..31 or 77..106. The SYN pages and FLTR page 1 were excluded from the
+capture because they vary with the selected machine, and 45 free ids is about the right size
+for them. INFERRED from the gap, not observed.
