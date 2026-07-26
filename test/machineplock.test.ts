@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 
 import {
   COMB_MINUS_PLOCKS,
+  FM_DRUM_PLOCKS,
   FM_TONE_PLOCKS,
+  SWARMER_IDS,
   MACHINE_PLOCKS,
   MACHINE_RELATIVE_IDS,
   MULTI_MODE_PLOCKS,
@@ -71,10 +73,48 @@ test("machine-relative ids never overlap the absolute table", () => {
 });
 
 test("resolving an id requires the machine", () => {
+  // One id, three meanings, across three filter machines. This is the whole finding in one test.
+  assert.equal(machinePlock("MULTI-MODE", 73)!.name, "TYPE");
+  assert.equal(machinePlock("COMB-", 73)!.name, "LPF");
+  assert.equal(machinePlock("EQUALIZER", 73)!.name, "Q");
   assert.equal(machinePlock("MULTI-MODE", 75)!.name, "RESO");
   assert.equal(machinePlock("COMB-", 75)!.name, "FDBK");
-  assert.equal(machinePlock("FM DRUM", 75), undefined, "an uncaptured machine must not resolve");
-  assert.ok(UNCAPTURED_MACHINES.includes("FM DRUM"));
+  assert.equal(machinePlock("EQUALIZER", 75)!.name, "GAIN");
+
+  assert.equal(machinePlock("COMB+", 73), undefined, "an uncaptured machine must not resolve");
+  assert.ok(UNCAPTURED_MACHINES.includes("COMB+"));
+});
+
+test("FM DRUM fills the holes FM TONE left", () => {
+  const fm = new Set(FM_TONE_PLOCKS.map((p) => p.id));
+  const drum = new Set(FM_DRUM_PLOCKS.map((p) => p.id));
+  // 42 and 57..62 are absent from FM TONE and present in FM DRUM: one machine's gap is
+  // another's control, which is what makes the SYN range a shared pool rather than a layout.
+  for (const id of [42, 57, 58, 59, 60, 61, 62]) {
+    assert.ok(!fm.has(id), `FM TONE should not use ${id}`);
+    assert.ok(drum.has(id), `FM DRUM should use ${id}`);
+  }
+  const ids = [...drum].sort((a, b) => a - b);
+  assert.equal(ids.length, 30);
+  for (let i = 1; i < ids.length; i++) assert.equal(ids[i], ids[i - 1]! + 1, "FM DRUM has no gaps");
+});
+
+test("SWARMER's ids are recorded without guessing their knobs", () => {
+  assert.deepEqual([...SWARMER_IDS], [33, 34, 35, 36, 37, 38, 39, 40]);
+  assert.ok(UNCAPTURED_MACHINES.includes("SWARMER"), "its positions are still unknown");
+  assert.equal(MACHINE_PLOCKS["SWARMER"], undefined, "so it has no knob table");
+});
+
+test("knob A is 33 and knob B is 34 on every captured SYN machine", () => {
+  for (const list of [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]) {
+    const syn1 = list.filter((p) => p.page === "SYN 1");
+    assert.equal(syn1.find((p) => p.knob === "A")!.id, 33);
+    assert.equal(syn1.find((p) => p.knob === "B")!.id, 34);
+  }
+  // ...and knob C already diverges, so the low ids only look positional.
+  const c = [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]
+    .map((l) => l.filter((p) => p.page === "SYN 1").find((p) => p.knob === "C")!.id);
+  assert.deepEqual(c, [35, 37, 35]);
 });
 
 test("FLTR page 1 and page 2 interleave", () => {

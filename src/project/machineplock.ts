@@ -139,22 +139,97 @@ export const COMB_MINUS_PLOCKS: readonly MachinePlock[] = [
   { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
 ];
 
+
+/**
+ * FM DRUM. Ids **33..62 with no gaps** — 30 controls, 30 consecutive ids.
+ *
+ * It fills exactly the holes FM TONE left: 42, and 57..62 of the 57..65 run. So the SYN id space
+ * is a shared pool that each machine draws from densely, and the gaps in one machine's allocation
+ * are simply controls another machine has.
+ *
+ * SYN page 2 is two operator envelopes like FM TONE's — the same four labels twice, operator A on
+ * knobs A-D and operator B on E-H. SYN page 3 has blanks at E and F.
+ *
+ * Knob A is id 33 and knob B is 34 on FM TONE, WAVETONE and FM DRUM alike, but everything after
+ * diverges. So the low ids look positional and are not: the allocation follows each machine's own
+ * internal parameter order.
+ */
+export const FM_DRUM_PLOCKS: readonly MachinePlock[] = [
+  { id: 33, page: "SYN 1", knob: "A", name: "TUNE" },
+  { id: 34, page: "SYN 1", knob: "B", name: "STIM" },
+  { id: 35, page: "SYN 1", knob: "C", name: "SDEP" },
+  { id: 37, page: "SYN 1", knob: "D", name: "ALGO" },
+  { id: 39, page: "SYN 1", knob: "E", name: "OP.C" },
+  { id: 40, page: "SYN 1", knob: "F", name: "OP.AB" },
+  { id: 38, page: "SYN 1", knob: "G", name: "FDBK" },
+  { id: 36, page: "SYN 1", knob: "H", name: "FOLD" },
+  { id: 43, page: "SYN 2", knob: "A", name: "A RATIO" },
+  { id: 41, page: "SYN 2", knob: "B", name: "A DEC" },
+  { id: 42, page: "SYN 2", knob: "C", name: "A END" },
+  { id: 44, page: "SYN 2", knob: "D", name: "A MOD" },
+  { id: 47, page: "SYN 2", knob: "E", name: "B RATIO" },
+  { id: 45, page: "SYN 2", knob: "F", name: "B DEC" },
+  { id: 46, page: "SYN 2", knob: "G", name: "B END" },
+  { id: 48, page: "SYN 2", knob: "H", name: "B MOD" },
+  { id: 49, page: "SYN 3", knob: "A", name: "HOLD" },
+  { id: 56, page: "SYN 3", knob: "B", name: "DEC" },
+  { id: 58, page: "SYN 3", knob: "C", name: "PH.C" },
+  { id: 57, page: "SYN 3", knob: "D", name: "LEV" },
+  // SYN 3 knobs E and F are blank on the device.
+  { id: 59, page: "SYN 3", knob: "G", name: "NRST" },
+  { id: 60, page: "SYN 3", knob: "H", name: "NRM" },
+  { id: 61, page: "SYN 4", knob: "A", name: "NHLD" },
+  { id: 53, page: "SYN 4", knob: "B", name: "NDEC" },
+  { id: 50, page: "SYN 4", knob: "C", name: "TRAN" },
+  { id: 55, page: "SYN 4", knob: "D", name: "TLEV" },
+  { id: 51, page: "SYN 4", knob: "E", name: "BASE" },
+  { id: 52, page: "SYN 4", knob: "F", name: "WDTH" },
+  { id: 62, page: "SYN 4", knob: "G", name: "GRAN" },
+  { id: 54, page: "SYN 4", knob: "H", name: "NLEV" },
+];
+
+/**
+ * SWARMER. Ids **33..40**, eight controls, no gaps.
+ *
+ * The ids are certain; **which knob each belongs to is not.** The capture placed these eight
+ * locks on steps 17..24 rather than the 1..8 the sheet asked for, and taking step order as knob
+ * order would make knob B id 36 — where every other machine puts 34 at knob B. So either the
+ * locks were entered in a different order or the offset means something else. Recorded as
+ * positions UNKNOWN rather than guessed, because a wrong knob here is silently wrong forever.
+ */
+export const SWARMER_IDS: readonly number[] = [33, 34, 35, 36, 37, 38, 39, 40];
+
+/** FLTR EQUALIZER. Ids as every other filter machine; only knob G differs from the rest. */
+export const EQUALIZER_PLOCKS: readonly MachinePlock[] = [
+  { id: 78, page: "FLTR 1", knob: "A", name: "ATK" },
+  { id: 79, page: "FLTR 1", knob: "B", name: "DEC" },
+  { id: 80, page: "FLTR 1", knob: "C", name: "SUS" },
+  { id: 81, page: "FLTR 1", knob: "D", name: "REL" },
+  { id: 74, page: "FLTR 1", knob: "E", name: "FREQ" },
+  { id: 75, page: "FLTR 1", knob: "F", name: "GAIN" },
+  { id: 73, page: "FLTR 1", knob: "G", name: "Q" },
+  { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
+];
+
 /** Machines whose ids have been measured. Keyed by the name the device shows. */
 export const MACHINE_PLOCKS: Readonly<Record<string, readonly MachinePlock[]>> = {
   "FM TONE": FM_TONE_PLOCKS,
   WAVETONE: WAVETONE_PLOCKS,
+  "FM DRUM": FM_DRUM_PLOCKS,
   "MULTI-MODE": MULTI_MODE_PLOCKS,
   "COMB-": COMB_MINUS_PLOCKS,
+  EQUALIZER: EQUALIZER_PLOCKS,
 };
 
 /** Machines the DN2 offers that have **not** been captured. Their ids are unknown. */
 export const UNCAPTURED_MACHINES: readonly string[] = [
-  "FM DRUM",
+  // Ids known (SWARMER_IDS) but not which knob each belongs to.
   "SWARMER",
+  // Names read off the device and matching the manual, ids identical to the other filters --
+  // so nothing is missing except the entries themselves, which nobody has needed yet.
   "LOWPASS 4",
   "LEGACY LP/HP",
   "COMB+",
-  "EQUALIZER",
 ];
 
 /**
