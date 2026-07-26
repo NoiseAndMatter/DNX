@@ -521,6 +521,16 @@ list plus a single reading.
 
 **Ping-pong at `kit+5826` is a 0/1 toggle**, confirmed by a pattern pair differing only in it.
 
+The table above is machine-readable in `src/project/kitfx.ts`, which the differential analyser
+uses to name FX bytes instead of reporting them as "kit gap 5804-5963, unidentified".
+
+**`5856-5881` is a page the capture missed.** Auditing the converter's copy table against these
+names shows 15 destinations in that range with no parameter attached: 5859, 5862, 5864,
+5866-5875, 5880, 5881. The converter writes them because the matched pairs say Elektron does,
+and the DN1 sources are `FX+0x37, 0x38, 0x3C, 0x3E-0x47, 0x4A, 0x4B` — a contiguous run, so this
+is one page rather than scattered bytes. `test/fieldmap.test.ts` pins the set. **Next capture:
+sweep whichever FX page the sheet skipped and this closes.**
+
 ## 7. Synth vs MIDI tracks — VERIFIED, and it is not in the pattern record
 
 The pattern record carries **no** per-track synth/MIDI discriminator. Every field of the
