@@ -778,8 +778,20 @@ id cannot be derived from a position even within one machine.
 **FM TONE uses 33..72** with 42 and 57..65 unused. 42 is a control WAVETONE has and FM TONE does
 not. `PHRT` breaks its page's run entirely, taking id 41 while its neighbours are 51..56.
 
-**FM TONE's SYN page 2 names were not captured**, so its eight ids are recorded by position
-only. An id with a position is useful; an id with a guessed name is worse than nothing.
+**FM TONE's SYN page 2 is the operator envelope page**, read off the device: `ATK`, `DEC`,
+`END`, `LEV` for operator A on knobs A-D, and the same four for operator B on E-H.
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| A ATK | A DEC | A END | A LEV | B ATK | B DEC | B END | B LEV |
+| 43 | 44 | 45 | 46 | 47 | 48 | 49 | 50 |
+
+**The device shows the same four labels twice**, so the operator is carried by knob position
+alone — nothing on screen distinguishes operator A's `ATK` from operator B's. Any UI reading a
+lock here has to supply the operator from the id, because the name will not.
+
+The manual's OS 1.00A text yields only `B1` and `B2` for this page, which are neither of these:
+another extraction artefact, from prose about the operators rather than knob labels.
 
 ### Still unmapped
 

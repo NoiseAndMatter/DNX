@@ -34,8 +34,14 @@ export interface MachinePlock {
  * FM TONE. Ids 33..72, with 42 and 57..65 unused by this machine — 42 belongs to a control
  * WAVETONE has and FM TONE does not.
  *
- * SYN page 2's names were not captured, so its eight ids are recorded by position only. That is
- * deliberate: an id with a position is useful, an id with a guessed name is worse than nothing.
+ * SYN page 2 is the operator envelope page: `ATK`, `DEC`, `END`, `LEV` for operator A on knobs
+ * A-D, and the same four for operator B on E-H. The device shows the same four labels twice, so
+ * **the operator is carried by knob position alone** — a reader cannot tell A's `ATK` from B's
+ * without knowing which half of the page it came from. The names here prefix the operator to
+ * keep them distinguishable.
+ *
+ * Note the manual's OS 1.00A text yields only `B1` and `B2` for this page, which are neither of
+ * these: another extraction artefact from prose about the operators rather than knob labels.
  */
 export const FM_TONE_PLOCKS: readonly MachinePlock[] = [
   { id: 33, page: "SYN 1", knob: "A", name: "ALGO" },
@@ -46,14 +52,16 @@ export const FM_TONE_PLOCKS: readonly MachinePlock[] = [
   { id: 38, page: "SYN 1", knob: "F", name: "DTUN" },
   { id: 39, page: "SYN 1", knob: "G", name: "FDBK" },
   { id: 40, page: "SYN 1", knob: "H", name: "MIX" },
-  { id: 43, page: "SYN 2", knob: "A" },
-  { id: 44, page: "SYN 2", knob: "B" },
-  { id: 45, page: "SYN 2", knob: "C" },
-  { id: 46, page: "SYN 2", knob: "D" },
-  { id: 47, page: "SYN 2", knob: "E" },
-  { id: 48, page: "SYN 2", knob: "F" },
-  { id: 49, page: "SYN 2", knob: "G" },
-  { id: 50, page: "SYN 2", knob: "H" },
+  // The operator envelopes: knobs A-D for operator A, E-H for operator B. Same four names
+  // twice, so the operator is carried by position alone -- the screen does not repeat it.
+  { id: 43, page: "SYN 2", knob: "A", name: "A ATK" },
+  { id: 44, page: "SYN 2", knob: "B", name: "A DEC" },
+  { id: 45, page: "SYN 2", knob: "C", name: "A END" },
+  { id: 46, page: "SYN 2", knob: "D", name: "A LEV" },
+  { id: 47, page: "SYN 2", knob: "E", name: "B ATK" },
+  { id: 48, page: "SYN 2", knob: "F", name: "B DEC" },
+  { id: 49, page: "SYN 2", knob: "G", name: "B END" },
+  { id: 50, page: "SYN 2", knob: "H", name: "B LEV" },
   { id: 51, page: "SYN 3", knob: "A", name: "ADEL" },
   { id: 52, page: "SYN 3", knob: "B", name: "ATRG" },
   { id: 53, page: "SYN 3", knob: "C", name: "ARST" },
