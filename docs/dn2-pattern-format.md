@@ -452,6 +452,33 @@ whose DN2 records reproduce the same scrambling.
 
 ---
 
+## 6a. Kit FX offsets — mapped by capture, 2026-07-26
+
+A device-authored pattern with a distinct value on every FX parameter placed the block. All
+are single bytes at a stride of 2 from `kit+5810`, in page order:
+
+| Offsets | Page | Parameters, in order |
+|---|---|---|
+| 5810-5822 | Chorus | DPTH, SPD, HPF, WDTH, DEL, REV, VOL |
+| 5824-5838 | Delay | TIME, **ping-pong at 5826**, **WID at 5828**, FDBK, HPF, LPF, REV, VOL |
+| 5842-5854 | Reverb | PRE, DEC, FREQ, GAIN, HPF, LPF, VOL |
+| 5882-5898 | Compressor | THR, ATK, REL, MUP, RAT, **SCS at 5892**, **SCF at 5894**, DRY/CMP, VOL |
+
+**Bipolar FX parameters are offset by 64**, the same as p-lock values: `WID` at -9 stored `0x37`
+(55) and at -17 stored `0x2f` (47); `SCF` at -25 stored `0x27` (39).
+
+**`kit+5898` is the pattern volume**, a plain 0-127 byte — 119 stored as `0x77`. That corrects
+the reading in `src/expand/fieldmap.ts`, which treats 5898/5899 as one `u16be` rescaled by
+roughly x201.57. The bytes it writes are right, because the table was derived from the pairs
+Elektron actually produces, but the two offsets are separate fields and the "scale" is an
+artefact of reading them as one number.
+
+**`SCS` is a 19-entry enum** — COMP, NOT COMP, TR1 … TR16, INLR — numbered 0 to 18. Observed:
+`INLR` stores 18. Only that one value has been seen, so the numbering rests on the device's
+list plus a single reading.
+
+**Ping-pong at `kit+5826` is a 0/1 toggle**, confirmed by a pattern pair differing only in it.
+
 ## 7. Synth vs MIDI tracks — VERIFIED, and it is not in the pattern record
 
 The pattern record carries **no** per-track synth/MIDI discriminator. Every field of the
@@ -470,6 +497,10 @@ The corpus therefore proves the field takes those two values in exactly the righ
 circumstances, but has never shown an arbitrary mask (e.g. one MIDI track in the middle).
 That the mask is per-bit rather than, say, a count is **INFERRED** from the value `0x00F0`
 being precisely bits 4..7.
+
+**Confirmed by direct experiment, 2026-07-26.** Assigning a MIDI machine to track 3 of an
+otherwise untouched project moved the mask from `0x0000` to `0x0004` — bit 2, track 3 — and
+nothing else in the kit changed. The bit-per-track reading is no longer an inference.
 
 `007 ORION_MIDI_TEST` independently corroborates the reading: its kit's MIDI records 5-8
 carry edited data while 1-4 and 9-16 are at defaults, matching the mask.
