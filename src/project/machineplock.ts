@@ -227,6 +227,51 @@ export const EQUALIZER_PLOCKS: readonly MachinePlock[] = [
   { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
 ];
 
+
+/**
+ * The remaining three FLTR machines.
+ *
+ * **No locks were captured for these, and none were needed.** MULTI-MODE, COMB- and EQUALIZER
+ * all return the identical knob->id mapping, so a fourth filter machine cannot produce a new id
+ * — only a new name. The names were read off the device and matched the manual exactly; only
+ * EQUALIZER diverged from expectation, with `Q` where the others have a filter shape.
+ *
+ * `LOWPASS 4` has **seven** controls: knob G is blank, so id 73 is unused on that machine. That
+ * is worth knowing, because an id being absent is different from an id being unnamed.
+ */
+export const LOWPASS_4_PLOCKS: readonly MachinePlock[] = [
+  { id: 78, page: "FLTR 1", knob: "A", name: "ATK" },
+  { id: 79, page: "FLTR 1", knob: "B", name: "DEC" },
+  { id: 80, page: "FLTR 1", knob: "C", name: "SUS" },
+  { id: 81, page: "FLTR 1", knob: "D", name: "REL" },
+  { id: 74, page: "FLTR 1", knob: "E", name: "FREQ" },
+  { id: 75, page: "FLTR 1", knob: "F", name: "RESO" },
+  // Knob G is blank on this machine, so id 73 goes unused.
+  { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
+];
+
+export const LEGACY_LP_HP_PLOCKS: readonly MachinePlock[] = [
+  { id: 78, page: "FLTR 1", knob: "A", name: "ATK" },
+  { id: 79, page: "FLTR 1", knob: "B", name: "DEC" },
+  { id: 80, page: "FLTR 1", knob: "C", name: "SUS" },
+  { id: 81, page: "FLTR 1", knob: "D", name: "REL" },
+  { id: 74, page: "FLTR 1", knob: "E", name: "FREQ" },
+  { id: 75, page: "FLTR 1", knob: "F", name: "RESO" },
+  { id: 73, page: "FLTR 1", knob: "G", name: "TYPE" },
+  { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
+];
+
+export const COMB_PLUS_PLOCKS: readonly MachinePlock[] = [
+  { id: 78, page: "FLTR 1", knob: "A", name: "ATK" },
+  { id: 79, page: "FLTR 1", knob: "B", name: "DEC" },
+  { id: 80, page: "FLTR 1", knob: "C", name: "SUS" },
+  { id: 81, page: "FLTR 1", knob: "D", name: "REL" },
+  { id: 74, page: "FLTR 1", knob: "E", name: "FREQ" },
+  { id: 75, page: "FLTR 1", knob: "F", name: "FDBK" },
+  { id: 73, page: "FLTR 1", knob: "G", name: "LPF" },
+  { id: 76, page: "FLTR 1", knob: "H", name: "ENV" },
+];
+
 /** Machines whose ids have been measured. Keyed by the name the device shows. */
 export const MACHINE_PLOCKS: Readonly<Record<string, readonly MachinePlock[]>> = {
   "FM TONE": FM_TONE_PLOCKS,
@@ -236,16 +281,19 @@ export const MACHINE_PLOCKS: Readonly<Record<string, readonly MachinePlock[]>> =
   "MULTI-MODE": MULTI_MODE_PLOCKS,
   "COMB-": COMB_MINUS_PLOCKS,
   EQUALIZER: EQUALIZER_PLOCKS,
+  "LOWPASS 4": LOWPASS_4_PLOCKS,
+  "LEGACY LP/HP": LEGACY_LP_HP_PLOCKS,
+  "COMB+": COMB_PLUS_PLOCKS,
 };
 
-/** Machines the DN2 offers that have **not** been captured. Their ids are unknown. */
-export const UNCAPTURED_MACHINES: readonly string[] = [
-  // Names read off the device and matching the manual, ids identical to the other filters --
-  // so nothing is missing except the entries themselves, which nobody has needed yet.
-  "LOWPASS 4",
-  "LEGACY LP/HP",
-  "COMB+",
-];
+/**
+ * Machines the DN2 offers that have not been captured.
+ *
+ * **Empty.** All four SYN machines and all six FLTR machines now have knob tables. Kept as an
+ * export so a future machine — a firmware addition, say — has an obvious place to be recorded as
+ * missing rather than silently absent.
+ */
+export const UNCAPTURED_MACHINES: readonly string[] = [];
 
 /**
  * The id range whose meaning depends on the machine.
