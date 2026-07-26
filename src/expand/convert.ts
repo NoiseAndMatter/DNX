@@ -62,7 +62,8 @@ import {
   applyFieldConstants,
   applyFieldCopies,
   FX_COMPRESSOR_VOLUME,
-  INPUT_LEFT_LEVEL,
+  INPUT_ENABLE_FLAG_OFFSET,
+  INPUT_GATED_FIELDS,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
   MIDI_TRACK_CONSTANTS,
@@ -574,13 +575,17 @@ function writeKit(
   applyFieldConstants(out, kitBase, KIT_FX_CONSTANTS);
   writeScaledFxField(out, kitBase, dn1Image, dn1KitBase + DN1_KIT.fxOffset, index, report);
 
-  // The one field that needs more than its own source byte: a project-level flag in the DN1
-  // tail decides whether the per-kit byte is used at all. See INPUT_LEFT_LEVEL.
-  const inputFlag = dn1Image[DN1_LAYOUT.tailBase + DN1_TAIL.mixerOffset + INPUT_LEFT_LEVEL.flagAt]!;
-  out[kitBase + INPUT_LEFT_LEVEL.to] =
-    inputFlag === 0
-      ? INPUT_LEFT_LEVEL.whenFlagClear
-      : dn1Image[dn1KitBase + DN1_KIT.fxOffset + INPUT_LEFT_LEVEL.from]!;
+  // The external-input page: the only fields that need more than their own source byte. A
+  // project-level flag in the DN1 tail decides whether the per-kit bytes are used at all.
+  // See INPUT_GATED_FIELDS.
+  const inputFlag =
+    dn1Image[DN1_LAYOUT.tailBase + DN1_TAIL.mixerOffset + INPUT_ENABLE_FLAG_OFFSET]!;
+  for (const field of INPUT_GATED_FIELDS) {
+    out[kitBase + field.to] =
+      inputFlag === 0
+        ? field.whenFlagClear
+        : dn1Image[dn1KitBase + DN1_KIT.fxOffset + field.from]!;
+  }
 
   // Promoted sounds become their destination track's own sound.
   const pool = readSoundPool(dn1Image);
