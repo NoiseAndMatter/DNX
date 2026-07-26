@@ -376,3 +376,79 @@ projectName(image);                     // "MORNING_JAM"
 dn2KitSoundNames(image, 0);             // 16 slot names for pattern 0's kit
 patternAsSysexPayload(image, 0);        // 99,840 bytes, identical to a SysEx dump payload
 ```
+
+### Sound object parameters, by name — VERIFIED 2026-07-26
+
+The 359-byte object was mapped *structurally* long before it was mapped *meaningfully*: 139
+offsets have a known DN1 source and conversion is 99.99966% byte-exact, but nothing said which
+byte was `CUTOFF`. This closes that. Implementation: `src/project/soundparams.ts`.
+
+Captured in pattern H4 of `MORNING_JA 1640(5).dn2prj`. Six tracks on FM TONE + MULTI-MODE, track 1
+left untouched as a baseline, tracks 2-6 each carrying a group of controls set to distinct values.
+Diffing each sound against the baseline names a byte by the value it received.
+
+**No parameter locks were used.** A sound object holds the track's live values, so turning a knob
+moves a byte directly — which makes this the cheapest capture of the three and the only one that
+needed no trigs at all.
+
+#### The LFO block is a regular grid
+
+```
+offset = 30 + 8 * parameter + 2 * lfo
+
+        SPD  MULT FADE DEST WAVE  SPH MODE  DEP
+LFO 1    30    38   46   54   62   70   78   86
+LFO 2    32    40   48   56   64   72   80   88
+LFO 3    34    42   50   58   66   74   82   90
+```
+
+Every byte that moved in the LFO tracks lands on this rule, and nothing lands off it. **The fourth
+slot of each group of eight is unused**, so there is room for a fourth LFO here too — the same
+spare capacity the lock table shows.
+
+Note the lock table interleaves the same three LFOs as `4 * slot + lfo`. Both layers interleave
+rather than block, at different strides, so neither can be derived from the other.
+
+#### Encodings, and they match the lock table
+
+| Kind | Stored as |
+|---|---|
+| unipolar | the value |
+| bipolar | `value + 64` |
+| fine-resolution | `value / 2 + 64` in a coarse byte, with a fine byte beside it |
+
+Verified on the LFO depths: 32 stored 80, 56 stored 92. That is the same coarse/fine pair the
+p-lock slots use, so one decoder serves both.
+
+#### It is parameter-addressed, not slot-addressed
+
+**`AMP HOLD` has its own byte at +204**, in the gap between `ATK` (+202) and `DEC` (+206), holding
+127 in ADSR where `HOLD` does not exist. The sound object therefore agrees with the lock table,
+which gives `HOLD` id 88 distinct from `DEC`'s 89.
+
+That settles a question that would have shaped an editor: **reading an envelope does not require
+knowing the AMP `MODE`.** Had the byte been shared, every read would have needed the mode first.
+
+#### The named offsets
+
+| Region | Contents |
+|---|---|
+| 30-90 | the three LFOs, by the rule above |
+| 102-108 | SYN 1 — HARM, DTUN, FDBK, MIX |
+| 114-128 | SYN 2 — the two operator envelopes, ATK/DEC/END/LEV each |
+| 130, 136 | SYN 3 — ADEL, BDEL |
+| 168-172 | SYN 4 — KTRK A, B1, B2 |
+| 176-196 | FLTR — FREQ, RESO, ENV, then ATK/DEC/SUS/REL, with FLTR 2's DEL, KEY.T, BASE, WDTH interleaved |
+| 202-220 | AMP — ATK, HOLD, DEC, SUS, REL, then PAN and VOL |
+| 212-216, 232, 236 | the per-sound FX sends: CHR, DEL, REV, SRR, OVER |
+
+**`HARM` is the one anomaly.** Its baseline is 63 and it stored 86 for a setting of +23, so its
+centre is 63 where every other bipolar control uses 64. Recorded as measured rather than
+normalised.
+
+**`FX BR` was not placed.** It was set to 11 and no byte took that value; `+230` moved to 19,
+which is the nearest candidate and does not match, so it is left unclaimed in
+`UNRESOLVED_SOUND_CONTROLS` rather than guessed.
+
+The selector controls were deliberately given no numbers, so their bytes are located but unnamed;
+the values written on the capture sheet will close those.
