@@ -59,7 +59,7 @@ import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } fr
 import {
   applyFieldConstants,
   applyFieldCopies,
-  FX_SCALED_FIELD,
+  FX_COMPRESSOR_VOLUME,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
   MIDI_TRACK_CONSTANTS,
@@ -588,6 +588,10 @@ function writeKit(
 /**
  * The one FX field the importer rescales rather than copies.
  *
+ * Writes both bytes of the destination: the compressor volume and the fine byte beside it.
+ * They are separate fields — see `FX_COMPRESSOR_VOLUME` — so they are written as two bytes
+ * rather than one wide integer, even though the pair happens to be adjacent.
+ *
  * An unknown source value leaves the destination as the template had it and reports it,
  * because a plausible interpolation into a field whose meaning is unknown is exactly the kind
  * of guess that ends up on hardware.
@@ -600,21 +604,23 @@ function writeScaledFxField(
   patternIndex: number,
   report: ConversionReport,
 ): void {
-  const source = dn1Image[dn1FxBase + FX_SCALED_FIELD.from]!;
-  const scaled = FX_SCALED_FIELD.table.get(source);
+  const source = dn1Image[dn1FxBase + FX_COMPRESSOR_VOLUME.from]!;
+  const scaled = FX_COMPRESSOR_VOLUME.table.get(source);
 
   if (scaled === undefined) {
     report.warnings.push({
       kind: "parameter",
       pattern: patternIndex,
       message:
-        `kit FX +0x${FX_SCALED_FIELD.from.toString(16)} = ${source} is outside the known ` +
+        `kit FX +0x${FX_COMPRESSOR_VOLUME.from.toString(16)} = ${source} is outside the known ` +
         "rescaling table, so the destination keeps the template's value",
     });
     return;
   }
 
-  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(kitBase + FX_SCALED_FIELD.to, scaled, false);
+  const [coarse, fine] = scaled;
+  out[kitBase + FX_COMPRESSOR_VOLUME.coarseAt] = coarse;
+  out[kitBase + FX_COMPRESSOR_VOLUME.fineAt] = fine;
 }
 
 /**

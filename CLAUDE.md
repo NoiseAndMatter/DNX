@@ -11,6 +11,22 @@ differential analysis.
 
 Not related to any ECheck / ArchiSharp / C# work — those conventions do not apply here.
 
+## How work gets delivered
+
+**One branch per task, cut from `main`.** Never commit to `main` directly.
+
+**Never push `main`, and never merge a branch into `main`.** The repository owner is the only
+integrator. Merging locally and pushing skips their review and moves the shared branch under
+them.
+
+**Finish a task by opening an MR from its branch** — push the branch, raise the MR, and say
+what it contains and what evidence backs it. The owner reviews and merges. If pushing is not
+possible from the current environment (the agent shell has no SSH key for `origin`), say so
+plainly and hand over the branch name rather than merging it as a workaround.
+
+**Update the docs in the same branch as the change.** `docs/ROADMAP.md` and
+`docs/KNOWN-ISSUES.md` are part of the deliverable, not a follow-up.
+
 ## Ground rules
 
 **Never commit Digitone project, pattern or sound files.** The test corpus is the author's
