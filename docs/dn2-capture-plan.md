@@ -218,6 +218,20 @@ It does not hold. The same corpus locks ids 30 to 41, and those NRPN numbers bel
 the DN1 has no audio inputs. The resemblance in the 70s and 90s is a coincidence of two
 schemes that both allocate eight consecutive numbers per page.
 
+## 5a. The chord library — the one the corpus can never answer
+
+**Target:** wherever the Digitone II keeps its chord library. The DN1 has no such feature, so Elektron's
+importer never writes those bytes and no comparison of converted projects will ever reveal them. That
+makes it structurally different from every other gap here, and the most valuable for a future manager.
+
+Set up a distinctive chord and record exactly what was done — slot, chord, notes. If chords can be
+assigned per track, use a different one on two tracks: a per-track structure announces itself in a diff.
+
+**The arpeggiator needs no capture.** Both devices have one and its settings live inside the preset
+("part of the Sound and saved together", per the DN1 manual). Since `002 MORNING_JAM` uses arpeggios
+heavily, is one of the matched pairs, and converts byte for byte, those fields are demonstrably already
+mapped — see `docs/sound-mapping.md` §8a for the audit across all 29,509 corpus sounds.
+
 ## 6. Sound parameters — the long game
 
 **Target:** the parameter map inside the 359-byte DN2 sound object, and with it the

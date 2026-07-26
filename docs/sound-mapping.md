@@ -228,6 +228,20 @@ and no matched pair exercises it:
 | dn2[229] <- dn1[173] | `dn1[173]` takes 0 or 32 across the 53 projects; 115 of 1,102 sounds (10.4%) are affected. If the u16-pair rule is wrong here, those sounds get a wrong DN2 byte instead of a lost one. |
 | dn2[270] <- dn1[208] | `dn1[208]` takes 0 or 56; a handful of sounds affected. |
 
+## 8a. Audited against the whole corpus, 2026-07-26
+
+Scanning all **29,509 named sounds** in the 53-project corpus — every kit slot and every pool slot —
+exactly **two** DN1 bytes vary without feeding any DN2 offset: `dn1[284]` taking {0, 2} and `dn1[286]`
+taking {0, 1}, the two already listed below. Every other byte that varies anywhere in the corpus has a
+destination.
+
+That closes a question worth asking: the **arpeggiator settings live inside the sound**, on both devices
+— the DN1 manual says "arpeggiator settings are part of the Sound and saved together", and the DN2 the
+same. So they could in principle have been classified as constants and dropped. They were not:
+`002 MORNING_JAM` uses arpeggios heavily and is one of the matched pairs, and its sounds reproduce
+Elektron's conversion byte for byte, so whichever bytes hold MODE, SPD, RNG, LEN and OFFSET are among the
+mapped ones already.
+
 ## 9. UNEXPLAINED
 
 **UNEXPLAINED** Two DN1 bytes carry data that no DN2 offset is known to receive, and the
