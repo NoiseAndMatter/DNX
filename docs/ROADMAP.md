@@ -146,16 +146,21 @@ minutes, and `npm run diff` now names every offset in a pattern payload, so a cl
 reads as a sentence. Blocked only on the Digitone manuals, which are needed to enumerate the
 parameters of each page.
 
-### 3b. Web UI and kit builder — PLANNED, queued for discussion
+### 3b. Web UI — a project manager — PLANNED, queued for discussion
 
 The plan is written: [ui-plan.md](ui-plan.md). **Queued by the user for after the format work
 finishes**, to be discussed and refined rather than built from the document as it stands.
 
-The short version. A clean, minimal, genuinely dual-theme UI, taking the eight-knob page and the
-track strip from Overbridge while leaving behind its dark-only density. Static and offline, with
-the user's projects never leaving the machine.
+The short version. **A project manager in the spirit of elk-herd, with extra tools for the DN2's
+new data structures** — copy and move patterns, sounds and kits between projects and slots, to
+assemble performance sets, and eventually a song editor. Clean, minimal, genuinely dual-theme,
+taking the eight-knob page and the track strip from Overbridge while leaving behind its
+dark-only density. Static and offline, with the user's projects never leaving the machine.
 
-The new feature is a **kit builder**: filter and search the sound list, then assign sounds to
+Everything the manager does is a *reorganisation* of what we already decode, which is why it is
+unblocked while an editor is not.
+
+One utility inside it is a **kit builder**: filter and search the sound list, then assign sounds to
 the sixteen slots of a kit. It is a good first target because it needs **no format knowledge we
 lack** — a sound is a self-contained 359-byte object, so assigning one is a copy rather than an
 edit — while exercising the searchable list, the slot grid and the write path that everything

@@ -1,8 +1,21 @@
-# Web UI and kit builder — plan
+# Web UI — plan
 
 **Status: queued for discussion.** Nothing here is committed to. It exists so the conversation
 starts from something concrete rather than a blank page, and so the format work that has to
 land first is visible.
+
+## What this is
+
+**A project manager for the Digitone, in the spirit of elk-herd, with extra tools for the DN2's
+new data structures.** The core job is moving things around: copy and move patterns, sounds and
+kits between projects and slots, to assemble performance sets — and eventually a song editor.
+
+The kit builder is a **utility inside that**, not the product. It is described in detail below
+because it is the first buildable piece, not because it is the centre of gravity.
+
+Everything the manager does is a *reorganisation* of things we already decode. That is why it is
+unblocked while an editor is not: moving a sound is a copy, editing one needs semantics we do
+not have.
 
 ## What has to finish first
 
@@ -11,7 +24,8 @@ knowledge; **editing parameter values does**.
 
 | Needed for | What is missing |
 |---|---|
-| Browsing, organising, **the kit builder** | nothing — this is buildable today |
+| **The manager** — copy/move patterns, sounds, kits | nothing — buildable today |
+| The kit builder | nothing — buildable today |
 | Showing what a p-lock does | machine-page ids (32..76), in capture now |
 | **Editing** a sound's parameters | the sound object's *semantics* — see below |
 | Sending to the device | WebMIDI / Elektron Transfer, not started |
@@ -66,6 +80,9 @@ hardware editor with the *restraint* of a document.
 
 ## Screens
 
+0. **Manager** — the primary surface. Two or more projects open side by side; drag patterns,
+   sounds and kits between them and between slots. Every move resolves its dependencies or
+   refuses and says why, which `src/librarian/copy.ts` already does for patterns.
 1. **Open** — drop a `.dnprj` or `.dn2prj`. Everything else follows from a loaded project.
 2. **Project** — the 8×16 pattern grid, live patterns marked, name, tempo, pool occupancy.
 3. **Pattern** — 16 tracks × steps. Trigs, conditions, probability, micro timing, sound locks,
@@ -131,11 +148,36 @@ standalone kit file format is unknown and not currently on the roadmap. Until th
 writes kits into patterns of a project file, which is a real limitation to state up front rather
 than discover.
 
+## What a kit actually is — partly answered, worth finishing together
+
+Kits carry **their own names**, independent of the pattern's. The device writes `KIT 1`,
+`KIT 2`, `KIT 3`; the importer leaves them empty. That alone says a kit is a first-class object
+rather than an anonymous block inside a pattern.
+
+But the name is **provenance, not identity**. In `DATA_CAPTURE.dn2prj` the name `KIT 1` appears
+on patterns A1, A4, A5 and A6 — and A4 and A5 have different compressor settings from A1. Four
+patterns, one kit name, three different contents.
+
+The reading that fits: a kit is a separate saveable object on the +Drive; loading one **copies**
+it into the pattern and records its name; editing the pattern's copy diverges from the saved
+original without renaming it or writing back.
+
+**Consequences for the manager, if that reading holds.** Showing "KIT 1" on four patterns must
+not imply they are the same — the UI has to be able to say *these have diverged*, and diffing
+two kit records is something we can already do. "Save this kit" and "load that kit" are
+different operations from "copy this pattern's kit", and only the last is possible today.
+
+**Still to establish, and it needs the device:** where standalone kits live. They are not in the
+project file as far as we can tell, so they are presumably separate files on the +Drive, in a
+format we have never seen. Worth a look at what a `.dn2kit`-shaped export looks like, if the
+device can produce one.
+
 ## Open questions for the refinement pass
 
 1. **Scope of a "kit"** — sixteen sounds only, or also the FX, mixer and compressor state that
    the DN2 stores in the same kit? The bytes are all mapped now, so either is possible. The
-   second is more faithful to what the device calls a kit.
+   evidence above points at the second: the device's own `KIT 1` copies differ from each other
+   precisely in their compressor settings, which means it considers those part of the kit.
 2. **Library across projects** — is the sound list one project at a time, or a library built
    from several? The latter needs persistence, which means the user's sounds sitting in browser
    storage. That is a privacy decision, not a technical one.

@@ -130,14 +130,15 @@ export const NOT_LOCKABLE: readonly { page: string; name: string }[] = [
  * and 78..81, and their ids are **machine-relative** — see `machineplock.ts`. What remains:
  *
  *   32        never observed on any page or machine
- *   57..65    inside the SYN range but unused by FM TONE or WAVETONE; presumably FM DRUM
- *             and SWARMER, which have not been captured
+ *   63..65    inside the SYN range but claimed by no captured machine
  *   86        between FLTR 2's RSET (85) and the AMP envelope (87)
  *
- * Nine of these twelve are expected to fall to the two uncaptured SYN machines. 32 and 86 are
- * the genuinely odd ones.
+ * Down from twelve: FM DRUM's capture claimed 42 and 57..62, exactly filling holes FM TONE left.
+ * That is what the SYN id space looks like — a shared pool each machine draws from densely, where
+ * one machine's gap is another's control. 63..65 may belong to a machine variant not captured, or
+ * to nothing.
  */
-export const UNMAPPED_IDS: readonly number[] = [32, 57, 58, 59, 60, 61, 62, 63, 64, 65, 86];
+export const UNMAPPED_IDS: readonly number[] = [32, 63, 64, 65, 86];
 
 const BY_ID = new Map(PLOCK_PARAMETERS.map((p) => [p.id, p]));
 
