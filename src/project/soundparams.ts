@@ -175,6 +175,10 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
   { offset: 212, page: "FX", name: "CHR", encoding: "unipolar" },
   { offset: 214, page: "FX", name: "DEL", encoding: "unipolar" },
   { offset: 216, page: "FX", name: "REV", encoding: "unipolar" },
+  // BR is placed by a maximum reading: set to max it stored 127 at +230. An earlier track set it
+  // to 11 and this byte read 19, which no scaling explains -- 127 rules out a multiplier. The
+  // offset is measured; the 11 -> 19 mismatch is unexplained and recorded rather than smoothed.
+  { offset: 230, page: "FX", name: "BR", encoding: "unipolar" },
   { offset: 232, page: "FX", name: "SRR", encoding: "unipolar" },
   { offset: 236, page: "FX", name: "OVER", encoding: "unipolar" },
 ];
@@ -182,12 +186,12 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
 /**
  * Controls that were set during the capture but whose byte was not identified.
  *
- * `FX BR` was set to 11 and no byte took that value; `+230` moved to 19, which is the nearest
- * candidate but does not match, so it is left unclaimed rather than guessed. The selector
- * controls were deliberately not given numbers, so their bytes are located but unnamed — see the
- * capture notes in `docs/dn2-capture-plan.md`.
+ * **Empty.** `FX BR` was the last one and a maximum reading placed it at +230.
+ *
+ * Kept as an export so the next capture has somewhere to record a control it cannot place,
+ * rather than leaving it absent and indistinguishable from one nobody tried.
  */
-export const UNRESOLVED_SOUND_CONTROLS: readonly string[] = ["FX BR"];
+export const UNRESOLVED_SOUND_CONTROLS: readonly string[] = [];
 
 const BY_OFFSET = new Map(SOUND_PARAMETERS.map((p) => [p.offset, p]));
 

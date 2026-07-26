@@ -70,10 +70,18 @@ test("bipolar controls decode as value + 64", () => {
   assert.equal(decodeSoundValue(pan, 104), 40);
 });
 
-test("what the capture failed to place is recorded, not guessed", () => {
-  assert.deepEqual([...UNRESOLVED_SOUND_CONTROLS], ["FX BR"]);
-  // Nothing claims to be FX BR.
-  assert.ok(!SOUND_PARAMETERS.some((p) => p.page === "FX" && p.name === "BR"));
+test("every control the capture set has now been placed", () => {
+  assert.deepEqual([...UNRESOLVED_SOUND_CONTROLS], []);
+  // BR was the last, placed by a maximum reading rather than by the value the sheet asked for.
+  assert.equal(soundParameterAt(230)?.name, "BR");
+});
+
+test("HARM decodes across three measured points", () => {
+  const harm = soundParameterAt(102)!;
+  // 0 -> 63 (untouched baseline), +23 -> 86, +26 -> 89 at maximum. Slope 1 throughout.
+  assert.equal(decodeSoundValue(harm, 63), 0);
+  assert.equal(decodeSoundValue(harm, 86), 23);
+  assert.equal(decodeSoundValue(harm, 89), 26);
 });
 
 test("the per-sound FX sends are separate from the kit FX block", () => {
