@@ -504,3 +504,31 @@ knob position depending on `MODE`. So a sheet cannot print a reliable knob lette
 
 For those two, capture **by name** and record which knob each turned out to occupy. Everywhere
 else, position is the safer identifier; here it is the thing under test.
+
+### The AMP page is a substitution, not a shift — and it sharpens the slot test
+
+Read off the device, 2026-07-26:
+
+| | A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|---|
+| **ADSR** | ATK | DEC | SUS | REL | RSET | MODE | PAN | VOL |
+| **AHD** | ATK | **HOLD** | DEC | *blank* | RSET | MODE | PAN | VOL |
+
+`E`-`H` hold still in both modes. The envelope block loses `SUS` and `REL` and gains `HOLD`, so
+nine documented names occupy eight knobs by substitution rather than by shifting.
+
+**This makes the slot-versus-parameter test unambiguous.** `HOLD` sits at knob B in AHD, and knob
+B in ADSR is `DEC`, id **89**:
+
+- lock table addresses a **knob slot** -> `HOLD` returns **89**
+- lock table addresses a **named parameter** -> `HOLD` returns its own id, predicted **88**
+
+Adjacent ids, so there is no room to misread the result. An earlier framing of this test compared
+`HOLD` against `SUS`; that was wrong, and it was wrong because it assumed a knob position rather
+than reading one.
+
+**Id order does not follow knob order.** On this page the knobs run RSET, MODE, PAN, VOL at E-H
+while the ids run 98, 97, 95, 96. So an id cannot be inferred from a position in general. What
+survives is narrower: the envelope *stages* are contiguous and in page order — ATK 87, DEC 89,
+SUS 90, REL 91 — with 88 the only gap and `HOLD` the only stage unaccounted for. That, and only
+that, is the basis for predicting 88.
