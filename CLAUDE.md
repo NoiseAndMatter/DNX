@@ -27,6 +27,12 @@ plainly and hand over the branch name rather than merging it as a workaround.
 **Update the docs in the same branch as the change.** `docs/ROADMAP.md` and
 `docs/KNOWN-ISSUES.md` are part of the deliverable, not a follow-up.
 
+**At 90% of the 5-hour rollover, stop and hand over.** The status line carries the figure. On
+reaching it: bring the current task to a safe stopping point, stop any subagents, commit what
+exists, write down where things stand and what comes next, and tell the user. Continuing past
+90% is **their call, not yours** — ask, do not assume. Stopping mid-edit with uncommitted work
+is the failure this exists to prevent.
+
 ## Ground rules
 
 **Never commit Digitone project, pattern or sound files.** The test corpus is the author's
@@ -36,6 +42,13 @@ specifically to document the tool are the only exception, and need a deliberate 
 
 **Tests find the corpus at run time** via `DN_CORPUS` or a sibling `dn_sysex/00_Examples/`.
 Without one, corpus-dependent tests skip and 26 still pass. That is correct behaviour.
+
+**"Kit" is a DN2 concept.** The DN2 has kits as first-class objects — named, saved to the
++Drive, loadable into any pattern. The DN1 has no such thing. Its equivalent 2,560-byte
+per-pattern block holds the same *kind* of data (sounds, FX, MIDI configuration), and this
+codebase calls it `DN1_KIT` / `readKit` by analogy so the two sides read alike. That is our
+name, not Elektron's. Say "the DN1's per-pattern sound and FX block" in prose aimed at a user,
+and never imply the DN1 can save or load one.
 
 **Mark every format claim** verified / inferred / speculative / unknown, with the evidence.
 These bytes get written to hardware; an honest "unknown" is worth more than a confident

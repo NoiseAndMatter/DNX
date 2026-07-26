@@ -10,7 +10,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { FX_COMPRESSOR_VOLUME, KIT_FX_MAP } from "../src/expand/fieldmap.js";
+import {
+  FX_COMPRESSOR_VOLUME,
+  KIT_FX_CONSTANTS,
+  KIT_FX_MAP,
+  UNEXPLAINED_INPUT_BYTES,
+} from "../src/expand/fieldmap.js";
 import { KIT_FX_PARAMETERS, kitFxAt } from "../src/project/kitfx.js";
 
 /** `min(floor(dn1 x 25600 / 127), 25599)` — a 0-127 source on a 0-100 scale in 1/256 steps. */
@@ -61,15 +66,19 @@ test("every copy landing in the FX block hits a byte a capture named", () => {
  * a byte a non-default template can leak through, so the set is pinned. Closing one should be
  * a deliberate act, and the rest stay visible.
  */
-test("the FX parameters the converter does not transfer are the known set", () => {
-  const copied = new Set<number>(KIT_FX_MAP.map((c) => c.to));
-  copied.add(FX_COMPRESSOR_VOLUME.coarseAt);
-  const missed = KIT_FX_PARAMETERS.filter((p) => !copied.has(p.offset)).map(
+test("the FX parameters the converter does not write are the known set", () => {
+  const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
+  for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  written.add(FX_COMPRESSOR_VOLUME.coarseAt);
+  const missed = KIT_FX_PARAMETERS.filter((p) => !written.has(p.offset)).map(
     (p) => `${p.page} ${p.name}`,
   );
 
+  // The compressor page has no DN1 source — the DN1 has no compressor — so there is nothing
+  // to transfer and nothing constant to write; it stays inherited from the template.
+  // The two input bytes are documented in UNEXPLAINED_INPUT_BYTES: no DN1 byte explains them
+  // and a majority-vote constant would be wrong 17% of the time, so they are left alone.
   assert.deepEqual(missed.sort(), [
-    "chorus HPF",
     "compressor ATK",
     "compressor DRY/CMP",
     "compressor MUP",
@@ -81,8 +90,16 @@ test("the FX parameters the converter does not transfer are the known set", () =
     "input DUAL",
     "input IN L level",
     "input IN R level",
-    "input IN R reverb send",
   ]);
+});
+
+test("the unexplained input bytes are exactly the ones left unwritten", () => {
+  const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
+  for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  for (const offset of UNEXPLAINED_INPUT_BYTES) {
+    assert.ok(!written.has(offset), `${offset} is documented as unexplained but is being written`);
+    assert.ok(kitFxAt(offset), `${offset} should be a named parameter`);
+  }
 });
 
 test("the FX block is a stride-2 array of coarse/fine slots", () => {
