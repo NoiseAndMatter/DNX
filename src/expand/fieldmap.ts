@@ -140,25 +140,59 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
  * - **`0x3A` -> 5862 (`IN L balance`) and `0x4C` -> 5880 (`master overdrive`): rejected.**
  *   `0x3A` maps 0 and 100 alike onto a centred 64; `0x4C` maps its two values onto more than a
  *   dozen different destinations. Noise, not merely unproven.
- * - **`0x36` -> 5858 (`IN L level`): strong, and still rejected.** It is an exact identity on
- *   1,024 of 1,152 kit pairs — 0->0, 6->6, 94->94, 100->100, 102->102, across eight projects.
- *   All 128 kits of `053 TECNO_EXP` contradict it: source 0, destination 100. Both sides are
- *   kit record version 10, so a format-version difference does not explain it, and the same
- *   source byte demonstrably produces two different results. A correspondence that fails for a
- *   whole project is not unanimous, and unanimous-or-nothing is what makes this table
- *   trustworthy. Recorded here rather than acted on.
+ * `0x36` was here too, and is now placed — see `INPUT_LEFT_LEVEL`. It needed a project-level
+ * flag as well as a per-kit byte, which is why every single-byte search failed on it.
  */
-export const UNPLACED_FX_BYTES: readonly number[] = [0x36, 0x3a, 0x4c];
+export const UNPLACED_FX_BYTES: readonly number[] = [0x3a, 0x4c];
+
+/**
+ * The input's left level: a per-kit byte **gated by a project-level flag**.
+ *
+ *     kit+5858 = (DN1 tail mixer+0x0E == 0) ? 100 : DN1 FX+0x36
+ *
+ * VERIFIED on 1,152 of 1,152 kit pairs, with no exceptions.
+ *
+ * This is the first field in the project that is not a function of one source byte, and it is
+ * worth understanding why it hid for so long. `FX+0x36` alone is an exact identity on 1,024
+ * pairs and fails on all 128 kits of `053 TECNO_EXP`, where the same source byte 0 produces
+ * destination 100. An exhaustive search of all 2,560 bytes of the DN1's per-pattern block found
+ * no consistent source, because there is none: the answer was never in that block.
+ *
+ * The DN1 has no kits — that is a DN2 feature — so nothing required its external-input settings
+ * to be per-pattern, and in fact they are not entirely. `tail mixer+0x0E` reads 1 in eight
+ * projects and 0 in `TECNO_EXP`, the one project whose output takes the alternate state
+ * everywhere. Its meaning on the DN1 is UNKNOWN; only its effect on the conversion is measured.
+ *
+ * **The `flag == 0` branch rests on a single project.** Unanimous over 1,152 kits, but those
+ * 128 alternate-state kits all come from one file. A second DN1 project with the flag clear
+ * would settle it.
+ */
+export const INPUT_LEFT_LEVEL = {
+  /** Within the DN1's per-pattern FX block. */
+  from: 0x36,
+  /** Within the DN1 tail's mixer block. */
+  flagAt: 0x0e,
+  /** Destination, relative to the DN2 kit record. */
+  to: 5_858,
+  /** What the importer writes for every kit when the flag is clear. */
+  whenFlagClear: 100,
+} as const;
 
 /**
  * DN2 input-page bytes that vary in Elektron's output and that no DN1 byte explains.
  *
  * Searched exhaustively: every one of the 2,560 bytes of the DN1's per-pattern block, against
- * all 1,152 kit pairs. Not one is a consistent source for any of them.
+ * all 1,152 kit pairs. Not one is a consistent source for either.
  *
- *   kit+5858  IN L level   5 values; `FX+0x36` is an identity on 8 of 9 projects, see above
  *   kit+5860  IN R level   0 in 960 kits, 100 in 192
  *   kit+5878  DUAL         1 in 961 kits, 0 in 191
+ *
+ * Both nearly track `5858`, and neither is a function of it. `5858 = 100` gives `5860 = 100`
+ * except once, where `5858 = 6` also gives `5860 = 100`; `DUAL` disagrees with the majority
+ * reading in 66 kits spread across projects. So they are a related state, not a derived one.
+ *
+ * `INPUT_LEFT_LEVEL` above shows the shape of the answer — a per-kit byte gated by a
+ * project-level tail flag — and the same shape is the obvious thing to try here next.
  *
  * **Deliberately not written.** A majority-vote constant would be right about 83% of the time
  * and wrong the rest, and `DUAL` changes how the device treats the external input — guessing it
@@ -171,7 +205,7 @@ export const UNPLACED_FX_BYTES: readonly number[] = [0x36, 0x3a, 0x4c];
  * per-pattern block is our own analogy — so nothing says the external input has to be
  * per-pattern on that device. **The DN1 tail is where to look next**, not the kit.
  */
-export const UNEXPLAINED_INPUT_BYTES: readonly number[] = [5_858, 5_860, 5_878];
+export const UNEXPLAINED_INPUT_BYTES: readonly number[] = [5_860, 5_878];
 
 /**
  * A DN1 FX byte the importer rescales onto the DN2's compressor volume.
@@ -333,6 +367,27 @@ export const KIT_FX_CONSTANTS: readonly FieldConstant[] = [
   { at: 5856, value: 1 }, // unidentified, but unanimous
   { at: 5857, value: 0 },
   { at: 5876, value: 0 }, // input right reverb send
+  // The compressor page. **The DN1 has no compressor** — it is a DN2 feature — so there is
+  // nothing to transfer, and every one of these is constant across all 1,152 converted kits,
+  // agreeing with both `EMPTY.dn2prj` and the device's own defaults. Writing them reproduces
+  // Elektron rather than inheriting whatever compressor a non-blank template happened to have.
+  // `VOL` at 5898 is the exception and is handled by `FX_COMPRESSOR_VOLUME`.
+  { at: 5882, value: 32 }, // THR
+  { at: 5883, value: 0 },
+  { at: 5884, value: 24 }, // ATK
+  { at: 5885, value: 0 },
+  { at: 5886, value: 32 }, // REL
+  { at: 5887, value: 0 },
+  { at: 5888, value: 64 }, // MUP
+  { at: 5889, value: 0 },
+  { at: 5890, value: 3 }, // RAT
+  { at: 5891, value: 0 },
+  { at: 5892, value: 0 }, // SCS
+  { at: 5893, value: 0 },
+  { at: 5894, value: 80 }, // SCF
+  { at: 5895, value: 0 },
+  { at: 5896, value: 0 }, // DRY/CMP
+  { at: 5897, value: 0 },
 ];
 
 /** Write a set of fixed values into a block. */

@@ -158,18 +158,37 @@ their `5804 +` destinations once the input-page capture gave those offsets meani
 
 - **`0x3A` → `IN L balance` and `0x4C` → `master overdrive`: rejected.** `0x3A` maps 0 and 100
   alike onto a centred 64; `0x4C` maps its two values onto more than a dozen destinations.
-- **`0x36` → `IN L level`: strong, and still rejected.** An exact identity on 1,024 of 1,152 kit
-  pairs across eight projects — 0→0, 6→6, 94→94, 100→100, 102→102. All 128 kits of
-  `053 TECNO_EXP` contradict it (source 0, destination 100), and both sides are kit record
-  version 10, so a format-version difference does not explain it. **Adding it was tried and
-  reverted**: it made TECNO_EXP differ from Elektron by 128 bytes. Unanimous-or-nothing is what
-  makes the table trustworthy.
+- **`0x36` → `IN L level`: SOLVED**, and it needed two sources rather than one.
 
-**Where to look next.** The failures are lumpy, not scattered: one project contradicts `5858`
-across all 128 of its kits, and the minorities at `5860` (192 kits) and `5878` (191) have the
-same shape. That is what a **project-level** source looks like reflected into a per-pattern
-field — and the DN1 has no kits at all, so nothing requires its external-input settings to be
-per-pattern. Search the DN1 tail, not the per-pattern block.
+**`kit+5858` — the first field that is not a function of one byte.**
+
+```
+kit+5858 = (DN1 tail mixer+0x0E == 0) ? 100 : DN1 FX+0x36
+```
+
+VERIFIED on **1,152 of 1,152** kit pairs. `FX+0x36` alone is an exact identity on 1,024 of them
+and fails on all 128 kits of `053 TECNO_EXP`, where source 0 yields destination 100; both sides
+are kit record version 10, so a format difference does not explain it. An exhaustive search of
+all 2,560 bytes of the DN1's per-pattern block found no consistent source, because there is
+none — the answer was never in that block.
+
+**The DN1 has no kits.** That is a DN2 feature, and `DN1_KIT` in this codebase is our own
+analogy. So nothing required the DN1's external-input settings to be per-pattern, and they are
+not entirely: `tail mixer+0x0E` reads 1 in eight projects and 0 in `TECNO_EXP`, the one project
+whose output takes the alternate state throughout. What the flag means *on the DN1* is UNKNOWN;
+only its effect on the conversion is measured. The `flag == 0` branch rests on that single
+project, so a second DN1 project with the flag clear would settle it.
+
+**The compressor page: nothing to transfer, but something to write.** The DN1 has no
+compressor — it is a DN2 feature — so no correspondence exists to find. All eight parameters
+and their fine bytes are constant across every one of the 1,152 converted kits, and agree with
+both `EMPTY.dn2prj` and the device's own defaults. They are now written as constants, so a
+template carrying its own compressor settings cannot leak them into a conversion. `VOL` is the
+one exception and comes from `FX+0x34` through `FX_COMPRESSOR_VOLUME`.
+
+**Where to look next.** `5860` and `5878` have the same lumpy shape — 192- and 191-kit
+minorities — and both nearly track `5858` without being a function of it. The same two-source
+shape is the obvious thing to try, and the tail is where the project half lives.
 
 **Thirteen named FX parameters have no copy at all**, pinned by `test/fieldmap.test.ts`:
 the whole compressor page except `VOL` (THR, ATK, REL, MUP, RAT, SCS, SCF, DRY/CMP),
