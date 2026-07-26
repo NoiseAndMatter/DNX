@@ -23,7 +23,16 @@ rather than by 75 passing tests:
 - **Track levels.** Every track arrived at the template's default of 100, so a converted
   project lost its mix entirely.
 
-A third, subtler variant caused a fix to only half-work: several DN1 bytes were logged as
+A third instance was found on 2026-07-26, the moment the machine selector was located:
+
+- **The MIDI machine.** DN2 sound slots 4-7 carry machine 4 (MIDI) in every one of Elektron's
+  conversions — 3,072 samples, no exceptions — because that is where the DN1's four MIDI tracks
+  land. We wrote nothing there, so with a neutral template a converted project's MIDI tracks
+  arrived carrying an FM TONE machine. It passed every byte-diff test because that test uses
+  Elektron's own output as the template, which already had the right value. Fixed, with a test
+  that converts from `EMPTY.dn2prj` specifically.
+
+A subtler variant caused a fix to only half-work: several DN1 bytes were logged as
 *"constant across the corpus, nothing to transfer"*. That reasoning is wrong — **nothing to
 transfer is not the same as nothing to write**, because the template's value is not
 necessarily the importer's.

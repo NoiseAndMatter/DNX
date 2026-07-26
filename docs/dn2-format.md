@@ -218,8 +218,34 @@ kit contents track pattern contents across the whole matched-pair corpus (§6).
 +0x08  4 bytes                unidentified
 +0x0C  16 bytes               sound name, NUL-padded
 +0x1C  ...                    u16le parameter array
++0xF4  u8                     machine selector      (244 decimal, see below)
 +0x163 BA CE F0 0C            object terminator (last 4 bytes)
 ```
+
+#### Machine selector at +244 **[verified]**
+
+| Value | Machine |
+|---|---|
+| 0 | FM TONE |
+| 1 | WAVETONE |
+| 2 | FM DRUM |
+| 3 | SWARMER |
+| 4 | MIDI |
+
+Found by diffing pattern A6 of the device-authored capture — three tracks switched to
+different machines — against a pattern where every track is FM TONE. Switching a machine
+rewrites a couple of dozen bytes (the new machine's parameter defaults), but only **seven**
+offsets move for all three machines at once, and only `+244` is a small enum taking a distinct
+value per machine. The others are the name field and per-machine parameter defaults.
+
+Confirmed independently on the matched corpus: across 12,288 sound slots of Elektron's own
+conversions the byte takes exactly two values — 0 on 9,216 and 4 on 3,072, the latter being
+precisely slots 4-7 of every kit, which is where the DN1's four MIDI tracks land. The capture's
+MIDI-machine track agrees.
+
+**The numbering is not the device's menu order** (which reads FM TONE, FM DRUM, WAVETONE,
+SWARMER). Values 5 and up have not been observed and the DN2's machine list is longer than this
+capture covered, so an unrecognised value stays unnamed rather than being guessed.
 
 The name offset and the u16le parameter array are confirmed by cross-referencing a DN1
 SysEx sound dump of `THAT ORGAN SM` against the same sound inside a DN1 project image:
