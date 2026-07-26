@@ -121,7 +121,7 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
   { from: 0x45, to: 5873 },
   { from: 0x4a, to: 5880 },
   { from: 0x4b, to: 5881 },
-  // Found later, by correlating what remained against the whole DN1 kit: all three sit at
+  // Found later, by correlating what remained against the whole DN1 block: all three sit at
   // 5804 + their own FX offset, the same rule most of the block above follows.
   { from: 0x37, to: 5859 },
   { from: 0x46, to: 5874 },
@@ -131,10 +131,47 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
 /**
  * DN1 FX bytes that vary but have no consistent DN2 home. Recorded, not guessed.
  *
- * Was seven; `0x34`, `0x37`, `0x46` and `0x47` have since been placed — the first through
+ * Was seven; `0x34`, `0x37`, `0x46` and `0x47` have since been placed — `0x34` through
  * `FX_COMPRESSOR_VOLUME` below, the other three as ordinary copies in `KIT_FX_MAP`.
+ *
+ * All three remaining were re-tested on 2026-07-26 against their `5804 +` destinations, now
+ * that the input-page capture gave those offsets meaning:
+ *
+ * - **`0x3A` -> 5862 (`IN L balance`) and `0x4C` -> 5880 (`master overdrive`): rejected.**
+ *   `0x3A` maps 0 and 100 alike onto a centred 64; `0x4C` maps its two values onto more than a
+ *   dozen different destinations. Noise, not merely unproven.
+ * - **`0x36` -> 5858 (`IN L level`): strong, and still rejected.** It is an exact identity on
+ *   1,024 of 1,152 kit pairs — 0->0, 6->6, 94->94, 100->100, 102->102, across eight projects.
+ *   All 128 kits of `053 TECNO_EXP` contradict it: source 0, destination 100. Both sides are
+ *   kit record version 10, so a format-version difference does not explain it, and the same
+ *   source byte demonstrably produces two different results. A correspondence that fails for a
+ *   whole project is not unanimous, and unanimous-or-nothing is what makes this table
+ *   trustworthy. Recorded here rather than acted on.
  */
 export const UNPLACED_FX_BYTES: readonly number[] = [0x36, 0x3a, 0x4c];
+
+/**
+ * DN2 input-page bytes that vary in Elektron's output and that no DN1 byte explains.
+ *
+ * Searched exhaustively: every one of the 2,560 bytes of the DN1's per-pattern block, against
+ * all 1,152 kit pairs. Not one is a consistent source for any of them.
+ *
+ *   kit+5858  IN L level   5 values; `FX+0x36` is an identity on 8 of 9 projects, see above
+ *   kit+5860  IN R level   0 in 960 kits, 100 in 192
+ *   kit+5878  DUAL         1 in 961 kits, 0 in 191
+ *
+ * **Deliberately not written.** A majority-vote constant would be right about 83% of the time
+ * and wrong the rest, and `DUAL` changes how the device treats the external input — guessing it
+ * is the kind of plausible-looking wrong value this project refuses to send to hardware.
+ *
+ * The shape of the failures points somewhere specific. `TECNO_EXP` contradicts the `5858`
+ * correspondence uniformly, across all 128 of its kits, and the 192/191-kit minorities at
+ * `5860` and `5878` are similarly lumpy rather than scattered. That is what a **project-level**
+ * source looks like reflected into a per-pattern field. The DN1 stores no kits at all — its
+ * per-pattern block is our own analogy — so nothing says the external input has to be
+ * per-pattern on that device. **The DN1 tail is where to look next**, not the kit.
+ */
+export const UNEXPLAINED_INPUT_BYTES: readonly number[] = [5_858, 5_860, 5_878];
 
 /**
  * A DN1 FX byte the importer rescales onto the DN2's compressor volume.
@@ -287,6 +324,15 @@ export const TRACK_SETTINGS_CONSTANTS: readonly FieldConstant[] = [
 export const KIT_FX_CONSTANTS: readonly FieldConstant[] = [
   { at: 5808, value: 0 },
   { at: 5957, value: 7 },
+  // Constant in all 1,152 Elektron-converted kits, and named by the input-page capture. No DN1
+  // source is needed because there is nothing to vary — but they still have to be *written*,
+  // or a template that is not EMPTY leaks its own values through. That distinction is the
+  // whole subject of the first section of KNOWN-ISSUES.
+  { at: 5814, value: 0 }, // chorus HPF
+  { at: 5815, value: 0 }, // chorus HPF, fine byte
+  { at: 5856, value: 1 }, // unidentified, but unanimous
+  { at: 5857, value: 0 },
+  { at: 5876, value: 0 }, // input right reverb send
 ];
 
 /** Write a set of fixed values into a block. */

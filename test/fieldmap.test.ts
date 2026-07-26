@@ -10,7 +10,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { FX_COMPRESSOR_VOLUME, KIT_FX_MAP } from "../src/expand/fieldmap.js";
+import {
+  FX_COMPRESSOR_VOLUME,
+  KIT_FX_CONSTANTS,
+  KIT_FX_MAP,
+  UNEXPLAINED_INPUT_BYTES,
+} from "../src/expand/fieldmap.js";
 import { KIT_FX_PARAMETERS, kitFxAt } from "../src/project/kitfx.js";
 
 /** `min(floor(dn1 x 25600 / 127), 25599)` — a 0-127 source on a 0-100 scale in 1/256 steps. */
@@ -45,22 +50,55 @@ test("the two destination offsets are adjacent but distinct", () => {
  * The two were derived independently — the copy table by correlating 602 kit pairs, the names
  * by a capture the device wrote — so where they overlap they are a check on each other.
  */
-test("the copies into unnamed FX bytes are exactly the known gap", () => {
+test("every copy landing in the FX block hits a byte a capture named", () => {
   const unnamed = KIT_FX_MAP.filter((c) => c.to >= 5_810 && c.to <= 5_899 && !kitFxAt(c.to))
     .map((c) => c.to)
     .sort((a, b) => a - b);
+  assert.deepEqual(unnamed, [], "an FX copy with no named destination means a page is unmapped");
+});
 
-  // Every one of these sits in 5856-5881, between the reverb page (ends 5855) and the
-  // compressor page (starts 5882). The converter transfers them because the corpus says
-  // Elektron does; the capture sheet never covered whatever page they belong to. Named as a
-  // set so that widening it is a deliberate act and the gap stays visible as work to do.
-  assert.deepEqual(
-    unnamed,
-    [5_859, 5_862, 5_864, 5_866, 5_867, 5_868, 5_869, 5_870, 5_871, 5_872, 5_873, 5_874, 5_875, 5_880, 5_881],
-    "the unnamed FX destinations should be the documented 5856-5881 gap",
+/**
+ * The reverse audit, and the more useful one now: named parameters the converter never writes.
+ *
+ * A named parameter with no copy targeting it inherits the template's value, which is this
+ * project's signature bug. Whether each one is a defect depends on whether the DN1 has the
+ * parameter at all — the compressor page may simply have no source — but every one of them is
+ * a byte a non-default template can leak through, so the set is pinned. Closing one should be
+ * a deliberate act, and the rest stay visible.
+ */
+test("the FX parameters the converter does not write are the known set", () => {
+  const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
+  for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  written.add(FX_COMPRESSOR_VOLUME.coarseAt);
+  const missed = KIT_FX_PARAMETERS.filter((p) => !written.has(p.offset)).map(
+    (p) => `${p.page} ${p.name}`,
   );
-  for (const offset of unnamed) {
-    assert.ok(offset >= 5_856 && offset <= 5_881, `${offset} is outside the documented gap`);
+
+  // The compressor page has no DN1 source — the DN1 has no compressor — so there is nothing
+  // to transfer and nothing constant to write; it stays inherited from the template.
+  // The two input bytes are documented in UNEXPLAINED_INPUT_BYTES: no DN1 byte explains them
+  // and a majority-vote constant would be wrong 17% of the time, so they are left alone.
+  assert.deepEqual(missed.sort(), [
+    "compressor ATK",
+    "compressor DRY/CMP",
+    "compressor MUP",
+    "compressor RAT",
+    "compressor REL",
+    "compressor SCF",
+    "compressor SCS",
+    "compressor THR",
+    "input DUAL",
+    "input IN L level",
+    "input IN R level",
+  ]);
+});
+
+test("the unexplained input bytes are exactly the ones left unwritten", () => {
+  const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
+  for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  for (const offset of UNEXPLAINED_INPUT_BYTES) {
+    assert.ok(!written.has(offset), `${offset} is documented as unexplained but is being written`);
+    assert.ok(kitFxAt(offset), `${offset} should be a named parameter`);
   }
 });
 

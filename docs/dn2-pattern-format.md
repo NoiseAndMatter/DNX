@@ -475,6 +475,7 @@ are single bytes at a stride of 2 from `kit+5810`, in page order:
 | Offsets | Page | Parameters, in order |
 |---|---|---|
 | 5810-5822 | Chorus | DPTH, SPD, HPF, WDTH, DEL, REV, VOL |
+| 5858-5880 | Input | see the external input page below |
 | 5824-5838 | Delay | TIME, **ping-pong at 5826**, **WID at 5828**, FDBK, HPF, LPF, REV, VOL |
 | 5842-5854 | Reverb | PRE, DEC, FREQ, GAIN, HPF, LPF, VOL |
 | 5882-5898 | Compressor | THR, ATK, REL, MUP, RAT, **SCS at 5892**, **SCF at 5894**, DRY/CMP, VOL |
@@ -524,12 +525,65 @@ list plus a single reading.
 The table above is machine-readable in `src/project/kitfx.ts`, which the differential analyser
 uses to name FX bytes instead of reporting them as "kit gap 5804-5963, unidentified".
 
-**`5856-5881` is a page the capture missed.** Auditing the converter's copy table against these
-names shows 15 destinations in that range with no parameter attached: 5859, 5862, 5864,
-5866-5875, 5880, 5881. The converter writes them because the matched pairs say Elektron does,
-and the DN1 sources are `FX+0x37, 0x38, 0x3C, 0x3E-0x47, 0x4A, 0x4B` — a contiguous run, so this
-is one page rather than scattered bytes. `test/fieldmap.test.ts` pins the set. **Next capture:
-sweep whichever FX page the sheet skipped and this closes.**
+### The external input page — mapped by a second capture, 2026-07-26
+
+`5856-5881` was a page the first sheet missed entirely. `DATA_CAPTURE_MI.dn2prj` pattern A7 set
+fifteen parameters to fifteen distinct values in one save; all fifteen bytes moved, none
+collided, and the page fell out complete. It sits **between** the reverb and compressor pages,
+so UI page order is not offset order.
+
+| Offsets | Parameter |
+|---|---|
+| 5858 / 5860 | IN level, L / R |
+| 5862 / 5864 | IN balance, L / R — bipolar, offset by 64 |
+| 5866 / 5868 | IN chorus send, L / R |
+| 5870 / 5872 | IN delay send, L / R |
+| 5874 / 5876 | IN reverb send, L / R |
+| 5878 | DUAL — 0 stereo, 1 dual mono |
+| 5880 | master overdrive — **INFERRED**, see below |
+
+**The layout is L/R pairs**, adjacent, parameter by parameter. Setting the device to DUAL splits
+the UI page into an L page and an R page with identical parameters; the bytes were already
+there either way, so DUAL is a display mode over a structure that always holds both channels.
+
+**`IN R level` and `master overdrive` were both captured at 127**, so values alone could not
+tell 5860 from 5880. The tie breaks on layout: balance and all three sends are adjacent L/R
+pairs, so level is too, which makes 5858/5860 the pair and leaves 5880 as the overdrive. The
+corpus agrees — across 2,176 kits 5880 takes 30 distinct values, 5860 only three, and a master
+overdrive is a far more used control than a line-input right-channel level. Setting the
+overdrive alone to a unique value would upgrade this to VERIFIED.
+
+**The mixer page's chorus, delay and reverb levels are the FX pages' `VOL` bytes** — setting the
+mixer level moved 5822, 5838 and 5854, which were already named. One parameter, two views.
+
+**`kit+5856` is still unplaced**, constant `1` across all 2,176 kits sampled — UNKNOWN.
+
+One hypothesis was raised and **rejected on 2026-07-26**: that it flags whether these pages are
+per-pattern or global. The DN2 has no such setting. FX, mixer and compressor values live in the
+pattern's kit unconditionally, which is precisely the structure the bytes show — one FX block
+per kit, one kit per pattern. What the device offers instead is **Perform Kit** mode, which
+makes them behave globally by *not reloading* the kit on a pattern change; that is runtime
+state and leaves nothing in the file. Recorded because ruling a reading out is worth as much
+as confirming one, and a byte that never moves invites this guess again.
+
+**`5900-5956` is zero in all 2,176 kits** — 28 slots of nothing, immediately after the
+compressor page. That is what reserved space looks like in this format, and it is a better
+candidate for "room for later features" than any gap between pages.
+
+### What the converter does not transfer
+
+Auditing the copy table against these names, every copy now lands on a named parameter, and
+thirteen named parameters have no copy at all (`test/fieldmap.test.ts` pins the set):
+
+- **The whole compressor page** except `VOL` — THR, ATK, REL, MUP, RAT, SCS, SCF, DRY/CMP.
+- **`chorus HPF`**.
+- **`IN L level`, `IN R level`, `IN R reverb send`, `DUAL`** — note the asymmetry: the left
+  reverb send transfers and the right does not, and the fine byte of `IN L level` transfers
+  while its coarse byte does not. Those two look like defects rather than absent sources.
+
+Whether each is a defect depends on whether the DN1 has the parameter at all. But every one is
+a byte a non-default template leaks through, which is the failure mode `KNOWN-ISSUES.md` opens
+with, so none should stay unexamined.
 
 ## 7. Synth vs MIDI tracks — VERIFIED, and it is not in the pattern record
 
