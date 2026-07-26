@@ -29,6 +29,7 @@ Three cases break it, and each has a cheap fix:
 | Problem | Why | Fix |
 |---|---|---|
 | **Toggles and short enums** | An on/off field can only be 0 or 1, so two of them are indistinguishable by value | Capture a **second file with the complementary pattern** — the byte that flips in both is the one that belongs to the toggle you flipped in both |
+| **Long enums** | The value next along the list stores as `1`, which dozens of other fields also hold | Choose a value **far down the list**. The compressor's sidechain source runs COMP, NOT COMP, TR1 … TR16, INLR — nineteen entries — so `TR13` or `INLR` stores a byte nothing else in the capture will |
 | **Rescaled fields** | Some values are transformed on the way in — one FX field is stored at roughly x201.57 of its UI value, so "73" never appears in the bytes | Set the parameter to its **maximum** and record what the display shows. The stored byte is then the field's top value, which collides with nothing, and displayed-max against stored-max gives the scale |
 | **Wide fields** | A `u16` holding 300 writes two bytes, one of them 0 | Prefer values **between 1 and 127** so each lands in a single byte, and reserve larger values for fields known to be wide |
 
