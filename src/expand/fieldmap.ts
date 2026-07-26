@@ -132,33 +132,46 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
  * DN1 FX bytes that vary but have no consistent DN2 home. Recorded, not guessed.
  *
  * Was seven; `0x34`, `0x37`, `0x46` and `0x47` have since been placed — the first through
- * `FX_SCALED_FIELD` below, the other three as ordinary copies in `KIT_FX_MAP`.
+ * `FX_COMPRESSOR_VOLUME` below, the other three as ordinary copies in `KIT_FX_MAP`.
  */
 export const UNPLACED_FX_BYTES: readonly number[] = [0x36, 0x3a, 0x4c];
 
 /**
- * A DN1 FX byte the importer rescales into a DN2 `u16be`.
+ * A DN1 FX byte the importer rescales onto the DN2's compressor volume.
  *
- * DN1 `FX+0x34` holds 0..127; the DN2 pair at kit+5898 holds a wide value that tracks it at
- * roughly x201.57 — 64 to 12,900, 73 to 14,714, 94 to 18,948, 100 to 20,157, 127 to 25,599.
- * The ratio is consistent to within a unit but no arithmetic rule reproduces all five
- * exactly, so this is a table, as every other rescaled field in this project has turned out
- * to be. The corpus offers exactly these five values, 1,008 of the 1,024 sampled kits sitting
- * on the default 100.
+ * The destination is **two fields, not one number** — corrected 2026-07-26 by a capture the
+ * device wrote itself. `kit+5898` is the compressor VOL, a plain 0-127 integer (default 100,
+ * read back as 119 after the user set it there), and `kit+5899` is its fine byte, worth 1/256
+ * each. The device leaves the fine byte at zero in every pattern of the capture; only
+ * Elektron's importer ever writes a non-zero one, because only the importer rescales.
+ *
+ * The earlier reading here — one `u16be` scaled by "roughly x201.57" — wrote the right bytes
+ * for the wrong reason. Every value in the table below is the byte pair Elektron produces.
+ *
+ * The rescale it performs, on all four observed inputs:
+ *
+ *     coarse.fine = min( floor(dn1 x 25600 / 127), 25599 ) / 256
+ *
+ * That is a 0-127 source mapped onto a 0-100 scale, in 1/256 steps, clamped one unit below
+ * 100.00. It reproduces 73, 94, 100 and 127 exactly, fine byte included. It is left as a
+ * **table rather than a formula** because why a 0-127 source lands on a 0-100 scale is
+ * unexplained, and the DN2 plainly accepts 119 here when a human sets it.
  *
  * A value outside the table leaves the destination alone and reports a warning, rather than
- * interpolating a plausible number into a field whose meaning is unknown.
+ * extrapolating from a rule that is not understood.
  */
-export const FX_SCALED_FIELD = {
+export const FX_COMPRESSOR_VOLUME = {
   from: 0x34,
-  /** Destination, relative to the DN2 kit record. Big-endian, unlike most of this format. */
-  to: 5898,
-  table: new Map<number, number>([
-    [64, 12_900],
-    [73, 14_714],
-    [94, 18_948],
-    [100, 20_157],
-    [127, 25_599],
+  /** Integer part, relative to the DN2 kit record. */
+  coarseAt: 5898,
+  /** Fraction in 1/256 steps. Zero in everything the device writes. */
+  fineAt: 5899,
+  table: new Map<number, readonly [coarse: number, fine: number]>([
+    [64, [50, 100]],
+    [73, [57, 122]],
+    [94, [74, 4]],
+    [100, [78, 189]],
+    [127, [99, 255]],
   ]),
 } as const;
 

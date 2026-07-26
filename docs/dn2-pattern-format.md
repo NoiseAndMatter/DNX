@@ -482,17 +482,54 @@ are single bytes at a stride of 2 from `kit+5810`, in page order:
 **Bipolar FX parameters are offset by 64**, the same as p-lock values: `WID` at -9 stored `0x37`
 (55) and at -17 stored `0x2f` (47); `SCF` at -25 stored `0x27` (39).
 
-**`kit+5898` is the pattern volume**, a plain 0-127 byte — 119 stored as `0x77`. That corrects
-the reading in `src/expand/fieldmap.ts`, which treats 5898/5899 as one `u16be` rescaled by
-roughly x201.57. The bytes it writes are right, because the table was derived from the pairs
-Elektron actually produces, but the two offsets are separate fields and the "scale" is an
-artefact of reading them as one number.
+**`kit+5898` is the compressor volume**, a plain 0-127 byte — 119 stored as `0x77`, default 100.
+`kit+5899` is its **fine byte**, worth 1/256 each, and the device writes zero there in every
+pattern of the capture. Same coarse/fine shape as a p-lock slot (§4) and as every other entry
+in this stride-2 block.
+
+That corrected the reading in `src/expand/fieldmap.ts`, which treated 5898/5899 as one `u16be`
+rescaled by "roughly x201.57" — an artefact of reading two fields as one number. The bytes it
+wrote were right, since the table came from the pairs Elektron actually produces.
+
+**What Elektron's importer does to it.** DN1 `FX+0x34` (0-127) lands here rescaled, and with
+the pair split correctly the rule is exact on all five observed inputs:
+
+```
+coarse.fine = min( floor(dn1 × 25600 / 127), 25599 ) / 256
+```
+
+| DN1 `FX+0x34` | 5898, 5899 | value | check |
+|---|---|---|---|
+| 64 | 50, 100 | 50.391 | `floor(12900.79)` = 12900 |
+| 73 | 57, 122 | 57.477 | `floor(14714.96)` = 14714 |
+| 94 | 74, 4 | 74.016 | `floor(18948.03)` = 18948 |
+| 100 | 78, 189 | 78.738 | `floor(20157.48)` = 20157 |
+| 127 | 99, 255 | 99.996 | `25600` clamped to 25599 |
+
+A 0-127 source mapped onto a 0-100 scale, clamped one 1/256 step below 100.00. **Why** it lands
+on a 0-100 scale is unexplained — the DN2 plainly accepts 119 here when a human sets it — so the
+converter keeps a table of the five observed pairs rather than applying the formula. The formula
+is recorded so a capture can confirm or break it.
+
+Note the distribution: 1,008 of 1,024 sampled kits sit on the default 100, so this rests on four
+non-default observations. The exact fit to 1/256 including the fine byte is what makes it more
+than a correlation, but it is not the unanimous-across-the-corpus evidence most fields here have.
 
 **`SCS` is a 19-entry enum** — COMP, NOT COMP, TR1 … TR16, INLR — numbered 0 to 18. Observed:
 `INLR` stores 18. Only that one value has been seen, so the numbering rests on the device's
 list plus a single reading.
 
 **Ping-pong at `kit+5826` is a 0/1 toggle**, confirmed by a pattern pair differing only in it.
+
+The table above is machine-readable in `src/project/kitfx.ts`, which the differential analyser
+uses to name FX bytes instead of reporting them as "kit gap 5804-5963, unidentified".
+
+**`5856-5881` is a page the capture missed.** Auditing the converter's copy table against these
+names shows 15 destinations in that range with no parameter attached: 5859, 5862, 5864,
+5866-5875, 5880, 5881. The converter writes them because the matched pairs say Elektron does,
+and the DN1 sources are `FX+0x37, 0x38, 0x3C, 0x3E-0x47, 0x4A, 0x4B` — a contiguous run, so this
+is one page rather than scattered bytes. `test/fieldmap.test.ts` pins the set. **Next capture:
+sweep whichever FX page the sheet skipped and this closes.**
 
 ## 7. Synth vs MIDI tracks — VERIFIED, and it is not in the pattern record
 
