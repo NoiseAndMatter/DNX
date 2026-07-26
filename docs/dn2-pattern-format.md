@@ -828,12 +828,51 @@ meanings, one id — the machine-relative finding at its clearest.
 the earlier worry that they might only hold for the machine selected during the H1 capture is
 closed.
 
-**SWARMER's ids are 33..40** and eight controls, but **which knob each belongs to is not known.**
-The capture placed its locks on steps 17..24 rather than the 1..8 the sheet asked for, and reading
-step order as knob order would put id 36 at knob B where every other machine puts 34. Recorded as
-ids-without-positions rather than guessed: a wrong knob here would be silently wrong forever.
+**SWARMER** — ids 33..40, resolved to knobs on a re-export:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| TUNE | SWRM | DET | MIX | M.OCT | MAIN | ANIM | N.MOD |
+| 33 | **36** | 34 | 37 | 38 | 35 | 39 | 40 |
+
+The first capture placed these on steps 17..24 rather than 1..8, because the sequencer page
+carries over when switching tracks on the device. The project was re-exported with the locks
+**moved**, and the id sequence and every value came back byte-identical — which proves a move
+rather than a re-entry, so the knob order had been right all along and only the step offset was
+wrong.
+
+The values corroborate it independently: `M.OCT` at knob E reads **1**, the only enum-sized value
+in the set and exactly what a one-or-two-octave selector should hold. A shuffled order would have
+put that 1 somewhere it made no sense.
+
+**Knob B is 36 here, not 34.** FM TONE, WAVETONE and FM DRUM all put 34 at knob B, so the
+apparent pattern breaks on the fourth machine. Only **knob A = 33** survives all four, and that
+is a coincidence of allocation order rather than a layout rule.
 
 ### Still unmapped
 
 `32`, `63..65`, `86` — down from twelve. `63..65` sit inside the SYN range and no captured machine
 claims them.
+
+### Machine coverage is complete — all ten machines
+
+Four SYN machines and six FLTR machines now have knob tables. `UNCAPTURED_MACHINES` is empty.
+
+The three filter machines added last needed **no locks**: MULTI-MODE, COMB- and EQUALIZER already
+proved the knob->id mapping is identical on every filter machine, so a fourth cannot produce a new
+id. Only their names were missing, and those were read off the device.
+
+**All six filters agree on knobs A-E and H** — `ATK`, `DEC`, `SUS`, `REL`, `FREQ`, `ENV` — and
+differ only at F and G:
+
+| Knob | MULTI-MODE | LOWPASS 4 | LEGACY LP/HP | COMB- | COMB+ | EQUALIZER |
+|---|---|---|---|---|---|---|
+| F (75) | RESO | RESO | RESO | FDBK | FDBK | GAIN |
+| G (73) | TYPE | *blank* | TYPE | LPF | LPF | Q |
+
+Two knobs out of eight are the entire reason machine-page ids cannot be treated as absolute. Six
+of eight would have looked like a fixed layout.
+
+**`LOWPASS 4` has seven controls, not eight**: knob G is blank, so id 73 is *unused* on that
+machine. An id absent from a machine is a different thing from an id present but unnamed, and the
+tables distinguish them.
