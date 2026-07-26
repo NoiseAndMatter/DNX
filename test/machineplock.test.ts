@@ -13,7 +13,7 @@ import {
   COMB_MINUS_PLOCKS,
   FM_DRUM_PLOCKS,
   FM_TONE_PLOCKS,
-  SWARMER_IDS,
+  SWARMER_PLOCKS,
   MACHINE_PLOCKS,
   MACHINE_RELATIVE_IDS,
   MULTI_MODE_PLOCKS,
@@ -99,22 +99,26 @@ test("FM DRUM fills the holes FM TONE left", () => {
   for (let i = 1; i < ids.length; i++) assert.equal(ids[i], ids[i - 1]! + 1, "FM DRUM has no gaps");
 });
 
-test("SWARMER's ids are recorded without guessing their knobs", () => {
-  assert.deepEqual([...SWARMER_IDS], [33, 34, 35, 36, 37, 38, 39, 40]);
-  assert.ok(UNCAPTURED_MACHINES.includes("SWARMER"), "its positions are still unknown");
-  assert.equal(MACHINE_PLOCKS["SWARMER"], undefined, "so it has no knob table");
+test("SWARMER uses 33..40 and breaks the knob-B pattern", () => {
+  const ids = SWARMER_PLOCKS.map((p) => p.id).sort((a, b) => a - b);
+  assert.deepEqual(ids, [33, 34, 35, 36, 37, 38, 39, 40]);
+  // The other three machines put 34 at knob B. SWARMER puts 36 there, which is why an id can
+  // never be derived from a position.
+  assert.equal(SWARMER_PLOCKS.find((p) => p.knob === "B")!.id, 36);
+  assert.ok(MACHINE_PLOCKS["SWARMER"], "it now has a knob table");
+  assert.ok(!UNCAPTURED_MACHINES.includes("SWARMER"));
 });
 
-test("knob A is 33 and knob B is 34 on every captured SYN machine", () => {
-  for (const list of [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]) {
-    const syn1 = list.filter((p) => p.page === "SYN 1");
-    assert.equal(syn1.find((p) => p.knob === "A")!.id, 33);
-    assert.equal(syn1.find((p) => p.knob === "B")!.id, 34);
-  }
-  // ...and knob C already diverges, so the low ids only look positional.
-  const c = [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]
-    .map((l) => l.filter((p) => p.page === "SYN 1").find((p) => p.knob === "C")!.id);
-  assert.deepEqual(c, [35, 37, 35]);
+test("only knob A is stable across the four SYN machines", () => {
+  const all = [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS, SWARMER_PLOCKS];
+  const at = (l: readonly { page: string; knob: string; id: number }[], k: string) =>
+    l.filter((p) => p.page === "SYN 1").find((p) => p.knob === k)!.id;
+
+  assert.deepEqual(all.map((l) => at(l, "A")), [33, 33, 33, 33], "knob A is always 33");
+  // Knob B looked stable at 34 across three machines and SWARMER breaks it; knob C never agreed.
+  // So a stable id at knob A is a coincidence of allocation order, not a layout rule.
+  assert.deepEqual(all.map((l) => at(l, "B")), [34, 34, 34, 36]);
+  assert.deepEqual(all.map((l) => at(l, "C")), [35, 37, 35, 34]);
 });
 
 test("FLTR page 1 and page 2 interleave", () => {
