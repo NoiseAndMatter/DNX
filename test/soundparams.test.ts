@@ -84,3 +84,57 @@ test("the per-sound FX sends are separate from the kit FX block", () => {
     assert.equal(p.page, "FX");
   }
 });
+
+test("SYN 1 runs in knob order across consecutive even offsets", () => {
+  const expected = ["ALGO", "RATIO C", "RATIO A", "RATIO B", "HARM", "DTUN", "FDBK", "MIX"];
+  expected.forEach((name, i) => {
+    const p = soundParameterAt(94 + i * 2);
+    assert.equal(p?.name, name, `offset ${94 + i * 2}`);
+    assert.equal(p?.page, "SYN 1");
+  });
+});
+
+test("HARM centres on 63, not 64", () => {
+  const harm = soundParameterAt(102)!;
+  assert.equal(harm.name, "HARM");
+  assert.equal(harm.centre, 63);
+  // The untouched baseline read 63 for a value of 0, and +23 stored 86. Two points, slope 1.
+  assert.equal(decodeSoundValue(harm, 63), 0);
+  assert.equal(decodeSoundValue(harm, 86), 23);
+  // Its -26..+26 range then occupies 37..89.
+  assert.equal(decodeSoundValue(harm, 37), -26);
+  assert.equal(decodeSoundValue(harm, 89), 26);
+});
+
+test("HARM is the only control that does not centre on 64", () => {
+  const odd = SOUND_PARAMETERS.filter((p) => p.centre !== undefined && p.centre !== 64);
+  assert.deepEqual(odd.map((p) => p.name), ["HARM"]);
+});
+
+test("the operator fine tunes decode as value * 64 + 64", () => {
+  // Set to -0.500, +0.250, -0.750, +0.875 and stored as 32, 80, 16, 120 -- all four exact.
+  const cases: [number, number, number][] = [[160, 32, -0.5], [162, 80, 0.25], [164, 16, -0.75], [166, 120, 0.875]];
+  for (const [offset, stored, want] of cases) {
+    const p = soundParameterAt(offset)!;
+    assert.equal(p.encoding, "fraction");
+    assert.equal(decodeSoundValue(p, stored), want, `${p.name}`);
+  }
+});
+
+test("SYN 3 is in knob order, with PHRT stored apart", () => {
+  const inOrder = [[130, "ADEL"], [132, "ATRG"], [134, "ARST"], [136, "BDEL"], [138, "BTRG"], [140, "BRST"]] as const;
+  for (const [offset, name] of inOrder) assert.equal(soundParameterAt(offset)?.name, name);
+  // PHRT is knob D but lives at 110, away from the per-operator block -- it is a shared setting.
+  assert.equal(soundParameterAt(110)?.name, "PHRT");
+});
+
+test("the TRG switches are separable from the RST switches", () => {
+  // Turning a TRG off makes its RST unavailable, so a track with all four "set off" moved only
+  // the two TRG bytes. That is what tells 132/138 apart from 134/140.
+  for (const [offset, name] of [[132, "ATRG"], [138, "BTRG"]] as const) {
+    assert.equal(soundParameterAt(offset)?.name, name);
+  }
+  for (const [offset, name] of [[134, "ARST"], [140, "BRST"]] as const) {
+    assert.equal(soundParameterAt(offset)?.name, name);
+  }
+});
