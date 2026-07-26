@@ -287,3 +287,62 @@ repository.
 
 The `.syx` files, numbered, in a folder per experiment. Nothing else: the diff tool reads the
 dumps directly and names the offsets itself.
+
+---
+
+## Naming the p-lock parameter ids — planned, not yet captured
+
+A lock record stores a parameter **id**, and nothing yet says which id is which control.
+`lockvalue.ts` can decode a slot three ways but cannot choose, so no editor can display a lock
+value. This is the gate for the editor and for the manager's parameter views.
+
+### What is already known
+
+Two ids fell out of the A3 capture, which locked known parameters on track 3:
+
+| Id | Parameter | Confidence |
+|---|---|---|
+| 9 | `VFAD` or `FADE` | the sweep shape matches both; A3 asked for `VFAD`, `FADE` and `DEP` in that order and only two records exist, so one was skipped |
+| 29 | `DEP` | the fine-resolution sweep, unambiguous |
+
+`VFAD` is on **TRIG page 2** and `FADE` on **MOD page 1**, so they are different controls on
+different pages rather than alternatives — but the stored value cannot tell them apart, since
+both are bipolar `-64…+63`. The capture below settles it.
+
+### The pages, from the DN2 manual chapter 11
+
+Machine-independent, so one capture covers every track:
+
+| Page | Parameters |
+|---|---|
+| TRIG 1 | NOTE, VEL, LEN, PROB, LFO.T, FLT.T, FILL, COND |
+| TRIG 2 | RTRG, VFAD, LEN, RATE, PTIM, PORT |
+| FLTR 2 | DEL, KEY.T, BASE, WDTH, BW.RT, RSET |
+| AMP | ATK, HOLD, DEC, SUS, REL, RSET, MODE, PAN, VOL |
+| FX | BR, OVER, SRR, SR.RT, DEL, REV, CHR, OD.RT |
+| MOD 1 / 2 / 3 | SPD, MULT, FADE, DEST, WAVE, SPH, MODE, DEP — once per LFO |
+
+Roughly 61 controls. **Machine-dependent pages are excluded**: the SYN pages vary by SYN
+machine (appendix A.2) and **FLTR page 1 varies by FLTR machine** (appendix A.3), so those need
+one pass per machine and are a separate, larger job.
+
+These lists were extracted from the manual mechanically and **three entries are suspect** —
+`FREQUENCY`, `AMPLITUDE` and `TIME` appear as axis labels on the page's diagrams, not as
+controls, and have been dropped above. Check the page against the device before capturing.
+
+### The capture: one parameter per step
+
+Do **not** give each parameter a distinct value. Give each one its own **step**, and let
+position carry the identity:
+
+> On an unused pattern, track 1, put a trig on steps 1…61. On step *n*, parameter-lock **only**
+> the *n*th parameter in the list above, to any value that is not its current one.
+
+Each lock record then has exactly one locked step, and that step's index names the parameter.
+Reading it back needs no value table and no guesswork about rescaling, and a mis-entered value
+cannot corrupt the identification — only a mis-entered *step* can, which is far easier to see.
+
+61 records fits inside the 80-record table with room to spare. A pattern needs to be 64 steps
+long to hold it, which is `LEN` = 64 on the pattern, not the track.
+
+This also settles id 9: `VFAD` and `FADE` land on different steps.
