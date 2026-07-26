@@ -344,7 +344,8 @@ test("micro timing is read as a signed byte, so 0xFF is -1 and not 'unset'", { s
 });
 
 // Local copy of the lock-table reader that keeps unused records out but preserves order,
-// so the test compares against the raw table rather than the per-trig projection.
+// so the test compares against the raw table rather than the per-trig projection. Value
+// slots are u16be, matching both device readers — see lockvalue.ts.
 function readDn2LockTable(pattern: Uint8Array): Array<{ track: number; parameter: number; values: number[] }> {
   const dv = new DataView(pattern.buffer, pattern.byteOffset, pattern.byteLength);
   const out: Array<{ track: number; parameter: number; values: number[] }> = [];
@@ -353,7 +354,7 @@ function readDn2LockTable(pattern: Uint8Array): Array<{ track: number; parameter
     const header = dv.getUint16(at, true);
     if (header === 0xffff) continue;
     const values: number[] = [];
-    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, true));
+    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, false));
     out.push({ parameter: header & 0xff, track: header >>> 8, values });
   }
   return out;
