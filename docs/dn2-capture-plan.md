@@ -478,9 +478,29 @@ Several of these are multi-state selectors.
 **SYN page 3** is a noise generator: an envelope in `ATK`, `HOLD`, `DEC`, then `NLEV` for level,
 then a filter as `BASE` and `WDTH`, a noise `TYPE` selector and `CHAR` for character.
 
-**SYN page 1 is unresolved.** The manual lists ten names for eight knobs — `TUN1`, `WAV1`,
-`TBL1.`, `PD1`, `LEV1` and the same five for oscillator 2 — so two of them are not separate
-knobs. `PD1` is oscillator 1 phase distortion, 0-100%, default 50%. Whether knobs D and H are
-`TBL1`/`TBL2` or `LEV1`/`LEV2` needs reading off the device; note the manual writes `TBL1.` with
-a trailing dot, which may mean it is an alternate label the same knob shows in wavetable mode
-rather than a knob of its own.
+**SYN page 1**, read off the device — four knobs per oscillator, symmetric:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| TUN1 | WAV1 | PD1 | TBL1 | TUN2 | WAV2 | PD2 | TBL2 |
+
+`PD` is phase distortion, 0-100%, default 50%.
+
+The manual lists **ten** names for these eight knobs — it adds `LEV1` and `LEV2`, which do not
+appear as knobs of their own. Note it writes `TBL1.` with a trailing dot, so the likeliest
+reading is that `TBL` and `LEV` are alternate labels one knob shows depending on the
+oscillator's mode. Not confirmed; the label observed was `TBL`.
+
+### Filter pages, and one caveat for the AMP page
+
+**FLTR `MULTI-MODE` and `COMB-` are identical in manuals 1.00A and 1.10D**, so those sheet
+entries are safe: `ATK, DEC, SUS, REL, FREQ, RESO, TYPE, ENV` and
+`ATK, DEC, SUS, REL, FREQ, FDBK, LPF, ENV`, eight controls each.
+
+**The AMP page is not position-safe.** It lists **nine** names for eight knobs —
+`ATK, HOLD, DEC, SUS, REL, RSET, MODE, PAN, VOL` — because `HOLD` and one of the others share a
+knob position depending on `MODE`. So a sheet cannot print a reliable knob letter for `HOLD` or
+`MODE`: the position itself moves with the setting.
+
+For those two, capture **by name** and record which knob each turned out to occupy. Everywhere
+else, position is the safer identifier; here it is the thing under test.
