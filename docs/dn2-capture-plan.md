@@ -427,3 +427,108 @@ Tracks 5 and 6 ask the same question of `HOLD` against `SUS`, which is already k
 
 Tracks 5 and 6 are separate on purpose: the gating selector is never moved on a track whose
 gated control is being captured.
+
+### Machine-page capture — findings as they arrive, 2026-07-26
+
+Reported from the device during the capture, and worth keeping whatever the ids turn out to be.
+
+**FM TONE, SYN page 3.** Knob **H is empty** — the page has seven controls, not eight.
+`PHRT` at knob D is a **five-state enum**: `OFF`, `ALL`, `C`, `A+B`, `A+B2`. Captured in the
+last state.
+
+**FM TONE, SYN page 4** — and the sheet's guesses for this page were **wrong**:
+
+| Knob | Actually |
+|---|---|
+| A, B, C, D | fine tune for operators **C, A, B1, B2** |
+| E | **empty** |
+| F, G, H | key tracking for operators **A, B1, B2** |
+
+The manual's three `KEY TRACK` entries are real but sit at F, G, H, not A, B, C. The extraction
+also missed the four fine-tune controls entirely. **Nothing captured was affected**, because the
+sheet identifies controls by position and the positions were right — which is the case for
+capturing by position rather than by name, made concrete.
+
+Note the operator order: `C, A, B1, B2`, matching SYN page 1's `RATIO C, RATIO A, RATIO B`.
+There is no key tracking for operator C, which is why there are four fine tunes and three key
+tracks.
+
+**Ranges.** Fine tune runs **-1 to 0.999**; key tracking **0 to 127**. Fine tune is therefore a
+fine-resolution parameter and should arrive as a coarse byte plus a fine one, like LFO `SPD` and
+`DEP` — but note the display suggests thousandths while the lock quantum measured on `DEP` is
+1/128. Worth checking against the captured bytes rather than assuming either.
+
+**Empty knobs are skipped**, no trig: `p2·8` (SYN 3 H) and `p2·13` (SYN 4 E).
+
+### WAVETONE — and a stale manual, 2026-07-26
+
+**The parameter lists in the first sheets came from DN2 manual OS 1.00A while the device runs a
+later OS.** Controls move and disappear between releases: WAVETONE SYN page 2 lists `SYNC` in
+1.00A and does not in 1.10D, and the device agrees with 1.10D. Always check the OS version of
+the manual against the device before building a sheet.
+
+**SYN page 2** — confirmed on the device, and matching 1.10D exactly:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| OFS1 | TBL1 | MOD | RSET | OFS2 | TBL2 | *blank* | DRIF |
+
+Several of these are multi-state selectors.
+
+**SYN page 3** is a noise generator: an envelope in `ATK`, `HOLD`, `DEC`, then `NLEV` for level,
+then a filter as `BASE` and `WDTH`, a noise `TYPE` selector and `CHAR` for character.
+
+**SYN page 1**, read off the device — four knobs per oscillator, symmetric:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| TUN1 | WAV1 | PD1 | TBL1 | TUN2 | WAV2 | PD2 | TBL2 |
+
+`PD` is phase distortion, 0-100%, default 50%.
+
+The manual lists **ten** names for these eight knobs — it adds `LEV1` and `LEV2`, which do not
+appear as knobs of their own. Note it writes `TBL1.` with a trailing dot, so the likeliest
+reading is that `TBL` and `LEV` are alternate labels one knob shows depending on the
+oscillator's mode. Not confirmed; the label observed was `TBL`.
+
+### Filter pages, and one caveat for the AMP page
+
+**FLTR `MULTI-MODE` and `COMB-` are identical in manuals 1.00A and 1.10D**, so those sheet
+entries are safe: `ATK, DEC, SUS, REL, FREQ, RESO, TYPE, ENV` and
+`ATK, DEC, SUS, REL, FREQ, FDBK, LPF, ENV`, eight controls each.
+
+**The AMP page is not position-safe.** It lists **nine** names for eight knobs —
+`ATK, HOLD, DEC, SUS, REL, RSET, MODE, PAN, VOL` — because `HOLD` and one of the others share a
+knob position depending on `MODE`. So a sheet cannot print a reliable knob letter for `HOLD` or
+`MODE`: the position itself moves with the setting.
+
+For those two, capture **by name** and record which knob each turned out to occupy. Everywhere
+else, position is the safer identifier; here it is the thing under test.
+
+### The AMP page is a substitution, not a shift — and it sharpens the slot test
+
+Read off the device, 2026-07-26:
+
+| | A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|---|
+| **ADSR** | ATK | DEC | SUS | REL | RSET | MODE | PAN | VOL |
+| **AHD** | ATK | **HOLD** | DEC | *blank* | RSET | MODE | PAN | VOL |
+
+`E`-`H` hold still in both modes. The envelope block loses `SUS` and `REL` and gains `HOLD`, so
+nine documented names occupy eight knobs by substitution rather than by shifting.
+
+**This makes the slot-versus-parameter test unambiguous.** `HOLD` sits at knob B in AHD, and knob
+B in ADSR is `DEC`, id **89**:
+
+- lock table addresses a **knob slot** -> `HOLD` returns **89**
+- lock table addresses a **named parameter** -> `HOLD` returns its own id, predicted **88**
+
+Adjacent ids, so there is no room to misread the result. An earlier framing of this test compared
+`HOLD` against `SUS`; that was wrong, and it was wrong because it assumed a knob position rather
+than reading one.
+
+**Id order does not follow knob order.** On this page the knobs run RSET, MODE, PAN, VOL at E-H
+while the ids run 98, 97, 95, 96. So an id cannot be inferred from a position in general. What
+survives is narrower: the envelope *stages* are contiguous and in page order — ATK 87, DEC 89,
+SUS 90, REL 91 — with 88 the only gap and `HOLD` the only stage unaccounted for. That, and only
+that, is the basis for predicting 88.

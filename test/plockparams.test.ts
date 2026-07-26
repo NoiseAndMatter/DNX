@@ -13,7 +13,7 @@ import {
   LFO_STRIDE,
   NOT_LOCKABLE,
   PLOCK_PARAMETERS,
-  UNMAPPED_ID_RANGE,
+  UNMAPPED_IDS,
   describePlock,
   plockParameter,
 } from "../src/project/plockparams.js";
@@ -60,13 +60,13 @@ test("the two inferred ids are marked as inferred", () => {
   assert.deepEqual(inferred.sort(), ["HOLD=88", "MODE=97"]);
 });
 
-test("the observed ids avoid the range the machine pages should occupy", () => {
-  for (const p of PLOCK_PARAMETERS) {
-    assert.ok(
-      p.id < UNMAPPED_ID_RANGE.from || p.id > UNMAPPED_ID_RANGE.to,
-      `${p.name} at ${p.id} falls inside the range reserved for machine pages`,
-    );
+test("no observed id is also listed as unmapped", () => {
+  const observed = new Set(PLOCK_PARAMETERS.map((p) => p.id));
+  for (const id of UNMAPPED_IDS) {
+    assert.ok(!observed.has(id), `id ${id} is both observed and listed as unmapped`);
   }
+  // 32 and 86 are the odd ones; 57..65 are expected to fall to the two uncaptured SYN machines.
+  assert.ok(UNMAPPED_IDS.includes(32) && UNMAPPED_IDS.includes(86));
 });
 
 test("controls that are not in the lock table are recorded, not silently absent", () => {
