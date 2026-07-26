@@ -13,7 +13,8 @@ import {
   COMB_MINUS_PLOCKS,
   FM_DRUM_PLOCKS,
   FM_TONE_PLOCKS,
-  SWARMER_IDS,
+  LOWPASS_4_PLOCKS,
+  SWARMER_PLOCKS,
   MACHINE_PLOCKS,
   MACHINE_RELATIVE_IDS,
   MULTI_MODE_PLOCKS,
@@ -81,8 +82,9 @@ test("resolving an id requires the machine", () => {
   assert.equal(machinePlock("COMB-", 75)!.name, "FDBK");
   assert.equal(machinePlock("EQUALIZER", 75)!.name, "GAIN");
 
-  assert.equal(machinePlock("COMB+", 73), undefined, "an uncaptured machine must not resolve");
-  assert.ok(UNCAPTURED_MACHINES.includes("COMB+"));
+  // COMB+ is captured now, and agrees with COMB- as expected.
+  assert.equal(machinePlock("COMB+", 73)!.name, "LPF");
+  assert.equal(machinePlock("NOT A MACHINE", 73), undefined, "an unknown machine must not resolve");
 });
 
 test("FM DRUM fills the holes FM TONE left", () => {
@@ -99,22 +101,25 @@ test("FM DRUM fills the holes FM TONE left", () => {
   for (let i = 1; i < ids.length; i++) assert.equal(ids[i], ids[i - 1]! + 1, "FM DRUM has no gaps");
 });
 
-test("SWARMER's ids are recorded without guessing their knobs", () => {
-  assert.deepEqual([...SWARMER_IDS], [33, 34, 35, 36, 37, 38, 39, 40]);
-  assert.ok(UNCAPTURED_MACHINES.includes("SWARMER"), "its positions are still unknown");
-  assert.equal(MACHINE_PLOCKS["SWARMER"], undefined, "so it has no knob table");
+test("SWARMER uses 33..40 and breaks the knob-B pattern", () => {
+  const ids = SWARMER_PLOCKS.map((p) => p.id).sort((a, b) => a - b);
+  assert.deepEqual(ids, [33, 34, 35, 36, 37, 38, 39, 40]);
+  // The other three machines put 34 at knob B. SWARMER puts 36 there, which is why an id can
+  // never be derived from a position.
+  assert.equal(SWARMER_PLOCKS.find((p) => p.knob === "B")!.id, 36);
+  assert.ok(MACHINE_PLOCKS["SWARMER"], "it now has a knob table");
 });
 
-test("knob A is 33 and knob B is 34 on every captured SYN machine", () => {
-  for (const list of [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]) {
-    const syn1 = list.filter((p) => p.page === "SYN 1");
-    assert.equal(syn1.find((p) => p.knob === "A")!.id, 33);
-    assert.equal(syn1.find((p) => p.knob === "B")!.id, 34);
-  }
-  // ...and knob C already diverges, so the low ids only look positional.
-  const c = [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS]
-    .map((l) => l.filter((p) => p.page === "SYN 1").find((p) => p.knob === "C")!.id);
-  assert.deepEqual(c, [35, 37, 35]);
+test("only knob A is stable across the four SYN machines", () => {
+  const all = [FM_TONE_PLOCKS, WAVETONE_PLOCKS, FM_DRUM_PLOCKS, SWARMER_PLOCKS];
+  const at = (l: readonly { page: string; knob: string; id: number }[], k: string) =>
+    l.filter((p) => p.page === "SYN 1").find((p) => p.knob === k)!.id;
+
+  assert.deepEqual(all.map((l) => at(l, "A")), [33, 33, 33, 33], "knob A is always 33");
+  // Knob B looked stable at 34 across three machines and SWARMER breaks it; knob C never agreed.
+  // So a stable id at knob A is a coincidence of allocation order, not a layout rule.
+  assert.deepEqual(all.map((l) => at(l, "B")), [34, 34, 34, 36]);
+  assert.deepEqual(all.map((l) => at(l, "C")), [35, 37, 35, 34]);
 });
 
 test("FLTR page 1 and page 2 interleave", () => {
@@ -134,4 +139,33 @@ test("FM TONE's SYN 2 is two operator envelopes, distinguished by position", () 
   ]);
   const stems = syn2.map((p) => p.name!.split(" ")[1]);
   assert.deepEqual(stems.slice(0, 4), stems.slice(4), "both halves carry the same four stems");
+});
+
+test("every machine the DN2 offers has a knob table", () => {
+  const syn = ["FM TONE", "FM DRUM", "WAVETONE", "SWARMER"];
+  const fltr = ["MULTI-MODE", "LOWPASS 4", "LEGACY LP/HP", "COMB-", "COMB+", "EQUALIZER"];
+  for (const m of [...syn, ...fltr]) assert.ok(MACHINE_PLOCKS[m], `${m} has no table`);
+  assert.deepEqual([...UNCAPTURED_MACHINES], [], "nothing left uncaptured");
+});
+
+test("LOWPASS 4 leaves id 73 unused rather than unnamed", () => {
+  // An id being absent from a machine is different from being present but unnamed. Knob G is
+  // blank on this machine, so 73 simply has no meaning here.
+  const ids = LOWPASS_4_PLOCKS.map((p) => p.id);
+  assert.equal(ids.length, 7, "seven controls, not eight");
+  assert.ok(!ids.includes(73));
+  assert.ok(!LOWPASS_4_PLOCKS.some((p) => p.knob === "G"));
+});
+
+test("all six filter machines agree on every knob but F and G", () => {
+  const machines = ["MULTI-MODE", "LOWPASS 4", "LEGACY LP/HP", "COMB-", "COMB+", "EQUALIZER"];
+  for (const knob of ["A", "B", "C", "D", "E", "H"]) {
+    const names = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === knob)!.name);
+    assert.equal(new Set(names).size, 1, `knob ${knob} should agree: ${names.join(", ")}`);
+  }
+  // F and G are where the machines differ, which is the whole reason ids are machine-relative.
+  const f = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === "F")!.name);
+  assert.deepEqual(f, ["RESO", "RESO", "RESO", "FDBK", "FDBK", "GAIN"]);
+  const g = machines.map((m) => MACHINE_PLOCKS[m]!.find((p) => p.knob === "G")?.name);
+  assert.deepEqual(g, ["TYPE", undefined, "TYPE", "LPF", "LPF", "Q"]);
 });
