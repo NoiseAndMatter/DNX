@@ -10,12 +10,19 @@
  *   npm run diff -- --base b.syx captures/       diff every file against one base
  *   npm run diff -- --stride --chain dir/        also report the offset delta between
  *                                                consecutive diffs, which reveals record size
+ *   npm run diff -- --project p.dn2prj A1 A2 A3  diff patterns inside one project against the
+ *                                                first named, which is how a capture built as
+ *                                                several patterns of one saved project is read
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseFile } from "../sysex/container.js";
 import { PATTERN_PAYLOAD_SIZE, describeOffset } from "../project/locate.js";
+import { parseProject } from "../project/projectfile.js";
+import { decodeProjectImage } from "../project/dn2codec.js";
+import { patternAsSysexPayload } from "../project/dn2image.js";
+import { patternIndex, patternName } from "../sheet/naming.js";
 
 interface Change {
   offset: number;
@@ -157,10 +164,45 @@ function reportStride(allRuns: Run[][]): void {
   }
 }
 
+/**
+ * Diff patterns inside one saved project, each against the first named.
+ *
+ * A capture built as several patterns of a single project is easier to make and cleaner to
+ * read than a set of SysEx dumps: every pattern went through the same save, so whatever
+ * saving rewrites it rewrites identically, and nothing has to be transferred over MIDI.
+ */
+function reportProject(path: string, names: readonly string[], gap: number): void {
+  const { payload } = parseProject(new Uint8Array(readFileSync(path)));
+  const { image } = decodeProjectImage(payload.raw);
+
+  const indices = names.map((name) => {
+    const index = patternIndex(name);
+    if (index === undefined) {
+      console.error(`"${name}" is not a pattern name — expected something like A1 or B12`);
+      process.exit(1);
+    }
+    return index;
+  });
+
+  const [baseIndex, ...rest] = indices as [number, ...number[]];
+  const base = patternAsSysexPayload(image, baseIndex);
+
+  for (const index of rest) {
+    reportPair(
+      patternName(baseIndex),
+      patternName(index),
+      base,
+      patternAsSysexPayload(image, index),
+      gap,
+    );
+  }
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
-  let mode: "pair" | "chain" | "base" = "pair";
+  let mode: "pair" | "chain" | "base" | "project" = "pair";
   let basePath: string | undefined;
+  let projectPath: string | undefined;
   let gap = 0;
   let showStride = false;
   const paths: string[] = [];
@@ -171,9 +213,21 @@ function main(): void {
     else if (arg === "--base") {
       mode = "base";
       basePath = argv[++i];
+    } else if (arg === "--project") {
+      mode = "project";
+      projectPath = argv[++i];
     } else if (arg === "--gap") gap = Number(argv[++i] ?? 0);
     else if (arg === "--stride") showStride = true;
     else paths.push(arg);
+  }
+
+  if (mode === "project") {
+    if (!projectPath || paths.length < 2) {
+      console.error("usage: npm run diff -- --project <file.dn2prj> <baseline> <pattern...>");
+      process.exit(1);
+    }
+    reportProject(projectPath, paths, gap);
+    return;
   }
 
   const files = expand(paths);
