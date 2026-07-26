@@ -96,6 +96,12 @@ The pages, from the manual's chapter 12: **Delay** TIME, X, WID, FDBK, VOL, HPF,
 PRE, DEC, FREQ, GAIN, VOL, HPF, LPF; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
 ATK, REL, MUP, VOL, RAT, SCS, SCF — thirty in total.
 
+**When the assigned value will not go in, use the parameter's maximum and record the reading.** That
+covers three cases that all break the assigned-value method: a range too small for its prime (compressor
+MUP is 0-24 dB), a display that skips values, and a parameter shown in units rather than numbers. The
+maximum is safe in all of them — it stores the field's top value, which nothing else in the capture will
+occupy, and displayed-max against stored-max yields the scale.
+
 **A parameter that skips values is telling you it is scaled.** Delay FDBK moves 14, 15, 17, 18, 20 — no
 16, no 19 — which is what a smaller stored range looks like when displayed across a wider one; roughly
 two displayed integers in three are reachable, consistent with 128 stored steps shown as 0-198. So an
