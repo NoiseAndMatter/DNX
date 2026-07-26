@@ -362,6 +362,18 @@ whole pattern.
 
 Mode-gated controls go in a short follow-up pattern with the mode set appropriately.
 
+**The selector itself has to go with them.** `AMP MODE` is on the same page as the controls it
+gates, so locking it in the same pattern means moving the value that decides whether `HOLD`,
+`SUS` and `REL` exist — with locks for those already entered on nearby steps. Skip it too.
+
+The rule this gives, worth applying to any future sheet: **a selector that changes which other
+controls exist must not share a pattern with the controls it gates.** In this list `AMP MODE`
+is the only one. The MOD pages' `MODE`, `WAVE` and `DEST` select behaviour without adding or
+removing controls, so they are safe in place.
+
+For the 2026-07-26 run that means skipping `p2·6` (`HOLD`) and `p2·11` (`MODE`), and
+capturing both in the follow-up.
+
 **This raises a question worth answering deliberately.** If `HOLD` in `AHD` occupies the knob
 position that `SUS` holds in `ADSR`, the two may share one parameter id — meaning the lock
 table stores a **knob slot** rather than a named parameter, and an editor could not interpret a
