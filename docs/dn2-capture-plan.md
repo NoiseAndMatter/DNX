@@ -95,7 +95,7 @@ at its default says nothing.
 
 The pages, from the manual's chapter 12: **Delay** TIME, X, WID, FDBK, VOL, HPF, LPF, REV; **Reverb**
 PRE, DEC, FREQ, GAIN, VOL, HPF, LPF; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
-ATK, REL, MUP, VOL, RAT, SCS, SCF — thirty in total.
+ATK, REL, MUP, VOL, RAT, SCS, SCF, DRY/CMP — thirty-one in total.
 
 **When the assigned value will not go in, use the parameter's maximum and record the reading.** That
 covers three cases that all break the assigned-value method: a range too small for its prime (compressor
@@ -111,9 +111,15 @@ already using. Set any such parameter to its **maximum** and note the reading.
 
 Two of those names mislead. Delay **X is ping-pong**, an on/off, not a time multiplier. Compressor **VOL
 is Pattern Volume**, the kit's overall level, which makes it a candidate for `kit+5860` — a byte holding
-only 0 and 100. Bipolar parameters should take the **negative** of their assigned value: a negative byte
-stands out against a field of positive primes, and delay WID at least is bipolar, confirmed on the
-device.
+only 0 and 100. Bipolar parameters take a **negative** value, since a negative byte stands out against a field of
+positive primes — but not merely the negative of the assigned one. Until A3 says whether bipolar fields
+are two's complement or offset from centre, a negative must avoid a collision under either reading:
+`-17` is 239 as two's complement and 47 as offset, and 47 is already assigned. `-9`, `-13`, `-25` and
+`-39` are clear both ways.
+
+Two compressor parameters were missed at first and are worth naming, since both are candidates for the
+unexplained bytes: **SCF** is the sidechain filter *frequency*, bipolar -64 to 63 rather than the enum it
+was taken for, and **DRY/CMP** is the dry-to-compressed mix, 0-127.
 
 Assign values from the **primes**: 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
 79, 83, 89, 97, 101, 103, 107, 109, 113, 119. No prime is a multiple of another, so a field that turns
