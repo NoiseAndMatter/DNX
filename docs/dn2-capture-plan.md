@@ -124,7 +124,17 @@ plus aftertouch and pitch bend enabled. The eight CC assignments are already map
 anything else that moves is the answer. A second file with aftertouch and pitch bend disabled
 separates the two toggles.
 
-**The bipolar range is -64 … +63, not -64 … +64.** Elektron's manual gives `VFAD` as `-64–64`, which
+**Not every bipolar parameter is a byte.** `DEP` on MOD page 1 runs -128 to +127.98, which is fixed
+point: `128 - 1/64 = 127.984375`, displayed rounded to two places. That reads as a signed 16-bit value
+with six fractional bits, raw = value x 64, spanning -8192 … +8191. Sweeping it at &plusmn;0.02 — the
+smallest step either side of zero — pins the scale in one capture.
+
+It also sets up a prediction worth testing before anything writes a p-lock to hardware. A lock record
+stores one `u16le` per step and `0xFFFF` means *unlocked*. If `DEP` is two's complement then -0.02 is
+raw -1 = `0xFFFF`, colliding with the sentinel. So either bipolar locks are stored offset rather than
+signed, or that value cannot be locked at all — and the device's behaviour when asked will say which.
+
+**The byte-sized bipolar range is -64 … +63, not -64 … +64.** Elektron's manual gives `VFAD` as `-64–64`, which
 would be 129 values and cannot fit a byte; the device offers +63, confirmed on hardware 2026-07-26. So
 these are plain signed bytes and the `+64` step of the sweep goes unused. The manual is wrong here, in
 the same way `libdigitone` was wrong about packing — the device is the authority, not the document.
