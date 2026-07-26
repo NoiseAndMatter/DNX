@@ -728,3 +728,68 @@ stored is UNKNOWN — they are in no array this project has identified.
 Everything named sits in 1..31 or 77..106. The SYN pages and FLTR page 1 were excluded from the
 capture because they vary with the selected machine, and 45 free ids is about the right size
 for them. INFERRED from the gap, not observed.
+
+---
+
+## 4b. Machine-page lock ids are machine-relative — VERIFIED 2026-07-26
+
+**The same id means a different parameter on a different machine.** An id in this range is
+meaningless without knowing the track's machine. Captured in pattern H2 of
+`MORNING_JA 1640(2).dn2prj`: four machines on four tracks of one pattern, each control locked on
+its own step. Implementation: `src/project/machineplock.ts`.
+
+Of the **22 ids FM TONE and WAVETONE both use, all 22 name different parameters.** In the
+filters:
+
+| Id | MULTI-MODE | COMB- |
+|---|---|---|
+| 73 | TYPE | **LPF** |
+| 75 | RESO | **FDBK** |
+
+The other six filter ids happen to carry the same name on both machines, which is why two
+machines were the minimum needed to see this at all — comparing only knobs A-E would have
+concluded the ids were absolute.
+
+### What this means for an editor
+
+An editor cannot render a lock from its id. It needs `(machine, id)`, and the machine comes from
+`sound+244` — so **reading a p-lock depends on the sound object**, not just the pattern. That is
+a real constraint on the data model and it is worth knowing before building one.
+
+### Ranges
+
+| Ids | Meaning |
+|---|---|
+| 1..31 | LFOs, **absolute**, `4 * slot + lfo` |
+| 33..76, 78..81 | **machine-relative** |
+| **77** | FLTR page 2 `DEL` — **absolute**, and it sits inside the machine range |
+| 82..85, 87..106 | fixed pages, absolute |
+
+`77` is the exception that makes the machine-relative ids two ranges rather than one span.
+FLTR page 1 and page 2 interleave, so anything treating 33..81 as uniformly machine-relative
+will mis-resolve `DEL`. A test asserts this, having caught exactly that error once.
+
+### Allocation, where it is visible
+
+**WAVETONE uses 33..55 with no gaps** — 23 controls, 23 consecutive ids — but *not* in knob
+order: SYN page 2's `TBL1` is id 35, sitting between page 1's `WAV1` (34) and `PD1` (37). So an
+id cannot be derived from a position even within one machine.
+
+**FM TONE uses 33..72** with 42 and 57..65 unused. 42 is a control WAVETONE has and FM TONE does
+not. `PHRT` breaks its page's run entirely, taking id 41 while its neighbours are 51..56.
+
+**FM TONE's SYN page 2 names were not captured**, so its eight ids are recorded by position
+only. An id with a position is useful; an id with a guessed name is worse than nothing.
+
+### Still unmapped
+
+`32`, `57..65`, `86`. Nine of the twelve are expected to fall to FM DRUM and SWARMER, which have
+not been captured. `32` and `86` are the genuinely odd ones.
+
+### Two inferred ids, confirmed
+
+`HOLD` = **88** and `AMP MODE` = **97**, both predicted from gaps and both correct.
+
+`HOLD` at 88 is **not** `DEC` at 89, and `HOLD` occupies knob B in AHD exactly where `DEC` sits
+in ADSR. So the **AMP page is parameter-addressed** while the machine pages are slot-like: the
+DN2 does both, in different places. `AMP MODE` reads **0 for AHD and 1 for ADSR**.

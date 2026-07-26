@@ -11,7 +11,7 @@
  * to use the lock table at all, without any of it disturbing the mapping.
  *
  * These are the **machine-independent** pages. The SYN pages and FLTR page 1 vary with the
- * selected machine and are not covered — see the note on `UNMAPPED_ID_RANGE` below.
+ * selected machine and have their own, machine-relative ids — see `machineplock.ts`.
  */
 
 /** How the coarse byte should be read. See `lockvalue.ts`. */
@@ -124,13 +124,20 @@ export const NOT_LOCKABLE: readonly { page: string; name: string }[] = [
 ];
 
 /**
- * Ids 32..76 are unaccounted for, and that is where the machine pages almost certainly live.
+ * What is left unaccounted for, now that the machine pages have been captured.
  *
- * Everything named above sits in 1..31 (the LFOs) or 77..106. The SYN pages and FLTR page 1
- * were deliberately excluded from the capture because they change with the selected machine,
- * and 45 free ids is about the right size for them. INFERRED from the gap, not observed.
+ * The prediction that 32..76 held the machine pages was right in substance: they occupy 33..76
+ * and 78..81, and their ids are **machine-relative** — see `machineplock.ts`. What remains:
+ *
+ *   32        never observed on any page or machine
+ *   57..65    inside the SYN range but unused by FM TONE or WAVETONE; presumably FM DRUM
+ *             and SWARMER, which have not been captured
+ *   86        between FLTR 2's RSET (85) and the AMP envelope (87)
+ *
+ * Nine of these twelve are expected to fall to the two uncaptured SYN machines. 32 and 86 are
+ * the genuinely odd ones.
  */
-export const UNMAPPED_ID_RANGE = { from: 32, to: 76 } as const;
+export const UNMAPPED_IDS: readonly number[] = [32, 57, 58, 59, 60, 61, 62, 63, 64, 65, 86];
 
 const BY_ID = new Map(PLOCK_PARAMETERS.map((p) => [p.id, p]));
 
