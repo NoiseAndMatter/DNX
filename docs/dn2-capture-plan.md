@@ -37,6 +37,11 @@ Two more rules make the result unambiguous:
 - **Avoid the defaults.** Never assign 0, 64, 100 or 127 — those are what the untouched fields
   already hold, so a byte carrying one tells you nothing.
 - **Always capture the baseline first**, unchanged, so the diff has something to be relative to.
+- **Build every other capture by copying the baseline**, then applying that experiment's changes on top.
+  Each capture must carry identical trigs; only settings may differ. A capture that omits a trig the
+  baseline has reports it as a removal, burying the records the experiment exists to read — and since the
+  trigger array is allocated in edit order and freed in place, a removed trig leaves a hole that shifts
+  nothing back.
 
 ## Reading the result
 
