@@ -15,6 +15,11 @@ check before assuming anything about a field's meaning.
 Local copies live in the private corpus at `00_References/`, beside `00_Examples/`. They are
 not in this repository — it holds code and documentation only.
 
+**Check the OS version before trusting a parameter list.** Working from 1.00A while the device
+ran a later OS produced a whole sheet of wrong controls: WAVETONE's SYN page 2 lists `SYNC` in
+1.00A and does not in 1.10D, which is what the device shows. Parameters move and disappear
+between OS releases. Use the newest manual, and treat the device as final.
+
 **The manual is not always right about ranges.** It gives `VFAD` as `-64–64`, which is 129
 values and cannot fit a byte; the device offers `-64–63`, confirmed on hardware 2026-07-26.
 Where the manual and the device disagree, the device wins and the disagreement gets recorded.
