@@ -186,9 +186,30 @@ both `EMPTY.dn2prj` and the device's own defaults. They are now written as const
 template carrying its own compressor settings cannot leak them into a conversion. `VOL` is the
 one exception and comes from `FX+0x34` through `FX_COMPRESSOR_VOLUME`.
 
-**Where to look next.** `5860` and `5878` have the same lumpy shape — 192- and 191-kit
-minorities — and both nearly track `5858` without being a function of it. The same two-source
-shape is the obvious thing to try, and the tail is where the project half lives.
+**CLOSED — all three input fields, and every unplaced DN1 FX byte.**
+
+```
+kit+5858  IN L level = (DN1 tail mixer+0x0E == 0) ? 100 : DN1 FX+0x36
+kit+5860  IN R level = (DN1 tail mixer+0x0E == 0) ? 100 : DN1 FX+0x3A
+kit+5878  DUAL       = (DN1 tail mixer+0x0E == 0) ?   0 : DN1 FX+0x4C
+```
+
+VERIFIED on 1,152 of 1,152 kit pairs each. These are the only fields in the project that are
+not a function of a single source byte, which is why all three resisted every search: each
+source is an identity on 1,024 pairs and fails on the same 128 — all of `053 TECNO_EXP`, the
+one project whose flag is clear.
+
+`0x3A` and `0x4C` had been rejected earlier, and that rejection was right about the
+correspondence and wrong about the destination: they were tested against `5804 + offset`
+(5862, 5880) because the rest of the block follows that rule. **The `5804 +` rule does not
+reach the input page.**
+
+`UNPLACED_FX_BYTES` is now empty and every named FX parameter is written —
+`test/fieldmap.test.ts` asserts completeness rather than pinning exceptions.
+
+Two limits worth keeping: what the flag means **on the DN1** is UNKNOWN, only its effect on the
+conversion is measured; and the `flag == 0` branch rests on a single project, since all 128
+flag-clear kits come from one file.
 
 **Thirteen named FX parameters have no copy at all**, pinned by `test/fieldmap.test.ts`:
 the whole compressor page except `VOL` (THR, ATK, REL, MUP, RAT, SCS, SCF, DRY/CMP),

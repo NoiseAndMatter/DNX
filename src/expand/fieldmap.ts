@@ -131,81 +131,62 @@ export const KIT_FX_MAP: readonly FieldCopy[] = [
 /**
  * DN1 FX bytes that vary but have no consistent DN2 home. Recorded, not guessed.
  *
- * Was seven; `0x34`, `0x37`, `0x46` and `0x47` have since been placed — `0x34` through
- * `FX_COMPRESSOR_VOLUME` below, the other three as ordinary copies in `KIT_FX_MAP`.
- *
- * All three remaining were re-tested on 2026-07-26 against their `5804 +` destinations, now
- * that the input-page capture gave those offsets meaning:
- *
- * - **`0x3A` -> 5862 (`IN L balance`) and `0x4C` -> 5880 (`master overdrive`): rejected.**
- *   `0x3A` maps 0 and 100 alike onto a centred 64; `0x4C` maps its two values onto more than a
- *   dozen different destinations. Noise, not merely unproven.
- * `0x36` was here too, and is now placed — see `INPUT_LEFT_LEVEL`. It needed a project-level
- * flag as well as a per-kit byte, which is why every single-byte search failed on it.
+ * **Now empty.** All seven have been placed: `0x34` through `FX_COMPRESSOR_VOLUME`, `0x37`,
+ * `0x46` and `0x47` as ordinary copies in `KIT_FX_MAP`, and `0x36`, `0x3A` and `0x4C` through
+ * `INPUT_GATED_FIELDS` below. Kept as an export so that a future correspondence hunt has an
+ * obvious place to record what it could not place.
  */
-export const UNPLACED_FX_BYTES: readonly number[] = [0x3a, 0x4c];
+export const UNPLACED_FX_BYTES: readonly number[] = [];
+
+/** Where the external-input flag lives, relative to the DN1 tail's mixer block. */
+export const INPUT_ENABLE_FLAG_OFFSET = 0x0e;
 
 /**
- * The input's left level: a per-kit byte **gated by a project-level flag**.
+ * The DN2 external-input page: three per-kit bytes **gated by one project-level flag**.
  *
- *     kit+5858 = (DN1 tail mixer+0x0E == 0) ? 100 : DN1 FX+0x36
+ *     kit+5858  IN L level = (tail mixer+0x0E == 0) ? 100 : DN1 FX+0x36
+ *     kit+5860  IN R level = (tail mixer+0x0E == 0) ? 100 : DN1 FX+0x3A
+ *     kit+5878  DUAL       = (tail mixer+0x0E == 0) ?   0 : DN1 FX+0x4C
  *
- * VERIFIED on 1,152 of 1,152 kit pairs, with no exceptions.
+ * VERIFIED on 1,152 of 1,152 kit pairs each, with no exceptions.
  *
- * This is the first field in the project that is not a function of one source byte, and it is
- * worth understanding why it hid for so long. `FX+0x36` alone is an exact identity on 1,024
- * pairs and fails on all 128 kits of `053 TECNO_EXP`, where the same source byte 0 produces
- * destination 100. An exhaustive search of all 2,560 bytes of the DN1's per-pattern block found
- * no consistent source, because there is none: the answer was never in that block.
+ * These are the only fields in the project that are not a function of a single source byte,
+ * and that is exactly why all three resisted every search. Each source is an identity copy on
+ * 1,024 pairs and fails on the same 128 — all of `053 TECNO_EXP`, the one project whose flag is
+ * clear. An exhaustive search of all 2,560 bytes of the DN1's per-pattern block found no
+ * consistent source for any of them, because there is none: half the answer was never in that
+ * block.
  *
- * The DN1 has no kits — that is a DN2 feature — so nothing required its external-input settings
- * to be per-pattern, and in fact they are not entirely. `tail mixer+0x0E` reads 1 in eight
- * projects and 0 in `TECNO_EXP`, the one project whose output takes the alternate state
- * everywhere. Its meaning on the DN1 is UNKNOWN; only its effect on the conversion is measured.
+ * **The DN1 has no kits.** That is a DN2 feature, and `DN1_KIT` in this codebase is our own
+ * analogy for a per-pattern block. Nothing required the DN1's external-input settings to be
+ * per-pattern, and they are not entirely — the enable flag is project-level, in the tail.
+ * Assuming otherwise is what kept the search in the wrong 2,560 bytes.
  *
- * **The `flag == 0` branch rests on a single project.** Unanimous over 1,152 kits, but those
- * 128 alternate-state kits all come from one file. A second DN1 project with the flag clear
- * would settle it.
+ * Two earlier rejections were right about the correspondence and wrong about the destination:
+ * `0x3A` and `0x4C` were tested against `5804 + offset` (5862 and 5880) as the rest of the
+ * block follows, found to be noise there, and are in fact sources for 5860 and 5878. The
+ * `5804 +` rule does not reach the input page.
+ *
+ * What the flag means **on the DN1** is UNKNOWN; only its effect on the conversion is measured.
+ * Note that `DUAL` reduces to `flag AND FX+0x4C`, which reads like a master enable, but the two
+ * levels take 100 rather than 0 when the flag is clear, so a plain AND does not generalise.
+ *
+ * **The `flag == 0` branch rests on a single project.** Unanimous over 1,152 kits, but all 128
+ * flag-clear kits come from one file. A second DN1 project with the flag clear would settle it.
  */
-export const INPUT_LEFT_LEVEL = {
+export const INPUT_GATED_FIELDS: readonly {
   /** Within the DN1's per-pattern FX block. */
-  from: 0x36,
-  /** Within the DN1 tail's mixer block. */
-  flagAt: 0x0e,
+  from: number;
   /** Destination, relative to the DN2 kit record. */
-  to: 5_858,
+  to: number;
   /** What the importer writes for every kit when the flag is clear. */
-  whenFlagClear: 100,
-} as const;
-
-/**
- * DN2 input-page bytes that vary in Elektron's output and that no DN1 byte explains.
- *
- * Searched exhaustively: every one of the 2,560 bytes of the DN1's per-pattern block, against
- * all 1,152 kit pairs. Not one is a consistent source for either.
- *
- *   kit+5860  IN R level   0 in 960 kits, 100 in 192
- *   kit+5878  DUAL         1 in 961 kits, 0 in 191
- *
- * Both nearly track `5858`, and neither is a function of it. `5858 = 100` gives `5860 = 100`
- * except once, where `5858 = 6` also gives `5860 = 100`; `DUAL` disagrees with the majority
- * reading in 66 kits spread across projects. So they are a related state, not a derived one.
- *
- * `INPUT_LEFT_LEVEL` above shows the shape of the answer — a per-kit byte gated by a
- * project-level tail flag — and the same shape is the obvious thing to try here next.
- *
- * **Deliberately not written.** A majority-vote constant would be right about 83% of the time
- * and wrong the rest, and `DUAL` changes how the device treats the external input — guessing it
- * is the kind of plausible-looking wrong value this project refuses to send to hardware.
- *
- * The shape of the failures points somewhere specific. `TECNO_EXP` contradicts the `5858`
- * correspondence uniformly, across all 128 of its kits, and the 192/191-kit minorities at
- * `5860` and `5878` are similarly lumpy rather than scattered. That is what a **project-level**
- * source looks like reflected into a per-pattern field. The DN1 stores no kits at all — its
- * per-pattern block is our own analogy — so nothing says the external input has to be
- * per-pattern on that device. **The DN1 tail is where to look next**, not the kit.
- */
-export const UNEXPLAINED_INPUT_BYTES: readonly number[] = [5_860, 5_878];
+  whenFlagClear: number;
+  name: string;
+}[] = [
+  { from: 0x36, to: 5_858, whenFlagClear: 100, name: "IN L level" },
+  { from: 0x3a, to: 5_860, whenFlagClear: 100, name: "IN R level" },
+  { from: 0x4c, to: 5_878, whenFlagClear: 0, name: "DUAL" },
+];
 
 /**
  * A DN1 FX byte the importer rescales onto the DN2's compressor volume.

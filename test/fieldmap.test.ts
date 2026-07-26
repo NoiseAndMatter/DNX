@@ -12,10 +12,9 @@ import assert from "node:assert/strict";
 
 import {
   FX_COMPRESSOR_VOLUME,
-  INPUT_LEFT_LEVEL,
+  INPUT_GATED_FIELDS,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
-  UNEXPLAINED_INPUT_BYTES,
 } from "../src/expand/fieldmap.js";
 import { KIT_FX_PARAMETERS, kitFxAt } from "../src/project/kitfx.js";
 
@@ -59,39 +58,21 @@ test("every copy landing in the FX block hits a byte a capture named", () => {
 });
 
 /**
- * The reverse audit, and the more useful one now: named parameters the converter never writes.
+ * The reverse audit: a named parameter the converter never writes inherits the template's
+ * value, which is this project's signature bug.
  *
- * A named parameter with no copy targeting it inherits the template's value, which is this
- * project's signature bug. Whether each one is a defect depends on whether the DN1 has the
- * parameter at all — the compressor page may simply have no source — but every one of them is
- * a byte a non-default template can leak through, so the set is pinned. Closing one should be
- * a deliberate act, and the rest stay visible.
+ * This used to pin a list of exceptions. There are none left — every parameter the captures
+ * named is now written, by copy, by constant, or through the gated input table — so the test
+ * asserts completeness instead. If a future capture names a new parameter, this fails until
+ * someone decides what to do about it, which is the point.
  */
-test("the FX parameters the converter does not write are the known set", () => {
+test("every named FX parameter is now written", () => {
   const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
   for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  for (const f of INPUT_GATED_FIELDS) written.add(f.to);
   written.add(FX_COMPRESSOR_VOLUME.coarseAt);
-  written.add(INPUT_LEFT_LEVEL.to);
-  const missed = KIT_FX_PARAMETERS.filter((p) => !written.has(p.offset)).map(
-    (p) => `${p.page} ${p.name}`,
-  );
-
-  // Only two left. The compressor page is now written as constants: the DN1 has no compressor,
-  // so there is nothing to transfer, but the values are constant across every conversion and
-  // writing them reproduces Elektron instead of inheriting a non-blank template's settings.
-  // These two are documented in UNEXPLAINED_INPUT_BYTES -- no DN1 byte explains either, and a
-  // majority-vote constant would be wrong 17% of the time on a parameter that changes how the
-  // device treats its external input.
-  assert.deepEqual(missed.sort(), ["input DUAL", "input IN R level"]);
-});
-
-test("the unexplained input bytes are exactly the ones left unwritten", () => {
-  const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
-  for (const c of KIT_FX_CONSTANTS) written.add(c.at);
-  written.add(INPUT_LEFT_LEVEL.to);
-  for (const offset of UNEXPLAINED_INPUT_BYTES) {
-    assert.ok(!written.has(offset), `${offset} is documented as unexplained but is being written`);
-    assert.ok(kitFxAt(offset), `${offset} should be a named parameter`);
+  for (const p of KIT_FX_PARAMETERS) {
+    assert.ok(written.has(p.offset), `${p.page} ${p.name} at ${p.offset} is not written`);
   }
 });
 
