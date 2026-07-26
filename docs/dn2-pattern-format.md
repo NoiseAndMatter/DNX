@@ -285,30 +285,45 @@ the pool allows an average of four notes per step across a completely full patte
 ```
 +0    u8         parameter id
 +1    u8         track 0..15
-+2    128 × u16le  value per step; 0xFFFF = step not locked
++2    128 × (u8 coarse, u8 fine)   value per step; 0xFFFF = step not locked
 ```
 
 **A lock slot is two bytes, and only some of them are a plain integer** — corrected on hardware
-2026-07-26. For an ordinary 0-127 parameter the value sits in the first byte and the second is
-zero, so reading a `u16le` works. For a parameter with finer resolution it does not: the first
-byte is a **coarse** value and the second a **fine** one, and a `u16le` read turns
-`-1.00` into 32,575.
+2026-07-26. For an ordinary 0-127 parameter the value sits in the **coarse** byte and the fine
+byte is zero, which is why reading the pair as a little-endian integer worked for as long as
+nothing with finer resolution was tested. For a parameter with fine resolution it does not: a
+`u16le` read turns an LFO depth of `-1.00` into 32,575. Read the two bytes as `u16be` and split
+them; `src/project/lockvalue.ts` does this and is the only place that should.
 
-Swept across a 16-bit LFO depth whose range is -128 to +127.98:
+Swept across a 16-bit LFO depth of range -128 to +127.98 — pattern A3 of `DATA_CAPTURE.dn2prj`,
+lock record 1, track 3, parameter 29:
 
-| Set to | bytes | coarse x 256 + fine | value |
-|---|---|---|---|
-| -128.00 | `00 00` | 0 | `raw / 128 - 128` |
-| -64.00 | `20 00` | 8,192 | -64.00 |
-| -1.00 | `3f 7f` | 16,255 | -0.996 |
-| -0.01 | `3f ff` | 16,383 | -0.008 |
-| +0.01 | `40 01` | 16,385 | +0.008 |
-| +1.00 | `40 81` | 16,513 | +1.008 |
-| +127.98 | `7f fe` | 32,766 | +127.98 |
+| Set to | bytes | coarse × 256 + fine | `raw / 128 - 128` | |
+|---|---|---|---|---|
+| -128.00 | `00 00` | 0 | **-128.000** | exact |
+| -64.00 | `20 00` | 8,192 | **-64.000** | exact |
+| -1.00 | `3f 7f` | 16,255 | -1.008 | one tick out |
+| -0.01 | `3f ff` | 16,383 | -0.008 | |
+| 0.00 | — | — | — | no lock written |
+| +0.01 | `40 01` | 16,385 | +0.008 | |
+| +1.00 | `40 81` | 16,513 | +1.008 | one tick out |
+| +60.00 | `5e 00` | 24,064 | **+60.000** | exact |
+| +127.98 | `7f fe` | 32,766 | +127.984 | |
 
 So the quantum is **1/128 = 0.0078**, displayed to two places as `0.01`, and the maximum is
-`32766/128 - 128 = 127.984`, displayed `127.98`. Both device readings the user reported are
-explained exactly.
+`32766/128 - 128 = 127.984`, displayed `127.98`.
+
+Three points land on the scale exactly, which is what pins it — those are the steps whose fine
+byte is zero, so the device had no rounding to do. **The two `±1.00` steps sit one fine tick
+further from zero than asked for.** That is 0.008, and it is recorded rather than modelled: the
+same capture has the step labelled `+64.00` in the sheet reading `+60.00`, so encoder slips
+demonstrably happened. Whether the device rounds outward at whole units, or the value was simply
+entered one tick off, needs a second sweep to settle. Nothing depends on the answer — the
+converter transfers both bytes untouched.
+
+The step set to `0.00` produced **no lock record entry at all**. Setting a p-lock to the
+parameter's current value appears not to create a lock, seen on two independent parameters in
+this capture.
 
 **Bipolar values are offset, not two's complement** — also VERIFIED here. A byte-sized bipolar
 parameter stores `value + 64`, so -64 is `0x00` and +63 is `0x7F`. That answers a question worth

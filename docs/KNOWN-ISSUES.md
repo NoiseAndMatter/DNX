@@ -76,11 +76,25 @@ integer.** A fine-resolution parameter stores a coarse byte and a fine byte, whi
 read turns into nonsense. Conversion is unaffected — it copies the bytes through — but any
 editor showing a p-lock value must know which kind of parameter it has.
 
+**Done.** Both readers and the writer now agree on `u16be`, and `src/project/lockvalue.ts` splits
+a slot into its coarse and fine bytes and offers the three readings a caller can want: the plain
+0-127 value, the bipolar value, and the fine-resolution one. The corpus cross-validation still
+finds the same 392 records and the same 6 rescaled values, which is the check that the byte-order
+change is invisible to conversion.
+
 ### Still to do from that capture
 
-`readLockTable` needs to expose both bytes rather than a single `u16le`, and something must say
-which parameters are fine-resolution. Until then a UI can display byte-parameter locks correctly
-and must not display the others.
+**Nothing says which parameters are fine-resolution.** `lockvalue.ts` can decode a slot three
+ways but cannot choose; the caller must know that parameter 29 on a synth track is an LFO depth.
+Closing this needs the parameter-id table filled in — see the entry below on parameter naming.
+Until then a UI can display byte-parameter locks correctly, and must ask before displaying the
+rest.
+
+**The `±1.00` steps of the depth sweep sit one fine tick out** (0.008 further from zero than the
+value asked for). Three other points in the same sweep land exactly, so the scale is not in
+doubt; the open question is whether the device rounds outward at whole units or the value was
+entered a tick off. The same capture has a step labelled `+64.00` reading `+60.00`, so entry
+slips are known. One short re-sweep of `DEP` around `±1.00` settles it.
 
 ## Open gaps, largest first
 
