@@ -165,16 +165,51 @@ observed mapping over the matched corpus (nothing else was ever seen):
 | 23 | `+0x180` | 0 | 103 |
 | 24 … 38, 40, 42 | `+0x100` | 0,1,2,3,4,5,8,9,10,12,14,16,18,20,22,26,30 | 736 |
 
-The `+0x200` values are read as a **probability percentage**: they reproduce the Elektron
-percentage ladder (…13, 19, 25, 33, 41, 50, 59, 67, 75, 81, 87…) at exactly the right
-indices — DN1 condition 6 → 19 %, 15 → 87 %. The top entry, DN1 condition 21 → 100, sits
-one past the 99 % end of the ladder as usually documented, so the `100` is INFERRED rather
-than confirmed.
+The `+0x200` values are a **probability percentage stored literally** — VERIFIED on hardware
+2026-07-26 by setting eight known percentages and reading the bytes back: 1 %, 13 %, 25 %,
+50 %, 63 %, 75 %, 88 % and 99 % store as `0x01, 0x0D, 0x19, 0x32, 0x3F, 0x4B, 0x58, 0x63`,
+which are exactly 1, 13, 25, 50, 63, 75, 88 and 99. No ladder, no table: the number on screen is
+the number in the file.
 
-`+0x100` and `+0x180` hold the non-probability conditions, but which DN2 code means which
-condition is **UNKNOWN**: the DN1→DN2 value map is not linear (increments of +1, then +3,
-then +2), so the two devices enumerate their condition lists differently and the mapping
-cannot be derived from the DN1 numbering alone.
+### The `+0x100` code table — SOLVED on hardware, 2026-07-26
+
+A single capture settled it: one pattern with a different condition on each of 28 steps, so
+the step index names the code. `docs/dn2-capture-plan.md` §1 is the method.
+
+| Code | Condition | Code | Condition |
+|---|---|---|---|
+| `0x00` | PRE | `0x01` | not PRE |
+| `0x02` | NEI | `0x03` | not NEI |
+| `0x04` | 1ST | `0x05` | not 1ST |
+| `0x06` | LST | `0x07` | not LST |
+| `0x08` | 1:2 | `0x09` | 2:2 |
+| `0x0A` | 1:3 | `0x0B` | not 1:3 |
+| `0x0C` | 2:3 | `0x0D` | not 2:3 |
+| `0x0E` | 3:3 | `0x0F` | not 3:3 |
+| `0x10` | 1:4 | `0x11` | not 1:4 |
+| `0x16` | 4:4 | `0x17` | not 4:4 |
+| `0x3C` | 1:8 | `0x3D` | not 1:8 |
+| `0x4A` | 8:8 | `0x4B` | not 8:8 |
+
+**Two rules generate the whole table.** Negation is **+1** — every positive condition is even
+and its negation is the odd code above it. And the ratios are blocks: for a given `B`, the code
+is `base(B) + 2 x (A - 1)`, with `base(2)=0x08, base(3)=0x0A, base(4)=0x10, base(5)=0x18,
+base(6)=0x22, base(7)=0x2E, base(8)=0x3C`. Each block is `2B` codes long, so each base is the
+previous plus twice its `B` — and the observed `1:8 = 0x3C`, `8:8 = 0x4A` confirm the arithmetic
+across the largest block.
+
+That also explains why the device offers no `not 1:2`: code `0x09` **is** the negation of `1:2`,
+and the UI simply labels it `2:2`, because over a two-cycle those are the same rule. The code
+space is uniform; only the labels collapse.
+
+**The unobserved codes are therefore predicted, not measured** — `2:4 = 0x12`, `3:4 = 0x14`, and
+all of `B` = 5, 6, 7. A later capture should spot-check one of them.
+
+### `+0x180` is the FILL family — VERIFIED
+
+`0x01` is FILL and `0x00` is not-FILL, which is why this array only ever held 0 and 1 across the
+matched corpus. It also names the two DN1 conditions that fed it: DN1 22 is FILL, DN1 23 is
+not-FILL.
 
 **None of the 419 SysEx captures sets any of these three arrays**, so there is no
 single-variable evidence at all — only the matched pairs. Treat the mapping table above as
@@ -252,6 +287,33 @@ the pool allows an average of four notes per step across a completely full patte
 +1    u8         track 0..15
 +2    128 × u16le  value per step; 0xFFFF = step not locked
 ```
+
+**A lock slot is two bytes, and only some of them are a plain integer** — corrected on hardware
+2026-07-26. For an ordinary 0-127 parameter the value sits in the first byte and the second is
+zero, so reading a `u16le` works. For a parameter with finer resolution it does not: the first
+byte is a **coarse** value and the second a **fine** one, and a `u16le` read turns
+`-1.00` into 32,575.
+
+Swept across a 16-bit LFO depth whose range is -128 to +127.98:
+
+| Set to | bytes | coarse x 256 + fine | value |
+|---|---|---|---|
+| -128.00 | `00 00` | 0 | `raw / 128 - 128` |
+| -64.00 | `20 00` | 8,192 | -64.00 |
+| -1.00 | `3f 7f` | 16,255 | -0.996 |
+| -0.01 | `3f ff` | 16,383 | -0.008 |
+| +0.01 | `40 01` | 16,385 | +0.008 |
+| +1.00 | `40 81` | 16,513 | +1.008 |
+| +127.98 | `7f fe` | 32,766 | +127.98 |
+
+So the quantum is **1/128 = 0.0078**, displayed to two places as `0.01`, and the maximum is
+`32766/128 - 128 = 127.984`, displayed `127.98`. Both device readings the user reported are
+explained exactly.
+
+**Bipolar values are offset, not two's complement** — also VERIFIED here. A byte-sized bipolar
+parameter stores `value + 64`, so -64 is `0x00` and +63 is `0x7F`. That answers a question worth
+asking before writing p-locks: two's complement would have put -1 at `0xFFFF`, colliding with the
+"step not locked" sentinel. Offset encoding never reaches it.
 
 A record whose first u16le is `0xFFFF` is unused. In a native empty pattern the unused
 records read `FF FF` followed by 256 zero bytes; DN1 conversions leave 128 zeros then 128

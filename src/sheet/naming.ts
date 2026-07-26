@@ -20,6 +20,23 @@ export function patternName(index: number): string {
   return `${bank}${(index % PATTERNS_PER_BANK) + 1}`;
 }
 
+/**
+ * Parse a device-style pattern name back to an index: `A1` to 0, `B5` to 20.
+ *
+ * The inverse of `patternName`, for command lines and anywhere else a person types a
+ * position. Returns undefined rather than guessing at anything unparseable.
+ */
+export function patternIndex(name: string): number | undefined {
+  const match = /^([A-Ha-h])\s*(\d{1,2})$/.exec(name.trim());
+  if (!match) return undefined;
+
+  const bank = BANKS.indexOf(match[1]!.toUpperCase());
+  const position = Number(match[2]);
+  if (bank < 0 || position < 1 || position > PATTERNS_PER_BANK) return undefined;
+
+  return bank * PATTERNS_PER_BANK + (position - 1);
+}
+
 /** Step index 0..127 as `page·step`, both 1-based and never above 16. */
 export function stepName(step: number): string {
   return `p${Math.floor(step / STEPS_PER_PAGE) + 1}·${(step % STEPS_PER_PAGE) + 1}`;
