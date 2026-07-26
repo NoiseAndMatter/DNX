@@ -12,6 +12,7 @@
 
 import { PATTERN, STEP_COUNT, TRACK, TRACK_COUNT, KIT_MIDI_MASK_OFFSET } from "./dn2pattern.js";
 import { DN2_LAYOUT } from "./dn2image.js";
+import { describeKitFx } from "./kitfx.js";
 
 /** A SysEx pattern dump is a pattern record followed by its kit record. */
 export const PATTERN_PAYLOAD_SIZE = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
@@ -117,6 +118,8 @@ function locateInKit(within: number): Location {
   }
 
   if (within < KIT_MIDI_BASE) {
+    const fx = describeKitFx(within);
+    if (fx) return { region: "kit FX", field: fx, within: within - 5_804, unknown: false };
     return { region: "kit gap 5804-5963", field: "FX and unidentified", within: within - 5_804, unknown: true };
   }
 
