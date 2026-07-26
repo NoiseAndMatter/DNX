@@ -93,16 +93,25 @@ them, not a sample. Any of them could be the source of the three unexplained byt
 at its default says nothing.
 
 The pages, from the manual's chapter 12: **Delay** TIME, X, WID, FDBK, VOL, HPF, LPF, REV; **Reverb**
-PRE, DEC, FREQ, GAIN, HPF, LPF, VOL; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
-ATK, REL, MUP, RAT, SCS, VOL — twenty-nine in total.
+PRE, DEC, FREQ, GAIN, VOL, HPF, LPF; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
+ATK, REL, MUP, VOL, RAT, SCS, SCF — thirty in total.
+
+Two of those names mislead. Delay **X is ping-pong**, an on/off, not a time multiplier. Compressor **VOL
+is Pattern Volume**, the kit's overall level, which makes it a candidate for `kit+5860` — a byte holding
+only 0 and 100. Bipolar parameters should take the **negative** of their assigned value: a negative byte
+stands out against a field of positive primes, and delay WID at least is bipolar, confirmed on the
+device.
 
 Assign values from the **primes**: 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
 79, 83, 89, 97, 101, 103, 107, 109, 113, 119. No prime is a multiple of another, so a field that turns
 out to be rescaled still points back at exactly one parameter — which the ordinary ramp does not
 guarantee. `X`, `RAT` and `SCS` are selectors and take the next setting along instead.
 
-Then a **second file** with the compressor toggled off. kit+5878 takes only 0 and 1 across the whole
-corpus, so a toggle is its likeliest source.
+**There is no compressor on/off.** The page is THR, ATK, REL, MUP, VOL, RAT, SCS, SCF and the effect is
+always in the path, so the originally planned "compressor off" capture is impossible. The second file
+instead copies the first and moves only the four **selectors** — ping-pong, RAT, SCS, SCF. That isolates
+the enum and toggle fields, which is what the pair was for: `kit+5878` holds only 0 or 1 across the whole
+corpus, so something switch-like writes it.
 
 ## 3. The per-track array at kit+10264
 
@@ -111,10 +120,13 @@ non-default values into individual entries; we never write it at all.
 
 Per-track, so one file can carry a different change on each track:
 
-- Track 2: a different machine type
-- Track 3: switched to a MIDI track
-- Track 5: muted
-- Track 7: a different machine type again, distinct from track 2's
+- Track 2: a different machine — `[FUNC] + [SYN]` opens the MACHINE menu
+- Track 3: assign a **MIDI machine**, which is how a track becomes a MIDI track
+- Track 5: muted in **PATTERN MUTE** mode, `[FUNC]` + double-press `[TRK]`
+- Track 7: a third machine, distinct again
+
+**Pattern mute, not global mute.** The device has both, and only the pattern-scoped one can live in the
+pattern or its kit; a global mute belongs to the project and would not appear in this comparison at all.
 
 Machine type is the strongest candidate — the DN2 has selectable machines and the DN1 does
 not, which is exactly the shape of a field no DN1 byte can explain.
