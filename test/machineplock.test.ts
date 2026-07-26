@@ -85,8 +85,13 @@ test("FLTR page 1 and page 2 interleave", () => {
   assert.ok(PLOCK_PARAMETERS.some((p) => p.id === 77 && p.page === "FLTR 2"));
 });
 
-test("SYN 2 of FM TONE is recorded by position, without invented names", () => {
+test("FM TONE's SYN 2 is two operator envelopes, distinguished by position", () => {
   const syn2 = FM_TONE_PLOCKS.filter((p) => p.page === "SYN 2");
   assert.equal(syn2.length, 8);
-  for (const p of syn2) assert.equal(p.name, undefined, "no name was captured, so none is claimed");
+  // The device repeats the same four labels, so the operator has to come from the knob half.
+  assert.deepEqual(syn2.map((p) => p.name), [
+    "A ATK", "A DEC", "A END", "A LEV", "B ATK", "B DEC", "B END", "B LEV",
+  ]);
+  const stems = syn2.map((p) => p.name!.split(" ")[1]);
+  assert.deepEqual(stems.slice(0, 4), stems.slice(4), "both halves carry the same four stems");
 });
