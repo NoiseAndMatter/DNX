@@ -47,8 +47,11 @@ export interface FxParameter {
  * (5858-5880) rather than after them, so page order in the UI is not offset order.
  *
  * One slot in that run is still unplaced: **5856**, constant `1` in all 2,176 kits sampled.
- * A candidate is the per-pattern / global flag for the FX and mixer pages, which the device
- * exposes as a setting — that would explain a byte nobody in the corpus ever moved.
+ * It is NOT a per-pattern/global switch for these pages. The DN2 has no such setting: the FX,
+ * mixer and compressor values live in the pattern's kit unconditionally, which is exactly the
+ * structure seen here — one FX block per kit, one kit per pattern. The device's Perform Kit
+ * mode makes them behave globally by *not reloading* the kit on a pattern change, and that is
+ * runtime state with nothing to store in a file.
  *
  * The mixer page's chorus, delay and reverb levels are **not** separate fields: setting the
  * mixer level moves the corresponding FX page's `VOL` byte. Two views of one parameter.

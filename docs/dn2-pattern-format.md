@@ -556,9 +556,15 @@ overdrive alone to a unique value would upgrade this to VERIFIED.
 **The mixer page's chorus, delay and reverb levels are the FX pages' `VOL` bytes** — setting the
 mixer level moved 5822, 5838 and 5854, which were already named. One parameter, two views.
 
-**`kit+5856` is still unplaced**, constant `1` across all 2,176 kits sampled. A candidate is the
-per-pattern / global flag that the device exposes for the FX and mixer pages: a byte nobody in
-the corpus ever moved is exactly what a setting-level switch would look like. Untested.
+**`kit+5856` is still unplaced**, constant `1` across all 2,176 kits sampled — UNKNOWN.
+
+One hypothesis was raised and **rejected on 2026-07-26**: that it flags whether these pages are
+per-pattern or global. The DN2 has no such setting. FX, mixer and compressor values live in the
+pattern's kit unconditionally, which is precisely the structure the bytes show — one FX block
+per kit, one kit per pattern. What the device offers instead is **Perform Kit** mode, which
+makes them behave globally by *not reloading* the kit on a pattern change; that is runtime
+state and leaves nothing in the file. Recorded because ruling a reading out is worth as much
+as confirming one, and a byte that never moves invites this guess again.
 
 **`5900-5956` is zero in all 2,176 kits** — 28 slots of nothing, immediately after the
 compressor page. That is what reserved space looks like in this format, and it is a better
