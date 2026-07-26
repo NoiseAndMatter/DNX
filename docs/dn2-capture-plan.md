@@ -88,19 +88,21 @@ smaller than the 35 x 2 the notation suggests.
 **Target:** kit+5858, kit+5860 and kit+5878 — Elektron writes them, no single DN1 kit byte
 predicts them, and they are the last of the FX residue.
 
-FX parameters are one value each per kit, so again a single file does it. Suggested values,
-all away from the defaults and strictly increasing so a rescaled field stays recognisable:
+FX parameters are one value each per kit, so a single file does it — and it should set **every** one of
+them, not a sample. Any of them could be the source of the three unexplained bytes, and a parameter left
+at its default says nothing.
 
-| Parameter | Value | Parameter | Value |
-|---|---|---|---|
-| Delay TIME | 11 | Reverb TONE | 41 |
-| Delay FEEDBACK | 17 | Chorus DEPTH | 47 |
-| Delay HP filter | 23 | Chorus SPEED | 53 |
-| Delay LP filter | 29 | Compressor THRESHOLD | 59 |
-| Reverb SIZE | 35 | Compressor RATIO | (next setting up) |
+The pages, from the manual's chapter 12: **Delay** TIME, X, WID, FDBK, VOL, HPF, LPF, REV; **Reverb**
+PRE, DEC, FREQ, GAIN, HPF, LPF, VOL; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
+ATK, REL, MUP, RAT, SCS, VOL — twenty-nine in total.
 
-Then a **second file** toggling the compressor off, and a **third** with it on again.
-kit+5878 takes only 0 and 1 across the whole corpus, so a toggle is its likely source.
+Assign values from the **primes**: 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
+79, 83, 89, 97, 101, 103, 107, 109, 113, 119. No prime is a multiple of another, so a field that turns
+out to be rescaled still points back at exactly one parameter — which the ordinary ramp does not
+guarantee. `X`, `RAT` and `SCS` are selectors and take the next setting along instead.
+
+Then a **second file** with the compressor toggled off. kit+5878 takes only 0 and 1 across the whole
+corpus, so a toggle is its likeliest source.
 
 ## 3. The per-track array at kit+10264
 
