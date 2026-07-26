@@ -43,3 +43,54 @@ The author holds a copy; its location is recorded in the private corpus at
   dumps, each isolating one user action.
 - **Device-authored captures** — built to a plan in `docs/dn2-capture-plan.md` and saved from
   the hardware. These are what name fields the corpora can only locate.
+
+## elk-herd — the closest prior art
+
+<https://github.com/mzero/elk-herd>, by Mark Lentczner. A patch and pattern manager for Elektron
+hardware, written in Elm. Cloned into the private corpus at `00_References/elk-herd/`.
+
+**BSD 2-Clause.** Unlike the Synthdawg guide, this is permissive: its code can be used and
+adapted with attribution. Worth knowing before reading it, because the reading changes when you
+are allowed to borrow.
+
+**It has no Digitone support.** `src/Elektron/` contains `Digitakt` and nothing else, so it
+cannot cross-check any of our format work. What it offers is architecture and prior art for the
+manager, which is what `ui-plan.md` describes wanting to build.
+
+### What is worth reading
+
+**`src/Bank/Shuffle.elm`** — a formal model of reordering items in a bank. A `Shuffle` is a pair
+of dictionaries, `movesTo` and `cameFrom`, over `Trash | Dst Int` and `Empty | Src Int`, with
+`mergeShuffles` for composition and **`rereference`** for fixing up references after a move.
+
+That is the general form of a problem we currently solve narrowly: `src/librarian/copy.ts`
+remaps sound-lock indices when a pattern is copied. A manager that moves patterns, sounds and
+kits between arbitrary slots needs the general version, and this is a worked one under a licence
+that permits borrowing.
+
+**`src/SysEx/`** — Elektron's SysEx dump protocol, 1,546 lines, and the request/response
+convention across a device family:
+
+| Request | Response | Object |
+|---|---|---|
+| `0x60` | `0x50` | Pattern + Kit |
+| `0x61` | `0x51` | Pattern |
+| **`0x62`** | **`0x52`** | **Kit** |
+| `0x63` | `0x53` | Sound |
+
+**This corroborates something we had only inferred.** `src/sysex/devices.ts` lists `KIT: 0x52`
+from the family convention, flagged as unconfirmed because no file we hold uses it. elk-herd
+implements it as a working message type on the Digitakt, which is independent confirmation from
+a sibling device.
+
+### And it bears on what a kit is
+
+`docs/ui-plan.md` records that the DN2's kits carry their own names and that a standalone kit
+format has never been seen, so "save this as a named kit" is not currently possible.
+
+**A dedicated Kit dump type existing family-wide is strong evidence that a kit is a first-class
+transferable object**, not merely a region inside a pattern. If the DN2 answers a `0x62` Kit
+Request, the response *is* the standalone kit format — the thing that has been missing.
+
+That is a concrete experiment rather than more speculation, and it needs only SysEx I/O, which
+`docs/ROADMAP.md` already has queued as WebMIDI transfer.
