@@ -478,9 +478,16 @@ is not confirmed. Setting **exactly one** switch on a spare track would settle i
 powers-of-two fractions is what made the *scale* readable and not merely the offsets; arbitrary
 decimals would have located the bytes and taught us nothing about the encoding.
 
-**`FX BR` was not placed.** It was set to 11 and no byte took that value; `+230` moved to 19,
-which is the nearest candidate and does not match, so it is left unclaimed in
-`UNRESOLVED_SOUND_CONTROLS` rather than guessed.
+**`FX BR` is at +230**, placed by a maximum reading: set to max it stored 127. An earlier track
+set it to 11 and the same byte read 19, which no scaling explains — 127 at maximum rules out a
+multiplier. The offset is measured; **the 11 -> 19 mismatch is unexplained** and recorded rather
+than smoothed over.
+
+**A caveat on the baseline.** The capture used a converted project, and tracks 6, 7 and 8 carry
+content from the original music, so they differ from track 1 in bytes nobody touched — the LFO
+speed, multiplier and waveform bytes among them. Every offset named here was confirmed by a
+*value match*, so those are unaffected. But a changed byte on those tracks that matched no
+expected value cannot be assumed to be a selector; it may simply be pre-existing difference.
 
 The selector controls were deliberately given no numbers, so their bytes are located but unnamed;
 the values written on the capture sheet will close those.
