@@ -54,6 +54,7 @@ import {
   convertDn1SoundToDn2Detailed,
   type ConversionWarning as SoundWarning,
 } from "../project/soundmap.js";
+import { MACHINE, SOUND_MACHINE_OFFSET } from "../project/machine.js";
 import { NO_CONDITION, translateParameterId, translateTrigCondition } from "./translate.js";
 import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } from "./route.js";
 import {
@@ -85,6 +86,8 @@ const DN2_POOL_OFFSET = 10_756;
 const POOL_SLOTS = 128;
 /** Every DN1 project has four synth tracks then four MIDI tracks. */
 const DN1_MIDI_MASK = 0x00f0;
+/** ...which land on DN2 tracks 5-8, i.e. kit sound slots 4-7. */
+const DN1_MIDI_TRACKS = 4;
 const NO_BYTE = 0xff;
 const NO_WORD = 0xffff;
 
@@ -526,6 +529,21 @@ function writeKit(
     }
   }
 
+  // Machine per slot. The DN1 has one machine, so its four synth tracks are FM TONE and its
+  // four MIDI tracks take the MIDI machine on DN2 slots 4-7 — what Elektron writes on all
+  // 12,288 sound slots of the matched corpus, without exception.
+  //
+  // Written explicitly rather than inherited: with a neutral template this byte reads 0 on the
+  // MIDI slots, so a converted project's four MIDI tracks arrived carrying an FM TONE machine.
+  // It looked correct only because the byte-diff test uses Elektron's own output as template.
+  for (let slot = 0; slot < DN1_KIT_SOUNDS; slot++) {
+    out[kitBase + DN2_KIT_SOUND_OFFSET + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.fmTone;
+  }
+  for (let track = 0; track < DN1_MIDI_TRACKS; track++) {
+    const slot = DN1_KIT_SOUNDS + track;
+    out[kitBase + DN2_KIT_SOUND_OFFSET + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.midi;
+  }
+
   // Track levels. DN1 kit+0x14 holds four u16le levels, the DN2 sixteen at kit+0x1C, and the
   // first four correspond exactly (verified on 2,048 kit/track pairs). Without this a
   // converted project loses its mix: every track sits at the template's default of 100.
@@ -561,6 +579,9 @@ function writeKit(
     if (!source?.name) continue;
     const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);
     out.set(sound, kitBase + DN2_KIT_SOUND_OFFSET + destinationTrack * DN2_SOUND_SIZE);
+    // A promoted sound comes from the DN1, so it is FM TONE whatever the template had here.
+    out[kitBase + DN2_KIT_SOUND_OFFSET + destinationTrack * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] =
+      MACHINE.fmTone;
     report.soundsConverted++;
     for (const w of warnings) {
       report.warnings.push({
