@@ -380,3 +380,50 @@ table stores a **knob slot** rather than a named parameter, and an editor could 
 lock without also knowing the track's `MODE`. The follow-up capture settles it: if `HOLD`
 returns the same id as `SUS`, they are slots; a new id means they are distinct parameters.
 Either answer changes what an editor has to model, so it is worth capturing before building one.
+
+---
+
+## The machine pages — capture by position, not by name
+
+The last gap in the lock table. Ids **32..76** are unaccounted for and are almost certainly the
+SYN pages and FLTR page 1, which change with the selected machine.
+
+### Identify controls by page and knob
+
+Earlier sheets named each control, which made them only as good as a parameter list pulled out
+of a PDF — and that list was wrong twice. The manual's block diagrams contribute their labels
+(`FM DRUM` page 1 absorbed thirteen of them), and `FM TONE` page 2 extracts incomplete however
+the regex is tuned.
+
+So this sheet asks for **page and knob** — "SYN page 1, knob A" — and leaves a column for the
+name **the device shows**. The capture becomes its own source of truth for names, and a wrong
+guess on my part costs nothing.
+
+### One pattern, one machine per track
+
+A lock record carries its track, so several machines can be captured at once and the records
+stay separable. All four tracks reuse the same step numbers.
+
+| Track | Machine | Pages | Locks |
+|---|---|---|---|
+| 1 | SYN `FM TONE` | 1-4 | 32 |
+| 2 | SYN `WAVETONE` | 1-3 | 24 |
+| 3 | FLTR `MULTI-MODE` | 1 | 8 |
+| 4 | FLTR `COMB-` | 1 | 8 |
+| 5 | AMP `MODE` = `AHD` | AMP | 1 — `HOLD` |
+| 6 | AMP `MODE` = `ADSR` | AMP | 1 — `MODE` |
+
+74 locks, inside the 80-record table.
+
+### What it settles
+
+**Whether the table stores a named parameter or a knob slot.** Compare the id for track 1 SYN
+page 1 knob A against track 2's. Same id means the lock table addresses a *slot*, and no editor
+can interpret a lock without also knowing the track's machine — a materially different model to
+build. Different ids mean each machine has its own, and the table is simply larger.
+
+Tracks 5 and 6 ask the same question of `HOLD` against `SUS`, which is already known to be
+**90**, and confirm or break the two INFERRED ids `HOLD=88` and `MODE=97`.
+
+Tracks 5 and 6 are separate on purpose: the gating selector is never moved on a track whose
+gated control is being captured.
