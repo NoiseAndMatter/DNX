@@ -189,15 +189,31 @@ export const FM_DRUM_PLOCKS: readonly MachinePlock[] = [
 ];
 
 /**
- * SWARMER. Ids **33..40**, eight controls, no gaps.
+ * SWARMER. Ids 33..40, eight controls, no gaps.
  *
- * The ids are certain; **which knob each belongs to is not.** The capture placed these eight
- * locks on steps 17..24 rather than the 1..8 the sheet asked for, and taking step order as knob
- * order would make knob B id 36 — where every other machine puts 34 at knob B. So either the
- * locks were entered in a different order or the offset means something else. Recorded as
- * positions UNKNOWN rather than guessed, because a wrong knob here is silently wrong forever.
+ * The capture placed these on steps 17..24 rather than 1..8 — the sequencer page carried over
+ * when switching tracks — and was then re-exported with the locks **moved**. The id sequence and
+ * every value came back byte-identical across the two exports, which proves a move rather than a
+ * re-entry: the knob order was correct throughout and only the step offset was wrong.
+ *
+ * The values corroborate the mapping independently. `M.OCT` at knob E reads **1** — the only
+ * enum-sized value in the set, and exactly what a one-or-two-octave selector should hold. Had the
+ * order been shuffled, that value would have landed somewhere it made no sense.
+ *
+ * **Knob B is id 36 here, not 34.** FM TONE, WAVETONE and FM DRUM all put 34 at knob B, so the
+ * apparent pattern breaks on the fourth machine — more evidence that the allocation follows each
+ * machine's own internal parameter order and never the knob layout.
  */
-export const SWARMER_IDS: readonly number[] = [33, 34, 35, 36, 37, 38, 39, 40];
+export const SWARMER_PLOCKS: readonly MachinePlock[] = [
+  { id: 33, page: "SYN 1", knob: "A", name: "TUNE" },
+  { id: 36, page: "SYN 1", knob: "B", name: "SWRM" },
+  { id: 34, page: "SYN 1", knob: "C", name: "DET" },
+  { id: 37, page: "SYN 1", knob: "D", name: "MIX" },
+  { id: 38, page: "SYN 1", knob: "E", name: "M.OCT" },
+  { id: 35, page: "SYN 1", knob: "F", name: "MAIN" },
+  { id: 39, page: "SYN 1", knob: "G", name: "ANIM" },
+  { id: 40, page: "SYN 1", knob: "H", name: "N.MOD" },
+];
 
 /** FLTR EQUALIZER. Ids as every other filter machine; only knob G differs from the rest. */
 export const EQUALIZER_PLOCKS: readonly MachinePlock[] = [
@@ -216,6 +232,7 @@ export const MACHINE_PLOCKS: Readonly<Record<string, readonly MachinePlock[]>> =
   "FM TONE": FM_TONE_PLOCKS,
   WAVETONE: WAVETONE_PLOCKS,
   "FM DRUM": FM_DRUM_PLOCKS,
+  SWARMER: SWARMER_PLOCKS,
   "MULTI-MODE": MULTI_MODE_PLOCKS,
   "COMB-": COMB_MINUS_PLOCKS,
   EQUALIZER: EQUALIZER_PLOCKS,
@@ -223,8 +240,6 @@ export const MACHINE_PLOCKS: Readonly<Record<string, readonly MachinePlock[]>> =
 
 /** Machines the DN2 offers that have **not** been captured. Their ids are unknown. */
 export const UNCAPTURED_MACHINES: readonly string[] = [
-  // Ids known (SWARMER_IDS) but not which knob each belongs to.
-  "SWARMER",
   // Names read off the device and matching the manual, ids identical to the other filters --
   // so nothing is missing except the entries themselves, which nobody has needed yet.
   "LOWPASS 4",

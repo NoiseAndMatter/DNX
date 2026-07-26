@@ -828,10 +828,26 @@ meanings, one id — the machine-relative finding at its clearest.
 the earlier worry that they might only hold for the machine selected during the H1 capture is
 closed.
 
-**SWARMER's ids are 33..40** and eight controls, but **which knob each belongs to is not known.**
-The capture placed its locks on steps 17..24 rather than the 1..8 the sheet asked for, and reading
-step order as knob order would put id 36 at knob B where every other machine puts 34. Recorded as
-ids-without-positions rather than guessed: a wrong knob here would be silently wrong forever.
+**SWARMER** — ids 33..40, resolved to knobs on a re-export:
+
+| A | B | C | D | E | F | G | H |
+|---|---|---|---|---|---|---|---|
+| TUNE | SWRM | DET | MIX | M.OCT | MAIN | ANIM | N.MOD |
+| 33 | **36** | 34 | 37 | 38 | 35 | 39 | 40 |
+
+The first capture placed these on steps 17..24 rather than 1..8, because the sequencer page
+carries over when switching tracks on the device. The project was re-exported with the locks
+**moved**, and the id sequence and every value came back byte-identical — which proves a move
+rather than a re-entry, so the knob order had been right all along and only the step offset was
+wrong.
+
+The values corroborate it independently: `M.OCT` at knob E reads **1**, the only enum-sized value
+in the set and exactly what a one-or-two-octave selector should hold. A shuffled order would have
+put that 1 somewhere it made no sense.
+
+**Knob B is 36 here, not 34.** FM TONE, WAVETONE and FM DRUM all put 34 at knob B, so the
+apparent pattern breaks on the fourth machine. Only **knob A = 33** survives all four, and that
+is a coincidence of allocation order rather than a layout rule.
 
 ### Still unmapped
 
