@@ -71,6 +71,13 @@ each of the first fourteen steps of track 1 and give each a different condition.
 
 One dump, and the step index gives the mapping for every code.
 
+**The negation list has a principled hole.** The device offers no `not 1:2` and no `not 2:2`, confirmed
+on hardware 2026-07-26. Both are already expressible: over a two-cycle, *not the first* is exactly `2:2`
+and *not the second* is `1:2`. Elektron omits a negation wherever the complement is itself a single
+`A:B`, which happens only at B=2 — from B=3 up the complement spans several plays and cannot be written
+as one ratio, so all of those exist. Worth knowing before authoring a condition code: the value space is
+smaller than the 35 x 2 the notation suggests.
+
 ## 2. The kit FX bytes no DN1 byte explains
 
 **Target:** kit+5858, kit+5860 and kit+5878 — Elektron writes them, no single DN1 kit byte
