@@ -179,6 +179,13 @@ whose output takes the alternate state throughout. What the flag means *on the D
 only its effect on the conversion is measured. The `flag == 0` branch rests on that single
 project, so a second DN1 project with the flag clear would settle it.
 
+**The compressor page: nothing to transfer, but something to write.** The DN1 has no
+compressor — it is a DN2 feature — so no correspondence exists to find. All eight parameters
+and their fine bytes are constant across every one of the 1,152 converted kits, and agree with
+both `EMPTY.dn2prj` and the device's own defaults. They are now written as constants, so a
+template carrying its own compressor settings cannot leak them into a conversion. `VOL` is the
+one exception and comes from `FX+0x34` through `FX_COMPRESSOR_VOLUME`.
+
 **Where to look next.** `5860` and `5878` have the same lumpy shape — 192- and 191-kit
 minorities — and both nearly track `5858` without being a function of it. The same two-source
 shape is the obvious thing to try, and the tail is where the project half lives.

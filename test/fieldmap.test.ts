@@ -76,22 +76,13 @@ test("the FX parameters the converter does not write are the known set", () => {
     (p) => `${p.page} ${p.name}`,
   );
 
-  // The compressor page has no DN1 source — the DN1 has no compressor — so there is nothing
-  // to transfer and nothing constant to write; it stays inherited from the template.
-  // The two input bytes are documented in UNEXPLAINED_INPUT_BYTES: no DN1 byte explains them
-  // and a majority-vote constant would be wrong 17% of the time, so they are left alone.
-  assert.deepEqual(missed.sort(), [
-    "compressor ATK",
-    "compressor DRY/CMP",
-    "compressor MUP",
-    "compressor RAT",
-    "compressor REL",
-    "compressor SCF",
-    "compressor SCS",
-    "compressor THR",
-    "input DUAL",
-    "input IN R level",
-  ]);
+  // Only two left. The compressor page is now written as constants: the DN1 has no compressor,
+  // so there is nothing to transfer, but the values are constant across every conversion and
+  // writing them reproduces Elektron instead of inheriting a non-blank template's settings.
+  // These two are documented in UNEXPLAINED_INPUT_BYTES -- no DN1 byte explains either, and a
+  // majority-vote constant would be wrong 17% of the time on a parameter that changes how the
+  // device treats its external input.
+  assert.deepEqual(missed.sort(), ["input DUAL", "input IN R level"]);
 });
 
 test("the unexplained input bytes are exactly the ones left unwritten", () => {
