@@ -346,3 +346,25 @@ cannot corrupt the identification — only a mis-entered *step* can, which is fa
 long to hold it, which is `LEN` = 64 on the pattern, not the track.
 
 This also settles id 9: `VFAD` and `FADE` land on different steps.
+
+### Mode-gated parameters — found mid-capture, 2026-07-26
+
+**Not every control on a page is always present.** The AMP page's envelope depends on `MODE`:
+in the default `ADSR` there is no `HOLD`, and in `AHD` there is no `REL`. So `HOLD` cannot be
+locked in the same pass as the rest of the AMP page.
+
+The step-per-parameter design absorbs this without rework. A record identifies itself by its
+own locked step, so **skipping a step costs one record and nothing else** — the numbering of
+every later step is untouched. The instruction is therefore "skip it and carry on", never
+"change the mode and continue", because it is not known whether the device drops locks for
+parameters that are invalid in the current mode, and finding out mid-capture would cost the
+whole pattern.
+
+Mode-gated controls go in a short follow-up pattern with the mode set appropriately.
+
+**This raises a question worth answering deliberately.** If `HOLD` in `AHD` occupies the knob
+position that `SUS` holds in `ADSR`, the two may share one parameter id — meaning the lock
+table stores a **knob slot** rather than a named parameter, and an editor could not interpret a
+lock without also knowing the track's `MODE`. The follow-up capture settles it: if `HOLD`
+returns the same id as `SUS`, they are slots; a new id means they are distinct parameters.
+Either answer changes what an editor has to model, so it is worth capturing before building one.
