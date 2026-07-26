@@ -369,8 +369,12 @@ export function stepFlags(track: Uint8Array, step: number): number {
  *
  * The table is a flat pool of 80 records shared by all eight tracks, allocated from slot
  * 0 upwards rather than partitioned per track. Each record is
- * `u8 parameter | u8 track | 64 x u16le value`, with 0xFFFF marking both an unused
- * record and an unlocked step.
+ * `u8 parameter | u8 track | 64 x (u8 coarse, u8 fine)`, with 0xFFFF marking both an
+ * unused record and an unlocked step.
+ *
+ * The value slots are read as `u16be` to match the DN2's, so that `lockvalue.ts` decodes
+ * both devices the same way. The DN2 split is verified on hardware; the DN1's is inferred
+ * from it, and conversion transfers the pair of bytes intact either way.
  *
  * Verified: across the corpus 1,416 records are in use, and for every one of them the
  * set of locked steps is a subset of the steps that carry a note trig or a lock trig on
@@ -384,7 +388,7 @@ export function readLockTable(pattern: Uint8Array): Dn1LockRecord[] {
     const header = dv.getUint16(at, true);
     if (header === NO_U16) continue;
     const values: number[] = [];
-    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, true));
+    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, false));
     out.push({ parameter: header & 0xff, track: header >>> 8, values });
   }
   return out;

@@ -46,8 +46,9 @@
  * Trigger slot, 6 bytes: `track | step | note | velocity | noteLength | microTiming`.
  * A slot whose first byte is 0xFF is unused. Note 0xFF means a trigless lock trig.
  *
- * Parameter-lock record, 258 bytes: `u8 parameter | u8 track | 128 x u16le value`.
- * Header 0xFFFF means the record is unused; value 0xFFFF means the step is not locked.
+ * Parameter-lock record, 258 bytes: `u8 parameter | u8 track | 128 x (u8 coarse, u8 fine)`.
+ * Header 0xFFFF means the record is unused; a slot of 0xFFFF means the step is not locked.
+ * See `lockvalue.ts` — the two value bytes are not a little-endian integer.
  * Same shape as the DN1 table (`u8 | u8 | 64 x u16le`), widened to 128 steps.
  *
  * What is NOT here: the per-track synth/MIDI discriminator does not live in the pattern
@@ -363,7 +364,12 @@ export interface Dn2LockRecord {
   index: number;
   track: number;
   parameter: number;
-  /** 128 values, 0xFFFF where the step is not locked. */
+  /**
+   * 128 slots, `LOCK_UNSET` (0xFFFF) where the step is not locked.
+   *
+   * Each slot is `coarse << 8 | fine`, **not** a plain integer — decode it with the
+   * helpers in `lockvalue.ts`. `lockCoarse` alone is the value for any 0-127 parameter.
+   */
   values: number[];
 }
 
@@ -465,6 +471,11 @@ export function readTrigSlots(pattern: Uint8Array): Dn2TrigSlot[] {
  * A flat pool of 80 records shared by all 16 tracks, allocated from slot 0 upwards — the
  * same design as the DN1's, widened from 64 to 128 steps (130 -> 258 bytes per record).
  *
+ * Each of the 128 value slots is a **coarse byte followed by a fine byte**, read here as a
+ * `u16be` so that `lockCoarse`/`lockFine` in `lockvalue.ts` can split it. Reading the pair
+ * as a little-endian integer, as this did until 2026-07-26, turns an LFO depth of -1.00
+ * into 32,575.
+ *
  * VERIFIED: over the nine matched pairs, 392 lock records were compared against the DN1
  * originals. All 392 agree on track and on the exact set of locked steps, in the same
  * table order; 389 also agree on every value. The three that differ do so only in value
@@ -479,7 +490,7 @@ export function readLockTable(pattern: Uint8Array): Dn2LockRecord[] {
     const header = dv.getUint16(at, true);
     if (header === NO_U16) continue;
     const values: number[] = [];
-    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, true));
+    for (let s = 0; s < STEP_COUNT; s++) values.push(dv.getUint16(at + 2 + s * 2, false));
     out.push({ index, parameter: header & 0xff, track: header >>> 8, values });
   }
   return out;

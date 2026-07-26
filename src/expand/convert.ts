@@ -393,7 +393,7 @@ function writeLockTable(
       out[to] = NO_BYTE;
       out[to + 1] = NO_BYTE;
       for (let step = 0; step < DN2_STEP_COUNT; step++) {
-        view.setUint16(to + 2 + step * 2, NO_WORD, true);
+        view.setUint16(to + 2 + step * 2, NO_WORD, false);
       }
       continue;
     }
@@ -402,7 +402,9 @@ function writeLockTable(
     out[to + 1] = entry.track;
     for (let step = 0; step < DN2_STEP_COUNT; step++) {
       // The DN1 holds 64 steps; the DN2's upper half has no source and stays unset.
-      view.setUint16(to + 2 + step * 2, entry.values.get(step) ?? NO_WORD, true);
+      // u16be to match the readers: a slot is a coarse byte then a fine one, and the two
+      // devices lay it out the same way, so the pair transfers unchanged.
+      view.setUint16(to + 2 + step * 2, entry.values.get(step) ?? NO_WORD, false);
     }
     report.lockRecordsWritten++;
   }
