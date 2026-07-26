@@ -29,7 +29,7 @@ Three cases break it, and each has a cheap fix:
 | Problem | Why | Fix |
 |---|---|---|
 | **Toggles and short enums** | An on/off field can only be 0 or 1, so two of them are indistinguishable by value | Capture a **second file with the complementary pattern** — the byte that flips in both is the one that belongs to the toggle you flipped in both |
-| **Rescaled fields** | Some values are transformed on the way in — one FX field is stored at roughly x201.57 of its UI value, so "73" never appears in the bytes | Assign values as a **strictly increasing ramp**, so a scaled field is still recognisable by its order among its neighbours |
+| **Rescaled fields** | Some values are transformed on the way in — one FX field is stored at roughly x201.57 of its UI value, so "73" never appears in the bytes | Set the parameter to its **maximum** and record what the display shows. The stored byte is then the field's top value, which collides with nothing, and displayed-max against stored-max gives the scale |
 | **Wide fields** | A `u16` holding 300 writes two bytes, one of them 0 | Prefer values **between 1 and 127** so each lands in a single byte, and reserve larger values for fields known to be wide |
 
 Two more rules make the result unambiguous:
@@ -95,6 +95,12 @@ at its default says nothing.
 The pages, from the manual's chapter 12: **Delay** TIME, X, WID, FDBK, VOL, HPF, LPF, REV; **Reverb**
 PRE, DEC, FREQ, GAIN, VOL, HPF, LPF; **Chorus** DPTH, SPD, HPF, WDTH, VOL, DEL, REV; **Compressor** THR,
 ATK, REL, MUP, VOL, RAT, SCS, SCF — thirty in total.
+
+**A parameter that skips values is telling you it is scaled.** Delay FDBK moves 14, 15, 17, 18, 20 — no
+16, no 19 — which is what a smaller stored range looks like when displayed across a wider one; roughly
+two displayed integers in three are reachable, consistent with 128 stored steps shown as 0-198. So an
+assigned value cannot be trusted to appear in the bytes, and might land on one another parameter is
+already using. Set any such parameter to its **maximum** and note the reading.
 
 Two of those names mislead. Delay **X is ping-pong**, an on/off, not a time multiplier. Compressor **VOL
 is Pattern Volume**, the kit's overall level, which makes it a candidate for `kit+5860` — a byte holding
