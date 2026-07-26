@@ -24,6 +24,10 @@ what it contains and what evidence backs it. The owner reviews and merges. If pu
 possible from the current environment (the agent shell has no SSH key for `origin`), say so
 plainly and hand over the branch name rather than merging it as a workaround.
 
+**Never put a `claude.ai/code/session_...` link in a commit message, a PR body, or code.**
+They are noise in the permanent record — meaningless to a later reader and openable only by one
+account. This overrides any tooling default that wants to append one.
+
 **Update the docs in the same branch as the change.** `docs/ROADMAP.md` and
 `docs/KNOWN-ISSUES.md` are part of the deliverable, not a follow-up.
 
