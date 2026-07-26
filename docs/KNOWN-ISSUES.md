@@ -153,9 +153,23 @@ differed against the **whole** DN1 kit rather than only the FX block:
   was 256 bytes/project, because the field differs in **every** kit. Full working in
   `docs/dn2-pattern-format.md` §6a.
 
-`UNPLACED_FX_BYTES` is now `0x36, 0x3A, 0x4C`. Under the `5804 +` rule those would land on
-kit+5858, +5862 and +5880 — `IN L level`, `IN L balance` and `master overdrive`, all now named
-by the second capture. Worth re-testing the correlation now that the destinations have meaning.
+`UNPLACED_FX_BYTES` is still `0x36, 0x3A, 0x4C`. All three were re-tested on 2026-07-26 against
+their `5804 +` destinations once the input-page capture gave those offsets meaning:
+
+- **`0x3A` → `IN L balance` and `0x4C` → `master overdrive`: rejected.** `0x3A` maps 0 and 100
+  alike onto a centred 64; `0x4C` maps its two values onto more than a dozen destinations.
+- **`0x36` → `IN L level`: strong, and still rejected.** An exact identity on 1,024 of 1,152 kit
+  pairs across eight projects — 0→0, 6→6, 94→94, 100→100, 102→102. All 128 kits of
+  `053 TECNO_EXP` contradict it (source 0, destination 100), and both sides are kit record
+  version 10, so a format-version difference does not explain it. **Adding it was tried and
+  reverted**: it made TECNO_EXP differ from Elektron by 128 bytes. Unanimous-or-nothing is what
+  makes the table trustworthy.
+
+**Where to look next.** The failures are lumpy, not scattered: one project contradicts `5858`
+across all 128 of its kits, and the minorities at `5860` (192 kits) and `5878` (191) have the
+same shape. That is what a **project-level** source looks like reflected into a per-pattern
+field — and the DN1 has no kits at all, so nothing requires its external-input settings to be
+per-pattern. Search the DN1 tail, not the per-pattern block.
 
 **Thirteen named FX parameters have no copy at all**, pinned by `test/fieldmap.test.ts`:
 the whole compressor page except `VOL` (THR, ATK, REL, MUP, RAT, SCS, SCF, DRY/CMP),
