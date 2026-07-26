@@ -45,23 +45,44 @@ test("the two destination offsets are adjacent but distinct", () => {
  * The two were derived independently — the copy table by correlating 602 kit pairs, the names
  * by a capture the device wrote — so where they overlap they are a check on each other.
  */
-test("the copies into unnamed FX bytes are exactly the known gap", () => {
+test("every copy landing in the FX block hits a byte a capture named", () => {
   const unnamed = KIT_FX_MAP.filter((c) => c.to >= 5_810 && c.to <= 5_899 && !kitFxAt(c.to))
     .map((c) => c.to)
     .sort((a, b) => a - b);
+  assert.deepEqual(unnamed, [], "an FX copy with no named destination means a page is unmapped");
+});
 
-  // Every one of these sits in 5856-5881, between the reverb page (ends 5855) and the
-  // compressor page (starts 5882). The converter transfers them because the corpus says
-  // Elektron does; the capture sheet never covered whatever page they belong to. Named as a
-  // set so that widening it is a deliberate act and the gap stays visible as work to do.
-  assert.deepEqual(
-    unnamed,
-    [5_859, 5_862, 5_864, 5_866, 5_867, 5_868, 5_869, 5_870, 5_871, 5_872, 5_873, 5_874, 5_875, 5_880, 5_881],
-    "the unnamed FX destinations should be the documented 5856-5881 gap",
+/**
+ * The reverse audit, and the more useful one now: named parameters the converter never writes.
+ *
+ * A named parameter with no copy targeting it inherits the template's value, which is this
+ * project's signature bug. Whether each one is a defect depends on whether the DN1 has the
+ * parameter at all — the compressor page may simply have no source — but every one of them is
+ * a byte a non-default template can leak through, so the set is pinned. Closing one should be
+ * a deliberate act, and the rest stay visible.
+ */
+test("the FX parameters the converter does not transfer are the known set", () => {
+  const copied = new Set<number>(KIT_FX_MAP.map((c) => c.to));
+  copied.add(FX_COMPRESSOR_VOLUME.coarseAt);
+  const missed = KIT_FX_PARAMETERS.filter((p) => !copied.has(p.offset)).map(
+    (p) => `${p.page} ${p.name}`,
   );
-  for (const offset of unnamed) {
-    assert.ok(offset >= 5_856 && offset <= 5_881, `${offset} is outside the documented gap`);
-  }
+
+  assert.deepEqual(missed.sort(), [
+    "chorus HPF",
+    "compressor ATK",
+    "compressor DRY/CMP",
+    "compressor MUP",
+    "compressor RAT",
+    "compressor REL",
+    "compressor SCF",
+    "compressor SCS",
+    "compressor THR",
+    "input DUAL",
+    "input IN L level",
+    "input IN R level",
+    "input IN R reverb send",
+  ]);
 });
 
 test("the FX block is a stride-2 array of coarse/fine slots", () => {

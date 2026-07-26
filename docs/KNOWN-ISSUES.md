@@ -153,7 +153,18 @@ differed against the **whole** DN1 kit rather than only the FX block:
   was 256 bytes/project, because the field differs in **every** kit. Full working in
   `docs/dn2-pattern-format.md` §6a.
 
-`UNPLACED_FX_BYTES` is now `0x36, 0x3A, 0x4C`.
+`UNPLACED_FX_BYTES` is now `0x36, 0x3A, 0x4C`. Under the `5804 +` rule those would land on
+kit+5858, +5862 and +5880 — `IN L level`, `IN L balance` and `master overdrive`, all now named
+by the second capture. Worth re-testing the correlation now that the destinations have meaning.
+
+**Thirteen named FX parameters have no copy at all**, pinned by `test/fieldmap.test.ts`:
+the whole compressor page except `VOL` (THR, ATK, REL, MUP, RAT, SCS, SCF, DRY/CMP),
+`chorus HPF`, and `IN L level`, `IN R level`, `IN R reverb send`, `DUAL`.
+
+Two of those look like defects rather than absent sources: **the left reverb send transfers and
+the right does not**, and **the fine byte of `IN L level` transfers while its coarse byte does
+not**. The compressor page may simply have no DN1 source. Either way each is a byte a
+non-default template leaks through, which is the failure mode this document opens with.
 
 Three DN2 bytes remain unexplained: **kit+5858** (values 0, 6, 94, 100, 102), **kit+5860**
 (0, 100) and **kit+5878** (0, 1). None is an exact copy of, or a function of, any single byte
