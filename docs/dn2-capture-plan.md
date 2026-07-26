@@ -124,6 +124,11 @@ plus aftertouch and pitch bend enabled. The eight CC assignments are already map
 anything else that moves is the answer. A second file with aftertouch and pitch bend disabled
 separates the two toggles.
 
+**The bipolar range is -64 … +63, not -64 … +64.** Elektron's manual gives `VFAD` as `-64–64`, which
+would be 129 values and cannot fit a byte; the device offers +63, confirmed on hardware 2026-07-26. So
+these are plain signed bytes and the `+64` step of the sweep goes unused. The manual is wrong here, in
+the same way `libdigitone` was wrong about packing — the device is the authority, not the document.
+
 ## 5. Parameter-lock ids — one pattern names them all
 
 **Target:** the parameter id table. A lock record is `{parameter id, track, value per step}`, and
