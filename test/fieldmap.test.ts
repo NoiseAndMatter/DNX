@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import {
   FX_COMPRESSOR_VOLUME,
+  INPUT_LEFT_LEVEL,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
   UNEXPLAINED_INPUT_BYTES,
@@ -70,6 +71,7 @@ test("the FX parameters the converter does not write are the known set", () => {
   const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
   for (const c of KIT_FX_CONSTANTS) written.add(c.at);
   written.add(FX_COMPRESSOR_VOLUME.coarseAt);
+  written.add(INPUT_LEFT_LEVEL.to);
   const missed = KIT_FX_PARAMETERS.filter((p) => !written.has(p.offset)).map(
     (p) => `${p.page} ${p.name}`,
   );
@@ -88,7 +90,6 @@ test("the FX parameters the converter does not write are the known set", () => {
     "compressor SCS",
     "compressor THR",
     "input DUAL",
-    "input IN L level",
     "input IN R level",
   ]);
 });
@@ -96,6 +97,7 @@ test("the FX parameters the converter does not write are the known set", () => {
 test("the unexplained input bytes are exactly the ones left unwritten", () => {
   const written = new Set<number>(KIT_FX_MAP.map((c) => c.to));
   for (const c of KIT_FX_CONSTANTS) written.add(c.at);
+  written.add(INPUT_LEFT_LEVEL.to);
   for (const offset of UNEXPLAINED_INPUT_BYTES) {
     assert.ok(!written.has(offset), `${offset} is documented as unexplained but is being written`);
     assert.ok(kitFxAt(offset), `${offset} should be a named parameter`);
