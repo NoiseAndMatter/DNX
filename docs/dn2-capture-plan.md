@@ -243,6 +243,21 @@ So capture one preset with every arp parameter at a distinctive value, and a sec
 MODE — two presets one parameter apart isolate that field outright, and confirm the settings are per
 preset rather than per pattern.
 
+## 5b. Machines and filter types — use tracks as the axis
+
+The Digitone II has four machines and six filter types; the Digitone 1's engine is now FM TONE and its
+filter is Legacy LP/HP. The SYN knobs are **machine dependent** and the FLTR page is **type dependent**,
+so their meaning changes with the selection and one capture cannot label them all.
+
+**Sixteen tracks, each with its own preset, is the cheap axis.** Four machines fit on four tracks of one
+pattern; six filter types on six tracks of another. The same value ramp can be used on every track, since
+each preset is a separate object — nothing collides. Two patterns cover both selectors and both sets of
+parameter layouts.
+
+Start with page 1 of each. It identifies the selector byte and answers the structural question — whether
+the machines share parameter offsets and reinterpret them, or each carries its own — which decides how
+much work the remaining pages are.
+
 ## 6. Sound parameters — the long game
 
 **Target:** the parameter map inside the 359-byte DN2 sound object, and with it the
