@@ -229,11 +229,17 @@ guess.
 ```
 +0    u8        parameter id
 +1    u8        track index, 0..7
-+2    64 x u16le   locked value per step, 0xFFFF = this step is not locked
++2    64 x (u8 coarse, u8 fine)   locked value per step, 0xFFFF = this step is not locked
 ```
 
 A record header of `FF FF` marks the record unused; unused records hold stale garbage in
 their bodies, so do not treat a body of zeros as meaningful.
+
+**A value slot is two bytes, not a little-endian integer.** The coarse byte carries the whole
+value for any 0-127 parameter and the fine byte adds 1/128 of a coarse step. This is verified on
+the DN2 (see `dn2-pattern-format.md` §4) and **inferred** here: no DN1 sweep was captured, and
+the two tables are otherwise identical in design. Nothing rests on the inference — conversion
+transfers the byte pair intact — but an editor reading DN1 locks should assume the split.
 
 The table is a **flat pool shared by all eight tracks**, not partitioned per track:
 usage falls off monotonically from slot 0 (229 uses) to slot 79, exactly as a

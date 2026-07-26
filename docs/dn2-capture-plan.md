@@ -168,7 +168,7 @@ two decimals of something finer, so the scale is not safe to infer from the UI â
 available step** either side of zero against `1.00` gives it directly: the raw value of the smallest step
 is the quantum, and its ratio to 1.00 is the multiplier.
 
-Using the smallest step is also what makes the sentinel test work. A lock record stores one `u16le` per
+Using the smallest step is also what makes the sentinel test work. A lock record stores two bytes per
 step and `0xFFFF` means *unlocked*. If `DEP` is two's complement, the smallest negative step is raw -1 =
 `0xFFFF`, colliding with the sentinel â€” so either bipolar locks are stored offset rather than signed, or
 that value cannot be locked at all. A merely small value like -0.02 would be raw -2 and would pass the
