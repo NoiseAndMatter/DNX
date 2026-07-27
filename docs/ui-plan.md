@@ -78,12 +78,15 @@ makes a plan feel finished when it is not.
 | Precondition | State |
 |---|---|
 | DN1 pattern copy with sound-lock resolution | done, hardware-validated |
-| DN2 pattern move | missing — a port, not research |
-| One device-agnostic librarian over both | missing |
-| Rewriting `slotIndexOffset` on every move | missing |
-| Tolerating DN2 pattern record **version 2** | missing — the reader pins version 3 |
-| Song guard on the move path | DN1 only — see [Songs](#songs) |
-| Verify-after-write | missing |
+| DN2 pattern move | **done** — `librarian/rearrange.ts`, both families |
+| One device-agnostic librarian over both | **done** — `librarian/device.ts` |
+| Rewriting `slotIndexOffset` on every move | **done**, and asserted by the verifier |
+| Tolerating DN2 pattern record **version 2** | **done** — detected, reported, refused |
+| Song guard on the move path | **done** — DN1 checked, DN2 reports `unknown` |
+| Verify-after-write | **done** — `verifyRearrange` |
+
+**Not yet validated on hardware.** A rearranged project has been written and re-read, but no
+device has loaded one.
 
 **Intra-project moves are easier than cross-project copies**, which is part of why this paradigm
 is the better starting point. The pool is shared, so sound-lock indices stay valid — no remapping,
@@ -288,8 +291,9 @@ library is not in the project file and its format is unknown, so it needs SysEx 
 
 ## Sequencing
 
-1. **The spine.** Device-agnostic librarian; DN2 pattern move to match DN1's; `slotIndexOffset`
-   rewritten; version tolerance on read; DN1 song guard wired in; verify-after-write. CLI first.
+1. ~~**The spine.**~~ **Done, CLI only** (`npm run rearrange`). Device-agnostic librarian, pattern
+   moves on both families, `slotIndexOffset` rewritten, version guard, song guard,
+   verify-after-write. Still wants a hardware pass.
 2. **Convert / expand re-homed** as entry point one, landing in the editor on its result.
 3. **The project screen** — pattern grid, moves, kit-name divergence.
 4. **Kit operations** — replace, build from donor or blank, assign sounds to tracks.
