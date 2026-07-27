@@ -121,6 +121,27 @@ slips are known. One short re-sweep of `DEP` around `±1.00` settles it.
 Measured as bytes per project differing from Elektron's conversion, with `EMPTY` as
 template. All are bounded by the budget test.
 
+### Every project we write inherits the template's identity token — 4 bytes
+
+**Found 2026-07-27**, by round-tripping a generated project through the device. Image header
+`0x18`–`0x1b` is a project identity or revision token, not a checksum (`dn2-format.md` §2 has
+the evidence). We never write it, so it is a textbook instance of the failure mode at the top
+of this file: **a field nobody writes inherits the template's value.**
+
+Across 32 DN2 projects, 19 distinct values. Every duplicate group is a copy — and three of
+those groups are ours. Everything the converter builds from `EMPTY.dn2prj` claims to be
+`EMPTY`; everything built from `MORNING_JAM` claims to be `MORNING_JAM`.
+
+**Impact is unknown and so far invisible.** The device loaded an inherited value without
+complaint, played it, and saved it back unchanged. The plausible risk is several generated
+projects sharing one identity on a +Drive, which has not been tried.
+
+**Not fixed, deliberately.** Minting a fresh value on write is what the device appears to do,
+but our converter reproduces Elektron's importer byte for byte, and changing this would break
+that guarantee unless the importer also mints one. Settle that first: convert one DN1 project
+twice with Elektron's tool and compare `0x18` between the two outputs. If it differs, mint. If
+it does not, inheriting is correct behaviour and this entry closes as a non-issue.
+
 ### Kit MIDI track records — ~3 bytes/project, was 10,112
 
 **Solved 2026-07-26.** DN1 `kit+0x54E`, 4 × 172 bytes, onto DN2 `kit+5964` record 4+n of 16 ×

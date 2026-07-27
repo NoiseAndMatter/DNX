@@ -67,15 +67,15 @@ interface itself.
 | Sound object semantics | done, 54 offsets named and decodable |
 | Remaining field transfers | see KNOWN-ISSUES — nothing blocking |
 | Web UI | first version done — load, plan, export |
-| Manager — pattern move/copy/swap/clear, batched, both devices | done (CLI), not yet hardware-validated |
-| Manager — captured blank patternKit | done, DN1 and DN2 |
+| Manager — pattern move/copy/swap/clear, batched, both devices | done (CLI), **hardware-validated** on DN2 |
+| Manager — captured blank patternKit | done, DN1 and DN2, **hardware-validated** |
 | Manager — storage-version and song guards | done |
 | Manager — undo/redo | not started |
 | Manager — track operations inside a pattern | not started |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-225 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+239 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -268,31 +268,54 @@ is a dialog listing exactly that array.
    returns `unknown` because its song table has never been located, which warns instead of
    claiming a safety we cannot demonstrate.
 
-**Still to do, and it is the next thing:** a hardware pass. A rearranged project has been
-written and re-read, but no device has loaded one.
+### 3b-i-a. The hardware pass — PASSED, 2026-07-27
 
-The artefacts are **generated and waiting**: `npm run hwtest` builds a baseline of the seed
-patterns plus 126 captured blanks, an operations file with all nine operations each in its own
-region, and an HTML check sheet. See [hardware-test-rearrange.md](hardware-test-rearrange.md).
+Digitone II, firmware 1.10E. `npm run hwtest` built a baseline and an operations file; both
+loaded, and **all nine operations behaved correctly** — copy, move and swap in same-bank and
+cross-bank form, batch move, batch copy and delete. Pattern names travelled intact. Full
+results in [hardware-test-rearrange.md](hardware-test-rearrange.md).
 
-One artefact carrying many positionally-identified changes, not a file per operation — the
-method that has worked four times here. `test/hardwaretest.test.ts` asserts the layout
-properties that make it readable: steps write disjoint slots, the two reference patterns are
-never touched after seeding, and every operation appears in both a same-bank and a cross-bank
-form so an off-by-sixteen cannot hide.
+**The baseline round-tripped byte for byte: 0 differing bytes in 12,889,604.** The device read
+a project of 126 captured blanks and wrote back exactly what we gave it, in the header, all
+128 pattern records, all 128 kit records and the 109,572-byte tail. That is a stronger claim
+than "it loads" — our image is what the device itself would produce — and it retires the risk
+behind the whole blank-capture exercise, since a synthesised blank could have loaded and still
+been subtly wrong.
 
-**Load the baseline first.** If a project of captured blanks does not load, no result from the
-operations file means anything — and every move and delete depends on those blanks.
+Three findings came out of the round-trip rather than the checklist:
 
-**Next after that: undo/redo.** Keeping whole images would cost 12.9 MB per step on the DN2,
+1. **Header `0x18` is an identity/revision token, and we inherit it from the template.** Not a
+   checksum: two projects with unrelated contents share a value. Everything we build from
+   `EMPTY.dn2prj` claims to be `EMPTY`. Harmless so far, deliberately unfixed — see
+   `KNOWN-ISSUES.md` for the experiment that decides it.
+2. **An empty kit name is legitimate.** The device supplies `KIT <slot + 1>` lazily, when it
+   loads a kit, so our blank clearing the name is correct.
+3. **The project does not store the selected pattern.** Both files opened on `D1`; the
+   zero-byte baseline diff proves no such field was written, so it is device state.
+
+**The one row that failed was ours, not the device's.** The sheet said *"A13 and A14 have
+exchanged"*, which at the hardware cannot be checked — both slots play, and without knowing
+which started where there is nothing to compare against. Expectations are now **per slot and
+name the pattern**, the generator refuses seeds that share a name, and it re-reads the file it
+wrote to confirm every claim before printing. A wrong sheet is worse than no sheet, because
+the tester reports our mistake as a hardware failure.
+
+Not covered: the DN1 (the librarian handles it, but only the DN2 has been on hardware), songs,
+and cross-project sound-pool references.
+
+### 3b-iii. Next: undo/redo
+
+Keeping whole images would cost 12.9 MB per step on the DN2,
 so the affordable form is a **record-level snapshot**: store the previous contents of only the
 slots an operation wrote. A swap costs ~200 KB, and the worst case — a 128-slot `--keep` — is
 bounded by one image, which argues for a cache bounded by total bytes rather than step count.
-`Undo.elm` in elk-herd is the reference to read first.
+`Undo.elm` has now been read — see the cross-check below. Its whole-model snapshot does not
+transfer, but its `Tag` and `combiningTag` do.
 
 **Then the same operations for tracks inside a pattern**, batch-capable in the same way.
 
 ### 3b-ii. What elk-herd's Digitakt II support gave us
+
 
 `00_References/elk-herd` (BSD 2-Clause) supports the Digitakt II, which is the **same storage
 family** as the DN2 — its `patternStorage_sizeof` for version 3 is 89,088, exactly our DN2
@@ -311,8 +334,63 @@ Adopted, with attribution in the module headers:
   version precisely because it "contains many fields elk-herd doesn't manage or decode" —
   the never-invent rule, reached independently.
 
-Worth reading before the next phase: `Elektron/Digitakt/Related.elm` (dependency resolution),
-`Undo.elm`, and `Project/Selection/Bank.elm` for multi-select.
+Worth reading before the next phase: `Elektron/Digitakt/Related.elm` (dependency resolution)
+and `Project/Selection/Bank.elm` for multi-select.
+
+#### Cross-checked against elk-herd, 2026-07-27
+
+After the hardware pass, every recent finding was held against elk-herd. Three confirmed, two
+have no counterpart there, one changes the undo/redo plan.
+
+**Confirmed — the blank.** `Elektron/Digitakt/Blank.elm` stores a compressed blank patternKit
+**per storage version**, for our reason in almost our words: the structure "contains many
+fields elk-herd doesn't manage or decode", so it "needs a binary copy". Same design, reached
+independently, now validated on hardware at our end.
+
+**Confirmed, and sharpened — versions track firmware.** This was the user's hypothesis; elk-herd
+has the table. `Elektron/Instrument.elm` maps a device **build string** to
+`{ projectSettings, patternAndKit }`:
+
+| Digitakt II OS | Build | `patternAndKit` |
+|---|---|---|
+| 1.02 – 1.03A | 0035–0041 | 0 |
+| **1.10, 1.10A** | 0048, 0053 | **3** |
+| 1.15, 1.15A | 0065, 0069 | 4 |
+
+Our Digitone II runs 1.10E and its pattern records read **version 3**. So the DN2 and DT2
+share not just the storage family but the version numbering and roughly the firmware that
+bumps it — and OS 1.10 being the bump point on the DT2 supports the chord-library
+explanation for our version 2 corpus file rather than undermining it.
+
+The comment beside the table settles our upgrade policy too: *"It can load older versions, but
+will always produce these versions."* Fail on newer, warn on older, exactly as planned.
+
+**A warning taken from the same place.** elk-herd keys this off the opaque build string and
+says what it costs: an unseen build "is deemed incompatible, which always leaves people
+hanging for me to update elk-herd when a new OS comes out". We should not copy that shape
+without a graceful degradation — read-only rather than refuse, say.
+
+**No counterpart — the project file.** elk-herd never opens a `.dtprj`; it works over SysEx
+and the +Drive. The ZIP container, the LZ4 chain, the CRC and the image header are ours alone,
+so header `0x18` gets no cross-check — not a contradiction, a gap where we are ahead.
+
+**No counterpart — kit names.** elk-herd does not model them, so the `KIT <slot + 1>` default
+stands on our own round-trip evidence.
+
+**Changes the plan — `Undo.elm`.** It keeps **whole-model snapshots** in a list bounded by
+*step count*. That is affordable in Elm, where persistent data structures share everything the
+operation did not touch; a snapshot of our flat `Uint8Array` really is 12.9 MB. So the
+record-level snapshot bounded by **bytes** stays right. Two ideas are worth taking, though:
+
+- **`Tag`** — every undo entry is named with what the user did, for the drop-down. Cheap, and
+  it turns undo from a stack into an account of the session.
+- **`combiningTag`** — consecutive operations of the same kind collapse into one undo step, so
+  a rename undoes as a rename and not a keystroke at a time. Note the detail that an undo or
+  redo cancels an entry's ability to combine.
+
+**Also worth knowing: elk-herd has no pattern editor.** `Project/` is Base, Import, Selection,
+Update, Util and View — a librarian, not an editor. Track-level operations inside a pattern
+have no precedent to borrow, so that phase is ours to design.
 
 ### 3c. Songs — deferred by the user, with a constraint to remember
 

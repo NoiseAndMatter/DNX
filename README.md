@@ -28,6 +28,7 @@ speculative or unknown.
 | DN1 → DN2 sound conversion | done, reproduces Elektron's own output byte-for-byte |
 | Writing project files | done, **loaded by a real Digitone II** |
 | Pattern librarian (DN1) | done, hardware-validated |
+| Pattern rearrangement — move/copy/swap/clear, batched | done, **hardware-validated on DN2** |
 | Expansion planning, rules, pins | done |
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
 | Expansion writer | done, hardware validation in progress |
@@ -78,7 +79,7 @@ npm run rearrange -- --project a.dn2prj --clear B12 B13
 npm run rearrange -- --project a.dn2prj --keep A1 A4         # a clean test project
 npm run rearrange -- --project a.dn2prj --swap A1 B12 --apply --confirm --out new.dn2prj
 
-# Build the pattern-rearrangement hardware test: two projects and a check sheet
+# Build the pattern-rearrangement hardware test: two projects and an interactive check sheet
 npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareTest
 
 # What changed between two captures?
