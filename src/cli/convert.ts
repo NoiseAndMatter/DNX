@@ -1,13 +1,14 @@
 /**
  * Convert a Digitone 1 project to Digitone II, optionally expanding it across 16 tracks.
  *
- *   npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj
- *   npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj --expand
- *   npm run convert -- --from a.dnprj --template EMPTY.dn2prj --dry-run --expand
+ *   npm run convert -- --from a.dnprj --expand                    # dry run, says what it would do
+ *   npm run convert -- --from a.dnprj --expand --out b.dn2prj --stamp
  *
  * The template supplies every byte of the DN2 image we do not model. Any `.dn2prj` works;
  * a blank project exported from the device is the cleanest choice, since none of its
- * content survives except the parts we leave alone.
+ * content survives except the parts we leave alone. It is **located rather than named** —
+ * `DN_TEMPLATE`, then `DN_CORPUS`, then a sibling checkout — so `--template` is only needed
+ * to override that.
  *
  * Without `--expand` the conversion is faithful: it reproduces what the Digitone II's own
  * importer does, byte for byte. With it, sound-locked sounds are promoted onto their own
@@ -21,6 +22,7 @@ import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile } from "../project/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { mintProjectId, writeProjectId } from "../project/dn2image.js";
+import { findTemplate, templateSearchPaths } from "../librarian/open.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
 
@@ -61,16 +63,33 @@ function main(): void {
   const nameOverride = arg("name");
   const stamp = argv.includes("--stamp");
 
-  if (!fromPath || !templatePath) {
+  if (!fromPath) {
     console.error(
-      "usage: npm run convert -- --from <a.dnprj> --template <t.dn2prj> [--out <b.dn2prj>]\n" +
+      "usage: npm run convert -- --from <a.dnprj> [--template <t.dn2prj>] [--out <b.dn2prj>]\n" +
         "       [--expand] [--rules] [--free-midi] [--compact] [--stamp] [--name <text>] [--dry-run]",
     );
     process.exit(1);
   }
 
+  // The template is located rather than required, the same way `--as-dn2` does it: this is
+  // the project's main workflow, and typing an absolute path to the same blank project on
+  // every invocation is friction with no purpose.
+  const resolvedTemplate = templatePath ?? findTemplate();
+  if (!resolvedTemplate) {
+    console.error(
+      "\nConversion needs a Digitone II project as a template — it supplies every byte of\n" +
+        "the image the conversion does not model.\n" +
+        "Pass --template <a.dn2prj>, or set DN_TEMPLATE. Looked in:\n" +
+        templateSearchPaths()
+          .map((p) => `  ${p}`)
+          .join("\n") +
+        "\nA blank project exported from the device is the cleanest choice.\n",
+    );
+    process.exit(1);
+  }
+
   const source = load(fromPath);
-  const template = load(templatePath);
+  const template = load(resolvedTemplate);
 
   const plan = expand
     ? planExpansion(source.image, {
@@ -97,7 +116,7 @@ function main(): void {
   writeProjectId(image, id);
 
   console.log(`\n${basename(fromPath)} "${readProjectName(source.image)}"`);
-  console.log(`  template: ${basename(templatePath)}`);
+  console.log(`  template: ${basename(resolvedTemplate)}`);
   console.log(`  project id: ${id.toString(16).padStart(8, "0")} (minted, not inherited)`);
   if (projectName !== undefined) console.log(`  project name: "${projectName}"`);
   console.log(
