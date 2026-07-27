@@ -15,23 +15,34 @@
  * the way the device names them, `A1` to `H16`, via `sheet/naming.ts` so the CLI, the
  * hardware sheets and the eventual UI cannot drift apart.
  *
+ * ## Opening a Digitone 1 sketch as a Digitone II project
+ *
+ *   npm run rearrange -- --project sketch.dnprj --as-dn2 --expand
+ *   npm run rearrange -- --project sketch.dnprj --as-dn2 --expand --move A3 --to B1 --apply --out done.dn2prj
+ *
+ * This is the workflow the project exists for: sketch on the DN1, finish on the DN2 with more
+ * tracks and better arrangement tools. `--as-dn2` converts and optionally expands **on the way
+ * in**, so conversion stops being a separate command producing an intermediate file you then
+ * feed to this one. Without it a `.dnprj` is opened as what it is and rearranged as a DN1
+ * project, which is a real workflow and must not be taken away.
+ *
  * Without `--apply` nothing is written. With `--apply`, `--out` is required: this tool never
  * overwrites its input, because for most people the +Drive is the only copy of that work.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile, parseProject } from "../project/projectfile.js";
+import { buildProjectFile } from "../project/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
-import { deviceFor } from "../librarian/device.js";
+import { type Device } from "../librarian/device.js";
+import {
+  OpenError,
+  type Provenance,
+  describeProvenance,
+  openProject,
+} from "../librarian/open.js";
 import { applyRearrange, planRearrange } from "../librarian/rearrange.js";
 import { clear, copyMany, keepOnly, moveMany, swap } from "../librarian/shuffle.js";
-
-function load(path: string) {
-  const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return { manifest, payload, image: decodeProjectImage(payload.raw).image };
-}
 
 function resolveSlot(token: string, patternCount: number): number {
   const named = patternIndex(token.toUpperCase());
@@ -44,9 +55,9 @@ function resolveSlot(token: string, patternCount: number): number {
 }
 
 /** The occupancy grid, so a rearrangement can be aimed without opening the device. */
-function printGrid(image: Uint8Array): void {
-  const device = deviceFor(image);
-  console.log(`\n  ${device.name}  "${device.projectName(image)}"`);
+function printGrid(project: { image: Uint8Array; device: Device; provenance: Provenance }): void {
+  const { image, device } = project;
+  console.log(`\n  ${device.name}  ${describeProvenance(project.provenance)}`);
 
   const rows: string[] = [];
   for (let bank = 0; bank * 16 < device.patternCount; bank++) {
@@ -78,7 +89,8 @@ function main(): void {
 
   if (!projectPath) {
     console.error(
-      "usage: npm run rearrange -- --project <file> [--swap A1 B12] [--apply --out <file>]",
+      "usage: npm run rearrange -- --project <file> [--as-dn2 [--expand]] [--swap A1 B12]\n" +
+        "       [--apply --out <file>]",
     );
     process.exit(1);
   }
@@ -87,8 +99,32 @@ function main(): void {
     process.exit(1);
   }
 
-  const project = load(projectPath);
-  const device = deviceFor(project.image);
+  let project;
+  try {
+    project = openProject(projectPath, {
+      asDn2: argv.includes("--as-dn2"),
+      expand: argv.includes("--expand"),
+      compact: argv.includes("--compact"),
+      rules: argv.includes("--rules"),
+      freeMidi: argv.includes("--free-midi"),
+      ...(arg("template") === undefined ? {} : { template: arg("template")! }),
+    });
+  } catch (e) {
+    if (e instanceof OpenError) {
+      console.error(`\n${e.message}\n`);
+      process.exit(1);
+    }
+    throw e;
+  }
+  const device = project.device;
+
+  if (argv.includes("--expand") && !argv.includes("--as-dn2")) {
+    console.error("--expand only means something with --as-dn2, which does the conversion.");
+    process.exit(1);
+  }
+  for (const w of project.provenance.warnings.slice(0, 5)) {
+    console.log(`  warning: ${w}`);
+  }
 
   const swapAt = argv.indexOf("--swap");
   const moveAt = argv.indexOf("--move");
@@ -97,7 +133,7 @@ function main(): void {
   const keepAt = argv.indexOf("--keep");
 
   if (swapAt === -1 && moveAt === -1 && copyAt === -1 && clearAt === -1 && keepAt === -1) {
-    printGrid(project.image);
+    printGrid(project);
     console.log(
       "\n  --swap <a> <b>   exchange two slots" +
         "\n  --move <a> <b>   move, leaving <a> empty" +

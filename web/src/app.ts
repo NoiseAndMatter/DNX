@@ -8,7 +8,7 @@
 
 import { convertProject } from "../../src/expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../../src/expand/plan.js";
-import { projectName } from "../../src/project/dn2image.js";
+import { mintProjectId, projectName, writeProjectId } from "../../src/project/dn2image.js";
 import { readProjectName } from "../../src/project/dn1.js";
 import type { ExpansionPlan } from "../../src/expand/types.js";
 import { buildProjectBlob, download, openProject, type LoadedProject } from "./project.js";
@@ -86,6 +86,12 @@ async function exportProject(): Promise<void> {
     plan: state.plan,
     projectName: name,
   });
+
+  // A converted project is a new project and gets its own identity rather than inheriting the
+  // template's — otherwise every file exported from here claims to be the template. Minted at
+  // the point a file is authored, not inside convertProject, which must stay byte-identical to
+  // Elektron's importer.
+  writeProjectId(image, mintProjectId());
 
   const blob = await buildProjectBlob(state.template, image);
   download(blob, `${base.replace(/[^\w -]/g, "_")}_EXPANDED.dn2prj`);

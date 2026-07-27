@@ -173,9 +173,17 @@ whose contents the tester had changed, the device wrote a new value. That fits a
 revision token bumped on a modifying save. **[inferred]** — 2026-07-27, see
 `hardware-test-rearrange.md`.
 
-Consequence for us: **every project we generate inherits this from its template.** Harmless
-so far — the device loaded an inherited value without complaint — but it means all our output
-built on `EMPTY.dn2prj` claims to be `EMPTY`. Tracked in `KNOWN-ISSUES.md`.
+**The nine DN1 projects the device upgraded all carry distinct values** — the DN2 sides of the
+matched pairs in `test/convert.test.ts`. So a device authoring a project gives it a fresh
+identity. We used to inherit the template's, meaning everything built on `EMPTY.dn2prj` claimed
+to be `EMPTY`; since 2026-07-27 `mintProjectId` supplies a new one wherever a file is authored.
+Rearranging an existing project keeps its identity, because that is editing rather than
+authoring. See `KNOWN-ISSUES.md`.
+
+Worth knowing about the workflow this sits in: **Elektron's Transfer tool does not convert.**
+It places a DN1 project on the +Drive, where the device lists it as needing upgrade, and the
+conversion happens **on the device at first open**. So "Elektron's importer", which this
+project reproduces byte for byte, is the device's own upgrade path rather than a desktop tool.
 
 ---
 
