@@ -1,199 +1,298 @@
-# Web UI — plan
+# Manager UI — plan
 
-**Status: queued for discussion.** Nothing here is committed to. It exists so the conversation
-starts from something concrete rather than a blank page, and so the format work that has to
-land first is visible.
+**Status: refined 2026-07-27**, over two rounds with the user. The paradigm, the first slice, the
+cuts and the scope below are agreed. What is still open is listed at the end rather than left
+implicit.
+
+Expect this to move. The user's words: *"I forsee that we might need to change some things on the
+go."* It is a starting position, not a contract.
 
 ## What this is
 
-**A project manager for the Digitone, in the spirit of elk-herd, with extra tools for the DN2's
-new data structures.** The core job is moving things around: copy and move patterns, sounds and
-kits between projects and slots, to assemble performance sets — and eventually a song editor.
+**A project manager for the Elektron Digitone, in the spirit of elk-herd, with extra tools for the
+DN2's new data structures.** The job is working on a project: move patterns between slots, replace
+and build kits, assign sounds to tracks, bring new sounds in — and eventually a song editor.
 
-The kit builder is a **utility inside that**, not the product. It is described in detail below
-because it is the first buildable piece, not because it is the centre of gravity.
+**Both devices are subjects.** The manager opens and works on Digitone 1 *and* Digitone II
+projects. **Cross-device conversion is one-directional: DN1 → DN2 only.** DN2 → DN1 is out of
+scope and nothing should be designed to accommodate it.
 
-Everything the manager does is a *reorganisation* of things we already decode. That is why it is
-unblocked while an editor is not: moving a sound is a copy, editing one needs semantics we do
-not have.
+## The DN1 sketchpad workflow — already built, and central
 
-## What has to finish first
+This is why the project exists, in the user's own framing: **use the DN1 as a sketchpad and finish
+tracks on the DN2**, with better arrangement tools, more tracks and more voices.
 
-The UI is blocked on very little. Reading and organising a project needs no new format
-knowledge; **editing parameter values does**.
+That workflow is **done and hardware-validated**:
 
-| Needed for | What is missing |
+- `convertProject` reproduces Elektron's own importer byte-for-byte across fourteen matched
+  projects.
+- `planExpansion` plus the expansion writer give sound-locked sounds their own tracks on the
+  DN2's sixteen, verified by sound identity across 3,342 trigs.
+- `web/src/app.ts` already runs the whole chain in a browser: load a `.dnprj`, plan, export a
+  stamped `.dn2prj`.
+
+So it is **not** a later phase, and an earlier draft of this plan was wrong to call it one. It is
+**entry point number one** of the manager, and re-homing it from a standalone page costs
+essentially nothing. A user should be able to open a DN1 sketch, convert and expand it, and land
+directly in the editor on the result.
+
+**What genuinely remains undesigned is a different, narrower thing:** copying *one* DN1 pattern
+into an *existing* DN2 project. That is not the same problem as whole-project conversion, because
+the destination pool is already populated — converted sounds need deduplication and slot
+allocation against it — and `planExpansion` allocates tracks across a whole project rather than
+into a destination pattern whose tracks may already be occupied. That one is a later phase.
+
+## The paradigm: one project open, explorers as sources
+
+**One project is open and being edited at a time.** Within it: move patterns around, replace kits,
+create kits, assign sounds to tracks.
+
+New material arrives through **explorers, which are read-only sources, not a second editable
+project**. That distinction matters: you never hold two projects as peers, you hold one project
+you are editing and a library you are pulling from.
+
+Sources available today: the open project itself, other project files browsed read-only, and DN1
+`.syx` sound banks, which `convertDn1SoundToDn2Detailed` already converts byte-exactly. The
+device's own library is canonical and arrives with WebMIDI — see below.
+
+**This paradigm settles a question an earlier draft left open.** Because you load once, do many
+operations and export once, there is no chain of `MORNING_JAM(7).dn2prj` files. Where exported
+files land stops being a design problem.
+
+## The first slice
+
+**Open one project, move patterns between slots, export a verified result.** Nothing else.
+
+Then, in order: kit operations, then the sound explorer, then the kit explorer.
+
+**CLI first, UI second.** `npm run copy` already exists for DN1. Everything hardware-validated in
+this repository was built that way, and it makes the risky part testable before any pixels exist.
+
+### What the slice actually requires
+
+An earlier draft claimed the manager was *"buildable today — nothing missing"* and cited
+`src/librarian/copy.ts`. That module is **DN1 → DN1 only** — its own header says so, and it
+imports `dn1.js` and `DN1_LAYOUT`. Recording the correction because it is the kind of error that
+makes a plan feel finished when it is not.
+
+| Precondition | State |
 |---|---|
-| **The manager** — copy/move patterns, sounds, kits | nothing — buildable today |
-| The kit builder | nothing — buildable today |
-| Showing what a p-lock does | machine-page ids (32..76), in capture now |
-| **Editing** a sound's parameters | the sound object's *semantics* — see below |
-| Sending to the device | WebMIDI / Elektron Transfer, not started |
+| DN1 pattern copy with sound-lock resolution | done, hardware-validated |
+| DN2 pattern move | missing — a port, not research |
+| One device-agnostic librarian over both | missing |
+| Rewriting `slotIndexOffset` on every move | missing |
+| Tolerating DN2 pattern record **version 2** | missing — the reader pins version 3 |
+| Song guard on the move path | DN1 only — see [Songs](#songs) |
+| Verify-after-write | missing |
 
-The sound object is mapped **structurally but not semantically**: 139 of its DN2 offsets have an
-identified DN1 source and conversion is 99.99966% byte-exact, but nothing says which byte is
-`CUTOFF`. That is one more capture of the kind that has now worked three times — and it is the
-only real blocker for a parameter editor.
+**Intra-project moves are easier than cross-project copies**, which is part of why this paradigm
+is the better starting point. The pool is shared, so sound-lock indices stay valid — no remapping,
+no deduplication, no capacity check. `planPatternCopy` already supports passing the same image as
+both source and destination; every lock resolves as `reused`.
 
-**The kit builder does not need it.** A sound is a self-contained 359-byte object; assigning one
-to a slot is a copy, not an edit.
+What replaces dependency resolution as the risk:
+
+- **`slotIndexOffset`.** The pattern record stores the slot it believes it occupies — DN1 in
+  `PATTERN.slotIndexOffset`, DN2 at meta+0x1C. Every move must rewrite it, or the device meets a
+  pattern that disagrees about where it lives.
+- **Version 2.** `checkDn2PatternRecord` rejects anything but version 3, and the factory
+  `PRESETS.dn2prj` is version 2 — all 128 of its patterns fail. Our whole DN2 corpus is version 3,
+  which means **the untested case is the one a manager meets first: a project the device itself
+  wrote.** Version the struct the way elk-herd does rather than branching inside the reader.
+- **Songs**, which is its own section below.
+
+## Two devices, one librarian
+
+The temptation is an abstraction that makes a DN1 project look like a small DN2 project. That is
+wrong, and it produces a UI that renders DN1 files as broken DN2 ones.
+
+| | Digitone 1 | Digitone II |
+|---|---|---|
+| Synth tracks | 4 | 16 |
+| MIDI tracks | 4 | 16 |
+| Steps per pattern | 64 | 128 |
+| Kit | 2,560 bytes, 4 sounds inline | ~10.7 KB, 16 sounds, MIDI records, FX, mixer |
+| Kits as a named concept | **no** | **yes** |
+| Compressor | **no** | **yes** |
+
+So the interface **exposes** the differences rather than hiding them. `layoutFor(image)` and the
+`ImageLayout` interface are the seed of the right shape: one entry point that reports which device
+a file belongs to, and per-device implementations behind a common set of operations.
+
+**The test of whether this is right:** if the UI layer starts needing `if (device === "dn1")`, the
+interface is wrong and should be redrawn early rather than defended.
+
+## Songs
+
+**Deferred by the user**, in favour of pattern, kit and sound workflows. Song mode support and a
+song editor come later. This section records the constraint so it is not rediscovered.
+
+Moving patterns within a project *is* rearrange mode, and the risk is that a song references
+pattern slots by index.
+
+- **DN1: guardable today.** The song table is located — `dn1tail.ts`, offset `0x2efc`, 17 records
+  of 2,560 bytes, 99 rows of 21. `isSongTableEmpty()` exists and is currently **called by
+  nothing**; wiring it into the move path is a day-one job.
+- **DN2: not guardable.** The DN2 song table has never been located; `dn2-format.md` places song
+  mode among the ~98,800 unidentified tail bytes. **We cannot currently prove a DN2 pattern move
+  is safe with respect to songs.**
+
+Since songs are deferred, the manager ships with the limitation **stated in the UI** rather than
+silently. Locating the table is one capture of the kind that has worked four times — build a short
+song on the device, export, diff a baseline — and it becomes a prerequisite the moment song
+support is real.
 
 ## Principles
 
 **Static and offline. The user's projects never leave the machine.** No upload, no server, no
-telemetry. The current app is already this way and it is a hard requirement, not a nicety —
-these files are the author's own music. Any feature that would need a backend gets cut or
-redesigned rather than compromising this.
+telemetry. The current app is already this way and it is a hard requirement, not a nicety — these
+files are the author's own music. Any feature needing a backend gets cut or redesigned rather than
+compromising this.
 
-**Never invent a value.** The same rule the converter follows. Where a field's meaning is
-unknown, the UI shows the bytes and says so; it does not render a plausible-looking knob.
+**The app never stores your sounds, only where to find them.** No shadow copy of the user's music
+in browser storage; remember locations, re-read files.
 
-**One naming vocabulary.** Patterns as the device shows them (`A1`, `B12`), steps as page and
-step (`p2·7`), never a trig number above 16. `src/sheet/naming.ts` already implements this and
-the UI must import it rather than reimplement it — divergence between the sheet and the screen
+**Never invent a value.** The rule the converter follows. Where a field's meaning is unknown, the
+UI shows the bytes and says so; it does not render a plausible-looking knob. This extends to
+defaults: a "default" FX or mixer block is **copied out of a device-written blank project**, never
+chosen by us.
+
+**Verify what we write.** Every export is re-read and checked before it is offered. We have
+`checkDn2Pattern` and a differential analyser; not using them would be a choice.
+
+**Never modify the project that was opened.** Always a new file, always stamped.
+
+**One naming vocabulary.** Patterns as the device shows them (`A1`, `B12`), steps as page and step
+(`p2·7`), never a trig number above 16. `src/sheet/naming.ts` already implements this and the UI
+must import it rather than reimplement it — divergence between the hardware sheets and the screen
 would be its own bug.
 
-**Reads at arm's length.** This gets used beside hardware, sometimes in a dark room, sometimes
-in daylight. Both themes are first-class; neither is an afterthought.
+**Reads at arm's length.** Used beside hardware, sometimes in a dark room, sometimes in daylight.
+Both themes are first-class; neither is an afterthought.
 
 ## Visual language
 
-Take from Overbridge: the **eight-knob page** as the organising unit, the **track strip** as
-persistent context, generous numerals for values, and the discipline of showing the device's own
-abbreviations rather than inventing friendlier ones.
-
-Leave behind: it is dark-only, extremely dense, and skeuomorphic. We want the *structure* of a
-hardware editor with the *restraint* of a document.
-
-- **Colour**: one accent, everything else greyscale. The accent is already established at
-  `#6d4aff` light / `#b5a2ff` dark by the hardware sheets — reusing it makes the sheets and the
-  app visibly the same tool.
+- **Colour**: one accent, everything else greyscale. Already established at `#6d4aff` light /
+  `#b5a2ff` dark by the hardware sheets and the current app — reusing it makes them visibly the
+  same tool.
 - **Theme**: `color-scheme: light dark`, `prefers-color-scheme` as the default signal, plus an
-  explicit toggle that wins in both directions. Every colour a custom property; no hard-coded
-  hex outside the token block.
+  explicit toggle that wins in both directions. Every colour a custom property; no hard-coded hex
+  outside the token block.
 - **Type**: system sans for chrome, monospace for anything positional — offsets, step names,
-  values, ids. The monospace is doing real work: it makes columns of steps scannable.
-- **Never colour alone.** Locked/unlocked, pass/fail and machine kind each need a shape or a
-  label as well, or the UI stops working for a colour-blind user and in print.
-- **Density**: comfortable by default, with a compact mode for the pattern grid. Overbridge's
-  density is right at a desk and wrong on a laptop.
+  values, ids. The monospace does real work: it makes columns of steps scannable.
+- **Device abbreviations, not friendlier ones.** Show what the hardware shows.
+- **Never colour alone.** Locked/unlocked, pass/fail and machine kind each need a shape or a label
+  as well, or the UI stops working for a colour-blind user and in print.
+- **Density**: comfortable by default, with a compact mode for the pattern grid.
+
+**Cut: the Overbridge eight-knob page as the organising unit.** That is an *editor's* visual
+grammar. A manager's unit is the grid and the list. Revisit when there is a parameter editor.
 
 ## Screens
 
-0. **Manager** — the primary surface. Two or more projects open side by side; drag patterns,
-   sounds and kits between them and between slots. Every move resolves its dependencies or
-   refuses and says why, which `src/librarian/copy.ts` already does for patterns.
-1. **Open** — drop a `.dnprj` or `.dn2prj`. Everything else follows from a loaded project.
-2. **Project** — the 8×16 pattern grid, live patterns marked, name, tempo, pool occupancy.
-3. **Pattern** — 16 tracks × steps. Trigs, conditions, probability, micro timing, sound locks,
-   and p-locks named where `plockparams.ts` knows them, shown as raw ids where it does not.
-4. **Sounds** — every sound in the project: the 128-slot pool plus each pattern's 16 kit slots.
-   Search, filter, deduplicate by content, see where each one is used.
-5. **Kit builder** — below.
-6. **Convert / expand** — the existing flow, which is what the app does today.
+Ordered by when they are built.
 
-## Kit builder
+1. **Open** — drop a project file, or a DN1 sketch to convert and expand. The app identifies the
+   device and routes accordingly.
+2. **Convert / expand** — the existing flow, re-homed as an entry point rather than a separate
+   page, landing the user in the editor on its result.
+3. **Project** — the 8×16 pattern grid: move patterns between slots, live patterns marked, name,
+   tempo, pool occupancy, kit names with **divergence marked** (see below).
+4. **Kits** — replace a pattern's kit, build a new one, assign sounds to the sixteen track slots.
+   DN2 only.
+5. **Sound explorer** — read-only source. Every sound in the open project, deduplicated by
+   content, searchable and filterable; then other files and DN1 banks as sources.
+6. **Kit explorer** — read-only source, browsing kits across the project and other files.
 
-The idea in one line: **filter the sound list, then assign sounds to the sixteen slots of a
-kit.**
+**Cut for now: the pattern inspector.** Trigs, conditions, probability, micro timing and named
+p-locks make the most expensive screen here, and it moves nothing. It is the emotional payoff of
+the mapping phase, which makes it the obvious next thing and the wrong one. What survives is the
+summary the move preview needs.
 
-### Why it is a good first feature
+**Cut: two projects side by side with drag between them.** Superseded by the single-project
+paradigm and read-only explorers.
 
-It is genuinely useful, it needs no format knowledge we lack, and it exercises the parts of the
-UI everything else will reuse — a searchable list, a slot grid, and a write path that produces a
-new file.
+## Kits
 
-### Layout
+**A kit is the whole kit record** — sixteen sounds *and* the FX, mixer and compressor state, plus
+the sixteen track levels in its header. The device's own `KIT 1` copies in `DATA_CAPTURE.dn2prj`
+differ from each other precisely in their compressor settings, so the hardware already treats
+those as part of a kit. Inventing a sounds-only kit would be a concept the device does not have.
 
-Two panes. Left, the sound library with a search field and filters. Right, sixteen slots in the
-device's own track order, each showing its assigned sound's name and machine. Click a sound then
-a slot, or drag. A slot shows what it displaced so a mistake is one click to undo.
+**Kits are DN2 only.** The DN1 has no named kits and no compressor, so these features must not
+appear for a DN1 project.
 
-### Filters worth having
+**Building a new kit** means choosing sixteen sounds, then sourcing the non-sound block from
+either a **donor kit** or a **device-written blank project**. Those are the only two options,
+because the kit contains regions we have not identified — 160 bytes before the MIDI records and
+500 trailing at 10,252 — and inventing their contents would break the never-invent rule. **The UI
+says which source it used**, because these settings are audible.
 
-- **Text** across name, matching how the device shows it.
-- **Machine** — FM TONE, WAVETONE, FM DRUM, SWARMER, MIDI. `machineOf()` already reads this.
-- **Source** — this project's pool, a specific pattern's kit, or an imported DN1 bank.
-- **Used / unused** — which sounds any pattern actually references. `collectSoundUsage()`
-  already computes this for the expander.
-- **Duplicates** — the corpus is full of them, deliberately: Elektron's own conversion keeps
-  duplicate pool entries and we match it. Surfacing them is useful; removing them silently is
-  not, and the user has already ruled that out for the converter.
+**Replacing a kit changes the tracks' machines.** `sound+244` travels with each sound, and the
+header carries sixteen track levels. That is a visible, audible change and it must be shown, never
+done silently.
 
-### Where the sounds come from
+### What a kit name means
 
-The project's pool, the 128 patterns' kit slots, and DN1 SysEx sound banks, which
-`convertDn1SoundToDn2Detailed` already converts. A DN2 `+Drive` sound library is **not** a
-source: it is not inside a project file and its format is unknown.
-
-### Writing the result
-
-Assigning is a 359-byte copy into a kit slot. Two things make it less trivial than that:
-
-- **Sound locks address the pool by index.** Rearranging the pool breaks every lock that points
-  into it unless they are remapped. `src/librarian/copy.ts` already solves exactly this for
-  pattern copy and the builder should reuse it rather than growing a second implementation.
-- **A slot's machine travels with the sound.** Dropping a WAVETONE sound onto a track makes it a
-  WAVETONE track, because `sound+244` is part of the object being copied. That is almost
-  certainly the desired behaviour, but it should be *shown*, not silently done.
-
-**Always write a new file.** Never modify the project that was opened. The whole tool is built
-on not destroying the user's music.
-
-### What it cannot do yet, and should say so
-
-**Save a standalone named kit to the +Drive.** The DN2 treats kits as first-class objects that
-can be saved and loaded independently — but we only understand kits *inside* a project. The
-standalone kit file format is unknown and not currently on the roadmap. Until then the builder
-writes kits into patterns of a project file, which is a real limitation to state up front rather
-than discover.
-
-## What a kit actually is — partly answered, worth finishing together
-
-Kits carry **their own names**, independent of the pattern's. The device writes `KIT 1`,
-`KIT 2`, `KIT 3`; the importer leaves them empty. That alone says a kit is a first-class object
-rather than an anonymous block inside a pattern.
-
-But the name is **provenance, not identity**. In `DATA_CAPTURE.dn2prj` the name `KIT 1` appears
-on patterns A1, A4, A5 and A6 — and A4 and A5 have different compressor settings from A1. Four
-patterns, one kit name, three different contents.
+Kit names are **provenance, not identity**. In `DATA_CAPTURE.dn2prj` the name `KIT 1` appears on
+patterns A1, A4, A5 and A6, and A4 and A5 have different compressor settings from A1 — four
+patterns, one name, three different contents.
 
 The reading that fits: a kit is a separate saveable object on the +Drive; loading one **copies**
 it into the pattern and records its name; editing the pattern's copy diverges from the saved
 original without renaming it or writing back.
 
-**Consequences for the manager, if that reading holds.** Showing "KIT 1" on four patterns must
-not imply they are the same — the UI has to be able to say *these have diverged*, and diffing
-two kit records is something we can already do. "Save this kit" and "load that kit" are
-different operations from "copy this pattern's kit", and only the last is possible today.
+**Consequence, and it is concrete:** showing `KIT 1` on four patterns must not imply they are the
+same. The project screen has to be able to say *these have diverged*, which is a diff of two kit
+records and something we can already do.
 
-**Still to establish, and it needs the device:** where standalone kits live. They are not in the
-project file as far as we can tell, so they are presumably separate files on the +Drive, in a
-format we have never seen. Worth a look at what a `.dn2kit`-shaped export looks like, if the
-device can produce one.
+### The limit worth stating up front
 
-## Open questions for the refinement pass
+**Saving a standalone named kit to the +Drive is not possible.** The standalone kit format is
+unknown. elk-herd documents a family-wide **Kit request `0x62` / response `0x52`**; if the DN2
+answers it, that response *is* the format. Until then, kits are built into patterns of a project
+file — a real limitation to state rather than let a user discover.
 
-1. **Scope of a "kit"** — sixteen sounds only, or also the FX, mixer and compressor state that
-   the DN2 stores in the same kit? The bytes are all mapped now, so either is possible. The
-   evidence above points at the second: the device's own `KIT 1` copies differ from each other
-   precisely in their compressor settings, which means it considers those part of the kit.
-2. **Library across projects** — is the sound list one project at a time, or a library built
-   from several? The latter needs persistence, which means the user's sounds sitting in browser
-   storage. That is a privacy decision, not a technical one.
-3. **In place or new file** — recommended: always a new file, always stamped. Worth confirming.
-4. **How much of the pattern view to build** before the machine-page ids land, given locks will
-   show as raw numbers until then.
-5. **Publish target** — the CI config currently targets GitLab Pages while the repository is on
-   GitHub. One of those should move.
+## The sound library — scope
+
+A DN2 project holds sounds in two places: the **128-slot pool** and **inline inside every
+pattern's kit**, 128 patterns × 16 slots. Up to **2,176 sound objects in a single file**; a DN1
+holds 512 inline plus 128 pooled. Most are duplicates, so even the single-project case needs
+deduplication-by-content before a list is usable.
+
+**Decision: scoped to the open project, plus read-only explorers.** Nothing persisted.
+
+If a persistent library is ever wanted, **not the obvious version of it.** Indexing sound objects
+into IndexedDB never touches the network, so it does not violate "offline", but it makes the app
+hold a **shadow copy of the user's music** in storage they do not manage, cannot easily back up,
+and that a browser "clear site data" destroys. It also **goes stale**: once a project is edited on
+the device, an index entry saying "slot 42 of MORNING_JAM" is a claim about a file we no longer
+have. The better shape is the **File System Access API** — grant a folder once, store only the
+handle, re-read on open — with the honest costs that it is Chrome and Edge only, needs a gesture
+per session, and wants progress feedback for a folder-sized scan.
+
+### The device's own library is canonical
+
+**The sound library on the connected Digitone is the canonical source for kit building.** Sounds
+recovered from project files are a *fallback*, useful because it is what we can read today. The
+library is not in the project file and its format is unknown, so it needs SysEx — see the roadmap.
+
+## Still open
+
+1. **Cross-device pattern copy** — DN1 → DN2 only, and its preview semantics are undesigned. It is
+   not lossless the way a same-device move is.
+2. **Browser split** — if File System Access is ever adopted, Firefox and Safari get a lesser
+   experience. Decide deliberately.
+3. **Publish target** — the CI config targets GitLab Pages while the repository is on GitHub. Not
+   a question so much as a twenty-minute fix nobody has done.
 
 ## Sequencing
 
-Nothing here starts until the format work finishes. When it does, the order that gets something
-usable soonest:
-
-1. Design tokens and the theme switch, extracted from the hardware sheets so the two match.
-2. Sound list with search and filters — reused by everything after it.
-3. Kit builder on top of that list.
-4. Pattern view, which is where p-lock naming pays off.
-5. Project grid and navigation, once there is something to navigate between.
+1. **The spine.** Device-agnostic librarian; DN2 pattern move to match DN1's; `slotIndexOffset`
+   rewritten; version tolerance on read; DN1 song guard wired in; verify-after-write. CLI first.
+2. **Convert / expand re-homed** as entry point one, landing in the editor on its result.
+3. **The project screen** — pattern grid, moves, kit-name divergence.
+4. **Kit operations** — replace, build from donor or blank, assign sounds to tracks.
+5. **Sound explorer**, then **kit explorer**, as read-only sources.
+6. **WebMIDI** — upgrades the explorers to canonical, and unblocks preview and the kit request.
+7. **Cross-device pattern copy**, then the pattern inspector, then songs and a song editor.
