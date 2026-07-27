@@ -23,13 +23,29 @@ import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile, parseProject } from "../project/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
+import {
+  type ExportRow,
+  type ExportSpec,
+  RESULTS_FORM_CSS,
+  checkItem,
+  exportBar,
+  metaField,
+  noteCell,
+  observationsField,
+  resultsFormScript,
+  verdictCell,
+} from "../sheet/resultsform.js";
 import { deviceFor } from "../librarian/device.js";
 import { applyRearrange } from "../librarian/rearrange.js";
 import { copyMany, keepOnly } from "../librarian/shuffle.js";
 import {
   QUIET_FAILURES,
   SEED_SOURCES,
+  type SeedNames,
+  type TestStep,
   describeLayout,
+  inspectedSlots,
+  seedNameProblem,
   seedingFor,
   stepsFor,
 } from "../librarian/hardwaretest.js";
@@ -53,27 +69,104 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * One row per *slot*, not per operation.
+ *
+ * The tester reads a slot name off the device and compares one cell. An operation spanning
+ * four slots gets four lines under one merged operation cell, so nothing has to be unpacked
+ * from a sentence while standing at the hardware.
+ */
+/** Stable per-row id, shared by the HTML controls and the exported table. */
+function rowId(step: TestStep, slot: number): string {
+  return `s${step.n}-${patternName(slot)}`;
+}
+
+function renderRows(steps: TestStep[]): string {
+  return steps
+    .map((step) => {
+      const note = step.note
+        ? `<div class="hint">${escapeHtml(step.note)}</div>`
+        : "";
+      return step.expected
+        .map((e, i) => {
+          const first = i === 0;
+          const opCell = first
+            ? `<td class="n" rowspan="${step.expected.length}">${step.n}</td>
+    <td rowspan="${step.expected.length}">${escapeHtml(step.operation)}${note}</td>`
+            : "";
+          const expect =
+            e.name === null
+              ? `<span class="empty">empty</span>`
+              : `named <span class="mono nm">${escapeHtml(e.name)}</span>`;
+          const id = rowId(step, e.slot);
+          return `<tr${first ? ' class="grp"' : ""}>
+    ${opCell}
+    <td class="mono">${escapeHtml(patternName(e.slot))}</td>
+    <td>${expect}</td>
+    <td class="tick">${verdictCell(id)}</td>
+    <td class="note">${noteCell(id)}</td>
+  </tr>`;
+        })
+        .join("\n  ");
+    })
+    .join("\n  ");
+}
+
+/** The metadata the export needs to be worth anything six months later. */
+function metaFields(stamp: string, layout: string) {
+  return [
+    { id: "device", label: "Device", value: layout.split(",")[0] ?? "" },
+    { id: "firmware", label: "Firmware / OS", value: "" },
+    { id: "date", label: "Date", value: new Date().toISOString().slice(0, 10) },
+    { id: "build", label: "Build", value: stamp },
+    { id: "tester", label: "Tester", value: "" },
+  ];
+}
+
+/** What the export writes out, derived from the same steps the table renders. */
+function exportSpec(stamp: string, layout: string, steps: TestStep[]): ExportSpec {
+  const rows: ExportRow[] = [];
+  rows.push({ id: "baseline", cells: ["0", "Baseline loads", `HWTEST_BASE_${stamp}`, "—"] });
+  for (const step of steps) {
+    for (const e of step.expected) {
+      rows.push({
+        id: rowId(step, e.slot),
+        cells: [
+          String(step.n),
+          step.operation,
+          patternName(e.slot),
+          e.name === null ? "empty" : `"${e.name}"`,
+        ],
+      });
+    }
+  }
+  return {
+    title: `DNX hardware test ${stamp} — pattern rearrangement`,
+    stamp,
+    columns: ["#", "Operation", "Slot", "Should be"],
+    rows,
+    meta: [
+      ...metaFields(stamp, layout).map(({ id, label }) => ({ id, label })),
+      { id: "observations", label: "Observations" },
+    ],
+    checks: QUIET_FAILURES.map((q, i) => ({ id: `q${i}`, label: q })),
+  };
+}
+
 function renderSheet(
   stamp: string,
   layout: string,
   sourceName: string,
   seeds: string,
-  rows: { n: number; operation: string; expect: string; inspect: string }[],
+  steps: TestStep[],
 ): string {
-  const steps = rows
-    .map(
-      (r) => `<tr>
-    <td class="n">${r.n}</td>
-    <td>${escapeHtml(r.operation)}</td>
-    <td class="mono">${escapeHtml(r.inspect)}</td>
-    <td>${escapeHtml(r.expect)}</td>
-    <td class="tick"></td>
-    <td class="note"></td>
-  </tr>`,
-    )
+  const rows = renderRows(steps);
+  const spec = exportSpec(stamp, layout, steps);
+  const meta = metaFields(stamp, layout)
+    .map((f) => metaField(f.id, f.label, f.value))
     .join("\n  ");
 
-  const quiet = QUIET_FAILURES.map((q) => `<li>${escapeHtml(q)}</li>`).join("\n    ");
+  const quiet = QUIET_FAILURES.map((q, i) => checkItem(`q${i}`, q)).join("\n    ");
 
   return `<!doctype html>
 <html lang="en">
@@ -109,12 +202,17 @@ function renderSheet(
   td.tick { width:3.5rem; }
   td.tick::before { content:"☐ ☐"; letter-spacing:.4rem; color:var(--muted); }
   td.note { width:12rem; border-bottom:1px solid var(--line); }
+  tr.grp td { border-top:2px solid var(--line); }
+  .nm { background:var(--card); border:1px solid var(--line); border-radius:4px;
+    padding:.05rem .3rem; font-weight:600; }
+  .empty { color:var(--muted); font-style:italic; }
+  .hint { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
   ul { padding-left:1.1rem; }
   li { margin:.35rem 0; }
   .warn { border-left:3px solid var(--bad); padding-left:.9rem; }
   .warn strong { color:var(--bad); }
   @media print { body { max-width:none; padding:0; } .card { break-inside:avoid; } }
-</style>
+${RESULTS_FORM_CSS}</style>
 </head>
 <body>
 
@@ -131,6 +229,13 @@ seeded from ${escapeHtml(sourceName)}</p>
   Check: <span class="mono">${patternName(SEED_SOURCES.p1)}</span> and
   <span class="mono">${patternName(SEED_SOURCES.p2)}</span> play; every other slot is empty,
   selectable, and accepts a recorded trig.
+  <br><br>
+  ${verdictCell("baseline")} &nbsp; ${noteCell("baseline", "how the baseline behaved")}
+</div>
+
+<h2>Session</h2>
+<div class="card rf-meta">
+  ${meta}
 </div>
 
 <div class="card">
@@ -143,28 +248,46 @@ seeded from ${escapeHtml(sourceName)}</p>
 </div>
 
 <h2>Operations</h2>
+<p class="lede">Every expectation names the pattern the device should show, so each line can be
+read straight off the screen &mdash; and be wrong. A slot that plays is not a pass if it plays
+under the wrong name.</p>
 <div class="scroll">
 <table>
   <thead><tr>
-    <th>#</th><th>Operation</th><th>Look at</th><th>Expect</th><th>OK / not</th><th>What happened</th>
+    <th>#</th><th>Operation</th><th>Slot</th><th>Should be</th><th>OK / not</th><th>What happened</th>
   </tr></thead>
   <tbody>
-  ${steps}
+  ${rows}
   </tbody>
 </table>
 </div>
 
 <h2>For each row, beyond &ldquo;it plays&rdquo;</h2>
-<ul>
-  ${quiet}
-</ul>
+<div class="card">
+    ${quiet}
+</div>
+
+<h2>Anything else</h2>
+<div class="card">
+  ${observationsField()}
+</div>
 
 <h2>Last, and only if the rest passed</h2>
 <div class="card">
-  Save the project on the device, export it, and diff it against what we wrote:
-  <span class="mono">npm run diff</span>. Any byte the device changed on load is either a
-  field we got wrong or one it normalises. Both are worth knowing and this is the only way
-  to see them.
+  <strong>Save both projects on the device and export them.</strong> A round-trip is worth more
+  than the checklist: the last one came back with <em>zero</em> differing bytes on the
+  baseline, which proved our image is what the device itself would produce — and the 198 bytes
+  that did change on the operations file identified three header and kit fields. Keep the
+  exported files; they are the evidence.
+</div>
+
+<div class="card">
+  <strong>When you are done, press <em>Export results</em> at the bottom.</strong> It writes a
+  Markdown file with every row, including the ones that passed. Hand that file over as it is —
+  nothing needs retyping, and the rows nobody would bother mentioning are the ones that make
+  the next diff readable.
+  <br><br>
+  Answers are kept in this browser as you go, so a reload will not lose them.
 </div>
 
 <div class="card warn">
@@ -173,6 +296,9 @@ seeded from ${escapeHtml(sourceName)}</p>
   checked against songs. Patterns are referenced by slot, so rearranging them could desync a
   song we cannot see.
 </div>
+
+${exportBar()}
+${resultsFormScript(spec)}
 
 </body>
 </html>
@@ -231,7 +357,19 @@ function main(): void {
     process.exit(1);
   }
 
-  // 2. Seed the slots the operations will consume, so a move can empty its source without
+  // 2. Read the reference names. Every expectation on the sheet is phrased in terms of these,
+  //    so two seeds sharing a name would make the swap and batch rows unfalsifiable.
+  const seedNames: SeedNames = {
+    p1: device.summarise(baseline.image, SEED_SOURCES.p1).name ?? "",
+    p2: device.summarise(baseline.image, SEED_SOURCES.p2).name ?? "",
+  };
+  const problem = seedNameProblem(seedNames);
+  if (problem) {
+    console.error(`Cannot build a checkable sheet: ${problem}.`);
+    process.exit(1);
+  }
+
+  // 3. Seed the slots the operations will consume, so a move can empty its source without
   //    destroying a reference.
   let working = baseline.image;
   for (const { slot, from } of seedingFor()) {
@@ -243,9 +381,9 @@ function main(): void {
     working = result.image;
   }
 
-  // 3. Apply each operation in turn, verifying as we go.
-  const rows: { n: number; operation: string; expect: string; inspect: string }[] = [];
-  for (const step of stepsFor()) {
+  // 4. Apply each operation in turn, verifying as we go.
+  const steps = stepsFor(seedNames);
+  for (const step of steps) {
     const result = applyRearrange(working, step.shuffle, CONFIRM);
     if (!result.verification.ok) {
       console.error(
@@ -255,14 +393,41 @@ function main(): void {
       process.exit(1);
     }
     working = result.image;
-    rows.push({
-      n: step.n,
-      operation: step.operation,
-      expect: step.expect,
-      inspect: step.inspect.map(patternName).join(" "),
-    });
-    console.log(`  ${String(step.n).padStart(2)}. ${step.operation.padEnd(26)} verified`);
+    console.log(
+      `  ${String(step.n).padStart(2)}. ${step.operation.padEnd(26)} ` +
+        `-> ${inspectedSlots(step).map(patternName).join(" ")}`,
+    );
   }
+
+  // 5. Hold the finished file against every claim the sheet is about to make.
+  //
+  //    applyRearrange already verified each step against its own shuffle — our code agreeing
+  //    with our code. This is a different question: does the file we are shipping actually
+  //    show what the printed sheet says it shows? A sheet that is wrong is worse than no
+  //    sheet, because the tester reports our mistake as a hardware failure.
+  const wrong: string[] = [];
+  for (const step of steps) {
+    for (const e of step.expected) {
+      const actual = device.summarise(working, e.slot);
+      const actualName = actual.occupied ? (actual.name ?? "") : null;
+      if (actualName !== e.name) {
+        wrong.push(
+          `step ${step.n} (${step.operation}): ${patternName(e.slot)} should be ` +
+            `${e.name === null ? "empty" : `"${e.name}"`} but the file has ` +
+            `${actualName === null ? "an empty slot" : `"${actualName}"`}`,
+        );
+      }
+    }
+  }
+  if (wrong.length > 0) {
+    console.error("\nThe sheet would claim things this file does not show:");
+    for (const w of wrong) console.error(`  ${w}`);
+    process.exit(1);
+  }
+  console.log(
+    `\n  all ${steps.reduce((n, s) => n + s.expected.length, 0)} slot expectations ` +
+      `hold against the written file`,
+  );
 
   mkdirSync(outDir, { recursive: true });
 
@@ -298,7 +463,7 @@ function main(): void {
       describeLayout(device),
       projectPath.split(/[\\/]/).pop() ?? "",
       seeds,
-      rows,
+      steps,
     ),
   );
 

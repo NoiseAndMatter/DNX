@@ -22,24 +22,59 @@
  * The layout below keeps sources and destinations in separate regions so a bug in one
  * operation cannot corrupt the evidence for another. `A1` and `A2` are never written after
  * seeding: they are the reference the whole sheet is read against.
+ *
+ * ## Expectations name the pattern, because "they have exchanged" is not checkable
+ *
+ * The first version of this sheet said things like *"A13 and A14 have exchanged"*. At the
+ * device that is unfalsifiable: both slots play, and without knowing which pattern started
+ * where there is nothing to compare against. The tester has to take the swap on trust —
+ * which is precisely the claim the test exists to check.
+ *
+ * So every expectation names the pattern the device should display in each slot, or says the
+ * slot must be empty. `A13 -> "250423"` can be read straight off the screen and be wrong.
+ * The names travel inside the pattern record, so this also tests identity rather than just
+ * audio: a step that moved the right bytes to the wrong slot fails visibly.
  */
 
 import { patternName } from "../sheet/naming.js";
 import { type Device } from "./device.js";
 import { type Shuffle, clear, copyMany, moveMany, swap } from "./shuffle.js";
 
-/** One row of the check sheet: an operation, and where to look for its result. */
+/** The names of the two reference patterns, read from the project being seeded from. */
+export interface SeedNames {
+  p1: string;
+  p2: string;
+}
+
+/** What the device should show in one slot once the step has run. */
+export interface SlotExpectation {
+  slot: number;
+  /**
+   * The pattern name the device should display, or `null` when the slot must be empty.
+   *
+   * Compared against the built file before the sheet is printed, so a sheet that claims
+   * something the bytes do not support is never handed to a tester.
+   */
+  name: string | null;
+}
+
+/** One row of the check sheet: an operation, and what each slot should show afterwards. */
 export interface TestStep {
   /** Ordinal, matching the printed sheet. */
   n: number;
   operation: string;
-  /** What the device should show, in the device's own slot names. */
-  expect: string;
-  /** Slots the tester must look at, so the sheet can list them explicitly. */
-  inspect: number[];
+  /** Per-slot, name-based. Both what the tester reads and what the generator verifies. */
+  expected: SlotExpectation[];
+  /** Anything the per-slot table cannot express. */
+  note?: string;
   shuffle: Shuffle;
   /** True where the step destroys work, which the librarian requires be acknowledged. */
   destructive: boolean;
+}
+
+/** Slots the tester must look at — always exactly the slots we make a claim about. */
+export function inspectedSlots(step: TestStep): number[] {
+  return step.expected.map((e) => e.slot);
 }
 
 /** Slot index from a bank letter and a 1-based position, `bank("C", 1)` = C1. */
@@ -82,93 +117,151 @@ export function seedingFor(): Seeding[] {
  * Order matters only in that seeding comes first; the steps themselves touch disjoint slots
  * so that one failing cannot explain another.
  */
-export function stepsFor(): TestStep[] {
+export function stepsFor(seeds: SeedNames): TestStep[] {
   const { p1, p2 } = SEED_SOURCES;
+  const { p1: n1, p2: n2 } = seeds;
 
   return [
     {
       n: 1,
       operation: "Copy, same bank",
-      expect: `${patternName(bank("A", 5))} plays the same as ${patternName(p1)}, and ${patternName(p1)} still plays`,
-      inspect: [p1, bank("A", 5)],
+      expected: [
+        { slot: p1, name: n1 },
+        { slot: bank("A", 5), name: n1 },
+      ],
+      note: "A copy leaves the source alone — both slots play, and both carry the same name.",
       shuffle: copyMany([p1], bank("A", 5)),
       destructive: false,
     },
     {
       n: 2,
       operation: "Copy, across banks",
-      expect: `${patternName(bank("C", 1))} plays the same as ${patternName(p1)}`,
-      inspect: [p1, bank("C", 1)],
+      expected: [
+        { slot: p1, name: n1 },
+        { slot: bank("C", 1), name: n1 },
+      ],
       shuffle: copyMany([p1], bank("C", 1)),
       destructive: false,
     },
     {
       n: 3,
       operation: "Move, same bank",
-      expect: `${patternName(bank("A", 9))} plays it, ${patternName(bank("A", 3))} is empty`,
-      inspect: [bank("A", 3), bank("A", 9)],
+      expected: [
+        { slot: bank("A", 3), name: null },
+        { slot: bank("A", 9), name: n1 },
+      ],
       shuffle: moveMany([bank("A", 3)], bank("A", 9)),
       destructive: true,
     },
     {
       n: 4,
       operation: "Move, across banks",
-      expect: `${patternName(bank("D", 16))} plays it, ${patternName(bank("A", 4))} is empty`,
-      inspect: [bank("A", 4), bank("D", 16)],
+      expected: [
+        { slot: bank("A", 4), name: null },
+        { slot: bank("D", 16), name: n2 },
+      ],
       shuffle: moveMany([bank("A", 4)], bank("D", 16)),
       destructive: true,
     },
     {
+      // Seeded A13 = p1 and A14 = p2, so after the swap the names must have crossed over.
+      // Naming them is the whole point: "they have exchanged" cannot be checked at the device.
       n: 5,
       operation: "Swap, same bank",
-      expect: `${patternName(bank("A", 13))} and ${patternName(bank("A", 14))} have exchanged`,
-      inspect: [bank("A", 13), bank("A", 14)],
+      expected: [
+        { slot: bank("A", 13), name: n2 },
+        { slot: bank("A", 14), name: n1 },
+      ],
+      note: `Before the swap A13 held ${n1} and A14 held ${n2}.`,
       shuffle: swap(bank("A", 13), bank("A", 14)),
       destructive: true,
     },
     {
       n: 6,
       operation: "Swap, across banks",
-      expect: `${patternName(bank("B", 1))} and ${patternName(bank("E", 1))} have exchanged`,
-      inspect: [bank("B", 1), bank("E", 1)],
+      expected: [
+        { slot: bank("B", 1), name: n2 },
+        { slot: bank("E", 1), name: n1 },
+      ],
+      note: `Before the swap B1 held ${n1} and E1 held ${n2}.`,
       shuffle: swap(bank("B", 1), bank("E", 1)),
       destructive: true,
     },
     {
       n: 7,
       operation: "Batch move, two sources",
-      expect: `${patternName(bank("F", 1))} then ${patternName(bank("F", 2))} in that order; ${patternName(bank("F", 5))} and ${patternName(bank("F", 6))} empty`,
-      inspect: [bank("F", 1), bank("F", 2), bank("F", 5), bank("F", 6)],
+      expected: [
+        { slot: bank("F", 1), name: n1 },
+        { slot: bank("F", 2), name: n2 },
+        { slot: bank("F", 5), name: null },
+        { slot: bank("F", 6), name: null },
+      ],
+      note: "The batch lands in source order, so the names also test that the order held.",
       shuffle: moveMany([bank("F", 5), bank("F", 6)], bank("F", 1)),
       destructive: true,
     },
     {
       n: 8,
       operation: "Batch copy, two sources",
-      expect: `${patternName(bank("G", 3))} then ${patternName(bank("G", 4))}; ${patternName(p1)} and ${patternName(p2)} still play`,
-      inspect: [bank("G", 3), bank("G", 4), p1, p2],
+      expected: [
+        { slot: bank("G", 3), name: n1 },
+        { slot: bank("G", 4), name: n2 },
+        { slot: p1, name: n1 },
+        { slot: p2, name: n2 },
+      ],
       shuffle: copyMany([p1, p2], bank("G", 3)),
       destructive: false,
     },
     {
       n: 9,
       operation: "Delete",
-      expect: `${patternName(bank("H", 1))} is empty, selectable, and accepts a new trig`,
-      inspect: [bank("H", 1)],
+      expected: [{ slot: bank("H", 1), name: null }],
+      note:
+        "Empty is not enough — select it, check the kit reads as initialised, and record a " +
+        "trig into it. A slot that looks blank but refuses a trig is a different bug.",
       shuffle: clear(bank("H", 1)),
       destructive: true,
     },
   ];
 }
 
-/** Things that fail quietly, and so have to be looked for deliberately. */
+/**
+ * Why the two reference patterns must have different, non-empty names.
+ *
+ * Every expectation is read by comparing a name on the device's screen. Two seeds sharing a
+ * name makes the swap and batch rows unfalsifiable again — the sheet would look precise and
+ * check nothing. Returns the reason to refuse, or `undefined` when the seeds are usable.
+ */
+export function seedNameProblem(seeds: SeedNames): string | undefined {
+  if (seeds.p1.trim() === "" || seeds.p2.trim() === "") {
+    return "a reference pattern has no name, so nothing on the sheet could be read off the device";
+  }
+  if (seeds.p1 === seeds.p2) {
+    return (
+      `both reference patterns are named "${seeds.p1}", so a swap or a reordered batch ` +
+      `would look identical either way — pick two differently named patterns`
+    );
+  }
+  return undefined;
+}
+
+/** Render one expectation the way the sheet and the console both want it. */
+export function describeExpectation(e: SlotExpectation): string {
+  return `${patternName(e.slot)} ${e.name === null ? "empty" : `"${e.name}"`}`;
+}
+
+/**
+ * Things that fail quietly, and so have to be looked for deliberately.
+ *
+ * The NAME check that used to head this list is now in the table itself, as a per-slot
+ * expectation — it is the mechanism the sheet is read by rather than an afterthought.
+ */
 export const QUIET_FAILURES: readonly string[] = [
-  "The pattern NAME the device shows. It travels inside the record, so a wrong name means we moved bytes without moving identity.",
-  "The KIT — every track keeping its sound and its machine. `sound+244` travels with the kit, so a move that dropped it would leave the right notes on the wrong sounds.",
+  "The KIT — every track keeping its sound and its machine. `sound+244` travels with the kit, so a move that dropped it would leave the right notes on the wrong sounds. A correct NAME with a wrong kit is exactly the failure the table alone would miss.",
   "SOUND LOCKS, if the seed patterns have any. The pool is shared within a project, so indices should stay valid and a lock playing the wrong sound would disprove that.",
   "PER-TRACK LENGTHS, if the seed patterns use them.",
   "TEMPO and PATTERN LENGTH, which live in the metadata block beside the slot index.",
-  "The cleared slot being genuinely blank rather than merely silent — select it, check the kit reads as initialised, and record a trig into it.",
+  "TRIG COUNT — the table names the pattern, but a truncated copy would keep the name and lose the notes. The seed trig counts are printed above.",
 ];
 
 /** Device-independent, but the sheet should say which family it was built for. */
