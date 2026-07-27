@@ -323,10 +323,17 @@ groups: tracks 1-8 carry varied data, tracks 9-16 are uniformly filled with u16l
 repeated. That is consistent with a DN1 import populating 4 synth + 4 MIDI tracks and
 leaving 8 tracks untouched.
 
-**Unknown:** the per-track synth/MIDI flag itself has not been located. The DN2 stores a
-sound slot *and* a MIDI record for all 16 tracks regardless, so the discriminator is a
-separate field. Finding it needs either a native DN2 project with a known MIDI track, or
-a diff of two DN2 SysEx patterns differing only in one track's mode.
+**[verified] The per-track synth/MIDI flag is a `u16be` bitmask at kit offset 10,260**, bit
+*t* set meaning track *t* is a MIDI track. The DN2 stores a sound slot *and* a MIDI record
+for all 16 tracks regardless, so this mask is the only discriminator — nothing in the pattern
+record distinguishes them. Full evidence in `docs/dn2-pattern-format.md` §7.
+
+Two independent encodings agree on it. The manual (§5.3.1) defines the type by the machine —
+*"a track that contains any other SYN machine than the MIDI machine is considered an audio
+track"* — and the stored mask matches the mask derived from each preset's machine byte
+(`sound + 244 == 4`) in **3,319 of the corpus's 3,328 kits**. All nine exceptions are in
+`PRESETS.dn2prj`, the only storage-version-2 project we hold; versions are per struct, so the
+offset simply means something else there. **Read it only on version 3.**
 
 **Unknown:** per-track length, speed, and scale fields. The emnyeca corpus has
 `Length_Field` and `Track_Step_State_Table` folders that would localise these; they were
@@ -375,7 +382,7 @@ Ordered by how much they block writing valid DN2 files.
    emits linked blocks of 32,768 bytes should work, since LZ4 decoding is
    encoder-independent — but the device may be strict about block size, and the CRC and
    length fields must be recomputed over the new compressed bytes. Untested.
-2. **The synth/MIDI per-track flag** (§5). Needed for any DN1→DN2 track expansion.
+2. ~~**The synth/MIDI per-track flag**~~ **Found** — kit `+10,260`, §5.
 3. **Sound parameter map** inside the 359-byte sound object (§4).
 4. **Per-track length / speed / scale / machine type** (§5).
 5. **Trailing region contents** (§7), and the two unidentified gaps inside the kit record
