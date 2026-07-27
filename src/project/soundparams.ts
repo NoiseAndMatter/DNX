@@ -31,7 +31,15 @@
  */
 
 /** How to read a control's stored byte. */
-export type SoundEncoding = "unipolar" | "bipolar" | "fine" | "enum";
+export type SoundEncoding =
+  | "unipolar"
+  /** `value + 64`, unless the parameter names a different `centre`. */
+  | "bipolar"
+  /** `value / 2 + 64` in the coarse byte, with a fine byte beside it. */
+  | "fine"
+  /** `value * 64 + 64`, a signed fraction in roughly -1.0 to +1.0. */
+  | "fraction"
+  | "enum";
 
 export interface SoundParameter {
   /** Offset of the value byte, relative to the start of the 359-byte sound object. */
@@ -39,6 +47,8 @@ export interface SoundParameter {
   page: string;
   name: string;
   encoding: SoundEncoding;
+  /** Zero point for a bipolar control. 64 unless stated -- `HARM` is the one exception. */
+  centre?: number;
   /** True where the offset is inferred from a rule rather than observed directly. */
   inferred?: boolean;
 }
@@ -83,9 +93,18 @@ function lfoParameters(): SoundParameter[] {
 export const SOUND_PARAMETERS: readonly SoundParameter[] = [
   ...lfoParameters(),
 
-  // SYN page 1. HARM is the odd one: its baseline is 63 and it stored 86 for +23, so its centre
-  // is 63 rather than the 64 every other bipolar control uses. Recorded as measured.
-  { offset: 102, page: "SYN 1", name: "HARM", encoding: "bipolar" },
+  // SYN page 1 runs in knob order across consecutive even offsets.
+  { offset: 94, page: "SYN 1", name: "ALGO", encoding: "enum" },
+  { offset: 96, page: "SYN 1", name: "RATIO C", encoding: "enum" },
+  { offset: 98, page: "SYN 1", name: "RATIO A", encoding: "enum" },
+  // RATIO B never moved its coarse byte -- only the fine byte beside it, 120 -> 147. That fits
+  // the manual's account of B1 and B2 revolving through combinations: a fine-grained index
+  // rather than a coarse value.
+  { offset: 100, page: "SYN 1", name: "RATIO B", encoding: "enum" },
+  // HARM centres on 63, not 64. Two points agree -- the untouched baseline reads 63 for a value
+  // of 0, and +23 stored 86 -- and its -26..+26 range then occupies 37..89. Every other bipolar
+  // control centres on 64, so this is recorded as measured rather than normalised.
+  { offset: 102, page: "SYN 1", name: "HARM", encoding: "bipolar", centre: 63 },
   { offset: 104, page: "SYN 1", name: "DTUN", encoding: "unipolar" },
   { offset: 106, page: "SYN 1", name: "FDBK", encoding: "unipolar" },
   { offset: 108, page: "SYN 1", name: "MIX", encoding: "bipolar" },
@@ -100,8 +119,30 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
   { offset: 126, page: "SYN 2", name: "B END", encoding: "unipolar" },
   { offset: 128, page: "SYN 2", name: "B LEV", encoding: "unipolar" },
 
+  // PHRT sits apart from the per-operator block, fitting its being a shared setting rather than
+  // an A-or-B one. Five states; the capture moved it 1 -> 2.
+  { offset: 110, page: "SYN 3", name: "PHRT", encoding: "enum" },
+
+  // SYN page 3 in knob order, skipping PHRT: A, B, C then E, F, G.
+  //
+  // The four switches are INFERRED. All four bytes moved together when all four switches were
+  // set, so the *set* is certain, but nothing observed distinguishes them individually. The
+  // assignment below is knob order alone -- the same ordering that holds for ADEL and BDEL on
+  // this page, and for the whole of SYN page 1, but not independently confirmed here.
   { offset: 130, page: "SYN 3", name: "ADEL", encoding: "unipolar" },
+  { offset: 132, page: "SYN 3", name: "ATRG", encoding: "enum", inferred: true },
+  { offset: 134, page: "SYN 3", name: "ARST", encoding: "enum", inferred: true },
   { offset: 136, page: "SYN 3", name: "BDEL", encoding: "unipolar" },
+  { offset: 138, page: "SYN 3", name: "BTRG", encoding: "enum", inferred: true },
+  { offset: 140, page: "SYN 3", name: "BRST", encoding: "enum", inferred: true },
+
+  // The operator fine tunes, -1.000 to 0.999. Set to -0.500, +0.250, -0.750 and +0.875 and
+  // stored as 32, 80, 16 and 120 -- all four exact under `value * 64 + 64`. Choosing
+  // powers-of-two fractions is what made the scale readable, not just the offsets.
+  { offset: 160, page: "SYN 4", name: "FTUN C", encoding: "fraction" },
+  { offset: 162, page: "SYN 4", name: "FTUN A", encoding: "fraction" },
+  { offset: 164, page: "SYN 4", name: "FTUN B1", encoding: "fraction" },
+  { offset: 166, page: "SYN 4", name: "FTUN B2", encoding: "fraction" },
 
   { offset: 168, page: "SYN 4", name: "KTRK A", encoding: "unipolar" },
   { offset: 170, page: "SYN 4", name: "KTRK B1", encoding: "unipolar" },
@@ -134,6 +175,10 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
   { offset: 212, page: "FX", name: "CHR", encoding: "unipolar" },
   { offset: 214, page: "FX", name: "DEL", encoding: "unipolar" },
   { offset: 216, page: "FX", name: "REV", encoding: "unipolar" },
+  // BR is placed by a maximum reading: set to max it stored 127 at +230. An earlier track set it
+  // to 11 and this byte read 19, which no scaling explains -- 127 rules out a multiplier. The
+  // offset is measured; the 11 -> 19 mismatch is unexplained and recorded rather than smoothed.
+  { offset: 230, page: "FX", name: "BR", encoding: "unipolar" },
   { offset: 232, page: "FX", name: "SRR", encoding: "unipolar" },
   { offset: 236, page: "FX", name: "OVER", encoding: "unipolar" },
 ];
@@ -141,12 +186,12 @@ export const SOUND_PARAMETERS: readonly SoundParameter[] = [
 /**
  * Controls that were set during the capture but whose byte was not identified.
  *
- * `FX BR` was set to 11 and no byte took that value; `+230` moved to 19, which is the nearest
- * candidate but does not match, so it is left unclaimed rather than guessed. The selector
- * controls were deliberately not given numbers, so their bytes are located but unnamed — see the
- * capture notes in `docs/dn2-capture-plan.md`.
+ * **Empty.** `FX BR` was the last one and a maximum reading placed it at +230.
+ *
+ * Kept as an export so the next capture has somewhere to record a control it cannot place,
+ * rather than leaving it absent and indistinguishable from one nobody tried.
  */
-export const UNRESOLVED_SOUND_CONTROLS: readonly string[] = ["FX BR"];
+export const UNRESOLVED_SOUND_CONTROLS: readonly string[] = [];
 
 const BY_OFFSET = new Map(SOUND_PARAMETERS.map((p) => [p.offset, p]));
 
@@ -159,9 +204,11 @@ export function soundParameterAt(offset: number): SoundParameter | undefined {
 export function decodeSoundValue(p: SoundParameter, coarse: number): number {
   switch (p.encoding) {
     case "bipolar":
-      return coarse - 64;
+      return coarse - (p.centre ?? 64);
     case "fine":
       return (coarse - 64) * 2;
+    case "fraction":
+      return (coarse - 64) / 64;
     default:
       return coarse;
   }

@@ -442,13 +442,52 @@ knowing the AMP `MODE`.** Had the byte been shared, every read would have needed
 | 202-220 | AMP — ATK, HOLD, DEC, SUS, REL, then PAN and VOL |
 | 212-216, 232, 236 | the per-sound FX sends: CHR, DEL, REV, SRR, OVER |
 
-**`HARM` is the one anomaly.** Its baseline is 63 and it stored 86 for a setting of +23, so its
-centre is 63 where every other bipolar control uses 64. Recorded as measured rather than
-normalised.
+**`HARM` centres on 63, not 64** — the one control that does. Two points agree: the untouched
+baseline reads 63 for a value of 0, and +23 stored 86, slope exactly 1. With its range of
+-26..+26 confirmed on the device, it occupies 37..89. Recorded as measured rather than
+normalised to match the others.
 
-**`FX BR` was not placed.** It was set to 11 and no byte took that value; `+230` moved to 19,
-which is the nearest candidate and does not match, so it is left unclaimed in
-`UNRESOLVED_SOUND_CONTROLS` rather than guessed.
+#### SYN pages 1 and 3, and the fine tunes — added 2026-07-26
+
+Knowing `HARM` sat at +102 made SYN page 1 fall out in **knob order across consecutive even
+offsets**:
+
+| 94 | 96 | 98 | 100 | 102 | 104 | 106 | 108 |
+|---|---|---|---|---|---|---|---|
+| ALGO | RATIO C | RATIO A | RATIO B | HARM | DTUN | FDBK | MIX |
+
+**`RATIO B` never moved its coarse byte** — only the fine byte beside it, 120 to 147. That fits
+the manual's account of B1 and B2 *revolving* through combinations: a fine-grained index rather
+than a coarse value.
+
+SYN page 3 is the same, in knob order but skipping `PHRT`: **130 ADEL, 132 ATRG, 134 ARST,
+136 BDEL, 138 BTRG, 140 BRST**. `PHRT` is knob D but lives at **+110**, away from the
+per-operator block, which fits its being a setting shared by both operators.
+
+**The four switches are INFERRED, and the ordering is all that supports them.** All four bytes
+moved together when all four switches were set, so the *set* of four is certain. Nothing observed
+distinguishes them individually — a later track moved only +132 and +138, but only two switches
+were changed on it, so that says nothing about which two.
+
+The assignment rests on knob order alone. That ordering holds for `ADEL` and `BDEL` either side
+of them on the same page, and for the whole of SYN page 1, which is why it is plausible — but it
+is not confirmed. Setting **exactly one** switch on a spare track would settle it outright.
+
+**The operator fine tunes** are at **160, 162, 164, 166**, storing `value * 64 + 64`. Set to
+-0.500, +0.250, -0.750 and +0.875, they stored 32, 80, 16 and 120 — four exact hits. Choosing
+powers-of-two fractions is what made the *scale* readable and not merely the offsets; arbitrary
+decimals would have located the bytes and taught us nothing about the encoding.
+
+**`FX BR` is at +230**, placed by a maximum reading: set to max it stored 127. An earlier track
+set it to 11 and the same byte read 19, which no scaling explains — 127 at maximum rules out a
+multiplier. The offset is measured; **the 11 -> 19 mismatch is unexplained** and recorded rather
+than smoothed over.
+
+**A caveat on the baseline.** The capture used a converted project, and tracks 6, 7 and 8 carry
+content from the original music, so they differ from track 1 in bytes nobody touched — the LFO
+speed, multiplier and waveform bytes among them. Every offset named here was confirmed by a
+*value match*, so those are unaffected. But a changed byte on those tracks that matched no
+expected value cannot be assumed to be a selector; it may simply be pre-existing difference.
 
 The selector controls were deliberately given no numbers, so their bytes are located but unnamed;
 the values written on the capture sheet will close those.
