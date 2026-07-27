@@ -59,6 +59,7 @@ function main(): void {
   const useRules = argv.includes("--rules");
   const freeMidi = argv.includes("--free-midi");
   const compact = argv.includes("--compact");
+  const aggregate = argv.includes("--aggregate");
   const dryRun = argv.includes("--dry-run") || outPath === undefined;
   const nameOverride = arg("name");
   const stamp = argv.includes("--stamp");
@@ -66,7 +67,8 @@ function main(): void {
   if (!fromPath) {
     console.error(
       "usage: npm run convert -- --from <a.dnprj> [--template <t.dn2prj>] [--out <b.dn2prj>]\n" +
-        "       [--expand] [--rules] [--free-midi] [--compact] [--stamp] [--name <text>] [--dry-run]",
+        "       [--expand] [--aggregate] [--rules] [--free-midi] [--compact] [--stamp]\n" +
+        "       [--name <text>] [--dry-run]",
     );
     process.exit(1);
   }
@@ -95,6 +97,7 @@ function main(): void {
     ? planExpansion(source.image, {
         useFreedMidiTracks: freeMidi,
         compactPerPattern: compact,
+        aggregateByName: aggregate,
         ...(useRules ? { rules: PERCUSSION_LOW_RULES } : {}),
       })
     : undefined;
@@ -141,9 +144,11 @@ function main(): void {
       );
     }
     for (const a of plan.assignments) {
+      const members = a.groupMembers;
       console.log(
         `    T${String(a.dn2Track).padStart(2)} <- ${(a.usage.name || "(unnamed)").padEnd(17)} ` +
-          `${String(a.usage.trigCount).padStart(4)} trigs`,
+          `${String(a.usage.trigCount).padStart(4)} trigs` +
+          (members ? `  [${members.length} sounds: ${members.map((m) => m.name).join(", ")}]` : ""),
       );
     }
   } else {

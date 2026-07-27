@@ -34,6 +34,7 @@ speculative or unknown.
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
 | Expansion writer | done, hardware validation in progress |
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
+| Aggregate sounds by name onto one track | done, opt-in (`--aggregate`) |
 | Hardware test sheet generator | done (`npm run sheet`) |
 | Compact per-pattern allocation | done, opt-in |
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
@@ -64,6 +65,7 @@ npm run tags -- --locked path/to/project.dnprj
 # The template is found via DN_TEMPLATE / DN_CORPUS / a sibling checkout; --template overrides.
 npm run convert -- --from a.dnprj --expand                          # what would it do?
 npm run convert -- --from a.dnprj --expand --out b.dn2prj --stamp   # commit it
+npm run convert -- --from a.dnprj --expand --aggregate              # HH CLOSED + HH OPEN share a track
 npm run convert -- --from a.dnprj --expand --compact --out b.dn2prj --template EMPTY.dn2prj
 
 # What should this converted file do on the device?
