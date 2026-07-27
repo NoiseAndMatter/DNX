@@ -67,12 +67,15 @@ interface itself.
 | Sound object semantics | done, 54 offsets named and decodable |
 | Remaining field transfers | see KNOWN-ISSUES — nothing blocking |
 | Web UI | first version done — load, plan, export |
-| Manager — pattern rearrange, both devices | done (CLI), not yet hardware-validated |
+| Manager — pattern move/copy/swap/clear, batched, both devices | done (CLI), not yet hardware-validated |
+| Manager — captured blank patternKit | done, DN1 and DN2 |
 | Manager — storage-version and song guards | done |
+| Manager — undo/redo | not started |
+| Manager — track operations inside a pattern | not started |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-172 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+216 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -231,11 +234,21 @@ fallback. Reading it needs SysEx, which is why WebMIDI moved earlier.
 
 27 new tests, 172 total.
 
-**Swap is the primitive, and that is a deliberate limit.** A true move leaves a hole, and
-filling a hole means writing an *empty pattern* — bytes we would have to invent. elk-herd
-solves this by embedding a compressed blank patternKit per storage version; until we have an
-equivalent source, a shuffle that would empty a slot is refused with that reason. It costs
-little: moving a pattern onto an empty slot *is* a swap, and it is lossless both ways.
+**The full operation set: swap, move, copy, clear and keep** — all batch-capable except swap,
+which has no single obvious meaning for many sources against many targets.
+
+**Vacating a slot needs a blank, and the blank is captured, not invented.** `blank.ts` and the
+generated `blankdata.ts` hold an empty patternKit taken from a device-initialised project, RLE
+-compressed. `npm run extract-blank` regenerates them and **refuses any project whose empty
+patterns disagree with one another** — the test that separates a device's initialisation
+default from an importer's idea of empty. Measured: in `EMPTY.dn2prj` all 128 patternKits are
+identical once the slot index and kit name are normalised, and two blanks in that file differ
+by exactly one byte. In a *converted* project they differ by 13,811.
+
+**Collisions require confirmation.** Any landing on an occupied slot, or the emptying of one,
+is destructive; `plan.destructive` lists each with what replaces it, and `applyRearrange`
+refuses without `confirmOverwrite`. The CLI equivalent is `--confirm`, and the UI equivalent
+is a dialog listing exactly that array.
 
 **Three guards, each earned:**
 
@@ -245,12 +258,28 @@ little: moving a pattern onto an empty slot *is* a swap, and it is lossless both
 2. **Storage version.** Measured, not assumed: `PRESETS.dn2prj` is version 2 in all 128
    records while the other 23 DN2 projects are version 3 throughout. An unsupported record
    is reported and refused, never parsed on regardless. See `dn2-format.md` §8a.
+
+   **Likely a firmware question rather than a parsing one** — the hypothesis is that the
+   version tracks the OS, and 1.10D's chord library is what bumped it. If so the right
+   long-term behaviour is elk-herd's: fail when a project is newer than the instrument, warn
+   when it is older because loading it should upgrade it. That needs the device's version,
+   so it lands with WebMIDI. Refusing to edit an unparsed version stays correct until then.
 3. **Songs**, via a tri-state rather than a boolean — `empty`, `occupied`, `unknown`. The DN2
    returns `unknown` because its song table has never been located, which warns instead of
    claiming a safety we cannot demonstrate.
 
-**Still to do:** a hardware pass. A rearranged project has been written and re-read, but no
-device has loaded one.
+**Still to do, and it is the next thing:** a hardware pass. A rearranged project has been
+written and re-read, but no device has loaded one. The session is planned in
+[hardware-test-rearrange.md](hardware-test-rearrange.md) — seed a clean two-pattern project
+with `--keep`, then exercise every operation in-bank and across banks.
+
+**Next after that: undo/redo.** Keeping whole images would cost 12.9 MB per step on the DN2,
+so the affordable form is a **record-level snapshot**: store the previous contents of only the
+slots an operation wrote. A swap costs ~200 KB, and the worst case — a 128-slot `--keep` — is
+bounded by one image, which argues for a cache bounded by total bytes rather than step count.
+`Undo.elm` in elk-herd is the reference to read first.
+
+**Then the same operations for tracks inside a pattern**, batch-capable in the same way.
 
 ### 3b-ii. What elk-herd's Digitakt II support gave us
 
