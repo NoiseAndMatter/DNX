@@ -69,13 +69,15 @@ interface itself.
 | Web UI | first version done — load, plan, export |
 | Manager — pattern move/copy/swap/clear, batched, both devices | done (CLI), **hardware-validated** on DN2 |
 | Manager — captured blank patternKit | done, DN1 and DN2, **hardware-validated** |
+| Manager — convert/expand as entry point one | done (`--as-dn2`) |
+| Project identity minted on authoring | done |
 | Manager — storage-version and song guards | done |
 | Manager — undo/redo | not started |
 | Manager — track operations inside a pattern | not started |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-239 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+251 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -302,6 +304,36 @@ the tester reports our mistake as a hardware failure.
 
 Not covered: the DN1 (the librarian handles it, but only the DN2 has been on hardware), songs,
 and cross-project sound-pool references.
+
+### 3b-i-b. Convert/expand re-homed as entry point one — DONE, 2026-07-27
+
+The DN1 sketchpad workflow was built, hardware-validated, and stranded at the end of its own
+command, producing an intermediate file you fed to a second command by hand. That made
+conversion look like a **destination**. It is not — it is how a DN1 project *enters* the
+manager, and `librarian/open.ts` makes that the shape of the code.
+
+```
+npm run rearrange -- --project sketch.dnprj --as-dn2 --expand
+npm run rearrange -- --project sketch.dnprj --as-dn2 --expand --move A4 --to C5 --apply --out done.dn2prj
+```
+
+One command: convert, expand, land on the occupancy grid, rearrange, export. The grid header
+says how the project got there, so nothing has to be re-derived downstream.
+
+**Opening a `.dnprj` does not convert it by default**, and that is deliberate. The librarian
+handles both families, and rearranging a DN1 project *as* a DN1 project is a real workflow —
+someone tidying their Digitone has no use for a DN2 file. Converting silently would take that
+away and hide a lossy, one-way step behind an innocent verb. There is no DN2-to-DN1 direction
+and there should not be: sixteen tracks do not fit in four.
+
+**The template is located rather than named** — `DN_TEMPLATE`, then `DN_CORPUS`, then a sibling
+checkout — which removes `--template` from every invocation of the main workflow. It cannot be
+bundled: the only honest source is a project a real device wrote, and those are the author's own
+music. Not finding one is an error that lists where it looked.
+
+`open.ts` is Node-only and listed in `tsconfig.web.json`'s exclude, beside `projectfile.ts` and
+`zip.ts`. Anything here the UI eventually needs has to move down into a platform-free module
+taking a `Uint8Array` rather than a path.
 
 ### 3b-iii. Next: undo/redo
 

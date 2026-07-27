@@ -29,6 +29,7 @@ speculative or unknown.
 | Writing project files | done, **loaded by a real Digitone II** |
 | Pattern librarian (DN1) | done, hardware-validated |
 | Pattern rearrangement — move/copy/swap/clear, batched | done, **hardware-validated on DN2** |
+| DN1 sketch opened directly as a DN2 project (`--as-dn2`) | done |
 | Expansion planning, rules, pins | done |
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
 | Expansion writer | done, hardware validation in progress |
@@ -69,6 +70,10 @@ npm run sheet -- --from a.dnprj --file b.dn2prj --out sheet.html
 # Copy a pattern between projects (dry run by default)
 npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17
 npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17 --apply --out new.dnprj
+
+# Open a DN1 sketch as a Digitone II project: convert and expand on the way in
+npm run rearrange -- --project sketch.dnprj --as-dn2 --expand
+npm run rearrange -- --project sketch.dnprj --as-dn2 --expand --move A4 --to C5 --apply --out done.dn2prj
 
 # Rearrange patterns inside one project — DN1 or DN2, dry run by default
 npm run rearrange -- --project a.dn2prj                      # occupancy grid

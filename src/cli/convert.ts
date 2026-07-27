@@ -20,6 +20,7 @@ import { parseProject } from "../project/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile } from "../project/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
+import { mintProjectId, writeProjectId } from "../project/dn2image.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
 
@@ -87,8 +88,17 @@ function main(): void {
     ...(projectName === undefined ? {} : { projectName }),
   });
 
+  // A converted project is a new project, so it gets its own identity rather than the
+  // template's. Minted here rather than inside `convertProject` on purpose: that function's
+  // contract is to reproduce Elektron's importer byte for byte, and a field that is random
+  // by design cannot be part of a byte-identical comparison. Authoring a *file* is what
+  // creates an identity, so it belongs at the edge. See `mintProjectId`.
+  const id = mintProjectId();
+  writeProjectId(image, id);
+
   console.log(`\n${basename(fromPath)} "${readProjectName(source.image)}"`);
   console.log(`  template: ${basename(templatePath)}`);
+  console.log(`  project id: ${id.toString(16).padStart(8, "0")} (minted, not inherited)`);
   if (projectName !== undefined) console.log(`  project name: "${projectName}"`);
   console.log(
     `  ${report.patternsWritten} patterns, ${report.trigsWritten} trigs, ` +
