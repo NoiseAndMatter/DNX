@@ -29,8 +29,12 @@ libraries all sit on the manager side of that line.
 ## Where things stand
 
 Reading and writing both formats is solved and validated on hardware. Conversion reproduces
-Elektron's own importer byte-for-byte. Expansion works. What remains is a handful of
-untransferred fields, then a user interface.
+Elektron's own importer byte-for-byte. Expansion works.
+
+**The mapping phase is finished.** As of 2026-07-27 there is no format work blocking a user
+interface: parameter locks can be named and decoded, every machine's parameters are resolved,
+and the sound object's bytes have meanings rather than only sources. What remains is the
+interface itself.
 
 | | Status |
 |---|---|
@@ -48,12 +52,17 @@ untransferred fields, then a user interface.
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
 | Reusing unused DN1 source tracks | done, on in compact mode |
 | Hardware test sheet generator | done (`npm run sheet`) |
-| Remaining field transfers | in progress, see KNOWN-ISSUES |
+| Kit FX, mixer and external input | done, every DN1 FX byte placed |
+| Machine selector (`sound+244`) | done, **hardware-validated** |
+| Parameter-lock ids, fixed pages | done |
+| Parameter-lock ids, machine pages | done, all ten machines |
+| Sound object semantics | done, 54 offsets named and decodable |
+| Remaining field transfers | see KNOWN-ISSUES — nothing blocking |
 | Web UI | first version done — load, plan, export |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-76 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+145 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -174,6 +183,33 @@ are understood — the standalone kit file format is unknown.
 What still blocks a parameter **editor**, as opposed to a builder, is the sound object's
 semantics: 139 offsets are structurally mapped but nothing says which byte is `CUTOFF`. One more
 capture of the kind that has now worked three times.
+
+### 3c. The mapping phase — DONE, 2026-07-26/27
+
+Four device-authored captures closed everything that blocked an editor. Written up in
+`dn2-pattern-format.md` §4a/§4b, `dn2-format.md`, and `dn2-capture-plan.md`.
+
+| Capture | What it settled |
+|---|---|
+| Trig conditions, p-locks, FX | the condition table, bipolar encoding, coarse/fine lock slots, the kit FX block |
+| Machine pages | ids 33-81 are **machine-relative** — the same id means a different parameter on a different machine |
+| Sound object | 54 offsets named, and its encodings match the lock table's |
+| Follow-ups | `HOLD`, `AMP MODE`, `FTUN`, `HARM`, `FX BR` |
+
+**Three lessons worth keeping**, because each cost time:
+
+1. **Capture by position, not by name.** Parameter lists came from a PDF and were wrong four
+   times — block-diagram labels read as controls, a stale OS version, an incomplete page. Asking
+   for "SYN page 1, knob A" and letting the device supply the name removed the dependency.
+2. **Give each control its own step or its own value, never both implicitly.** Every capture that
+   identified controls positionally survived gaps, skipped controls and mis-entered values. A
+   name-based sheet would have been ruined by any one of them.
+3. **Use a blank project.** The sound capture used a converted one, so tracks carrying original
+   music differed from the baseline in bytes nobody touched. Named offsets were confirmed by
+   value match and are safe, but unmatched bytes proved nothing.
+
+What is still open is small and blocks nothing: lock ids `32`, `63..65` and `86` are unclaimed,
+and the four SYN 3 switches are ordered by inference rather than measurement.
 
 ### 4. WebMIDI transfer
 
