@@ -72,12 +72,13 @@ interface itself.
 | Manager — convert/expand as entry point one | done (`--as-dn2`) |
 | Project identity minted on authoring | done |
 | Manager — storage-version and song guards | done |
-| Manager — undo/redo | not started |
+| Manager — session model, undo/redo | done (`librarian/session.ts`) |
 | Manager — track operations inside a pattern | not started |
-| WebMIDI device transfer | not started |
+| WebMIDI device transfer | not started — must be **multi-device**, see §3d |
+| Transfer mode, DN1 → DN2 with two devices | idea, deferred (§3d) |
 | GitHub Pages and CI | not started |
 
-251 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+277 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -423,6 +424,42 @@ record-level snapshot bounded by **bytes** stays right. Two ideas are worth taki
 **Also worth knowing: elk-herd has no pattern editor.** `Project/` is Base, Import, Selection,
 Update, Util and View — a librarian, not an editor. Track-level operations inside a pattern
 have no precedent to borrow, so that phase is ours to design.
+
+### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
+
+**Recorded 2026-07-27 by the user, to be built when the project is more mature.** Not a
+near-term task; here so the idea is not lost and so nothing built before it makes it harder.
+
+Connect **both** a Digitone and a Digitone II to the computer. Browse the DN1's project list,
+tick the ones you want, and push them to the DN2 — **converting and expanding on the way**.
+
+The shape is deliberately smaller than the manager's: **no project is opened.** You are not
+editing two projects as peers, you are reading one device's catalogue and writing to another.
+That keeps it clear of the one-project-open paradigm rather than contradicting it. Selecting
+several and transferring them is the same batch-with-a-queue-and-collision-report design the
+librarian already uses; the collisions here are destination slots on the DN2's +Drive.
+
+**Three things it implies for work that comes first:**
+
+1. **WebMIDI must not be built single-device.** The obvious API — connect *the* instrument,
+   then talk to it — makes this feature a rewrite rather than an addition. elk-herd is
+   single-instrument by design and is not a guide here. Two sessions, each with its own
+   identity, storage versions and firmware, held at the same time.
+2. **The conversion runs on the computer, not on the device.** Pushing a `.dnprj` to the DN2's
+   +Drive would simply leave it marked *needs upgrade*, and the device's own upgrade does not
+   expand. So the flow is read DN1 → `convertProject` + `planExpansion` here → write a DN2
+   project. That is exactly what the byte-identical converter is for, and this is the feature
+   that makes it load-bearing rather than a convenience.
+3. **It is the scenario that makes minted project identities matter.** Pushing five converted
+   projects onto one +Drive is precisely the case flagged in `KNOWN-ISSUES.md` when we were
+   inheriting a single identity from the template. Fixed before the feature needs it, which is
+   the right order.
+
+**Unknown, and the thing to research first:** whether the +Drive file API lets us enumerate and
+read whole projects over SysEx. elk-herd's `Elektron/Drive.elm` models a drive as a tree of
+entries with hashes and sizes, and `Instrument.elm` lists file-operation commands
+(`dirCreate`, `dirDelete`, `fileDelete`, `itemRename`), which is strong evidence the transport
+exists. Reading a *project* rather than a pattern dump is the part to confirm.
 
 ### 3c. Songs — deferred by the user, with a constraint to remember
 
