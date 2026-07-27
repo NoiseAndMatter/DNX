@@ -355,14 +355,15 @@ It turned out to be a different shape from pattern moves, and the difference is 
 module. A pattern is one contiguous `patternKit`; a **track** is six regions across two
 records, and two of them do not move at all:
 
-| What | Where | How |
-|---|---|---|
-| track record — flags, conditions, probability, sound locks, length, speed | pattern `+0x0004 + t·1187` | copied |
-| sound | kit `+60 + t·359` | copied |
-| MIDI record | kit `+5964 + t·268` | copied |
-| track level | kit `+0x1C + t·2` | copied |
-| **trigs** | flat 8,192-slot pool, each slot naming its own track | **rebuilt** |
-| **parameter locks** | 80 records, each naming a track | **rebuilt** |
+| What | Where | Part | How |
+|---|---|---|---|
+| track record — flags, conditions, probability, sound locks, length, speed | pattern `+0x0004 + t·1187` | sequence | copied |
+| preset | kit `+60 + t·359` | preset | copied |
+| MIDI record | kit `+5964 + t·268` | preset | copied |
+| track level | kit `+0x1C + t·2` | mix | copied |
+| **trigs** | flat 8,192-slot pool, each slot naming its own track | sequence | **rebuilt** |
+| **parameter locks** | 80 records, each naming a track | sequence | **rebuilt** |
+| **MIDI-track mask** | kit `+10,260`, one *bit* per track | preset | **rewritten bitwise** |
 
 The DN2 keeps one trig pool per pattern where each slot carries a `track` byte, so a move that
 copied bytes and stopped would leave every trig behind, naming a track that now holds something
@@ -374,9 +375,20 @@ up with copies of whatever its source held; everything else is untouched.* A cop
 the 80-record lock table, which is refused rather than truncated.
 
 **DN2 only.** The DN1 splits its tracks into synth and MIDI, so a move across that boundary is
-not meaningful; it is refused with a reason rather than guessed at. And since the DN2's own
-per-track synth/MIDI byte has never been located, every move carries a warning saying so —
-all six regions travel together, so it should come along, but that is inferred not verified.
+not meaningful; it is refused with a reason rather than guessed at.
+
+**The lock table's track byte is not where the trig pool's is.** A trig slot is
+`track | step | note | …`; a lock record is `parameter | track | …`. The first version treated
+byte 0 as the track in both, which matched the wrong records *and* overwrote each surviving
+lock's parameter id with a track number — a lock on CUTOFF became a lock on parameter 3. Its
+own test encoded the same assumption, so nothing caught it. Both tables now go through one
+descriptor that names where the track byte sits. Fixed 2026-07-28.
+
+**The synth/MIDI mask is carried, not disclaimed.** The module used to warn that the byte
+deciding synth-or-MIDI "has never been located". It had been — kit `+10,260`, `u16be`, one bit
+per track — and the warning was covering for the fact that the mask was in no region at all, so
+a moved MIDI track arrived as a synth track keeping a MIDI record it would never use. It is now
+rewritten bit by bit with the presets, and verification reads it back. Fixed 2026-07-28.
 
 ### 3b-ii. What elk-herd's Digitakt II support gave us
 
@@ -483,6 +495,65 @@ Note the tension with the 1:1 rule in **Scope**: conversion is a transplant and 
 tidy anything. Both of these are *editorial*, so they belong to the manager side of that line
 and must stay opt-in, off by default, and reported — never applied silently to a conversion
 someone expects to be faithful.
+
+### 3c-i. A track is a sequence *and* a preset — SETTLED 2026-07-28
+
+**Raised by the user 2026-07-27; answered by reading the DN2 manual, as they asked.** The
+answer was better than the question: the device already implements the split, and it names both
+halves. §16 KEY COMBINATIONS lists four copy/paste/clear units, of which two are the halves of
+a track:
+
+| Unit | Keys | What it carries |
+|---|---|---|
+| **TRACK SEQUENCE** (all trigs on the track) | `[FUNC]` + `[RECORD]`/`[STOP]`/`[PLAY]`, in grid recording | trigs, conditions, lengths, p-locks |
+| **PRESET** | `[TRK]` + `[RECORD]`/`[STOP]`/`[PLAY]` | the track's sound |
+| SEQUENCER PAGE | `[PAGE]` + … | 16 steps of one track |
+| TRIG | `[TRIG]` + … | one step *with its parameter locks* |
+
+**There is no whole-track operation on the hardware at all.** Moving both halves together is
+ours, so `TrackScope` is `"sequence" | "preset" | "both"` — the device's two units, plus our
+composite.
+
+#### The vocabulary is the device's, not ours
+
+From §5 and §9, quoted structurally rather than verbatim:
+
+- a **pattern** contains a kit, sequencer data (trigs and parameter locks) for the 16 tracks,
+  and the TRIG-page defaults, BPM, length, swing and time signature;
+- a **kit** contains 16 presets, the track and pattern LEVEL settings, compressor and master
+  distortion, send FX, track layering and pattern transpose;
+- a **preset** contains the SYN, FLTR, AMP, FX and MOD parameter pages (MOD but no FX for MIDI
+  presets), plus the PRESET SETUP and ARPEGGIATOR menus;
+- a **track** is one of 16 sequencer tracks, audio or MIDI **according to its SYN machine** —
+  there is no separate "kind" setting a user picks;
+- a **page** is 16 steps of display. Up to 8 pages, so 128 steps. It is an editing unit, not a
+  stored one — nothing in the format is per-page.
+
+So the DN2's word for the sound half of a track is **preset**. The DN1 called it a *sound*, and
+`soundmap.ts` and the corpus keep that name for DN1 things; DN2-side code says preset.
+
+#### Two consequences that were not obvious
+
+**LEVEL is in the kit but not in the preset**, so the device's own PRESET paste leaves it
+behind. `scope: "preset"` therefore does too, and only the composite carries it. That is why
+`TrackPart` has three values and not two — `mix` is neither half.
+
+**Parameter locks are sequence-side but machine-dependent.** §16 confirms the ownership —
+*"copy the trig with it's parameter locks"* — and `machineplock.ts` shows ids 33..76 and 78..81
+mean different knobs on different machines. So a sequence landing on a track whose preset is a
+different machine keeps locking id 58 while 58 now addresses something else. The bytes are all
+correct and the meaning is wrong: the `sound+244` class of failure. `planTrackMove` reports it
+as a warning and does not attempt a repair — rewriting ids across machines is a translation
+problem, not a librarian's.
+
+The composite scope cannot hit it, because the preset travels with the sequence.
+
+#### What this did not change
+
+Sound locks were the other suspected hazard: they are sequence-side and reference the sound
+pool. They turn out to be safe for track operations, because the pool is per **project** and a
+track move stays inside one pattern — the indices remain valid. They would matter for a move
+*between* projects, which is the transfer mode in §3d.
 
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 
