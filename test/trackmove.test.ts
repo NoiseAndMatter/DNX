@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { parseProject } from "../src/project/projectfile.js";
-import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
-import { readDn2Pattern } from "../src/project/dn2pattern.js";
+import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
+import { readDn2Pattern, readLockTable, readMidiTrackMask } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, deviceFor } from "../src/librarian/device.js";
 import {
   DN2_TRACK_COUNT,
   applyTrackMove,
+  lockCounts,
   planTrackMove,
+  trackMachines,
   trigCounts,
   verifyTrackMove,
 } from "../src/librarian/trackmove.js";
@@ -51,13 +53,42 @@ test("a track outside the range is a blocker", { skip }, () => {
   assert.match(plan.findings[0]!.message, /outside/);
 });
 
-test("the unlocatable synth/MIDI byte is reported, not glossed over", { skip }, () => {
+test("the stale synth/MIDI disclaimer is gone", { skip }, () => {
+  // This used to warn that the discriminator "has never been located". It had been, in the kit
+  // — and the warning was covering for the fact that the mask was in no region at all. A
+  // composite move now carries it, so there is nothing left to disclaim.
   const img = image();
   const plan = planTrackMove(img, deviceFor(img), 0, swap(0, 1));
   assert.ok(
-    plan.findings.some((f) => f.severity === "warning" && /never located/.test(f.message)),
-    "a move should admit what it cannot verify",
+    !plan.findings.some((f) => /never located/.test(f.message)),
+    "a claim we can now back up should not be hedged",
   );
+});
+
+test("the unidentified per-track array is disclosed, not moved on a guess", { skip }, () => {
+  // kit +10,264 looks like a 16 x 5-byte per-track array, but its meaning is unknown and its
+  // alignment is inferred from the repeat. Moving bytes we cannot name is how a plausible
+  // corruption gets written, so it stays — and a track carrying a non-default entry says so.
+  const img = image();
+  const device = deviceFor(img);
+  const kitAt = (pattern: number, track: number) =>
+    kitRecord(img, pattern, DN2_LAYOUT).subarray(10_264 + track * 5, 10_269 + track * 5);
+  const isDefault = (bytes: Uint8Array) =>
+    [0x00, 0x00, 0x81, 0x20, 0x00].every((b, i) => bytes[i] === b);
+
+  for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
+    const odd = [...Array(DN2_TRACK_COUNT).keys()].find((t) => !isDefault(kitAt(p, t)));
+    if (odd === undefined) continue;
+    const other = [...Array(DN2_TRACK_COUNT).keys()].find((t) => t !== odd)!;
+
+    const plan = planTrackMove(img, device, p, moveMany([odd], other), "preset");
+    assert.ok(
+      plan.findings.some((f) => /10,264/.test(f.message)),
+      "a track with a non-default entry should be disclosed",
+    );
+    return;
+  }
+  throw new Error("no corpus track carries a non-default entry in the array at kit +10,264");
 });
 
 test("destroying a track needs confirmation", { skip }, () => {
@@ -244,29 +275,336 @@ test("a batch move lands its sources in order", { skip }, () => {
   assert.equal(counts[b], 0);
 });
 
+// --- the MIDI-track mask, which travels as bits rather than bytes ---------------------------
+
+/**
+ * A pattern whose kit has at least one MIDI track and one synth track.
+ *
+ * Throws rather than returning undefined: a fixture that quietly is not there turns every test
+ * built on it into a test of nothing, which is how the lock-order bug survived its own suite.
+ */
+function mixedPattern(img: Uint8Array): { index: number; midi: number; synth: number } {
+  for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
+    const mask = readMidiTrackMask(img, p);
+    const midi = [...Array(DN2_TRACK_COUNT).keys()].find((t) => (mask >> t) & 1);
+    const synth = [...Array(DN2_TRACK_COUNT).keys()].find((t) => !((mask >> t) & 1));
+    if (midi !== undefined && synth !== undefined) return { index: p, midi, synth };
+  }
+  throw new Error("no corpus pattern mixes MIDI and synth tracks");
+}
+
+test("a moved MIDI track arrives as a MIDI track", { skip }, () => {
+  // The bug: the discriminator is a bitmask in the kit, and it was in no region at all, so a
+  // MIDI track moved onto a synth slot became a synth track running a MIDI track's parameters.
+  const img = image();
+  const device = deviceFor(img);
+  const mixed = mixedPattern(img);
+  const { index, midi, synth } = mixed;
+
+  const { image: after } = applyTrackMove(img, device, index, moveMany([midi], synth), CONFIRM);
+  const mask = readMidiTrackMask(after, index);
+
+  assert.equal((mask >> synth) & 1, 1, "the destination should now be a MIDI track");
+  assert.equal((mask >> midi) & 1, 0, "and the vacated source should not be");
+});
+
+test("a swap exchanges the MIDI bits along with the presets", { skip }, () => {
+  const img = image();
+  const device = deviceFor(img);
+  const mixed = mixedPattern(img);
+  const { index, midi, synth } = mixed;
+
+  const { image: after } = applyTrackMove(img, device, index, swap(midi, synth), CONFIRM);
+  const mask = readMidiTrackMask(after, index);
+
+  assert.equal((mask >> synth) & 1, 1);
+  assert.equal((mask >> midi) & 1, 0);
+});
+
+test("a sequence-only move leaves the MIDI mask untouched", { skip }, () => {
+  // The mask describes the preset, so it belongs to the preset half. Moving a sequence must
+  // not change which tracks are MIDI tracks.
+  const img = image();
+  const device = deviceFor(img);
+  const mixed = mixedPattern(img);
+  const { index, midi, synth } = mixed;
+
+  const { image: after } = applyTrackMove(img, device, index, moveMany([midi], synth), {
+    ...CONFIRM,
+    scope: "sequence",
+  });
+  assert.equal(readMidiTrackMask(after, index), readMidiTrackMask(img, index));
+});
+
+test("verification catches a MIDI bit left behind", { skip }, () => {
+  // Verification has to read back the half most likely to be forgotten. Hand it an image whose
+  // mask was never rewritten and it must refuse it.
+  const img = image();
+  const device = deviceFor(img);
+  const mixed = mixedPattern(img);
+  const { index, midi, synth } = mixed;
+  const shuffle = moveMany([midi], synth);
+
+  const { image: after } = applyTrackMove(img, device, index, shuffle, CONFIRM);
+  assert.equal(verifyTrackMove(img, after, index, shuffle).ok, true);
+
+  // Put the old mask back, as a move that forgot it would have left it.
+  const sabotaged = Uint8Array.from(after);
+  const base = DN2_LAYOUT.kitBase + index * DN2_LAYOUT.kitSize;
+  const original = readMidiTrackMask(img, index);
+  sabotaged[base + 10_260] = (original >> 8) & 0xff;
+  sabotaged[base + 10_261] = original & 0xff;
+
+  const result = verifyTrackMove(img, sabotaged, index, shuffle);
+  assert.equal(result.ok, false, "a stale mask must not verify");
+  assert.match(result.problems.join("; "), /MIDI mask/);
+});
+
+// --- the two halves the device itself distinguishes -----------------------------------------
+
+/** The preset bytes of one track, as hex, for comparing halves across an operation. */
+function presetBytes(img: Uint8Array, pattern: number, track: number): string {
+  const kit = kitRecord(img, pattern, DN2_LAYOUT);
+  const at = DN2_KIT.soundOffset + track * DN2_KIT.soundSize;
+  return Buffer.from(kit.subarray(at, at + DN2_KIT.soundSize)).toString("hex");
+}
+
+test("moving the sequence leaves both presets where they were", { skip }, () => {
+  // The device's own TRACK SEQUENCE paste: the trigs arrive, the sound stays. This is the half
+  // of the duality that makes "load a kit onto a running pattern" a coherent operation.
+  const img = image();
+  const device = deviceFor(img);
+  const { index, tracks } = busyPattern(img);
+  const from = tracks[0]!;
+  const to = [...Array(DN2_TRACK_COUNT).keys()].find((t) => trigCounts(img, index)[t] === 0)!;
+
+  const before = trigCounts(img, index);
+  const { image: after } = applyTrackMove(img, device, index, moveMany([from], to), {
+    ...CONFIRM,
+    scope: "sequence",
+  });
+
+  assert.equal(trigCounts(after, index)[to], before[from], "the trigs should have moved");
+  assert.equal(
+    presetBytes(after, index, to),
+    presetBytes(img, index, to),
+    "the destination keeps its own preset",
+  );
+  assert.equal(
+    presetBytes(after, index, from),
+    presetBytes(img, index, from),
+    "and the source keeps its own, even though its sequence left",
+  );
+});
+
+test("moving the preset leaves every trig where it was", { skip }, () => {
+  // The device's own PRESET paste, `[TRK]` + `[STOP]`.
+  const img = image();
+  const device = deviceFor(img);
+  const { index, tracks } = busyPattern(img);
+  const from = tracks[0]!;
+  const to = tracks[1]!;
+
+  const { image: after } = applyTrackMove(img, device, index, moveMany([from], to), {
+    ...CONFIRM,
+    scope: "preset",
+  });
+
+  assert.deepEqual(
+    trigCounts(after, index),
+    trigCounts(img, index),
+    "a preset-only move must not touch the sequencer at all",
+  );
+  assert.equal(
+    presetBytes(after, index, to),
+    presetBytes(img, index, from),
+    "the destination should now run the source's preset",
+  );
+});
+
+test("a preset-only operation destroys no trigs, so it claims none", { skip }, () => {
+  const img = image();
+  const { index, tracks } = busyPattern(img);
+  const plan = planTrackMove(
+    img,
+    deviceFor(img),
+    index,
+    moveMany([tracks[0]!], tracks[1]!),
+    "preset",
+  );
+
+  assert.deepEqual(plan.destructive, [], "no notes are at risk when only the preset moves");
+  assert.ok(plan.changed.length > 0, "but the operation still changes something");
+});
+
+test("the track level follows the whole track and nothing less", { skip }, () => {
+  // The manual puts LEVEL in the kit but not in the preset, so the device's PRESET paste would
+  // leave it behind. Ours matches that rather than quietly being more helpful.
+  const img = image();
+  const device = deviceFor(img);
+  const { index, tracks } = busyPattern(img);
+  const [from, to] = tracks as [number, number];
+  const level = (bytes: Uint8Array, track: number) =>
+    kitRecord(bytes, index, DN2_LAYOUT)[0x1c + track * 2];
+
+  const preset = applyTrackMove(img, device, index, moveMany([from], to), {
+    ...CONFIRM,
+    scope: "preset",
+  }).image;
+  assert.equal(level(preset, to), level(img, to), "a preset move leaves the level alone");
+
+  const both = applyTrackMove(img, device, index, moveMany([from], to), CONFIRM).image;
+  assert.equal(level(both, to), level(img, from), "a whole-track move carries it");
+});
+
+test("splitting a track across two machines is reported", { skip }, () => {
+  // Parameter-lock ids in 33..76 and 78..81 mean different knobs on different machines, so a
+  // sequence landing on a foreign machine keeps locking an id that now addresses something
+  // else. Bytes right, meaning wrong — the `sound+244` class of failure, so it is reported.
+  const img = image();
+  const device = deviceFor(img);
+
+  for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
+    const counts = lockCounts(img, p);
+    const machines = trackMachines(img, p);
+    const from = counts.findIndex((n) => n > 0);
+    if (from < 0) continue;
+    const to = [...Array(DN2_TRACK_COUNT).keys()].find((t) => machines[t] !== machines[from]);
+    if (to === undefined) continue;
+
+    const split = planTrackMove(img, device, p, moveMany([from], to), "sequence");
+    const whole = planTrackMove(img, device, p, moveMany([from], to), "both");
+
+    // Only meaningful when the source actually carries a machine-relative lock; when it does
+    // not, the absence of a warning is itself the right answer and there is nothing to assert.
+    if (split.findings.length === 0) continue;
+
+    assert.match(split.findings[0]!.message, /machine/, "the warning should name the hazard");
+    assert.deepEqual(whole.findings, [], "moving both halves cannot hit it");
+    return;
+  }
+});
+
+// --- the lock table, whose track byte is not where the trig pool's is ------------------------
+
+/**
+ * Live lock records as `(parameter, track)`.
+ *
+ * Read through `readLockTable`, deliberately: it is the independent reader that was right
+ * about the byte order all along, so a fixture built on it stays valid even when the code
+ * under test is wrong. Building it on `lockCounts` instead made these tests vacuous — with the
+ * bug reintroduced every parameter id looked like an out-of-range track, the fixture came back
+ * empty, and three tests passed by finding nothing to check.
+ */
+function locks(img: Uint8Array, pattern: number): { parameter: number; track: number }[] {
+  return readLockTable(patternRecord(img, pattern, DN2_LAYOUT)).map((r) => ({
+    parameter: r.parameter,
+    track: r.track,
+  }));
+}
+
+/** A pattern with at least one live parameter-lock record. Asserts rather than skipping. */
+function patternWithLocks(img: Uint8Array): number {
+  for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
+    if (locks(img, p).length > 0) return p;
+  }
+  throw new Error("no pattern in the corpus carries a parameter lock");
+}
+
+/** A track holding no trigs and no locks, so an operation onto it destroys nothing. */
+function freeTrack(img: Uint8Array, pattern: number): number {
+  const held = new Set(locks(img, pattern).map((l) => l.track));
+  const free = [...Array(DN2_TRACK_COUNT).keys()].find(
+    (t) => trigCounts(img, pattern)[t] === 0 && !held.has(t),
+  );
+  assert.ok(free !== undefined, "the corpus pattern should have a free track to move onto");
+  return free;
+}
+
+test("a lock keeps its parameter id when its track moves", { skip }, () => {
+  // The bug this pins down: a lock record is `u8 parameter | u8 track | ...`, and treating
+  // byte 0 as the track both matched the wrong records and overwrote each surviving lock's
+  // parameter id with a track number. A lock on CUTOFF became a lock on parameter 3.
+  const img = image();
+  const device = deviceFor(img);
+  const index = patternWithLocks(img);
+
+  const before = locks(img, index);
+  const from = before[0]!.track;
+  const to = freeTrack(img, index);
+
+  const { image: after } = applyTrackMove(img, device, index, moveMany([from], to), CONFIRM);
+  const moved = locks(after, index).filter((l) => l.track === to);
+  const expected = before.filter((l) => l.track === from).map((l) => l.parameter);
+
+  assert.ok(expected.length > 0, "the source should have had locks to move");
+  assert.deepEqual(
+    moved.map((l) => l.parameter).sort((a, b) => a - b),
+    expected.sort((a, b) => a - b),
+    "the moved locks should lock the same parameters they always did",
+  );
+});
+
+test("locks belonging to untouched tracks survive a move unchanged", { skip }, () => {
+  const img = image();
+  const device = deviceFor(img);
+  const index = patternWithLocks(img);
+
+  const before = locks(img, index);
+  const from = before[0]!.track;
+  const to = freeTrack(img, index);
+
+  const { image: after } = applyTrackMove(img, device, index, moveMany([from], to), CONFIRM);
+  const key = (l: { parameter: number; track: number }) => `${l.track}:${l.parameter}`;
+  const untouched = (ls: typeof before) => ls.filter((l) => l.track !== from && l.track !== to);
+
+  assert.deepEqual(
+    untouched(locks(after, index)).map(key).sort(),
+    untouched(before).map(key).sort(),
+    "a move must not disturb other tracks' locks",
+  );
+});
+
+test("a vacated lock record reads back as unused, not as parameter 255", { skip }, () => {
+  // `readLockTable` tests both header bytes against 0xFFFF. Clearing only byte 0 leaves
+  // 0xFF<track>, which reads back as a live lock on parameter 255 — a lock the user never
+  // wrote, on a parameter that does not exist.
+  const img = image();
+  const device = deviceFor(img);
+  const index = patternWithLocks(img);
+
+  const target = locks(img, index)[0]!.track;
+  const { image: after } = applyTrackMove(img, device, index, clear(target), CONFIRM);
+
+  assert.ok(
+    locks(after, index).every((l) => l.parameter !== 0xff),
+    "no record should read back as a lock on parameter 255",
+  );
+  assert.equal(
+    locks(after, index).filter((l) => l.track === target).length,
+    0,
+    "the cleared track should own no locks",
+  );
+});
+
 test("a copy that would overflow the lock table is refused, not truncated", { skip }, () => {
   // 80 lock records for the whole pattern, and copying a track duplicates its locks. Silently
   // dropping the overflow would lose parameter automation with no warning at all.
   const img = image();
   const device = deviceFor(img);
 
-  // Find a pattern whose lock table is over half full, then copy its busiest track.
+  // Find a pattern whose lock table is over half full, then copy its busiest track. The counts
+  // come from `lockCounts` rather than a hand-rolled scan: the first version of this test read
+  // byte 0 as the track, which is the parameter id, so it encoded the very bug it sat next to.
   for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
-    const record = patternRecord(img, p, DN2_LAYOUT);
-    let used = 0;
-    const perTrack = new Map<number, number>();
-    for (let i = 0; i < 80; i++) {
-      const track = record[0x10a34 + i * 258]!;
-      if (track === 0xff) continue;
-      used++;
-      perTrack.set(track, (perTrack.get(track) ?? 0) + 1);
-    }
+    const perTrack = lockCounts(img, p);
+    const used = perTrack.reduce((n, c) => n + c, 0);
     if (used === 0) continue;
 
-    const [busiest, locks] = [...perTrack].sort((x, y) => y[1] - x[1])[0]!;
-    if (used + locks <= 80) continue;
+    const busiest = perTrack.indexOf(Math.max(...perTrack));
+    if (used + perTrack[busiest]! <= 80) continue;
 
-    const free = [...Array(DN2_TRACK_COUNT).keys()].find((t) => !perTrack.has(t));
+    const free = [...Array(DN2_TRACK_COUNT).keys()].find((t) => perTrack[t] === 0);
     if (free === undefined) continue;
 
     assert.throws(
