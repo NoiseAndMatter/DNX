@@ -158,11 +158,24 @@ run of 128 kit records begins.
 0x00  BE EF BA CE            object magic
 0x04  u32be                  version (3 on DN2, 12 on DN1)
 0x08  16 bytes               project name, NUL-padded  ("MORNING_JAM")
-0x18  u32                    4 bytes, differ per project           [speculative: a hash/id]
+0x18  u32                    project identity / revision token      [inferred, see below]
 0x1C  ...                    zero out to 0x200 in every file checked
 ```
 
-**[verified]** name and version. **[speculative]** the meaning of `0x18`.
+**[verified]** name and version.
+
+**`0x18` is not a content hash, and not recomputed on save.** Measured across 32 DN2
+projects: 19 distinct values, and every duplicate group is explained by copying rather than
+by shared content. `EMPTY.dn2prj` and `MORNING_JAM_EXPANDED.dn2prj` have entirely different
+content and share `743a3f5b`, which rules out a checksum. A device round-trip of a file we
+wrote preserved the value exactly, which rules out recomputation on save; on a second file,
+whose contents the tester had changed, the device wrote a new value. That fits an identity or
+revision token bumped on a modifying save. **[inferred]** — 2026-07-27, see
+`hardware-test-rearrange.md`.
+
+Consequence for us: **every project we generate inherits this from its template.** Harmless
+so far — the device loaded an inherited value without complaint — but it means all our output
+built on `EMPTY.dn2prj` claims to be `EMPTY`. Tracked in `KNOWN-ISSUES.md`.
 
 ---
 
@@ -209,7 +222,12 @@ kit contents track pattern contents across the whole matched-pair corpus (§6).
 | `5,964` | 16 × 268 = 4,288 | **16 MIDI track records**, one per track |
 | `10,252` | 500 | unidentified |
 
-### Sound object, 359 bytes **[verified]**
+**An empty kit name is legitimate; the device supplies `KIT <slot index + 1>` lazily.**
+A round-trip of a project we wrote came back with 13 kits newly named `KIT 1`, `KIT 17`,
+`KIT 113` and so on — always the 1-based slot index, always only for kits the device had
+actually loaded. The same file's 126 untouched blank kits came back still unnamed. So the
+positional name is a display default materialised when a kit is loaded, not a field a valid
+project must carry, and clearing it when we blank a slot is correct. **[verified]** 2026-07-27.
 
 ```
 +0x00  BE EF BA CE            magic
@@ -353,9 +371,11 @@ Ordered by how much they block writing valid DN2 files.
 3. **Sound parameter map** inside the 359-byte sound object (§4).
 4. **Per-track length / speed / scale / machine type** (§5).
 5. **Trailing region contents** (§7), and the two unidentified gaps inside the kit record
-   (160 bytes at `5,804`, 500 bytes at `10,252`).
+   (160 bytes at `5,804`, 500 bytes at `10,252`). One byte in the first gap, kit `+0x16b0`,
+   is known to be **live**: a device round-trip rewrote it from `0x40` to `0x00` in 114 kits
+   without any visible effect. Meaning unknown.
 6. **Header field `0x1A`** (constant per device family) and `0x1C` (`04 01 0C`).
-7. **Image header `0x18`** u32.
+7. ~~**Image header `0x18`** u32.~~ Identified as an identity/revision token — see §2.
 8. Whether a DN1 pattern record concatenated with its DN1 kit record equals a DN1 SysEx
    pattern dump, as it does on DN2. Not checked — no DN1 pattern dump in the corpus.
 
