@@ -67,11 +67,12 @@ interface itself.
 | Sound object semantics | done, 54 offsets named and decodable |
 | Remaining field transfers | see KNOWN-ISSUES — nothing blocking |
 | Web UI | first version done — load, plan, export |
-| Manager — DN1 and DN2 | plan refined, spine not started |
+| Manager — pattern rearrange, both devices | done (CLI), not yet hardware-validated |
+| Manager — storage-version and song guards | done |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-145 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+172 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -217,6 +218,61 @@ narrower: saving a standalone kit to the +Drive, and sourcing sounds from the de
 
 **The device's own sound library is canonical** for kit building; project-derived sounds are the
 fallback. Reading it needs SysEx, which is why WebMIDI moved earlier.
+
+### 3b-i. The spine — DONE (CLI), 2026-07-27
+
+`npm run rearrange`. Three modules, one job each:
+
+| Module | Job |
+|---|---|
+| `librarian/shuffle.ts` | a reordering as pure data — where things move, and how to repair references to them |
+| `librarian/device.ts` | one interface over both families, reporting differences rather than hiding them |
+| `librarian/rearrange.ts` | plan, apply and **verify** a rearrangement inside one project |
+
+27 new tests, 172 total.
+
+**Swap is the primitive, and that is a deliberate limit.** A true move leaves a hole, and
+filling a hole means writing an *empty pattern* — bytes we would have to invent. elk-herd
+solves this by embedding a compressed blank patternKit per storage version; until we have an
+equivalent source, a shuffle that would empty a slot is refused with that reason. It costs
+little: moving a pattern onto an empty slot *is* a swap, and it is lossless both ways.
+
+**Three guards, each earned:**
+
+1. **The record knows its own slot** — DN1 `PATTERN.slotIndexOffset`, DN2 meta+0x1C. Moving
+   bytes without rewriting it leaves a pattern that disagrees about where it lives. The
+   verifier asserts it rather than trusting the writer.
+2. **Storage version.** Measured, not assumed: `PRESETS.dn2prj` is version 2 in all 128
+   records while the other 23 DN2 projects are version 3 throughout. An unsupported record
+   is reported and refused, never parsed on regardless. See `dn2-format.md` §8a.
+3. **Songs**, via a tri-state rather than a boolean — `empty`, `occupied`, `unknown`. The DN2
+   returns `unknown` because its song table has never been located, which warns instead of
+   claiming a safety we cannot demonstrate.
+
+**Still to do:** a hardware pass. A rearranged project has been written and re-read, but no
+device has loaded one.
+
+### 3b-ii. What elk-herd's Digitakt II support gave us
+
+`00_References/elk-herd` (BSD 2-Clause) supports the Digitakt II, which is the **same storage
+family** as the DN2 — its `patternStorage_sizeof` for version 3 is 89,088, exactly our DN2
+pattern size, and three more of its offsets are ours unchanged (`dn2-format.md` §8a).
+
+Adopted, with attribution in the module headers:
+
+- **`Shuffle`** as a description of movement separated from its application, with
+  `rereference` for repairing anything that points at a slot. It generalises: the sound pool
+  is where reference repair stops being theoretical, since sound locks address it by index.
+- **`patternKit`** as the unit of movement — pattern and kit together, the same pairing that
+  makes a project pattern a SysEx pattern payload.
+- **Blocker / warning / pass** instead of a boolean `ok`, because most of what a manager has
+  to say is neither "fine" nor "impossible".
+- **Blank data must be captured, never synthesised.** elk-herd embeds a compressed blank per
+  version precisely because it "contains many fields elk-herd doesn't manage or decode" —
+  the never-invent rule, reached independently.
+
+Worth reading before the next phase: `Elektron/Digitakt/Related.elm` (dependency resolution),
+`Undo.elm`, and `Project/Selection/Bank.elm` for multi-select.
 
 ### 3c. Songs — deferred by the user, with a constraint to remember
 
