@@ -18,11 +18,19 @@ Two things, and everything is judged against them:
 2. **Expansion** — the one deliberate departure from 1:1: sounds crammed onto the DN1's four
    tracks by sound-locking get their own tracks on the DN2's sixteen.
 
-A **project / pattern / track / sound manager** comes later, and is where editorial features
-belong. The distinction matters when judging a proposal: conversion is a *transplant* and
-should not clean anything up, while a manager is exactly where a user asks for changes and
-can be shown what changed. Tidying the sound pool, re-laying-out tracks by tag, and merging
-libraries all sit on the manager side of that line.
+A **project / pattern / track / sound manager** is the third thing, and is where editorial
+features belong. As of 2026-07-27 it is the active phase. The distinction matters when judging a
+proposal: conversion is a *transplant* and should not clean anything up, while a manager is
+exactly where a user asks for changes and can be shown what changed. Tidying the sound pool,
+re-laying-out tracks by tag, and merging libraries all sit on the manager side of that line.
+
+The manager works on **both devices**, but conversion stays one-directional: **DN1 → DN2 only**.
+DN2 → DN1 is out of scope and nothing should be designed to accommodate it.
+
+The DN1 → DN2 workflow is not a separate tool from the manager — it is the reason the project
+exists. Sketch on the DN1, finish on the DN2 with more tracks, more voices and better arrangement
+tools. It is **built and hardware-validated**, so it becomes the manager's first entry point
+rather than a later phase.
 
 ---
 
@@ -59,6 +67,7 @@ interface itself.
 | Sound object semantics | done, 54 offsets named and decodable |
 | Remaining field transfers | see KNOWN-ISSUES — nothing blocking |
 | Web UI | first version done — load, plan, export |
+| Manager — DN1 and DN2 | plan refined, spine not started |
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
@@ -155,34 +164,79 @@ minutes, and `npm run diff` now names every offset in a pattern payload, so a cl
 reads as a sentence. Blocked only on the Digitone manuals, which are needed to enumerate the
 parameters of each page.
 
-### 3b. Web UI — a project manager — PLANNED, queued for discussion
+### 3b. The manager — REFINED 2026-07-27, active
 
-The plan is written: [ui-plan.md](ui-plan.md). **Queued by the user for after the format work
-finishes**, to be discussed and refined rather than built from the document as it stands.
+The plan has been through two refinement rounds with the user: [ui-plan.md](ui-plan.md). The
+paradigm, the first slice, the cuts and the scope are agreed.
 
-The short version. **A project manager in the spirit of elk-herd, with extra tools for the DN2's
-new data structures** — copy and move patterns, sounds and kits between projects and slots, to
-assemble performance sets, and eventually a song editor. Clean, minimal, genuinely dual-theme,
-taking the eight-knob page and the track strip from Overbridge while leaving behind its
-dark-only density. Static and offline, with the user's projects never leaving the machine.
+**The paradigm: one project open and being edited at a time.** Within it — move patterns between
+slots, replace kits, build kits, assign sounds to tracks. New material arrives through
+**explorers, which are read-only sources rather than a second editable project**. Copying between
+two projects comes later.
 
-Everything the manager does is a *reorganisation* of what we already decode, which is why it is
-unblocked while an editor is not.
+That paradigm settles a question an earlier draft left open: because you load once, operate many
+times and export once, there is no chain of `MORNING_JAM(7).dn2prj` files, and where exports land
+stops being a design problem.
 
-One utility inside it is a **kit builder**: filter and search the sound list, then assign sounds to
-the sixteen slots of a kit. It is a good first target because it needs **no format knowledge we
-lack** — a sound is a self-contained 359-byte object, so assigning one is a copy rather than an
-edit — while exercising the searchable list, the slot grid and the write path that everything
-else reuses.
+**The first slice: open one project, move patterns between slots, export a verified result.**
+Nothing else. CLI first, UI second, the way everything hardware-validated here was built.
 
-Two limits worth knowing now. Sound locks address the pool by index, so rearranging it means
-remapping them; `src/librarian/copy.ts` already does this for pattern copy and should be reused.
-And a standalone named kit cannot be written to the +Drive, because only kits *inside* a project
-are understood — the standalone kit file format is unknown.
+**Conversion and expansion are entry point one, not a later phase.** An earlier draft filed the
+DN1 → DN2 workflow under "cross-device, needs design", which conflated two different things. Whole
+-project conversion with expansion is **done and hardware-validated** and already runs in the
+browser; it should land the user in the editor on its result. What genuinely remains undesigned is
+narrower — copying *one* DN1 pattern into an *existing* DN2 project, where the destination pool is
+already populated and `planExpansion` allocates across a whole project rather than into a pattern
+whose tracks may be occupied.
 
-What still blocks a parameter **editor**, as opposed to a builder, is the sound object's
-semantics: 139 offsets are structurally mapped but nothing says which byte is `CUTOFF`. One more
-capture of the kind that has now worked three times.
+**A correction worth keeping.** The plan's first version claimed the manager was "buildable today,
+nothing missing", citing `src/librarian/copy.ts`. That module is **DN1 → DN1 only**, so the
+product's central operation did not exist for half its subject matter. The real preconditions:
+
+| Precondition | State |
+|---|---|
+| DN1 pattern copy with sound-lock resolution | done, hardware-validated |
+| DN2 pattern move | missing — a port, not research |
+| One device-agnostic librarian over both | missing |
+| Rewriting `slotIndexOffset` on every move | missing |
+| Tolerating DN2 pattern record **version 2** | missing — the reader pins version 3 |
+| Song guard on the move path | DN1 only — see 3c |
+| Verify-after-write | missing |
+
+Intra-project moves are *easier* than cross-project copies: the pool is shared, so sound-lock
+indices stay valid and no remapping is needed. `planPatternCopy` already supports same-image copy.
+The risk moves to `slotIndexOffset` — the record stores the slot it believes it occupies, DN1 in
+`PATTERN.slotIndexOffset` and DN2 at meta+0x1C — and to version 2: the factory `PRESETS.dn2prj`
+uses it and all 128 of its patterns fail our check, so **the untested case is the one a manager
+meets first, a project the device itself wrote.**
+
+**Cut from early work**, with reasons in the plan: the pattern inspector, the Overbridge knob-page
+visual grammar, and side-by-side drag between two projects. **Kit work is near the front**, not
+cut — in a single-project paradigm it *is* the project editor. What is genuinely blocked is
+narrower: saving a standalone kit to the +Drive, and sourcing sounds from the device library.
+
+**The device's own sound library is canonical** for kit building; project-derived sounds are the
+fallback. Reading it needs SysEx, which is why WebMIDI moved earlier.
+
+### 3c. Songs — deferred by the user, with a constraint to remember
+
+Song mode and a song editor come **after** the pattern, kit and sound workflows. Recorded here so
+the constraint is not rediscovered.
+
+Moving patterns inside a project *is* rearrange mode, and the risk is a song referencing pattern
+slots by index.
+
+- **DN1: guardable today.** The song table is located — `dn1tail.ts`, `0x2efc`, 17 records of
+  2,560 bytes, 99 rows of 21. `isSongTableEmpty()` exists and is **called by nothing**; wiring it
+  into the move path is a day-one job.
+- **DN2: not guardable.** The DN2 song table has never been located; `dn2-format.md` puts song
+  mode among the ~98,800 unidentified tail bytes. **We cannot currently prove a DN2 pattern move
+  is safe with respect to songs.**
+
+Since songs are deferred, the manager ships with the limitation **stated in the UI** rather than
+silently. Locating the table is one capture of the kind that has worked four times — build a short
+song on the device, export, diff a baseline — and it becomes a prerequisite the moment song
+support is real.
 
 ### 3c. The mapping phase — DONE, 2026-07-26/27
 
@@ -211,10 +265,28 @@ Four device-authored captures closed everything that blocked an editor. Written 
 What is still open is small and blocks nothing: lock ids `32`, `63..65` and `86` are unclaimed,
 and the four SYN 3 switches are ordered by inference rather than measurement.
 
-### 4. WebMIDI transfer
+### 4. WebMIDI — moved earlier, because three features now depend on it
 
 Elektron's Transfer protocol over USB, so projects move without files. Larger than it
-sounds; file-based I/O should ship first.
+sounds; file-based I/O should still ship first, but this is no longer last.
+
+**4a. Read the device's sound library.** The user considers the library on the connected Digitone
+the **canonical** sound source for kit building — sounds recovered from project files are a
+fallback. The library is not in the project file and its format is unknown, so this needs SysEx
+sound-dump requests. Research.
+
+**4b. The Kit request `0x62` / response `0x52`.** elk-herd documents this as family-wide. If the
+DN2 answers it, **the response body is the standalone kit format** — the missing piece for "save
+this kit to the +Drive as a named object", which is the kit builder's most wanted operation and
+the one it currently cannot do. It is the only route to that format we know of, since kits do not
+appear in a project file outside patterns. Cheap to try: send the request and see.
+
+**4c. Sound preview, using the connected Digitone as the player.** Audition a sound by sending it
+to the device and triggering a note, rather than synthesising anything ourselves. Requested by the
+user; plausibly inexpensive once WebMIDI exists, and it is the feature that turns a file manager
+into something usable for actually building a set. The open question is which slot or buffer a
+sound can be pushed to **without disturbing the user's project**, and not disturbing it is the
+hard requirement.
 
 ### 5. Publish
 
