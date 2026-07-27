@@ -71,6 +71,9 @@ Everything runs in this page — no upload, no server.</p>
     <span>No empty tracks in a pattern, but a sound can move between patterns.</span></label>
   <label><input type="checkbox" id="freeMidi"> Use freed MIDI tracks
     <span>Take tracks 5-8 when the source has no MIDI on them.</span></label>
+  <label><input type="checkbox" id="aggregate"> Aggregate by name
+    <span class="hint">Sounds sharing a first word (HH CLOSED, HH OPEN) share one track. Where two want the same step, the quieter one stays sound-locked.</span>
+  </label>
   <label><input type="checkbox" id="rules"> Percussion low, melodic high
     <span>Place by tag rather than filling in order.</span></label>
 </div>

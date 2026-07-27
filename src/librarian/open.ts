@@ -62,6 +62,8 @@ export interface OpenOptions {
   compact?: boolean;
   /** Apply the percussion-low placement rules. */
   rules?: boolean;
+  /** Give sounds sharing a first name-word one shared track. */
+  aggregateByName?: boolean;
   /** Let expansion use tracks freed by unused MIDI tracks. */
   freeMidi?: boolean;
 }
@@ -186,6 +188,7 @@ export function openProject(path: string, options: OpenOptions = {}): OpenedProj
     ? planExpansion(source.image, {
         useFreedMidiTracks: options.freeMidi ?? false,
         compactPerPattern: options.compact ?? false,
+        aggregateByName: options.aggregateByName ?? false,
         ...(options.rules ? { rules: PERCUSSION_LOW_RULES } : {}),
       })
     : undefined;
