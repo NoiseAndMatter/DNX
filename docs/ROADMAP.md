@@ -75,7 +75,7 @@ interface itself.
 | WebMIDI device transfer | not started |
 | GitHub Pages and CI | not started |
 
-216 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+225 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -269,9 +269,20 @@ is a dialog listing exactly that array.
    claiming a safety we cannot demonstrate.
 
 **Still to do, and it is the next thing:** a hardware pass. A rearranged project has been
-written and re-read, but no device has loaded one. The session is planned in
-[hardware-test-rearrange.md](hardware-test-rearrange.md) — seed a clean two-pattern project
-with `--keep`, then exercise every operation in-bank and across banks.
+written and re-read, but no device has loaded one.
+
+The artefacts are **generated and waiting**: `npm run hwtest` builds a baseline of the seed
+patterns plus 126 captured blanks, an operations file with all nine operations each in its own
+region, and an HTML check sheet. See [hardware-test-rearrange.md](hardware-test-rearrange.md).
+
+One artefact carrying many positionally-identified changes, not a file per operation — the
+method that has worked four times here. `test/hardwaretest.test.ts` asserts the layout
+properties that make it readable: steps write disjoint slots, the two reference patterns are
+never touched after seeding, and every operation appears in both a same-bank and a cross-bank
+form so an off-by-sixteen cannot hide.
+
+**Load the baseline first.** If a project of captured blanks does not load, no result from the
+operations file means anything — and every move and delete depends on those blanks.
 
 **Next after that: undo/redo.** Keeping whole images would cost 12.9 MB per step on the DN2,
 so the affordable form is a **record-level snapshot**: store the previous contents of only the
