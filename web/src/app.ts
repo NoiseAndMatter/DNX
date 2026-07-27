@@ -11,7 +11,13 @@ import { PERCUSSION_LOW_RULES, planExpansion } from "../../src/expand/plan.js";
 import { mintProjectId, projectName, writeProjectId } from "../../src/project/dn2image.js";
 import { readProjectName } from "../../src/project/dn1.js";
 import type { ExpansionPlan } from "../../src/expand/types.js";
-import { buildProjectBlob, download, openProject, type LoadedProject } from "./project.js";
+import {
+  buildProjectBlob,
+  download,
+  fetchServedTemplate,
+  openProject,
+  type LoadedProject,
+} from "./project.js";
 import { renderPlan, renderSummary } from "./render.js";
 
 interface State {
@@ -69,10 +75,29 @@ async function loadSource(file: File): Promise<void> {
 
 async function loadTemplate(file: File): Promise<void> {
   status(`Reading template ${file.name}…`);
-  state.template = await openProject(file);
-  $("templateInfo").innerHTML = renderSummary(projectName(state.template.image), file.name, 0);
-  $<HTMLButtonElement>("export").disabled = !state.source;
+  useTemplate(await openProject(file));
   status(`Template ${file.name} ready.`);
+}
+
+function useTemplate(template: LoadedProject, note = ""): void {
+  state.template = template;
+  $("templateInfo").innerHTML =
+    renderSummary(projectName(template.image), template.fileName, 0) + note;
+  $<HTMLButtonElement>("export").disabled = !state.source;
+}
+
+/**
+ * Take the template from the local server when there is one.
+ *
+ * `npm run web` can find `EMPTY.dn2prj` the way every other command does; the browser cannot
+ * read a folder, so it asks. Served as static files this simply finds nothing and the picker
+ * below it stays the way in — no build-time switch, one page either way.
+ */
+async function adoptServedTemplate(): Promise<void> {
+  const served = await fetchServedTemplate();
+  if (!served) return;
+  useTemplate(served, `<div class="info">Found by <code>npm run web</code>. Pick a file to override.</div>`);
+  status(`Template ${served.fileName} loaded automatically. Pick a Digitone 1 project.`);
 }
 
 async function exportProject(): Promise<void> {
@@ -119,3 +144,4 @@ $("export").addEventListener("click", () => {
 });
 
 status("Pick a Digitone 1 project, and a Digitone II project to use as the template.");
+void adoptServedTemplate();

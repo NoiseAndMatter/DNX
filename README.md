@@ -121,8 +121,17 @@ ranking and allocation.
 
 ## The web UI
 
-`npm run web` builds the page and serves it at `http://127.0.0.1:8173`. Pick a `.dnprj` and a
-`.dn2prj` to use as the template, choose the options, and export.
+`npm run web` builds the page and serves it at `http://127.0.0.1:8173`. Pick a `.dnprj`,
+choose the options, and export.
+
+**The template loads itself.** The browser cannot read your corpus, but the local server is
+the CLI and can — it finds `EMPTY.dn2prj` via `DN_TEMPLATE`, `DN_CORPUS` or a sibling
+checkout and serves it to the page, so there is nothing to pick. Deployed as static files
+there is no server, the request 404s, and the file picker is still there.
+
+No template is bundled, deliberately: a template must match the **storage version the device
+writes**, and shipping one would quietly make it the template for every firmware. Your own
+device-authored blank is by definition the right version for your device.
 
 Everything happens in the browser: the page parses the ZIP, decompresses the LZ4 chain, plans
 the expansion and writes the new project locally. **No project ever leaves the machine**, and

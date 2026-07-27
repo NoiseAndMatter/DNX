@@ -114,19 +114,19 @@ function read(path: string) {
  * useless; being told where it looked is actionable.
  */
 export function templateSearchPaths(): string[] {
-  const paths: string[] = [];
+  // `DN_TEMPLATE` names a file outright and ends the search: it is the most specific thing a
+  // user can say, so nothing should quietly look past it.
   const explicit = process.env["DN_TEMPLATE"];
-  if (explicit) paths.push(explicit);
+  if (explicit) return [explicit];
 
+  // Then the corpus, following `test/corpus.ts`: **an explicit `DN_CORPUS` is authoritative.**
+  // Falling back to a sibling folder when it is set but wrong would hide a configuration
+  // error behind a file the user did not choose — and for a *template* that is worse than for
+  // a test fixture, because the wrong template silently supplies 12.9 MB of someone else's
+  // project to everything we write.
   const corpus = process.env["DN_CORPUS"];
-  const roots = corpus ? [corpus] : [];
-  // The sibling layout the tests already assume, so one convention covers both.
-  roots.push(join(process.cwd(), "..", "dn_sysex", "00_Examples"));
-
-  for (const root of roots) {
-    paths.push(join(root, "02_DN2", "01_Projects", "EMPTY.dn2prj"));
-  }
-  return paths;
+  const root = corpus ?? join(process.cwd(), "..", "dn_sysex", "00_Examples");
+  return [join(root, "02_DN2", "01_Projects", "EMPTY.dn2prj")];
 }
 
 /** The first template that exists, or `undefined`. */
