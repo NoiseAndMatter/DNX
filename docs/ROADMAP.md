@@ -74,13 +74,14 @@ interface itself.
 | Project identity minted on authoring | done |
 | Manager — storage-version and song guards | done |
 | Manager — session model, undo/redo | done (`librarian/session.ts`) |
+| Manager — UI, first slice (open, rearrange, undo, export) | done (`/manager.html`) |
 | Manager — track operations inside a pattern | not started |
 | WebMIDI device transfer | not started — must be **multi-device**, see §3d |
 | Transfer mode, DN1 → DN2 with two devices | idea, deferred (§3d) |
 | Micro-timing features for the expander | idea, deferred (§3e) |
 | GitHub Pages and CI | not started |
 
-295 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+297 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 

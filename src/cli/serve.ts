@@ -26,9 +26,9 @@
  * it entirely: their file is by definition the right version for their device.
  */
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { basename, extname } from "node:path";
+import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findTemplate } from "../librarian/open.js";
 import { resolveStaticPath } from "./staticpath.js";
@@ -48,6 +48,51 @@ const TYPES: Record<string, string> = {
 
 /** The path the page asks for its template on. Not a file inside `web/`. */
 const TEMPLATE_ROUTE = "/template.dn2prj";
+
+/**
+ * Warn when the served build is older than the source it was built from.
+ *
+ * `npm run web` rebuilds before it starts, so this is never true at startup — which is
+ * exactly why the check belongs on the *request*. The failure it catches is a server left
+ * running from an earlier session: the page silently serves stale JavaScript, the new option
+ * you just added appears to do nothing, and there is no way to tell from the browser.
+ *
+ * That cost an hour once. Same principle as stamping the build time into a project name:
+ * never let someone test a build without knowing which build it is.
+ */
+function warnIfStale(): void {
+  const built = join(ROOT, "dist", "web", "src", "app.js");
+  if (!existsSync(built)) return;
+
+  const builtAt = statSync(built).mtimeMs;
+  const newest = newestSourceTime(fileURLToPath(new URL("../../src/", import.meta.url)));
+  const newestWeb = newestSourceTime(join(ROOT, "src"));
+
+  if (Math.max(newest, newestWeb) > builtAt) {
+    console.warn(
+      "\n  ⚠ The built page is older than the source. You are looking at a stale build.\n" +
+        "    Restart: stop this server and run `npm run web` again.\n",
+    );
+  }
+}
+
+/** Newest mtime of any `.ts` beneath a folder, or 0 when there is none. */
+function newestSourceTime(dir: string): number {
+  let newest = 0;
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const full = join(at, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts")) newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  };
+  try {
+    walk(dir);
+  } catch {
+    // No sources to compare against — a packaged copy, say. Nothing to warn about.
+  }
+  return newest;
+}
 
 createServer((request, response) => {
   const path = decodeURIComponent((request.url ?? "/").split("?")[0]!);
@@ -70,6 +115,10 @@ createServer((request, response) => {
     createReadStream(template).pipe(response);
     return;
   }
+
+  // Checked per request, not at startup: `npm run web` always builds first, so the case
+  // worth catching is a server left running from an earlier session.
+  if (path === "/" || path.endsWith("/index.html")) warnIfStale();
 
   const { path: target } = resolveStaticPath(ROOT, path);
 

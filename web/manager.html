@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX Manager</title>
+<style>
+/*
+ * Visual language borrowed from Elektron's Overbridge editor, which the user already reads
+ * fluently: near-black ground, panels a shade lighter with a hairline border, section titles
+ * small and letter-spaced, and colour used to say *what kind of thing this is* rather than for
+ * decoration. Teal is the sequencer, amber the kit, salmon destructive.
+ *
+ * Deliberately not copied: knobs and bracketed value fields. Those exist to edit continuous
+ * synth parameters. A librarian moves discrete things between slots, and dressing that as a
+ * synth would be costume rather than design.
+ */
+:root {
+  --bg: #16191b;
+  --panel: #1e2325;
+  --panel-2: #252b2e;
+  --line: #313a3d;
+  --line-soft: #272f31;
+  --fg: #dfe6e7;
+  --muted: #78878b;
+  --dim: #556366;
+  --teal: #79b8ac;
+  --teal-dim: #2f4a47;
+  --amber: #c8a06a;
+  --salmon: #cf6f62;
+  --steel: #6f95b5;
+  --focus: #8fd4c6;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column;
+}
+button, input, select { font: inherit; color: inherit; }
+
+/* ---- top bar ------------------------------------------------------------------------ */
+.topbar {
+  display: flex; align-items: center; gap: 1rem; padding: .55rem .9rem;
+  background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: baseline; gap: .45rem; font-weight: 700; letter-spacing: -.01em; }
+.brand .d { color: var(--teal); }
+.brand .sub { color: var(--muted); font-weight: 500; }
+.device {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  border: 1px solid var(--teal-dim); color: var(--teal);
+  padding: .12rem .45rem; border-radius: 3px;
+}
+.projname { color: var(--fg); font-weight: 600; }
+.spacer { flex: 1; }
+
+/* ---- generic panel ------------------------------------------------------------------ */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.panel > h2 {
+  margin: 0; padding: .45rem .7rem; font-size: .67rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .11em; color: var(--dim);
+  border-bottom: 1px solid var(--line-soft);
+}
+.panel > .body { padding: .7rem; }
+
+/* ---- tab strip, the Overbridge TRK bar ---------------------------------------------- */
+.tabs { display: flex; gap: 2px; padding: .5rem .9rem 0; background: #1a1f21; }
+.tab {
+  background: #1e2426; border: 1px solid var(--line); border-bottom: none;
+  border-radius: 3px 3px 0 0; padding: .35rem .95rem; cursor: pointer;
+  color: var(--muted); font-size: .78rem; letter-spacing: .04em;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { background: var(--panel-2); color: #fff; border-color: var(--line); }
+.tab .n { color: var(--dim); font-size: .68rem; margin-left: .4rem; }
+.tab[aria-selected="true"] .n { color: var(--teal); }
+
+/* ---- layout ------------------------------------------------------------------------- */
+main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: .7rem;
+  padding: .7rem .9rem 0; min-height: 0; }
+.side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
+
+/* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
+.grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.slot {
+  position: relative; text-align: left; cursor: pointer; min-height: 4.1rem;
+  background: #1b2123; border: 1px solid var(--line-soft); border-radius: 3px;
+  padding: .32rem .4rem; display: flex; flex-direction: column; gap: .1rem;
+  transition: border-color .08s, background .08s;
+}
+.slot:hover { border-color: var(--dim); }
+.slot .id { font-size: .66rem; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+.slot .nm {
+  font-size: .74rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-family: ui-monospace, Consolas, monospace;
+}
+.slot .tc { margin-top: auto; font-size: .64rem; color: var(--dim); }
+.slot.occupied { background: #1d2726; border-color: var(--teal-dim); }
+.slot.occupied .id { color: var(--teal); }
+.slot.occupied .nm { color: var(--fg); }
+.slot.occupied .tc { color: var(--teal); opacity: .8; }
+.slot.unsupported { border-style: dashed; border-color: var(--amber); }
+.slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
+.slot.target { outline: 2px dashed var(--amber); outline-offset: -2px; }
+
+/* ---- operation bar ------------------------------------------------------------------ */
+.ops { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.btn {
+  background: #232a2c; border: 1px solid var(--line); border-radius: 3px;
+  padding: .34rem .7rem; cursor: pointer; color: var(--fg); letter-spacing: .02em;
+}
+.btn:hover:not(:disabled) { border-color: var(--teal); color: #fff; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn.danger:hover:not(:disabled) { border-color: var(--salmon); color: var(--salmon); }
+.btn.primary { background: var(--teal-dim); border-color: var(--teal); color: #eafffb; }
+.hint { color: var(--dim); font-size: .72rem; }
+
+/* ---- history ------------------------------------------------------------------------ */
+.hist { list-style: none; margin: 0; padding: 0; font-size: .75rem; }
+.hist li { padding: .22rem .1rem; color: var(--muted); border-bottom: 1px solid var(--line-soft); }
+.hist li:first-child { color: var(--fg); }
+.hist .b { color: var(--dim); float: right; font-size: .68rem; }
+
+/* ---- status ------------------------------------------------------------------------- */
+.status {
+  padding: .45rem .9rem; border-top: 1px solid var(--line); background: #1a1f21;
+  font-size: .76rem; color: var(--muted); min-height: 2rem;
+}
+.status.error { color: var(--salmon); }
+.status.warn { color: var(--amber); }
+.status.ok { color: var(--teal); }
+.dropzone { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
+.dropzone strong { color: var(--fg); }
+label.file { display: inline-block; cursor: pointer; }
+label.file input { display: none; }
+.legend { display: flex; gap: .9rem; font-size: .68rem; color: var(--dim); margin-top: .55rem; }
+.legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px;
+  margin-right: .25rem; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="d">DNX</span> <span class="sub">/ Manager</span></div>
+  <span class="device" id="device" hidden></span>
+  <span class="projname" id="projname"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="undo" disabled>Undo</button>
+  <button class="btn" id="redo" disabled>Redo</button>
+  <button class="btn primary" id="export" disabled>Export…</button>
+</div>
+
+<div class="tabs" id="tabs" hidden></div>
+
+<main>
+  <section class="panel" id="gridPanel">
+    <h2 id="bankTitle">Patterns</h2>
+    <div class="body">
+      <div id="dropzone" class="dropzone">
+        <p><strong>Open a project</strong> — a Digitone <code>.dnprj</code> or a Digitone II <code>.dn2prj</code>.</p>
+        <label class="file btn">Choose a file<input type="file" id="file" accept=".dnprj,.dn2prj"></label>
+        <p class="hint">Nothing leaves this machine. The file is read, edited and written in the browser.</p>
+      </div>
+      <div class="grid" id="grid" hidden></div>
+      <div class="legend" id="legend" hidden>
+        <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
+        <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
+        <span><i style="border:1px dashed var(--amber)"></i>storage version we do not read</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="side">
+    <section class="panel">
+      <h2>Operations</h2>
+      <div class="body">
+        <div class="ops">
+          <button class="btn" id="opMove" disabled>Move</button>
+          <button class="btn" id="opCopy" disabled>Copy</button>
+          <button class="btn" id="opSwap" disabled>Swap</button>
+          <button class="btn danger" id="opClear" disabled>Clear</button>
+        </div>
+        <p class="hint" id="opHint" style="margin:.6rem 0 0">
+          Click slots to select. Shift-click for a range, Ctrl-click to add.
+        </p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Selection</h2>
+      <div class="body"><div id="selection" class="hint">Nothing selected.</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>History</h2>
+      <div class="body"><ul class="hist" id="history"><li class="hint">Nothing done yet.</li></ul></div>
+    </section>
+  </div>
+</main>
+
+<div class="status" id="status">Open a project to begin.</div>
+
+<script type="module" src="dist/web/src/manager/main.js"></script>
+</body>
+</html>
