@@ -1,84 +1,109 @@
 # Hardware test — pattern rearrangement
 
-The librarian can move, copy, swap and clear patterns, and it verifies its own output. That
+The librarian moves, copies, swaps and clears patterns, and verifies its own output. That
 verification is our code agreeing with itself. **Nothing here has been loaded by a device.**
 
-This is the session that closes that gap. It follows the method that has worked four times
-already: build one artefact carrying many distinct, positionally-identified changes, load it,
-and read the device rather than the file.
+This is the session that closes the gap.
 
-## Method
-
-**Seed a clean project first.** A corpus project has patterns everywhere, which makes "did
-this move?" hard to answer at a glance. Reduce it to two known patterns in bank A, then use
-the empty banks as workspace:
+## Building it
 
 ```
-npm run rearrange -- --project "MORNING_JAM.dn2prj" --keep A1 A4 \
-  --apply --confirm --out "REARRANGE_TEST.dn2prj"
+npm run hwtest -- --project "<a project with two good patterns>" --keep A1 B5 \
+  --out <corpus>/99_HardwareTest
 ```
 
-That leaves `A1` and `A2` holding the two patterns and blanks the other 126. **Load this on
-the device first and confirm it is sane before doing anything else** — if a project of 126
-captured blanks does not load, nothing after it means anything, and that is itself the single
-most valuable result of the session.
+Three files, all stamped with the build time so the device says which build is loaded — a
+hardware test that validates the wrong build is worse than no test:
 
-Then apply the operations below to that project, one output file per step so a failure
-localises. Stamp each filename.
+| File | What it is |
+|---|---|
+| `HWTEST_BASE_<hhmm>.dn2prj` | the two seed patterns, and 126 captured blanks |
+| `HWTEST_OPS_<hhmm>.dn2prj` | every operation applied, each in its own region |
+| `HWTEST_<hhmm>.html` | what to check, slot by slot, with room to write results |
 
-## What to run
+The outputs contain your music, so they live in the private corpus. `99_HardwareTest/` is
+gitignored for that reason.
 
-Each operation is checked in-bank and across banks, because the bank boundary is the obvious
-place for an off-by-sixteen to hide.
+**Choose seeds that carry sound locks.** The generator prints what it picked
+(`A1 "250319" 28 trigs, 15 sound locks`) and puts it on the sheet, because moving a pattern
+with no sound locks proves nothing about pool references.
 
-| # | Operation | Command | Expect on the device |
+## One artefact, not eleven
+
+The obvious design is a file per operation so a failure localises. That is the wrong trade:
+eleven loads on a Digitone is an evening, and the method that has worked four times on this
+project is the opposite — **one artefact carrying many changes, each identified by its
+position**. A wrong result in bank C is a broken cross-bank copy regardless of what else is
+in the file.
+
+Hence two files rather than one. The baseline is separate because it answers the question
+everything else depends on.
+
+> **Load `HWTEST_BASE` first.** It is the seed patterns and 126 captured blank patterns and
+> nothing else. If it does not load, or the empty slots misbehave, stop — no result from the
+> operations file would mean anything. **That result alone is worth the session**, because
+> every move and delete we can make depends on those blanks being right.
+
+## The layout
+
+`A1` and `A2` hold the seed patterns and are **never written after seeding** — they are the
+reference everything else is read against. Each operation then lands somewhere no other
+operation touches, so one failing cannot explain another.
+
+| # | Operation | Look at | Expect |
 |---|---|---|---|
-| 1 | Baseline | (the seeded file) | `A1`, `A2` play; every other slot empty |
-| 2 | Copy, same bank | `--copy A1 --to A5` | `A1` **and** `A5` play the same thing |
-| 3 | Copy, across banks | `--copy A1 --to C1` | `A1` and `C1` both play it |
-| 4 | Move, same bank | `--move A2 --to A8` | `A8` plays it, `A2` is empty |
-| 5 | Move, across banks | `--move A1 --to D16` | `D16` plays it, `A1` is empty |
-| 6 | Swap, same bank | `--swap A1 A2` | the two exchange |
-| 7 | Swap, across banks | `--swap A1 E1` | the two exchange |
-| 8 | Delete | `--clear A1 --confirm` | `A1` empty, and **selectable without a hang** |
-| 9 | Batch move | `--move A1 A2 --to F1` | `F1`, `F2` in that order; `A1`, `A2` empty |
-| 10 | Batch copy | `--copy A1 A2 --to G3` | `G3`, `G4`; sources still play |
-| 11 | Chained | several operations, exported once | the single-project paradigm holds up |
+| 1 | Copy, same bank | `A1` `A5` | `A5` matches `A1`, and `A1` still plays |
+| 2 | Copy, across banks | `A1` `C1` | `C1` matches `A1` |
+| 3 | Move, same bank | `A3` `A9` | `A9` plays it, `A3` empty |
+| 4 | Move, across banks | `A4` `D16` | `D16` plays it, `A4` empty |
+| 5 | Swap, same bank | `A13` `A14` | the two exchange |
+| 6 | Swap, across banks | `B1` `E1` | the two exchange |
+| 7 | Batch move, two sources | `F1` `F2` `F5` `F6` | `F1` then `F2` in order; sources empty |
+| 8 | Batch copy, two sources | `G3` `G4` `A1` `A2` | `G3` then `G4`; sources still play |
+| 9 | Delete | `H1` | empty, selectable, accepts a new trig |
+
+Every operation appears in both a same-bank and a cross-bank form, because the bank boundary
+is where an off-by-sixteen would hide. `test/hardwaretest.test.ts` asserts that, along with
+the disjointness of the steps and the untouchability of the references — if someone edits the
+layout and breaks those properties, the suite fails rather than the session silently becoming
+unreadable.
 
 ## What to check, beyond "it plays"
 
-The trigs are the easy part. These are the things that would fail quietly:
+The trigs are the easy part. These fail quietly:
 
-- **The pattern name** the device shows for the slot. It travels inside the record, so a
-  wrong name means we moved bytes without moving identity.
-- **The kit.** Every track should keep its sound and its machine — `sound+244` travels with
-  the kit, so a move that dropped the kit would leave the right notes on the wrong sounds.
-- **Sound locks.** Pick a source pattern that has them. Within one project the pool is shared
-  and indices should stay valid, so a lock playing the wrong sound would disprove that.
-- **Per-track lengths.** If a source pattern uses them, they must survive the move.
+- **The pattern name** the device shows. It travels inside the record, so a wrong name means
+  we moved bytes without moving identity.
+- **The kit** — every track keeping its sound *and its machine*. `sound+244` travels with the
+  kit, so a move that dropped it would leave the right notes on the wrong sounds.
+- **Sound locks.** The pool is shared within a project, so indices should stay valid. A lock
+  playing the wrong sound would disprove that.
+- **Per-track lengths**, if the seeds use them.
 - **Tempo and pattern length**, which live in the metadata block beside the slot index.
-- **The cleared slot is genuinely blank**, not merely silent — select it, check the kit reads
-  as an initialised one, and try recording a trig into it.
-- **Re-export after loading.** Save the project on the device, pull it back, and diff against
-  what we wrote (`npm run diff`). Any byte the device changed on load is a field we got wrong
-  or a field it normalises — either is worth knowing, and this is the only way to see it.
+- **The cleared slot genuinely blank**, not merely silent — select it, check the kit reads as
+  initialised, and record a trig into it.
 
-## The one thing to be careful about
+## Last, and only if the rest passed
 
-**Do not use a project that has a song.** `docs/ROADMAP.md` §3c has the detail: the DN1's song
-table is located and guarded, the DN2's has never been found, so a DN2 rearrangement cannot be
-checked for song references. The tool warns about this on every DN2 operation. Rearranging a
-project whose songs matter would be the one way this session could cost real work.
+Save the project on the device, export it, and diff against what we wrote (`npm run diff`).
+Any byte the device changed on load is either a field we got wrong or one it normalises. Both
+are worth knowing, and this is the only way to see them.
+
+## The one real risk
+
+**Do not run this on a project whose songs matter.** The DN1's song table is located and
+guarded; the DN2's has never been found, so a DN2 rearrangement cannot be checked against
+songs, and patterns are referenced by slot. The tool warns on every DN2 operation.
 
 If a song *is* present and you want to know what happens, that is a legitimate experiment —
-but do it deliberately, on a copy, and treat the result as the first evidence about where the
-DN2 song table lives.
+do it deliberately, on a copy, and treat the result as the first evidence about where the DN2
+song table lives.
 
 ## Recording the result
 
-Fill in the outcome per row. A failure is more useful than a pass, so record what the device
-actually did rather than what it should have done — the wrong name, the wrong sound, the
-silent slot. Feed anything unexpected into `docs/KNOWN-ISSUES.md`.
+The sheet has a column for it. **A failure is more useful than a pass**, so write what the
+device actually did — the wrong name, the wrong sound, the silent slot — not what it should
+have done. Anything unexpected goes in `docs/KNOWN-ISSUES.md`.
 
-If everything passes, the line to add to `ROADMAP.md` is that pattern rearrangement is
-**hardware-validated**, which is the claim we cannot make today.
+If everything passes, pattern rearrangement becomes **hardware-validated** in `ROADMAP.md`,
+which is the claim we cannot make today.
