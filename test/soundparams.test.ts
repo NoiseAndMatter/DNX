@@ -70,10 +70,18 @@ test("bipolar controls decode as value + 64", () => {
   assert.equal(decodeSoundValue(pan, 104), 40);
 });
 
-test("what the capture failed to place is recorded, not guessed", () => {
-  assert.deepEqual([...UNRESOLVED_SOUND_CONTROLS], ["FX BR"]);
-  // Nothing claims to be FX BR.
-  assert.ok(!SOUND_PARAMETERS.some((p) => p.page === "FX" && p.name === "BR"));
+test("every control the capture set has now been placed", () => {
+  assert.deepEqual([...UNRESOLVED_SOUND_CONTROLS], []);
+  // BR was the last, placed by a maximum reading rather than by the value the sheet asked for.
+  assert.equal(soundParameterAt(230)?.name, "BR");
+});
+
+test("HARM decodes across three measured points", () => {
+  const harm = soundParameterAt(102)!;
+  // 0 -> 63 (untouched baseline), +23 -> 86, +26 -> 89 at maximum. Slope 1 throughout.
+  assert.equal(decodeSoundValue(harm, 63), 0);
+  assert.equal(decodeSoundValue(harm, 86), 23);
+  assert.equal(decodeSoundValue(harm, 89), 26);
 });
 
 test("the per-sound FX sends are separate from the kit FX block", () => {
@@ -83,4 +91,61 @@ test("the per-sound FX sends are separate from the kit FX block", () => {
     assert.equal(p.name, name);
     assert.equal(p.page, "FX");
   }
+});
+
+test("SYN 1 runs in knob order across consecutive even offsets", () => {
+  const expected = ["ALGO", "RATIO C", "RATIO A", "RATIO B", "HARM", "DTUN", "FDBK", "MIX"];
+  expected.forEach((name, i) => {
+    const p = soundParameterAt(94 + i * 2);
+    assert.equal(p?.name, name, `offset ${94 + i * 2}`);
+    assert.equal(p?.page, "SYN 1");
+  });
+});
+
+test("HARM centres on 63, not 64", () => {
+  const harm = soundParameterAt(102)!;
+  assert.equal(harm.name, "HARM");
+  assert.equal(harm.centre, 63);
+  // The untouched baseline read 63 for a value of 0, and +23 stored 86. Two points, slope 1.
+  assert.equal(decodeSoundValue(harm, 63), 0);
+  assert.equal(decodeSoundValue(harm, 86), 23);
+  // Its -26..+26 range then occupies 37..89.
+  assert.equal(decodeSoundValue(harm, 37), -26);
+  assert.equal(decodeSoundValue(harm, 89), 26);
+});
+
+test("HARM is the only control that does not centre on 64", () => {
+  const odd = SOUND_PARAMETERS.filter((p) => p.centre !== undefined && p.centre !== 64);
+  assert.deepEqual(odd.map((p) => p.name), ["HARM"]);
+});
+
+test("the operator fine tunes decode as value * 64 + 64", () => {
+  // Set to -0.500, +0.250, -0.750, +0.875 and stored as 32, 80, 16, 120 -- all four exact.
+  const cases: [number, number, number][] = [[160, 32, -0.5], [162, 80, 0.25], [164, 16, -0.75], [166, 120, 0.875]];
+  for (const [offset, stored, want] of cases) {
+    const p = soundParameterAt(offset)!;
+    assert.equal(p.encoding, "fraction");
+    assert.equal(decodeSoundValue(p, stored), want, `${p.name}`);
+  }
+});
+
+test("SYN 3 is in knob order, with PHRT stored apart", () => {
+  const inOrder = [[130, "ADEL"], [132, "ATRG"], [134, "ARST"], [136, "BDEL"], [138, "BTRG"], [140, "BRST"]] as const;
+  for (const [offset, name] of inOrder) assert.equal(soundParameterAt(offset)?.name, name);
+  // PHRT is knob D but lives at 110, away from the per-operator block -- it is a shared setting.
+  assert.equal(soundParameterAt(110)?.name, "PHRT");
+});
+
+test("the four SYN 3 switches are marked as inferred, not observed", () => {
+  // The set of four bytes is certain: all four moved together when all four switches were set.
+  // Which byte is which is knob order alone -- nothing observed separates them, so none of the
+  // four may claim to be measured.
+  for (const offset of [132, 134, 138, 140]) {
+    const p = soundParameterAt(offset)!;
+    assert.equal(p.page, "SYN 3");
+    assert.equal(p.inferred, true, `${p.name} at ${offset} must not claim to be observed`);
+  }
+  // The two delays either side are measured, and they are what fix the ordering's plausibility.
+  assert.equal(soundParameterAt(130)?.inferred, undefined);
+  assert.equal(soundParameterAt(136)?.inferred, undefined);
 });
