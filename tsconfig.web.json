@@ -21,6 +21,7 @@
     "src/cli/**/*.ts",
     "test/**/*.ts",
     "src/project/projectfile.ts",
-    "src/project/zip.ts"
+    "src/project/zip.ts",
+    "src/librarian/open.ts"
   ]
 }

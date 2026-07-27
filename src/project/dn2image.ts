@@ -177,6 +177,57 @@ export function writeProjectName(image: Uint8Array, name: string): void {
   image.set(Uint8Array.from(bytes), 8);
 }
 
+/** Byte offset of the project identity token, on both families. */
+export const PROJECT_ID_OFFSET = 0x18;
+
+/**
+ * The four bytes at `0x18`, which identify a project rather than checksum it.
+ *
+ * Established 2026-07-27 by round-tripping a generated project through a Digitone II. Not a
+ * content hash — `EMPTY.dn2prj` and a converted project with entirely different contents
+ * share `743a3f5b` — and not recomputed on save, since the device preserved an inherited
+ * value byte for byte. `dn2-format.md` §2 has the evidence.
+ */
+export function projectId(image: Uint8Array): number {
+  return new DataView(image.buffer, image.byteOffset, image.byteLength).getUint32(
+    PROJECT_ID_OFFSET,
+    false,
+  );
+}
+
+export function writeProjectId(image: Uint8Array, id: number): void {
+  new DataView(image.buffer, image.byteOffset, image.byteLength).setUint32(
+    PROJECT_ID_OFFSET,
+    id >>> 0,
+    false,
+  );
+}
+
+/**
+ * A fresh identity for a newly authored project.
+ *
+ * **Why this is minted rather than inherited.** Conversion is a transplant: fields nobody
+ * writes keep the template's value. For most of the image that is what makes writing safe
+ * with a partial understanding of the format — but an *identity* is exactly the field where
+ * inheriting is wrong. Every project built from `EMPTY.dn2prj` claimed to be `EMPTY`.
+ *
+ * The corpus settles what a device does: the nine DN1 projects the Digitone II upgraded on
+ * first open all carry **distinct** values, while our generated ones duplicated their
+ * template's. So a new project gets a new identity — and only a genuinely new one, since
+ * rearranging a project is editing it rather than authoring another.
+ *
+ * Random rather than derived, because we do not know what the device derives it from and a
+ * plausible-looking wrong derivation is worse than an honest random one. It is not validated
+ * on load: files carrying an inherited value have loaded and played on hardware twice.
+ */
+export function mintProjectId(): number {
+  // Two 16-bit halves rather than one scaled call: it keeps the low bits as well distributed
+  // as the high ones, which a single `Math.random() * 2**32` does not guarantee.
+  const hi = Math.floor(Math.random() * 0x10000);
+  const lo = Math.floor(Math.random() * 0x10000);
+  return ((hi << 16) | lo) >>> 0;
+}
+
 function readName(data: Uint8Array, at: number): string {
   const raw = data.subarray(at, at + SOUND_NAME_SIZE);
   const end = raw.indexOf(0);
