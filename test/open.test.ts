@@ -139,18 +139,38 @@ test("the template search says where it looked", () => {
   assert.ok(paths.some((p) => p.includes("EMPTY")));
 });
 
-test("DN_TEMPLATE takes precedence over the corpus", () => {
+test("a corpus present means a template is discoverable without being named", { skip }, () => {
+  // The friction this removes: --template on every invocation of the main workflow.
+  assert.ok(findTemplate(), "no template found even though the corpus is present");
+});
+
+test("an explicit DN_CORPUS is authoritative, matching test/corpus.ts", () => {
+  // Falling back to a sibling folder when DN_CORPUS is set but wrong would hide a
+  // configuration error behind a file the user never chose — and a wrong *template* silently
+  // supplies 12.9 MB of someone else's project to everything we write.
+  const before = { t: process.env["DN_TEMPLATE"], c: process.env["DN_CORPUS"] };
+  delete process.env["DN_TEMPLATE"];
+  process.env["DN_CORPUS"] = "Z:/nowhere";
+  try {
+    const paths = templateSearchPaths();
+    assert.equal(paths.length, 1, "a set DN_CORPUS must not be supplemented by the sibling");
+    assert.ok(paths[0]!.includes("nowhere"));
+    assert.equal(findTemplate(), undefined, "a wrong DN_CORPUS must fail loudly, not silently");
+  } finally {
+    if (before.t === undefined) delete process.env["DN_TEMPLATE"];
+    else process.env["DN_TEMPLATE"] = before.t;
+    if (before.c === undefined) delete process.env["DN_CORPUS"];
+    else process.env["DN_CORPUS"] = before.c;
+  }
+});
+
+test("DN_TEMPLATE ends the search rather than heading a list", () => {
   const before = process.env["DN_TEMPLATE"];
   process.env["DN_TEMPLATE"] = "Z:/explicit/choice.dn2prj";
   try {
-    assert.equal(templateSearchPaths()[0], "Z:/explicit/choice.dn2prj");
+    assert.deepEqual(templateSearchPaths(), ["Z:/explicit/choice.dn2prj"]);
   } finally {
     if (before === undefined) delete process.env["DN_TEMPLATE"];
     else process.env["DN_TEMPLATE"] = before;
   }
-});
-
-test("a corpus present means a template is discoverable without being named", { skip }, () => {
-  // The friction this removes: --template on every invocation of the main workflow.
-  assert.ok(findTemplate(), "no template found even though the corpus is present");
 });
