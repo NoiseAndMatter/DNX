@@ -13,6 +13,7 @@
     "copy": "tsx src/cli/copy.ts",
     "rearrange": "tsx src/cli/rearrange.ts",
     "extract-blank": "tsx src/cli/extractblank.ts",
+    "hwtest": "tsx src/cli/hardwaretest.ts",
     "tags": "tsx src/cli/tags.ts",
     "convert": "tsx src/cli/convert.ts",
     "sheet": "tsx src/cli/sheet.ts",
