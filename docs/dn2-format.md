@@ -377,6 +377,25 @@ importer or our own captures, both of which write version 3. **A device-written 
 another version is exactly the case a manager meets first**, which is why
 `librarian/device.ts` reports the version and refuses rather than parsing on regardless.
 
+### Why the versions differ — HYPOTHESIS, not established
+
+The user's reading, recorded because it is the most plausible account and it changes what we
+should build: **the storage version tracks the firmware.** The device runs OS 1.10D, which
+added the chord library, and expanding the pattern record to carry that information would
+explain a version bump. `PRESETS.dn2prj` would then be a factory project written by an older
+OS and never re-saved.
+
+Consistent with what we can see — every project written or re-saved by the current device is
+version 3, and the single version 2 file is a factory preset bank — but **not confirmed**. It
+would be confirmed by saving a project on a known older OS, which we cannot do.
+
+**If it holds, version handling is a firmware-compatibility problem, not a parsing problem**,
+and elk-herd already models the shape: compare the project's storage version against the
+instrument's, **fail** when the project is newer than the device can load, and **warn** when
+it is older, because sending it should upgrade it. That is a better answer than our current
+flat refusal, and it needs the device's version — which means WebMIDI. Until then, refusing to
+edit a version we have never parsed remains correct.
+
 ### The Digitakt II is the same storage family
 
 elk-herd (`00_References/elk-herd`, BSD 2-Clause) supports the Digitakt II, and its
