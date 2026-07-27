@@ -69,6 +69,11 @@ npm run sheet -- --from a.dnprj --file b.dn2prj --out sheet.html
 npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17
 npm run copy -- --from a.dnprj --pattern 3 --to b.dnprj --slot 17 --apply --out new.dnprj
 
+# Rearrange patterns inside one project — DN1 or DN2, dry run by default
+npm run rearrange -- --project a.dn2prj
+npm run rearrange -- --project a.dn2prj --swap A1 B12
+npm run rearrange -- --project a.dn2prj --swap A1 B12 --apply --out new.dn2prj
+
 # What changed between two captures?
 npm run diff -- --chain --stride captures/
 
