@@ -359,6 +359,58 @@ Ordered by how much they block writing valid DN2 files.
 8. Whether a DN1 pattern record concatenated with its DN1 kit record equals a DN1 SysEx
    pattern dump, as it does on DN2. Not checked — no DN1 pattern dump in the corpus.
 
+## 8a. Storage versions, and what elk-herd's Digitakt II tables tell us
+
+VERIFIED by measurement across the 24-project DN2 corpus, 2026-07-27.
+
+**Pattern records carry a storage version at offset 0 (u32be), and it is not always 3.**
+
+| Version | Projects |
+|---|---|
+| 3 | 23 of 24, every record |
+| 2 | `PRESETS.dn2prj`, **all 128 records** |
+
+Note that the corpus holds two files named for presets: `017 PRESETS.dn2prj` is version 3,
+while `PRESETS.dn2prj` is version 2 throughout. So version 2 is not a corrupt file — it is an
+older storage revision, and every project we hold otherwise comes from either Elektron's
+importer or our own captures, both of which write version 3. **A device-written project at
+another version is exactly the case a manager meets first**, which is why
+`librarian/device.ts` reports the version and refuses rather than parsing on regardless.
+
+### The Digitakt II is the same storage family
+
+elk-herd (`00_References/elk-herd`, BSD 2-Clause) supports the Digitakt II, and its
+`Elektron/Digitakt/CppStructs.elm` is a generated table of `(device, version) -> offset`.
+Several of its Digitakt II numbers are ours exactly:
+
+| elk-herd, Digitakt II | Value | Our DN2 |
+|---|---|---|
+| `patternStorage_sizeof` v3 | 89,088 | `PATTERN.size` = 89,088 |
+| `trackStorage_soundSlotLocks` v2 | 1,024 | `TRACK.soundLockOffset` = 0x400 = 1,024 |
+| `trackStorage_sizeof` v2 | 1,184 | `TRACK.size` = 1,187 |
+| `kitStorage_trackSounds` v0/v3/v4 | 60 | `DN2_KIT.soundOffset` = 60 |
+
+Two things follow, and both matter more than the individual numbers.
+
+1. **Versions are per struct, not per project.** The pattern record is version 3 while the
+   track record inside it matches the Digitakt II's version 2 track layout. So "the version"
+   is only ever meaningful about a named structure.
+2. **elk-herd cannot parse every version either**, and says so: each function returns
+   `Maybe Int`, with `_ -> Nothing` for combinations it has no offsets for — including
+   Digitakt II `patternStorage` version 2. When the answer is `Nothing` the operation is
+   simply unavailable. Our `supported: false` is the same idea reached independently, and
+   the agreement is worth more than the convenience.
+
+### What was ruled out
+
+`patternStorage_kitIndex` (Digitakt II v3, offset 88,768) suggests a pattern might reference
+its kit by index rather than owning it positionally — which would change how a manager moves
+things. **Probed and rejected for the DN2**: at that offset every pattern of every corpus
+project reads a constant, `0xFFFF` in thirteen projects and `0` in eleven, never the pattern
+index. Kits stay positional — kit `n` belongs to pattern `n` — so a pattern and its kit move
+together as one unit. This is the same pairing that makes `patternRecord ++ kitRecord` a
+SysEx pattern payload (§3), and elk-herd calls that unit a `patternKit`.
+
 ## 9. Code
 
 | File | Purpose |
