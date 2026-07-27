@@ -75,13 +75,13 @@ interface itself.
 | Manager — storage-version and song guards | done |
 | Manager — session model, undo/redo | done (`librarian/session.ts`) |
 | Manager — UI, first slice (open, rearrange, undo, export) | done (`/manager.html`) |
-| Manager — track operations inside a pattern | not started |
+| Manager — track operations inside a pattern | done (DN2), `librarian/trackmove.ts` |
 | WebMIDI device transfer | not started — must be **multi-device**, see §3d |
 | Transfer mode, DN1 → DN2 with two devices | idea, deferred (§3d) |
 | Micro-timing features for the expander | idea, deferred (§3e) |
 | GitHub Pages and CI | not started |
 
-300 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+315 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -348,7 +348,35 @@ bounded by one image, which argues for a cache bounded by total bytes rather tha
 `Undo.elm` has now been read — see the cross-check below. Its whole-model snapshot does not
 transfer, but its `Tag` and `combiningTag` do.
 
-**Then the same operations for tracks inside a pattern**, batch-capable in the same way.
+**Track operations inside a pattern — DONE (DN2), 2026-07-28.** `librarian/trackmove.ts`, the
+same move/copy/swap/clear, batch-capable, one level down.
+
+It turned out to be a different shape from pattern moves, and the difference is the whole
+module. A pattern is one contiguous `patternKit`; a **track** is six regions across two
+records, and two of them do not move at all:
+
+| What | Where | How |
+|---|---|---|
+| track record — flags, conditions, probability, sound locks, length, speed | pattern `+0x0004 + t·1187` | copied |
+| sound | kit `+60 + t·359` | copied |
+| MIDI record | kit `+5964 + t·268` | copied |
+| track level | kit `+0x1C + t·2` | copied |
+| **trigs** | flat 8,192-slot pool, each slot naming its own track | **rebuilt** |
+| **parameter locks** | 80 records, each naming a track | **rebuilt** |
+
+The DN2 keeps one trig pool per pattern where each slot carries a `track` byte, so a move that
+copied bytes and stopped would leave every trig behind, naming a track that now holds something
+else — the `sound+244` failure in a new place.
+
+**Both tables are rebuilt rather than renumbered**, because renumbering is right for move and
+swap and wrong for copy, which must duplicate. One rule covers all four: *a touched track ends
+up with copies of whatever its source held; everything else is untouched.* A copy can exhaust
+the 80-record lock table, which is refused rather than truncated.
+
+**DN2 only.** The DN1 splits its tracks into synth and MIDI, so a move across that boundary is
+not meaningful; it is refused with a reason rather than guessed at. And since the DN2's own
+per-track synth/MIDI byte has never been located, every move carries a warning saying so —
+all six regions travel together, so it should come along, but that is inferred not verified.
 
 ### 3b-ii. What elk-herd's Digitakt II support gave us
 
