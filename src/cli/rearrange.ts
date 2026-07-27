@@ -105,6 +105,7 @@ function main(): void {
       asDn2: argv.includes("--as-dn2"),
       expand: argv.includes("--expand"),
       compact: argv.includes("--compact"),
+      aggregateByName: argv.includes("--aggregate"),
       rules: argv.includes("--rules"),
       freeMidi: argv.includes("--free-midi"),
       ...(arg("template") === undefined ? {} : { template: arg("template")! }),

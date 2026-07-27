@@ -57,7 +57,13 @@ import {
 import { MACHINE, SOUND_MACHINE_OFFSET } from "../project/machine.js";
 import { TAIL as DN1_TAIL } from "../project/dn1tail.js";
 import { NO_CONDITION, translateParameterId, translateTrigCondition } from "./translate.js";
-import { destinationsBySound, findCollisions, routePattern, type RoutedTrig } from "./route.js";
+import {
+  destinationsBySound,
+  findCollisions,
+  priorityBySound,
+  routePattern,
+  type RoutedTrig,
+} from "./route.js";
 import {
   applyFieldConstants,
   applyFieldCopies,
@@ -738,6 +744,9 @@ export function convertProject(
   // Empty when no plan is given, which makes routing the identity and the whole conversion
   // faithful rather than expanded.
   const destinations = options.plan ? destinationsBySound(options.plan) : new Map<string, number>();
+  // Only meaningful when aggregateByName put several sounds on one track; otherwise every
+  // entry is 0 and routing behaves exactly as it always has.
+  const priority = options.plan ? priorityBySound(options.plan) : new Map<string, number>();
 
   // A per-pattern plan overrides the global one pattern by pattern. Patterns it does not
   // mention have no trigs, so the global map applies harmlessly.
@@ -748,10 +757,24 @@ export function convertProject(
     const patternBase = DN2_LAYOUT.headerSize + index * DN2_LAYOUT.patternSize;
     const pattern = readPattern(dn1Image, index);
     const local = perPattern?.get(index);
+    const merged = local ? { ...options.plan!, ...local } : undefined;
     const routing = routePattern(
       pattern,
-      local ? destinationsBySound({ ...options.plan!, ...local }) : destinations,
+      merged ? destinationsBySound(merged) : destinations,
+      merged ? priorityBySound(merged) : priority,
     );
+
+    for (const held of routing.blocked) {
+      report.warnings.push({
+        kind: "capacity",
+        pattern: index,
+        track: held.wantedTrack,
+        message:
+          `pattern ${index}: a trig on step ${held.trig.step} stayed on track ` +
+          `${held.sourceTrack + 1} because sound ${held.heldByPoolSlot} already holds that ` +
+          `step on aggregated track ${held.wantedTrack + 1}`,
+      });
+    }
 
     for (const collision of findCollisions(routing)) {
       report.warnings.push({

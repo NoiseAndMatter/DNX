@@ -56,6 +56,11 @@ export type PlacementReason = "pinned" | "rule" | "fallback";
 
 export interface Assignment {
   usage: SoundUsage;
+  /**
+   * Present when `aggregateByName` merged several sounds onto this track, highest-ranked
+   * first. `usage` then describes the group rather than any one sound.
+   */
+  groupMembers?: SoundUsage[];
   /** 1-based DN2 track it is promoted to. */
   dn2Track: number;
   reason: PlacementReason;
@@ -125,6 +130,18 @@ export interface PlanOptions {
    * has to be as easy as accepting the default.
    */
   pins?: ReadonlyMap<number, number>;
+  /**
+   * Give every sound whose name starts with the same word one shared DN2 track.
+   *
+   * `HH CLOSED`, `HH OPEN` and `HH DL` become one `HH` track instead of three, which is what
+   * a kit would do anyway and leaves tracks for sounds that would otherwise overflow. Where
+   * two members want the same step, the lower-ranked one **does not move** — it stays
+   * sound-locked on its origin track, the same lossless fallback overflow uses.
+   *
+   * Off by default: it changes the layout a user may already have on the device, and it
+   * depends on naming discipline. See `aggregate.ts` for why the name and not the tag.
+   */
+  aggregateByName?: boolean;
   /**
    * Tie-break for sounds tagged both ways. Common — 30% of sound-locked sounds in the
    * corpus. Defaults to "percussive-first", which suits a domain where locked sounds skew
