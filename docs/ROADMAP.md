@@ -81,7 +81,7 @@ interface itself.
 | Micro-timing features for the expander | idea, deferred (§3e) |
 | GitHub Pages and CI | not started |
 
-297 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+300 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 

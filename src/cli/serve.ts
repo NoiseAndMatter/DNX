@@ -31,7 +31,7 @@ import { createServer } from "node:http";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findTemplate } from "../librarian/open.js";
-import { resolveStaticPath } from "./staticpath.js";
+import { htmlFallback, resolveStaticPath } from "./staticpath.js";
 
 // fileURLToPath rather than `.pathname` with a drive-letter regex: the latter leaves forward
 // slashes on Windows, which made the containment check below never match, and leaves %20
@@ -118,21 +118,26 @@ createServer((request, response) => {
 
   // Checked per request, not at startup: `npm run web` always builds first, so the case
   // worth catching is a server left running from an earlier session.
-  if (path === "/" || path.endsWith("/index.html")) warnIfStale();
+  if (path === "/" || /\/(index|manager)(\.html)?$/.test(path)) warnIfStale();
 
   const { path: target } = resolveStaticPath(ROOT, path);
+  // `/manager` is what anyone types. Try the literal path first so a real extensionless file
+  // still wins, then the `.html` they meant.
+  const served = [target, target && htmlFallback(target)].find(
+    (candidate) => candidate && existsSync(candidate) && statSync(candidate).isFile(),
+  );
 
-  if (!target || !existsSync(target) || !statSync(target).isFile()) {
+  if (!served) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
     return;
   }
 
   response.writeHead(200, {
-    "content-type": TYPES[extname(target)] ?? "application/octet-stream",
+    "content-type": TYPES[extname(served)] ?? "application/octet-stream",
     "cache-control": "no-store",
   });
-  createReadStream(target).pipe(response);
+  createReadStream(served).pipe(response);
 }).listen(PORT, "127.0.0.1", () => {
   console.log(`DNX web UI: http://127.0.0.1:${PORT}`);
   const template = findTemplate();
