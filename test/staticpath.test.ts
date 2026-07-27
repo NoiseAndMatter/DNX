@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { resolveStaticPath } from "../src/cli/staticpath.js";
+import { htmlFallback, resolveStaticPath } from "../src/cli/staticpath.js";
 
 /**
  * The regression these exist for: `npm run web` served "not found" for every request on
@@ -78,4 +78,21 @@ test("existence is the caller's question, not this one's", () => {
   const { path, refused } = resolveStaticPath(ROOT, "/definitely-not-here.css");
   assert.equal(refused, undefined);
   assert.ok(path, "a missing file still resolves; the server checks existsSync");
+});
+
+test("an extensionless path offers the .html anyone actually types", () => {
+  // "/manager" is what a person types; a literal static server 404s because no such file
+  // exists. The fallback is offered after the literal path, so a real extensionless file
+  // still wins.
+  assert.equal(htmlFallback(`${sep}srv${sep}web${sep}manager`), `${sep}srv${sep}web${sep}manager.html`);
+});
+
+test("a path that already has an extension gets no fallback", () => {
+  // A missing /style.css is a real 404 and must not quietly become /style.css.html.
+  assert.equal(htmlFallback(`${sep}srv${sep}web${sep}style.css`), undefined);
+  assert.equal(htmlFallback(`${sep}srv${sep}web${sep}manager.html`), undefined);
+});
+
+test("a directory-shaped path gets no fallback", () => {
+  assert.equal(htmlFallback(`${sep}srv${sep}web${sep}`), undefined);
 });

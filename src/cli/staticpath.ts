@@ -45,3 +45,19 @@ export function resolveStaticPath(root: string, urlPath: string): Resolution {
   }
   return { path: target };
 }
+
+/**
+ * The `.html` a bare path probably meant.
+ *
+ * `/manager` is what anyone types, and a literal static server answers 404 because there is no
+ * file by that name. Returns the candidate to try *after* the literal path misses, so an
+ * extensionless file that genuinely exists still wins.
+ *
+ * Only for paths with no extension at all: `/style.css` missing is a real 404 and must not
+ * quietly become `/style.css.html`.
+ */
+export function htmlFallback(path: string): string | undefined {
+  const last = path.slice(path.lastIndexOf(sep) + 1);
+  if (last === "" || last.includes(".")) return undefined;
+  return `${path}.html`;
+}
