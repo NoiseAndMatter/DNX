@@ -44,6 +44,7 @@ function options() {
   return {
     compactPerPattern: $<HTMLInputElement>("compact").checked,
     useFreedMidiTracks: $<HTMLInputElement>("freeMidi").checked,
+    aggregateByName: $<HTMLInputElement>("aggregate").checked,
     ...($<HTMLInputElement>("rules").checked ? { rules: PERCUSSION_LOW_RULES } : {}),
   };
 }
@@ -138,7 +139,7 @@ function wireFilePicker(inputId: string, load: (file: File) => Promise<void>): v
 
 wireFilePicker("sourceFile", loadSource);
 wireFilePicker("templateFile", loadTemplate);
-for (const id of ["compact", "freeMidi", "rules"]) $(id).addEventListener("change", replan);
+for (const id of ["compact", "freeMidi", "rules", "aggregate"]) $(id).addEventListener("change", replan);
 $("export").addEventListener("click", () => {
   exportProject().catch((error: unknown) => status(String(error instanceof Error ? error.message : error), "error"));
 });

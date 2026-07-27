@@ -58,6 +58,7 @@ interface itself.
 | DN1 to DN2 conversion | done, byte-identical to Elektron's importer |
 | Expansion writer | done, **hardware-validated** |
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
+| Aggregate sounds by name onto shared tracks | done, opt-in (`--aggregate`) |
 | Reusing unused DN1 source tracks | done, on in compact mode |
 | Hardware test sheet generator | done (`npm run sheet`) |
 | Kit FX, mixer and external input | done, every DN1 FX byte placed |
@@ -76,9 +77,10 @@ interface itself.
 | Manager — track operations inside a pattern | not started |
 | WebMIDI device transfer | not started — must be **multi-device**, see §3d |
 | Transfer mode, DN1 → DN2 with two devices | idea, deferred (§3d) |
+| Micro-timing features for the expander | idea, deferred (§3e) |
 | GitHub Pages and CI | not started |
 
-277 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+295 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
 
 ---
 
@@ -424,6 +426,34 @@ record-level snapshot bounded by **bytes** stays right. Two ideas are worth taki
 **Also worth knowing: elk-herd has no pattern editor.** `Project/` is Base, Import, Selection,
 Update, Util and View — a librarian, not an editor. Track-level operations inside a pattern
 have no precedent to borrow, so that phase is ours to design.
+
+### 3e. Two micro-timing features for the expander — IDEA, deferred
+
+**Recorded 2026-07-27 by the user, for after the manager and the UI work.** They are
+deliberately antagonistic — a user would pick one — and both are per-project switches now that
+would be better as **per-group** settings later, applied to `HH` but not `CP`. That per-group
+shape is the real destination; `aggregateByName` already gives it the grouping to hang off.
+
+**1. Micro-timing as a way to fit several sounds on one trig.** Used extensively by hand in
+these projects: place trigs on the steps *surrounding* an occupied one and micro-time them all
+the way towards it, then change the notes they play. Three instruments then sound as one hit.
+The cost is that the surrounding steps are consumed, so it trades sequencer real estate for
+simultaneity and cannot be applied blindly.
+
+This is the natural successor to the clash rule shipped with `aggregateByName`, which
+currently just leaves the losing trig where it is. `routing.blocked` already reports exactly
+the trigs this would rescue, so the feature has a ready-made input and a measurable target —
+20 trigs across the current corpus.
+
+**2. Undoing whole-step micro-timing during expansion.** The inverse: a trig micro-timed a
+whole step away from where it reads gets moved to the step it actually sounds on, and its
+micro-timing cleared. Expansion is the moment to do it, since the trig is being rewritten
+anyway and the DN2 has the tracks to hold the result honestly.
+
+Note the tension with the 1:1 rule in **Scope**: conversion is a transplant and should not
+tidy anything. Both of these are *editorial*, so they belong to the manager side of that line
+and must stay opt-in, off by default, and reported — never applied silently to a conversion
+someone expects to be faithful.
 
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 

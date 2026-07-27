@@ -28,11 +28,12 @@
  */
 
 import { allocate } from "./allocate.js";
+import { groupByName, groupCandidate } from "./aggregate.js";
 import { byTrigCount, rank } from "./ranking.js";
 import { defaultDestinations } from "./tracks.js";
 import { collectSoundUsage } from "./usage.js";
 import { findUnusedSynthTracks } from "./sourcetracks.js";
-import type { ExpansionPlan, PlanOptions } from "./types.js";
+import type { ExpansionPlan, PlanOptions, SoundUsage } from "./types.js";
 
 export function planExpansion(image: Uint8Array, options: PlanOptions = {}): ExpansionPlan {
   const {
@@ -52,13 +53,39 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     options.destinationTracks ??
     defaultDestinations(usedMidiTracks, useFreedMidiTracks, unusedSourceTracks);
 
-  const { assignments, overflow } = allocate({
-    ranked: rank(usage, byTrigCount(sourceTrackOrder)),
-    destinations,
-    rules: options.rules,
-    pins: options.pins,
-    mixedPolicy: options.mixedPolicy,
-  });
+  /**
+   * One allocation pass, aggregating by name first when asked.
+   *
+   * The allocator never learns that groups exist: it is handed one candidate standing for
+   * the whole family, and the track it returns is given back to every member. That is why
+   * aggregation needs no changes to placement rules, pinning or ranking.
+   */
+  const allocateFor = (candidates: readonly SoundUsage[]) => {
+    const ranked = rank(candidates, byTrigCount(sourceTrackOrder));
+    const common = {
+      destinations,
+      rules: options.rules,
+      pins: options.pins,
+      mixedPolicy: options.mixedPolicy,
+    };
+    if (!options.aggregateByName) return allocate({ ranked, ...common });
+
+    const groups = groupByName(ranked);
+    const byCandidate = new Map(groups.map((g) => [groupCandidate(g), g]));
+    const result = allocate({ ranked: [...byCandidate.keys()], ...common });
+
+    return {
+      assignments: result.assignments.map((a) => {
+        const members = byCandidate.get(a.usage)?.members;
+        return members && members.length > 1 ? { ...a, groupMembers: members } : a;
+      }),
+      // A group that missed out puts every one of its members into overflow: none of them
+      // got a track, and reporting only the leader would understate what stayed behind.
+      overflow: result.overflow.flatMap((u) => byCandidate.get(u)?.members ?? [u]),
+    };
+  };
+
+  const { assignments, overflow } = allocateFor(usage);
 
   const plan: ExpansionPlan = {
     livePatterns,
@@ -75,14 +102,7 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     plan.perPattern = new Map(
       livePatterns.map((p) => {
         const { usage: candidates } = collectSoundUsage(image, [p]);
-        const allocation = allocate({
-          ranked: rank(candidates, byTrigCount(sourceTrackOrder)),
-          destinations,
-          rules: options.rules,
-          pins: options.pins,
-          mixedPolicy: options.mixedPolicy,
-        });
-        return [p, allocation];
+        return [p, allocateFor(candidates)];
       }),
     );
   }
@@ -95,6 +115,7 @@ export { collectSoundUsage } from "./usage.js";
 export { midiTrackDestination, defaultDestinations } from "./tracks.js";
 export { findUnusedSynthTracks } from "./sourcetracks.js";
 export { PERCUSSION_LOW_RULES } from "./rules.js";
+export { groupByName, groupCandidate, nameKey } from "./aggregate.js";
 export { DN2_TRACK_COUNT } from "./types.js";
 export type {
   Assignment,
