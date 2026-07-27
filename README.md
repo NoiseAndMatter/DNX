@@ -40,6 +40,7 @@ speculative or unknown.
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI | first version — load, plan, export, all in the browser |
 | Session model with undo/redo | done |
+| Track move/copy/swap/clear inside a pattern | done, DN2 only |
 | WebMIDI | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
