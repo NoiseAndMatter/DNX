@@ -10,9 +10,14 @@
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolveStaticPath } from "./staticpath.js";
 
-const ROOT = new URL("../../web/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+// fileURLToPath rather than `.pathname` with a drive-letter regex: the latter leaves forward
+// slashes on Windows, which made the containment check below never match, and leaves %20
+// undecoded, which breaks any checkout in a path containing a space.
+const ROOT = fileURLToPath(new URL("../../web/", import.meta.url));
 const PORT = Number(process.env["PORT"] ?? 8173);
 
 const TYPES: Record<string, string> = {
@@ -24,10 +29,9 @@ const TYPES: Record<string, string> = {
 
 createServer((request, response) => {
   const path = decodeURIComponent((request.url ?? "/").split("?")[0]!);
-  // normalize() collapses any ".." before it can climb out of web/.
-  const target = join(ROOT, normalize(path === "/" ? "index.html" : path));
+  const { path: target } = resolveStaticPath(ROOT, path);
 
-  if (!target.startsWith(ROOT) || !existsSync(target) || !statSync(target).isFile()) {
+  if (!target || !existsSync(target) || !statSync(target).isFile()) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
     return;
