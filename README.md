@@ -38,6 +38,7 @@ speculative or unknown.
 | Compact per-pattern allocation | done, opt-in |
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI | first version — load, plan, export, all in the browser |
+| Session model with undo/redo | done |
 | WebMIDI | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
@@ -59,10 +60,11 @@ npm run plan -- --summary --rules path/to/*.dnprj
 # What tags does this library use?
 npm run tags -- --locked path/to/project.dnprj
 
-# Convert to Digitone II, optionally expanding across 16 tracks (dry run by default)
-npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj
-npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj --expand
-npm run convert -- --from a.dnprj --template EMPTY.dn2prj --out b.dn2prj --expand --compact --stamp
+# Convert to Digitone II, optionally expanding across 16 tracks (dry run by default).
+# The template is found via DN_TEMPLATE / DN_CORPUS / a sibling checkout; --template overrides.
+npm run convert -- --from a.dnprj --expand                          # what would it do?
+npm run convert -- --from a.dnprj --expand --out b.dn2prj --stamp   # commit it
+npm run convert -- --from a.dnprj --expand --compact --out b.dn2prj --template EMPTY.dn2prj
 
 # What should this converted file do on the device?
 npm run sheet -- --from a.dnprj --file b.dn2prj --out sheet.html
