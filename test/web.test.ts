@@ -17,7 +17,15 @@ import { parseProject } from "../src/project/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ENTRY = resolve(HERE, "../web/src/app.ts");
+/**
+ * Every page's entry point. Each gets its own graph walk, because the boundary can only rot
+ * one page at a time — the expander was safe long before the manager existed, and a Node-only
+ * import added to either would fail at runtime in the browser and nowhere else.
+ */
+const ENTRIES: [string, string][] = [
+  ["expander", resolve(HERE, "../web/src/app.ts")],
+  ["manager", resolve(HERE, "../web/src/manager/main.ts")],
+];
 
 /** Every module reachable from the entry point, following relative imports. */
 function importGraph(entry: string): string[] {
@@ -46,13 +54,25 @@ function importGraph(entry: string): string[] {
   return external;
 }
 
-test("nothing the web UI imports depends on Node", () => {
-  const external = importGraph(ENTRY);
-  assert.deepEqual(
-    external,
-    [],
-    `the web app must reach only relative modules, but found:\n  ${external.join("\n  ")}`,
-  );
+for (const [name, entry] of ENTRIES) {
+  test(`nothing the ${name} page imports depends on Node`, () => {
+    const external = importGraph(entry);
+    assert.deepEqual(
+      external,
+      [],
+      `the ${name} page must reach only relative modules, but found:\n  ${external.join("\n  ")}`,
+    );
+  });
+}
+
+test("the manager reaches the librarian rather than reimplementing it", () => {
+  // The UI holds no rules: shuffle says what a move means, rearrange plans and verifies it,
+  // session holds the history. If that stops being true the browser and the CLI can disagree
+  // about what a move *is*, which is the one kind of drift the existing tests cannot catch.
+  const source = readFileSync(ENTRIES[1]![1], "utf8");
+  for (const module of ["librarian/shuffle.js", "librarian/rearrange.js", "librarian/session.js"]) {
+    assert.ok(source.includes(module), `the manager should use ${module}, not its own version`);
+  }
 });
 
 test("the browser ZIP writer produces something the library can read", { skip: NO_CORPUS }, async () => {

@@ -94,7 +94,7 @@ npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareT
 # What changed between two captures?
 npm run diff -- --chain --stride captures/
 
-# The web UI: pick a project, see the plan, export a .dn2prj
+# The web UI: expander at /, manager at /manager.html
 npm run web
 
 npm test
@@ -123,8 +123,15 @@ ranking and allocation.
 
 ## The web UI
 
-`npm run web` builds the page and serves it at `http://127.0.0.1:8173`. Pick a `.dnprj`,
-choose the options, and export.
+`npm run web` builds and serves at `http://127.0.0.1:8173`. Two pages:
+
+- **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
+- **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
+  clear patterns across its banks with undo, and export once.
+
+The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts`
+plans and verifies it, `session.ts` holds the history. `test/web.test.ts` walks both pages'
+import graphs and fails if either reaches anything needing Node.
 
 **The template loads itself.** The browser cannot read your corpus, but the local server is
 the CLI and can — it finds `EMPTY.dn2prj` via `DN_TEMPLATE`, `DN_CORPUS` or a sibling
