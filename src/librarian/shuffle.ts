@@ -42,6 +42,20 @@ function build(moves: readonly Move[], intra: boolean): Shuffle {
   const movesTo = new Map<number, Destination>();
   const cameFrom = new Map<number, Origin>();
 
+  // Two sources landing on one slot would silently resolve to whichever was listed last,
+  // quietly dropping the other. None of the constructors here can produce that, so it is a
+  // caller's bug rather than a user's mistake, and it should be loud.
+  const claimed = new Set<number>();
+  for (const { from, to } of moves) {
+    if (from === to) continue;
+    if (claimed.has(to)) {
+      throw new ShuffleError(
+        `two sources both land on slot ${to}; one would be silently discarded`,
+      );
+    }
+    claimed.add(to);
+  }
+
   // Within one bank, a move vacates its source: the slot is emptied unless something else
   // lands on it. Across banks the source project is untouched, so no vacancy is implied.
   if (intra) {
@@ -125,11 +139,15 @@ export function mergeShuffles(earlier: Shuffle, later: Shuffle): Shuffle {
 /**
  * Exchange two slots.
  *
- * **The only rearrangement that needs no blank record**, which is why it is the primitive
- * the librarian starts from. A true move leaves a hole, and filling a hole means writing an
- * empty pattern — bytes we refuse to invent and do not yet have a source for. elk-herd
- * solves that by embedding a compressed blank per storage version; until we do the same, a
- * swap onto an empty slot *is* a move, and it is lossless either way.
+ * The only rearrangement that needs no blank record, which is why the librarian started
+ * here. It is still the right choice when both slots hold work, because it is lossless in
+ * both directions — but `move` and `clear` are now available too, since `blank.ts` supplies
+ * a captured empty patternKit to fill a vacated slot.
+ *
+ * **Deliberately not batched.** Move, copy and clear all generalise to many sources because
+ * "these things go there" still means something. A swap of several sources against several
+ * targets does not have one obvious reading, so offering it would be inventing a semantic
+ * rather than exposing one. Two slots, exchanged.
  */
 export function swap(a: number, b: number): Shuffle {
   if (a === b) return NULL_SHUFFLE;
@@ -139,30 +157,115 @@ export function swap(a: number, b: number): Shuffle {
   ]);
 }
 
-/** Copy one slot onto another, overwriting it and leaving the source in place. */
-export function copyOnto(from: number, to: number): Shuffle {
-  if (from === to) return NULL_SHUFFLE;
-  return asImport([{ from, to }]);
+/**
+ * Land a run of sources at consecutive slots starting from `to`, keeping their given order.
+ *
+ * Sources may overlap the destinations freely — `applyRearrange` reads every source from the
+ * original image, so `[4, 3] -> 3` is a swap rather than a slot read twice.
+ *
+ * Contiguous placement is deliberately the simple rule. elk-herd's `dragAndDrop` does
+ * something richer: it fills empty slots and *pushes* occupied ones further down the bank,
+ * which is nicer to use and much harder to predict from a command line. Worth adopting when
+ * there is a UI to drag in; wrong to guess at now.
+ */
+function run(froms: readonly number[], to: number): Move[] {
+  return froms.map((from, i) => ({ from, to: to + i }));
 }
 
 /**
- * Validate a shuffle against a bank size, before anything reads a byte.
+ * Copy slots, overwriting the destinations and leaving the sources as they were.
  *
- * Throws rather than returning a result: an out-of-range index is a programming error in
- * the caller, not a condition a user can be shown and asked about.
+ * Batch by nature: pass one source or many.
  */
-export function assertWithin(shuffle: Shuffle, slotCount: number): void {
-  const check = (i: number, what: string): void => {
-    if (!Number.isInteger(i) || i < 0 || i >= slotCount) {
-      throw new ShuffleError(`${what} ${i} is outside 0..${slotCount - 1}`);
-    }
+export function copyMany(froms: readonly number[], to: number): Shuffle {
+  return asImport(run(froms, to));
+}
+
+/** Copy one slot onto another, overwriting it and leaving the source in place. */
+export function copyOnto(from: number, to: number): Shuffle {
+  return copyMany([from], to);
+}
+
+/**
+ * Move slots, leaving the sources empty.
+ *
+ * Distinct from `swap` in what happens to the source: a swap gives it the destination's old
+ * contents, a move blanks it. Both are lossy about the destination and neither is lossy
+ * about the thing being moved.
+ *
+ * Batch by nature: pass one source or many.
+ */
+export function moveMany(froms: readonly number[], to: number): Shuffle {
+  return asShuffle(run(froms, to));
+}
+
+/** Move a single slot's contents, leaving the source empty. */
+export function move(from: number, to: number): Shuffle {
+  return moveMany([from], to);
+}
+
+/**
+ * Keep only these slots, packed to the front of the bank, and empty everything else.
+ *
+ * The building block for a clean test project: take the two patterns you care about, put
+ * them in `A1` and `A2`, and blank the other 126.
+ *
+ * The subtlety worth naming, because it was a bug first: a slot that is **already in its
+ * final position** must not be cleared. `asImport` drops identity moves as no-ops, which is
+ * right on its own but wrong when merged over a blanket clear — the clear would win and the
+ * pattern you asked to keep would vanish. So those slots are excluded from the clear rather
+ * than rescued by a move.
+ */
+export function keepOnly(keep: readonly number[], slotCount: number): Shuffle {
+  const stayingPut = new Set(keep.filter((from, i) => from === i));
+  const toClear: number[] = [];
+  for (let i = 0; i < slotCount; i++) if (!stayingPut.has(i)) toClear.push(i);
+
+  return mergeShuffles(
+    clear(...toClear),
+    asImport(keep.map((from, i) => ({ from, to: i }))),
+  );
+}
+
+/** Empty one or more slots, writing a blank into each. */
+export function clear(...slots: readonly number[]): Shuffle {
+  const movesTo = new Map<number, Destination>();
+  const cameFrom = new Map<number, Origin>();
+  for (const slot of slots) {
+    movesTo.set(slot, undefined);
+    cameFrom.set(slot, undefined);
+  }
+  return { movesTo, cameFrom, isEmpty: cameFrom.size === 0 };
+}
+
+/**
+ * Slots referenced by the shuffle that fall outside the bank, in ascending order.
+ *
+ * Returned rather than thrown, because the usual cause is a person asking to move three
+ * patterns to `H15` — off the end by one — and that deserves an explanation rather than a
+ * stack trace.
+ */
+export function outOfRange(shuffle: Shuffle, slotCount: number): number[] {
+  const bad = new Set<number>();
+  const check = (i: number | undefined): void => {
+    if (i === undefined) return;
+    if (!Number.isInteger(i) || i < 0 || i >= slotCount) bad.add(i);
   };
   for (const [from, to] of shuffle.movesTo) {
-    check(from, "source slot");
-    if (to !== undefined) check(to, "destination slot");
+    check(from);
+    check(to);
   }
   for (const [to, from] of shuffle.cameFrom) {
-    check(to, "destination slot");
-    if (from !== undefined) check(from, "source slot");
+    check(to);
+    check(from);
+  }
+  return [...bad].sort((a, b) => a - b);
+}
+
+/** Throwing form, for callers that treat an out-of-range slot as their own bug. */
+export function assertWithin(shuffle: Shuffle, slotCount: number): void {
+  const bad = outOfRange(shuffle, slotCount);
+  if (bad.length > 0) {
+    throw new ShuffleError(`slot(s) ${bad.join(", ")} are outside 0..${slotCount - 1}`);
   }
 }
