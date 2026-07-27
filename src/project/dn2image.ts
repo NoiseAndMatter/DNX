@@ -161,6 +161,22 @@ export function projectName(image: Uint8Array): string {
   return readName(image, 8);
 }
 
+/**
+ * Overwrite the project name in place, NUL-padded to the full field.
+ *
+ * Same offset on both families. Characters outside the single-byte printable range are
+ * dropped rather than mangled, and the name is truncated to leave a terminating NUL — a name
+ * that filled all 16 bytes would run into whatever follows when the device read it.
+ */
+export function writeProjectName(image: Uint8Array, name: string): void {
+  image.fill(0, 8, 8 + SOUND_NAME_SIZE);
+  const bytes = [...name]
+    .map((c) => c.codePointAt(0)!)
+    .filter((c) => c >= 0x20 && c <= 0xff)
+    .slice(0, SOUND_NAME_SIZE - 1);
+  image.set(Uint8Array.from(bytes), 8);
+}
+
 function readName(data: Uint8Array, at: number): string {
   const raw = data.subarray(at, at + SOUND_NAME_SIZE);
   const end = raw.indexOf(0);

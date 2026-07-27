@@ -76,6 +76,13 @@ export interface PatternSummary {
   name?: string;
   /** Omitted for an unsupported version. */
   trigCount?: number;
+  /**
+   * Trigs that lock a sound from the project pool. Omitted for an unsupported version.
+   *
+   * Worth surfacing because it decides whether an operation actually exercises pool
+   * references: moving a pattern with no sound locks proves nothing about them.
+   */
+  soundLockCount?: number;
   /** Omitted for an unsupported version. True when the pattern holds trigs. */
   occupied?: boolean;
 }
@@ -105,6 +112,16 @@ function readName(data: Uint8Array, at: number, size: number): string {
   const raw = data.subarray(at, at + size);
   const nul = raw.indexOf(0);
   return latin1.decode(nul === -1 ? raw : raw.subarray(0, nul));
+}
+
+/** Both families expose trigs the same shape, so one counter serves both. */
+function countSoundLocks(
+  tracks: readonly { trigs: readonly { soundLock?: number }[] }[],
+): number {
+  return tracks.reduce(
+    (n, t) => n + t.trigs.filter((trig) => trig.soundLock !== undefined).length,
+    0,
+  );
 }
 
 function versionOf(record: Uint8Array, offset: number): number {
@@ -139,6 +156,7 @@ const DN1: Device = {
       supported: true,
       name: pattern.name,
       trigCount,
+      soundLockCount: countSoundLocks(pattern.tracks),
       occupied: trigCount > 0,
     };
   },
@@ -170,7 +188,15 @@ const DN2: Device = {
     const name = readName(record, DN2_PATTERN.nameOffset, DN2_PATTERN.nameSize);
     const pattern = readDn2Pattern(image, index, DN2_LAYOUT);
     const trigCount = pattern.tracks.reduce((n, t) => n + t.trigs.length, 0);
-    return { index, version, supported: true, name, trigCount, occupied: trigCount > 0 };
+    return {
+      index,
+      version,
+      supported: true,
+      name,
+      trigCount,
+      soundLockCount: countSoundLocks(pattern.tracks),
+      occupied: trigCount > 0,
+    };
   },
 
   /**

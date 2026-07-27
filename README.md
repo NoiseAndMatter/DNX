@@ -78,6 +78,9 @@ npm run rearrange -- --project a.dn2prj --clear B12 B13
 npm run rearrange -- --project a.dn2prj --keep A1 A4         # a clean test project
 npm run rearrange -- --project a.dn2prj --swap A1 B12 --apply --confirm --out new.dn2prj
 
+# Build the pattern-rearrangement hardware test: two projects and a check sheet
+npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareTest
+
 # What changed between two captures?
 npm run diff -- --chain --stride captures/
 
