@@ -30,6 +30,24 @@ an attempt to overwrite a pattern slot with nothing.
 
 Requesting a dump is a **different code** — `0x60` and up — and that is the read half.
 
+#### Where that comes from, graded
+
+There is **no public specification**. Elektron publishes nothing about this protocol; everything
+below is either our own captures or elk-herd's reverse-engineering.
+
+| Claim | Evidence | Strength |
+|---|---|---|
+| `0x50` and `0x53` carry data **on a Digitone** | our own corpus captures are these types, and we parse them byte-exactly | **verified** |
+| `0x5n` = data, `0x6n` = request | elk-herd `SysEx/Dump.elm` pairs every one: `0x50`/`0x60`, `0x51`/`0x61`, `0x52`/`0x62`, `0x53`/`0x63`, `0x54`/`0x64`, with the `0x5n` carrying a decoded struct and the `0x6n` an empty body | **verified on the Digitakt family**, a working implementation against real hardware |
+| Sending a `0x5n` **writes** | elk-herd uploads via `SendDump`, documented in `Client.elm` as *"Sends a Dump Response"* — the response codes are the `0x5n` | **verified on the Digitakt family** |
+| `0x6n` requests behave the same **on a Digitone** | family convention only; we have never sent one | **inferred** — `devices.ts` says as much |
+| The `0x50`–`0x5e` in `supportedMessages` **are** dump types | the values coincide with known dump types and the band is contiguous | **inferred.** That list comes from an API message, and every API code we can source is `0x01`–`0x4x`. They could be undocumented API messages in a `0x5n` band |
+
+**The refusal does not depend on that last inference**, which is the point of stating it. If they
+are dump types they are writes; if they are not they are undocumented API messages. Both are
+things not to send, so the gate is right either way — and for a reason that can be checked rather
+than a guess that happened to land.
+
 ### The unknowns
 
 `0x03` and `0x04` on both Digitones, plus `0x06` and `0x07` on the Digitone II, appear in no
