@@ -44,6 +44,7 @@ speculative or unknown.
 | Pattern rename | done, both devices — batch schemes to come |
 | WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
 | WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
+| WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
 | WebMIDI — transfer by dumps | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
