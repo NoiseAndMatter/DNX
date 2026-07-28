@@ -735,6 +735,81 @@ Re-reading the name is only our writer agreeing with our reader; the byte diff a
 offset, the layout and the record slicing agreed as well. A stray byte would be invisible to a
 name check right up until the device refused the project.
 
+### 3c-iv. WebMIDI, the protocol layer — BUILT 2026-07-28, unproven against hardware
+
+**The §3d flagged unknown is answered: yes, whole projects can be read off the +Drive.**
+
+elk-herd's `SysEx/Message.elm` implements a general **filesystem** over SysEx, not a dump
+protocol: `DirList` (`0x10`), `FileReadOpen` by **path** (`0x30`), `FileRead` by byte range
+(`0x32`), `FileReadClose` (`0x31`). So a device hands us a `.dn2prj`, which is the exact unit
+every other part of DNX already works in. Nothing has to be rebuilt around patterns-over-the-wire.
+
+#### The wire format
+
+```
+F0 00 20 3C 10 00 <8-in-7 encoded payload> F7
+
+payload:  u16be msgId    a counter the caller allocates, echoed in the response
+          u16be respId   0 in a request; the request's msgId in a response
+          u8    code     0x01 Device, 0x02 Version, 0x10 DirList, 0x30/31/32 file reads
+          …           arguments for that code
+```
+
+Header byte `0x10` selects the API. It is **device-independent**, unlike the dump protocol's
+per-product byte (`0x0D` Digitone, `0x15` Digitone II), and the device identifies itself in a
+`Device` response instead — in *a different product-id space*: elk-herd reads 12 Digitakt and 42
+Digitakt II, while `src/sysex/devices.ts` records 20 Digitone and 43 Digitone II. Two spaces for
+two protocols; conflating them is an afternoon.
+
+**A response's code is the request's code + `0x80`.** `buildApi id … (id + 0x80)` — invisible
+until nothing ever matches.
+
+The 8-in-7 encoding is the one `src/sysex/codec.ts` already implements and has tested against
+real Digitone dumps, confirmed identical to elk-herd's `ByteArray.SevenBit` including bit order
+and the trailing partial group.
+
+Strings are **Windows-1252**, NUL-terminated — not Latin-1. They agree except at `0x80`–`0x9F`,
+and five of those 32 positions are *undefined*, so the table needs holes in it. It matters
+because these strings are **paths**: a filename decoded wrongly is a file we then fail to open,
+with the error blaming the device.
+
+#### Read-only, deliberately
+
+`FileWrite`, `FileDelete`, `DirCreate`, `DirDelete` and `ItemRename` all exist in the protocol
+and **none are implemented**. A first cut that can delete files off someone's +Drive is a bad
+first cut, and nothing we want needs writing until reading has been proven against a device.
+A test asserts they are absent, so the gap stays a decision rather than becoming an oversight.
+
+#### Multi-device is in the shape, not in a later refactor
+
+`api.ts` is stateless — every function takes bytes and returns bytes. `DeviceSession` holds
+everything that would otherwise have been global: the id counter, the in-flight table, the
+timeout. **One per device**, and two sessions share nothing, which is the §3d requirement made
+structural rather than remembered. elk-herd keeps all three at module level, so this is the one
+place its design is deliberately not copied. There is a test that delivers one device's reply to
+the other's session and checks it does not settle.
+
+Ids start at 1: `respId` of 0 means *this is a request*, so a request numbered 0 would be
+answered by something indistinguishable from one.
+
+#### What is unproven, and what settles it
+
+None of this has met a device. `web/probe.html` (`npm run web`, then `/probe`) is the smallest
+thing that needs one — read-only, asks `Device`, `Version` and `DirList /`, prints what comes
+back. It answers three open questions in one sitting:
+
+1. **The storage version.** `Version` returns the build string that §8a of `dn2-format.md` has
+   been waiting on since the v2-vs-v3 question was raised.
+2. **What a DN2 actually implements.** `Device` returns `supportedMessages`, so we stop assuming
+   a Digitone II speaks what a Digitakt II speaks.
+3. **Whether the +Drive listing works as read.** One round trip.
+
+One thing is **disclosed rather than assumed**: `FileRead` returns `start`, `end` *and* `length`,
+and whether `end` is exclusive or inclusive is not established — elk-herd names the field and
+never relies on it. Asserting the wrong one would fail every read on real hardware while looking
+like a device fault, so it is carried through untouched and the payload is checked against
+`length` instead. One session with a device settles it in a line.
+
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 
 **Recorded 2026-07-27 by the user, to be built when the project is more mature.** Not a

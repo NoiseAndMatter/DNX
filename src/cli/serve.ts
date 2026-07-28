@@ -118,7 +118,7 @@ createServer((request, response) => {
 
   // Checked per request, not at startup: `npm run web` always builds first, so the case
   // worth catching is a server left running from an earlier session.
-  if (path === "/" || /\/(index|manager)(\.html)?$/.test(path)) warnIfStale();
+  if (path === "/" || /\/(index|manager|probe)(\.html)?$/.test(path)) warnIfStale();
 
   const { path: target } = resolveStaticPath(ROOT, path);
   // `/manager` is what anyone types. Try the literal path first so a real extensionless file

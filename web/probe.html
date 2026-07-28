@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX — device probe</title>
+<style>
+:root {
+  --bg: #16191b;
+  --panel: #1e2325;
+  --line: #313a3d;
+  --line-soft: #272f31;
+  --fg: #dfe6e7;
+  --muted: #78878b;
+  --dim: #556366;
+  --teal: #79b8ac;
+  --amber: #c8a06a;
+  --salmon: #cf6f62;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column;
+}
+
+header {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .6rem .9rem; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+h1 { font-size: .82rem; margin: 0 .6rem 0 0; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--teal); font-weight: 600; }
+label.lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+select {
+  background: #1b2123; color: var(--fg); border: 1px solid var(--line-soft);
+  border-radius: 3px; padding: .25rem .4rem; font: inherit; font-size: .8rem; max-width: 16rem;
+}
+.btn {
+  background: #232b2d; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 3px; padding: .3rem .7rem; font: inherit; font-size: .8rem; cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--teal); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { border-color: var(--teal); color: var(--teal); }
+
+main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: column; gap: .7rem; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  padding: .7rem .9rem;
+}
+.card h2 {
+  margin: 0 0 .5rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--teal); font-weight: 600;
+}
+.row { display: flex; gap: .8rem; padding: .18rem 0; border-bottom: 1px solid var(--line-soft); }
+.row:last-child { border-bottom: none; }
+.row .k { color: var(--muted); min-width: 12rem; font-size: .78rem; }
+.row .v { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; word-break: break-all; }
+
+table { border-collapse: collapse; width: 100%; font-size: .8rem; }
+th, td { text-align: left; padding: .22rem .5rem; border-bottom: 1px solid var(--line-soft); }
+th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .06em; }
+.num { text-align: right; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.hint { color: var(--dim); font-size: .8rem; margin: 0; }
+
+.status {
+  padding: .4rem .9rem; border-top: 1px solid var(--line); background: var(--panel);
+  font-size: .78rem; color: var(--muted);
+}
+.status.ok { color: var(--teal); }
+.status.warn { color: var(--amber); }
+.status.error { color: var(--salmon); }
+
+.note { padding: 0 .9rem; }
+.note p { color: var(--dim); font-size: .78rem; max-width: 56rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Device probe</h1>
+  <label class="lbl" for="output">Out</label>
+  <select id="output"></select>
+  <label class="lbl" for="input">In</label>
+  <select id="input"></select>
+  <button class="btn" id="rescan">Rescan</button>
+  <button class="btn primary" id="probe" disabled>Probe</button>
+</header>
+
+<main>
+  <div class="note">
+    <p>
+      Read-only. This asks the device what it is, what firmware it runs, which messages it
+      supports, and what is on its +Drive. It writes nothing and changes nothing.
+      Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
+      SysEx permission, which is the whole point: without it every request is silently dropped
+      and the device looks like it is not answering.
+    </p>
+  </div>
+  <div id="results"></div>
+</main>
+
+<div class="status" id="status">Requesting MIDI access&hellip;</div>
+
+<script type="module" src="dist/web/src/probe/main.js"></script>
+</body>
+</html>
