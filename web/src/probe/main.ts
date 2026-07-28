@@ -139,6 +139,22 @@ function renderPorts(): void {
   );
 }
 
+/**
+ * Whether this is a Chromium browser.
+ *
+ * Crude on purpose, and only used to add a hint to a failure that has already happened. Firefox
+ * implements Web MIDI but gates SysEx behind a separate site-permission add-on and drops it
+ * **silently** when that is missing — ports open, `send()` does not throw, nothing comes back.
+ * Indistinguishable from a dead device, and it cost an hour before Chrome was tried with nothing
+ * else changed.
+ */
+function isChromium(): boolean {
+  const brands = (navigator as { userAgentData?: { brands?: { brand: string }[] } }).userAgentData
+    ?.brands;
+  if (brands) return brands.some((b) => /Chromium|Google Chrome|Microsoft Edge/.test(b.brand));
+  return /Chrome\/|Edg\//.test(navigator.userAgent);
+}
+
 function sharedPrefix(a: string, b: string): number {
   let n = 0;
   while (n < a.length && n < b.length && a[n] === b[n]) n++;
@@ -168,10 +184,25 @@ async function probe(): Promise<void> {
   //
   // It worked at all only because the ports happened to already be open; anything that takes them
   // and gives them back — Elektron Transfer, Overbridge, a DAW — leaves them closed.
+  //
+  // Bounded, because `open()` is a promise that can simply never settle — a port another
+  // application is holding does not reject, it waits. Without the race the page sits on
+  // "Opening…" indefinitely with no way to tell that from a slow device.
   try {
-    await Promise.all([input.open(), output.open()]);
+    await Promise.race([
+      Promise.all([input.open(), output.open()]),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`opening the port took longer than ${OPEN_TIMEOUT_MS}ms`)), OPEN_TIMEOUT_MS),
+      ),
+    ]);
   } catch (error) {
     status(`Could not open the port: ${error}. Something else may be holding it.`, "error");
+    card(results, "Could not open the port", [
+      ["Error", String(error)],
+      ["Input", `${input.name} — ${input.connection}`],
+      ["Output", `${output.name} — ${output.connection}`],
+      ["Usually", "another application has the port: Elektron Transfer, Overbridge, or a DAW"],
+    ]);
     return;
   }
 
@@ -253,6 +284,17 @@ async function probe(): Promise<void> {
           : "the port is live and carrying traffic, but none of it was an Elektron API reply — most likely the wrong pair, with this input belonging to another device",
       ],
       ["Ports", `${input.name} / ${output.name}, connection ${input.connection}`],
+      ...(received === 0 && !isChromium()
+        ? ([
+            [
+              "Browser",
+              "not Chromium — Firefox implements Web MIDI but gates SysEx behind a separate " +
+                "site-permission add-on, and filters it silently when that is missing. Confirmed: " +
+                "a probe that failed here succeeded in Chrome with nothing else changed. Try " +
+                "Chrome or Edge before looking further.",
+            ],
+          ] as [string, string][])
+        : []),
     ]);
   } finally {
     input.removeEventListener("midimessage", onMessage);
@@ -296,10 +338,11 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
   let consecutiveSilences = 0;
 
   for (const key of QUERY_KEYS) {
-    // The premise was that an unrecognised key answers `none`, so guessing would be free. If the
-    // device instead says nothing, every guess costs a full timeout and a twelve-key sweep takes
-    // half a minute — which is what the user hit. Assumed rather than checked, and this is the
-    // apology: give up once the device has clearly stopped answering.
+    // Insurance, not a fix for an observed problem — and worth saying so, because the comment
+    // here first claimed otherwise. A slow sweep looked like the device ignoring unknown keys; it
+    // was actually a browser silently dropping SysEx. On a working connection a Digitone II
+    // answers **every** key at once, `none` included, exactly as assumed. This stays because a
+    // device that does go quiet should not cost half a minute to find out about.
     if (consecutiveSilences >= GIVE_UP_AFTER) {
       rows.push([key, "not asked"]);
       continue;
@@ -335,6 +378,9 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
  * seconds a transfer needs are wrong for twelve small round trips in a row.
  */
 const QUERY_TIMEOUT_MS = 400;
+
+/** Long enough for a real port, short enough that a held one is obvious rather than a hang. */
+const OPEN_TIMEOUT_MS = 3000;
 
 /** Three silences means the device does not answer unknown keys, not that these three were bad. */
 const GIVE_UP_AFTER = 3;
