@@ -25,6 +25,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ENTRIES: [string, string][] = [
   ["expander", resolve(HERE, "../web/src/app.ts")],
   ["manager", resolve(HERE, "../web/src/manager/main.ts")],
+  ["probe", resolve(HERE, "../web/src/probe/main.ts")],
 ];
 
 /** Every module reachable from the entry point, following relative imports. */
@@ -85,6 +86,7 @@ function reachableFiles(entry: string): string[] {
 const PAGES: [string, string, string][] = [
   ["expander", resolve(HERE, "../web/src/app.ts"), resolve(HERE, "../web/index.html")],
   ["manager", resolve(HERE, "../web/src/manager/main.ts"), resolve(HERE, "../web/manager.html")],
+  ["probe", resolve(HERE, "../web/src/probe/main.ts"), resolve(HERE, "../web/probe.html")],
 ];
 
 for (const [name, entry, html] of PAGES) {
