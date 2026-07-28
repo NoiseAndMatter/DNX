@@ -89,6 +89,13 @@ npm run rearrange -- --project a.dn2prj --clear B12 B13
 npm run rearrange -- --project a.dn2prj --keep A1 A4         # a clean test project
 npm run rearrange -- --project a.dn2prj --swap A1 B12 --apply --confirm --out new.dn2prj
 
+# Move tracks inside one pattern — Digitone II only, dry run by default
+npm run track -- --project a.dn2prj --pattern A1                  # what is on each track
+npm run track -- --project a.dn2prj --pattern A1 --swap T1 T5
+npm run track -- --project a.dn2prj --pattern A1 --move T1 T2 --to T9
+npm run track -- --project a.dn2prj --pattern A1 --copy T3 --to T11 --scope preset
+npm run track -- --project a.dn2prj --pattern A1 --clear T4 --apply --confirm --out new.dn2prj
+
 # Build the pattern-rearrangement hardware test: two projects and an interactive check sheet
 npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareTest
 
@@ -128,11 +135,15 @@ ranking and allocation.
 
 - **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
 - **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
-  clear patterns across its banks with undo, and export once.
+  clear patterns across its banks with undo, and export once. Select one Digitone II pattern
+  and **Tracks…** drills into its 16 tracks, where the same four operations move tracks and a
+  **Move** selector picks which half travels.
 
-The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts`
-plans and verifies it, `session.ts` holds the history. `test/web.test.ts` walks both pages'
-import graphs and fails if either reaches anything needing Node.
+The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts` and
+`trackmove.ts` plan and verify it, `session.ts` holds the history, `tracksummary.ts` says what
+a track holds so the CLI and the page cannot describe one differently. `test/web.test.ts`
+walks both pages' import graphs and fails if either reaches anything needing Node, and checks
+every `$("id")` against the page that has to define it.
 
 **The template loads itself.** The browser cannot read your corpus, but the local server is
 the CLI and can — it finds `EMPTY.dn2prj` via `DN_TEMPLATE`, `DN_CORPUS` or a sibling
