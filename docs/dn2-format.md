@@ -361,6 +361,70 @@ not analysed here.
 
 ---
 
+## 5b. The saved position — VERIFIED on hardware 2026-07-28
+
+**[verified]** A project stores **where the device was when it was saved**:
+
+| | offset | absolute |
+|---|---|---|
+| Pattern | `tail + 56,843` | 12,836,875 |
+| Track | `tail + 56,839` | 12,836,871 |
+| Track, second copy | `tail + 56,920` | 12,836,952 |
+
+where `tail = kitBase + 128 × kitSize` = **12,780,032**.
+
+### How it was found
+
+The user noticed a generated test project opening on `G2` — the pattern it had been *seeded
+from* — although the file puts its reference at `A1`. Our builder copies the source project's
+tail **verbatim** (0 differing bytes of 109,572), so if position is stored, it was inherited.
+
+The first search looked through the tail for the byte `97`, because `G2` is 97. That was
+circular: it could only ever confirm the assumption it started with. The search that worked asks
+**which tail offsets vary across the corpus *and* always hold a plausible value**, then tests the
+survivors against something independent — the pattern byte names an occupied pattern in 20 of 26
+projects, and it walks `H1, H2, H3, H3, H4, H4` through six `MORNING_JAM` captures in timestamp
+order.
+
+### The track offset was wrong first, and why the check missed it
+
+The first guess was `tail + 56,840`, one byte along. It survives every check that asks *"is this
+a plausible track index?"* — because it reads **5 in every file we hold**. A constant passes a
+plausibility test trivially.
+
+What caught it was the user reporting the original project sat on **track 1** while the prediction
+said track 6. **A hypothesis that can only be confirmed by plausible-looking values is not being
+tested.** There is now a test asserting the field is *not* constant across the corpus, which is
+the check that was missing.
+
+### What settled it
+
+A controlled pair: the same project saved twice from `G2`, once on track 1 and once on track 5.
+**15 bytes** of the 109,572-byte tail differ, and exactly two go `0 → 4` — `+56,839` and
+`+56,920`. The pattern byte held at 97 across both, correctly, since both saves were from `G2`.
+
+The two track copies agree in **24 of 24** corpus projects and moved together in the pair, so
+`readSavedPosition` reports a disagreement rather than picking one.
+
+### Unexplained, from the same diff
+
+Twelve of the remaining thirteen differing bytes sit at a stride of **359** — the DN2 sound size —
+one byte in each of twelve consecutive sound-pool entries, going 1 to 0. Recorded rather than
+guessed at.
+
+### Nothing writes it, and that is now a known defect
+
+A librarian that rearranges patterns leaves this field naming the old slot, so a project reopens
+somewhere the user did not leave it. Now that the field is confirmed that is a real defect rather
+than a hypothetical one — see `docs/KNOWN-ISSUES.md`. It is deliberately **not** fixed alongside
+the discovery: rewriting it on every move raises its own question (does the cursor follow the
+pattern, or stay on the slot?) that only the user can answer.
+
+`npm run project -- <file>` prints the pair.
+
+---
+
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):
