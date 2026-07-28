@@ -513,6 +513,43 @@ reading above.
 
 ---
 
+### The Digitone 1 sends a different shape — and omits its sound pool
+
+Captured the same way, from a Digitone 1 on 1.42A:
+
+| | Digitone 1 | Digitone II |
+|---|---|---|
+| Product id (dump space) | **13** (`0x0D`) | 21 (`0x15`) |
+| PatternKit payload | **20,992** = 18,432 pattern + 2,560 kit | 99,840 = 89,088 + 10,752 |
+| Sound payload | **302** | 359 |
+| A project dump | **128 PatternKit + 1 ProjectSettings** | 128 PatternKit + 119 Sound + 1 ProjectSettings |
+| ProjectSettings payload | **11,776** | 512 |
+
+Both PatternKit sizes are `patternSize + kitSize` **exactly**, on both machines. The unit is the
+same idea at two scales, and the product ids confirm what `src/sysex/devices.ts` had recorded.
+
+> [!warning] **A DN1 project dump carries no sounds**
+> There is **no `0x53` in a Digitone 1 project dump** — only patterns and settings — and its
+> ProjectSettings payload of 11,776 bytes is far too small to hold a 128 × 302 = 38,656-byte
+> pool.
+>
+> A DN1 kit carries its four track sounds inline, so a pattern dump is not sound-less. But
+> **sound-locked** sounds live in the project pool, and the pool is what the expander exists to
+> unfold. So a project reconstructed from a DN1 SysEx dump alone would be missing exactly the
+> data the DN1 → DN2 workflow depends on.
+>
+> The DN1 offers separate soundbank and pool sends in its own `SYSEX DUMP` menu, so the data is
+> reachable — it is simply **not part of a project dump**, and any transfer built on dumps has to
+> fetch it as a second step. On the DN2 the same information arrives automatically as 119
+> `0x53` messages.
+
+The DN1's separate soundbank send was captured too: 128 sounds at 302 bytes each, object numbers
+`0`–`127`, read straight off the wire by our own DN1 sound reader — `DIGIT-ONE`, `CHAPPET DL`,
+`PLUCKY EÅ`. A second batch of 128 in the same capture all reported object number `0`, which
+suggests numbering is **per send** rather than global; not yet confirmed.
+
+---
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):
