@@ -36,6 +36,7 @@ import {
 import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import { buildProjectBlob, download, openProject, type LoadedProject } from "../project.js";
+import { type Drag, type Level, actionFor, refuseDrop } from "./dragrules.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -57,31 +58,46 @@ interface State {
   bank: number;
   /** Selected slot indices, in the order they were clicked — a batch lands in this order. */
   selection: number[];
+  /**
+   * Which grid those indices belong to.
+   *
+   * Both grids are on screen at once, so an index alone is ambiguous: `11` is pattern A12 and
+   * track T12 at the same time. The level travels with the selection rather than being
+   * inferred from which section is open, because with a stacked layout **both** are open.
+   */
+  level: Level;
   /** Anchor for shift-click ranges. */
   anchor?: number;
   /**
-   * The pattern whose tracks are open, or `undefined` while looking at patterns.
+   * The pattern whose tracks are shown beneath the bank, or `undefined` when none are.
    *
-   * One flag rather than two views, because everything else — selection, the four operation
-   * buttons, undo, the status bar — works identically at both levels. A track move *is* a
-   * shuffle; only what it indexes changes. Two parallel implementations of "which are
-   * selected" would be two places for the same bug.
+   * The tracks are a *section*, not a separate screen: patterns stay above them, and trigs
+   * will stack below in turn. Everything else — the four operation buttons, undo, the status
+   * bar — works identically at every level, because a track move *is* a shuffle and only what
+   * it indexes changes.
    */
   trackFor?: number;
-  /** Which half of a track an operation moves. Only consulted inside the track view. */
+  /** Which half of a track an operation moves. Only consulted for a track-level selection. */
   scope: TrackScope;
 }
 
-const state: State = { bank: 0, selection: [], scope: "both" };
 
-/** True while the track view is open, which changes what a selection index means. */
+
+const state: State = { bank: 0, selection: [], level: "pattern", scope: "both" };
+
+/** True when the current selection is tracks, which is what decides what an operation does. */
 function inTracks(): boolean {
-  return state.trackFor !== undefined;
+  return state.level === "track";
 }
 
-/** How the current level names its slots — `A1` for patterns, `T1` for tracks. */
+/** How a level names its slots — `A1` for patterns, `T1` for tracks. */
+function nameAt(level: Level, index: number): string {
+  return level === "track" ? trackName(index) : patternName(index);
+}
+
+/** The current selection's names. */
 function slotName(index: number): string {
-  return inTracks() ? trackName(index) : patternName(index);
+  return nameAt(state.level, index);
 }
 
 const BANKS = "ABCDEFGH";
@@ -133,14 +149,17 @@ function countOccupied(bank: number): number {
  */
 function renderTrackGrid(): void {
   const { session, trackFor } = state;
-  if (!session || trackFor === undefined) return;
+  const section = $("trackSection");
 
+  // No pattern chosen, or a Digitone 1, and the section is simply not there. Hiding it rather
+  // than showing sixteen empty cells keeps the page honest about what it can offer.
+  if (!session || trackFor === undefined || state.device?.kind !== "dn2") {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
   const grid = $("trackGrid");
-  grid.hidden = false;
-  $("grid").hidden = true;
-  $("legend").hidden = true;
-  $("trackLegend").hidden = false;
-  $("dropzone").hidden = true;
   grid.innerHTML = "";
 
   for (const track of summariseTracks(session.image, trackFor)) {
@@ -148,11 +167,19 @@ function renderTrackGrid(): void {
     cell.className = "slot";
     if (!track.empty) cell.classList.add("occupied");
     if (track.midi) cell.classList.add("midi");
-    cell.setAttribute("aria-selected", String(state.selection.includes(track.index)));
+    cell.setAttribute(
+      "aria-selected",
+      String(inTracks() && state.selection.includes(track.index)),
+    );
 
-    const detail = track.empty
-      ? "empty"
-      : `${track.trigCount} trigs${track.lockCount ? ` · ${track.lockCount} locks` : ""}`;
+    // "empty" would be a lie about a track carrying a preset and no notes — which is exactly
+    // what a `--scope preset` copy produces, and it made a working copy look like a no-op.
+    // The bottom line describes the *sequence*; the preset is the two lines above it.
+    const detail = track.trigCount
+      ? `${track.trigCount} trigs${track.lockCount ? ` · ${track.lockCount} locks` : ""}`
+      : track.presetName
+        ? "no trigs"
+        : "empty";
 
     cell.innerHTML =
       `<span class="id">${track.label}</span>` +
@@ -160,28 +187,20 @@ function renderTrackGrid(): void {
       `<span class="mc">${escapeHtml(track.midi ? "MIDI" : (track.machine ?? "?"))}</span>` +
       `<span class="tc">${detail}</span>`;
 
-    cell.addEventListener("click", (event) => {
-      onSlotClick(track.index, event);
-    });
+    wireSlot(cell, "track", track.index);
     grid.append(cell);
   }
 
-  $("bankTitle").textContent = `${patternName(trackFor)} — tracks 1–${DN2_TRACK_COUNT}`;
+  $("trackTitle").textContent = `${patternName(trackFor)} — tracks 1–${DN2_TRACK_COUNT}`;
 }
 
 function renderGrid(): void {
   const { device, session } = state;
   if (!device || !session) return;
-  if (inTracks()) {
-    renderTrackGrid();
-    return;
-  }
 
   const grid = $("grid");
   grid.hidden = false;
-  $("trackGrid").hidden = true;
   $("legend").hidden = false;
-  $("trackLegend").hidden = true;
   $("dropzone").hidden = true;
   grid.innerHTML = "";
 
@@ -194,7 +213,8 @@ function renderGrid(): void {
     cell.className = "slot";
     if (!summary.supported) cell.classList.add("unsupported");
     else if (summary.occupied) cell.classList.add("occupied");
-    cell.setAttribute("aria-selected", String(state.selection.includes(index)));
+    if (index === state.trackFor) cell.classList.add("opened");
+    cell.setAttribute("aria-selected", String(!inTracks() && state.selection.includes(index)));
 
     const name = summary.supported ? summary.name || "—" : `v${summary.version}`;
     const detail = summary.supported
@@ -208,21 +228,12 @@ function renderGrid(): void {
       `<span class="nm">${escapeHtml(name)}</span>` +
       `<span class="tc">${detail}</span>`;
 
-    cell.addEventListener("click", (event) => {
-      onSlotClick(index, event);
-    });
-    // Double-click opens the pattern's tracks. The header button is the discoverable route;
-    // this is the one people try first, and a drill-down that only exists behind a greyed-out
-    // button reads as a feature that is not there.
-    cell.addEventListener("dblclick", () => {
-      if (state.device?.kind !== "dn2") return;
-      state.selection = [index];
-      openTracks(index);
-    });
+    wireSlot(cell, "pattern", index);
     grid.append(cell);
   }
 
   $("bankTitle").textContent = `Bank ${BANKS[state.bank]} — patterns ${from + 1}–${to}`;
+  renderTrackGrid();
 }
 
 function escapeHtml(text: string): string {
@@ -230,7 +241,7 @@ function escapeHtml(text: string): string {
 }
 
 function renderSelection(): void {
-  const { selection, device } = state;
+  const { selection } = state;
   const box = $("selection");
   if (selection.length === 0) {
     box.className = "hint";
@@ -238,7 +249,8 @@ function renderSelection(): void {
   } else {
     box.className = "";
     box.innerHTML =
-      `<strong>${selection.length}</strong> selected: ` +
+      `<strong>${selection.length}</strong> ${inTracks() ? "track" : "pattern"}` +
+      `${selection.length === 1 ? "" : "s"} selected: ` +
       `<span style="font-family:ui-monospace,Consolas,monospace">${selection.map(slotName).join(" ")}</span>`;
   }
 
@@ -249,21 +261,12 @@ function renderSelection(): void {
   $<HTMLButtonElement>("opMove").disabled = selection.length === 0;
   $<HTMLButtonElement>("opCopy").disabled = selection.length === 0;
 
-  // Track operations are Digitone II only, so the drill-down offers itself only where it leads
-  // somewhere. Exactly one pattern, because a track lives in one.
-  const drill = $<HTMLButtonElement>("drill");
-  drill.hidden = inTracks() || device?.kind !== "dn2";
-  drill.disabled = selection.length !== 1;
-  drill.textContent =
-    selection.length === 1
-      ? `Tracks of ${patternName(selection[0]!)}…`
-      : "Tracks… (select one pattern)";
-
-  $("back").hidden = !inTracks();
+  // The scope only means anything to a track operation, so it appears with one.
   $("scopeBox").hidden = !inTracks();
-  $("opHint").textContent = inTracks()
-    ? "Click tracks to select. Shift-click for a range, Ctrl-click to add."
-    : "Click slots to select. Shift-click for a range, Ctrl-click to add.";
+  $("opHint").innerHTML =
+    `Drag a ${inTracks() ? "track" : "pattern"} onto another to <strong>move</strong> it. ` +
+    `Hold <kbd>Shift</kbd> to copy, <kbd>Ctrl</kbd> to swap.<br>` +
+    `Shift-click for a range, Ctrl-click to add to the selection.`;
 }
 
 const SCOPE_HINTS: Readonly<Record<TrackScope, string>> = {
@@ -303,18 +306,20 @@ function render(): void {
   renderSelection();
   renderHistory();
   $("scopeHint").textContent = SCOPE_HINTS[state.scope];
-  // Bank tabs mean nothing inside one pattern. Only ever hide here — whether they show at all
-  // is renderTabs' call, and overriding that would resurrect them before a project is open.
-  if (inTracks()) $("tabs").hidden = true;
 }
 
 // --- selection ----------------------------------------------------------------------------
 
-function onSlotClick(index: number, event: MouseEvent): void {
-  if (event.shiftKey && state.anchor !== undefined) {
+function onSlotClick(level: Level, index: number, event: MouseEvent): void {
+  // Clicking into the other section starts a fresh selection there. Carrying indices across
+  // would silently reinterpret them: 11 is pattern A12 and track T12 at once.
+  const sameLevel = state.level === level;
+  state.level = level;
+
+  if (sameLevel && event.shiftKey && state.anchor !== undefined) {
     const [lo, hi] = [Math.min(state.anchor, index), Math.max(state.anchor, index)];
     state.selection = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-  } else if (event.ctrlKey || event.metaKey) {
+  } else if (sameLevel && (event.ctrlKey || event.metaKey)) {
     const at = state.selection.indexOf(index);
     if (at === -1) state.selection.push(index);
     else state.selection.splice(at, 1);
@@ -323,7 +328,96 @@ function onSlotClick(index: number, event: MouseEvent): void {
     state.selection = [index];
     state.anchor = index;
   }
+
+  // Selecting a single pattern opens its tracks below it. That is the whole point of stacking
+  // the sections rather than swapping them: the next level down is context, not a new screen.
+  if (level === "pattern" && state.device?.kind === "dn2" && state.selection.length === 1) {
+    state.trackFor = index;
+  }
   render();
+}
+
+// --- drag and drop --------------------------------------------------------------------------
+
+/** The drag in flight. Kept here rather than in `dataTransfer`, which cannot be read on hover. */
+let dragging: Drag | undefined;
+
+/** Click, drag and drop for one cell. Both grids go through it, so neither can drift. */
+function wireSlot(cell: HTMLElement, level: Level, index: number): void {
+  cell.addEventListener("click", (event) => {
+    onSlotClick(level, index, event);
+  });
+
+  cell.draggable = true;
+
+  cell.addEventListener("dragstart", (event) => {
+    // Dragging one of several selected slots drags the whole selection; dragging anything else
+    // drags just that one, and takes the selection with it so the two never disagree.
+    const inSelection = state.level === level && state.selection.includes(index);
+    if (!inSelection) {
+      state.level = level;
+      state.selection = [index];
+      state.anchor = index;
+      render();
+    }
+    dragging = { level, indices: [...state.selection] };
+    cell.classList.add("dragging");
+    event.dataTransfer?.setData("text/plain", state.selection.map((i) => nameAt(level, i)).join(" "));
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "all";
+  });
+
+  cell.addEventListener("dragend", () => {
+    dragging = undefined;
+    for (const el of document.querySelectorAll(".slot.dragging, .slot.target")) {
+      el.classList.remove("dragging", "target");
+    }
+    status("");
+  });
+
+  cell.addEventListener("dragover", (event) => {
+    const action = actionFor(event);
+    // A refused drop is simply not accepted, which leaves the browser's own "no" cursor in
+    // place — the clearest possible signal, and one we do not have to draw.
+    if (refuseDrop(dragging, level, index, action) !== undefined) return;
+
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = action === "copy" ? "copy" : "move";
+    cell.classList.add("target");
+    status(
+      `${action} ${dragging!.indices.map((i) => nameAt(level, i)).join(" ")} → ${nameAt(level, index)}` +
+        (level === "track" ? scopeSuffix() : "") +
+        `  ·  shift = copy, ctrl = swap`,
+    );
+  });
+
+  cell.addEventListener("dragleave", () => {
+    cell.classList.remove("target");
+  });
+
+  cell.addEventListener("drop", (event) => {
+    const action = actionFor(event);
+    const refused = refuseDrop(dragging, level, index, action);
+    cell.classList.remove("target");
+    if (refused !== undefined) {
+      // Only worth saying when something was actually being dragged; otherwise this is a stray
+      // drop from outside the page and silence is the right response.
+      if (dragging) status(`Not done — ${refused}.`, "warn");
+      return;
+    }
+    event.preventDefault();
+
+    const { indices } = dragging!;
+    const names = indices.map((i) => nameAt(level, i)).join(" ");
+    dragging = undefined;
+
+    if (action === "swap") {
+      run(`swap ${names} and ${nameAt(level, index)}${scopeSuffix()}`, swap(indices[0]!, index));
+    } else if (action === "copy") {
+      run(`copy ${names} to ${nameAt(level, index)}${scopeSuffix()}`, copyMany(indices, index));
+    } else {
+      run(`move ${names} to ${nameAt(level, index)}${scopeSuffix()}`, moveMany(indices, index));
+    }
+  });
 }
 
 // --- operations ---------------------------------------------------------------------------
@@ -420,15 +514,6 @@ function askTarget(what: string): number | undefined {
   return undefined;
 }
 
-/** Drill into one pattern's tracks. Two routes reach it, so it lives in one place. */
-function openTracks(pattern: number): void {
-  state.trackFor = pattern;
-  state.selection = [];
-  state.anchor = undefined;
-  render();
-  status(`${patternName(pattern)} — 16 tracks. Operations now move tracks, not patterns.`);
-}
-
 /** The scope, named for the log, so history says which half moved rather than just "move". */
 function scopeSuffix(): string {
   if (!inTracks() || state.scope === "both") return "";
@@ -459,20 +544,15 @@ function wireOperations(): void {
     run(`clear ${state.selection.map(slotName).join(" ")}${scopeSuffix()}`, clear(...state.selection));
   });
 
-  $("drill").addEventListener("click", () => {
-    const pattern = state.selection[0];
-    if (pattern !== undefined) openTracks(pattern);
-  });
-
-  $("back").addEventListener("click", () => {
+  $("closeTracks").addEventListener("click", () => {
     const was = state.trackFor;
     state.trackFor = undefined;
-    // Return with the pattern still selected, so a drill-down and back is a no-op rather than
-    // something the user has to undo by re-clicking.
+    // Leave the pattern selected, so closing its tracks is not also a deselection the user
+    // then has to undo by clicking again.
+    state.level = "pattern";
     state.selection = was === undefined ? [] : [was];
     state.anchor = was;
     render();
-    status("Patterns.");
   });
 
   $<HTMLSelectElement>("scope").addEventListener("change", (event) => {
