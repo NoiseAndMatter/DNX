@@ -107,6 +107,13 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
   transition: border-color .08s, background .08s;
 }
 .slot:hover { border-color: var(--dim); }
+/*
+ * The cell is the target; its labels are decoration. Without this, moving the cursor from the
+ * cell onto one of its own spans fires `dragleave` on the cell and then `dragenter` again, so
+ * the drop decoration flickers off and on while the pointer is standing still inside it. The
+ * outline was subtle enough to get away with it; a word across the middle is not.
+ */
+.slot > span { pointer-events: none; }
 .slot .id { font-size: .66rem; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
 .slot .nm {
   font-size: .74rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
@@ -119,7 +126,6 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
 .slot.occupied .tc { color: var(--teal); opacity: .8; }
 .slot.unsupported { border-style: dashed; border-color: var(--amber); }
 .slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
-.slot.target { outline: 2px dashed var(--amber); outline-offset: -2px; }
 
 /* ---- the track grid: 16 tracks of one pattern, four across so names have room -------- */
 .grid.tracks { grid-template-columns: repeat(4, 1fr); }
@@ -144,9 +150,45 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
   font-size: .64rem; padding: .1rem .45rem; line-height: 1.2;
 }
 
-/* ---- drag and drop ------------------------------------------------------------------- */
+/*
+ * ---- drag and drop -------------------------------------------------------------------
+ *
+ * The destination says which of the three actions is about to happen, in two ways at once: a
+ * hue, and the word itself across the middle of the cell. One amber outline for all three was
+ * the first cut, and it told the user only *that* something would happen — the status bar had
+ * the *what*, at the other end of the page from where they were looking.
+ *
+ * Three hues far enough apart to read at a glance and without relying on colour alone, since
+ * the word is there too: blue moves, green copies, amber exchanges.
+ *
+ * Deliberately not a variation on the selection outline. Selection is a thin 2px ring; a drop
+ * target is a thick ring, a saturated wash and a label — nobody has to work out which is which.
+ * And there is no fourth state for a refusal: the browser's own "no" cursor already says it.
+ */
 .slot.dragging { opacity: .4; }
-.slot.target { outline: 2px dashed var(--amber); outline-offset: -2px; background: #2b2a22; }
+
+.slot.target {
+  outline: 3px solid var(--drop); outline-offset: -3px;
+  background: var(--drop-bg);
+  transition: none;   /* the modifier can change mid-drag; a fade would lag behind the truth */
+}
+.slot.target.move { --drop: var(--steel);  --drop-bg: #1e2a33; }
+.slot.target.copy { --drop: var(--teal);   --drop-bg: #1c2e2b; }
+.slot.target.swap { --drop: var(--amber);  --drop-bg: #302719; }
+
+/*
+ * The label is drawn from the attribute rather than injected as a child: a re-render rebuilds
+ * every cell, and a stray <span> would outlive the drag that put it there.
+ */
+.slot.target::after {
+  content: attr(data-action);
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; font-weight: 700; letter-spacing: .16em;
+  color: var(--drop);
+  background: rgba(10, 13, 14, .72);   /* a scrim, so the word is legible over a full cell */
+  pointer-events: none;                /* or the cell stops receiving its own dragover */
+}
 kbd {
   font: inherit; font-size: .92em; background: #2a3133; border: 1px solid var(--line);
   border-radius: 2px; padding: 0 .25rem;

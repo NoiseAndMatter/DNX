@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Drag, actionFor, patternForOperation, refuseDrop } from "../web/src/manager/dragrules.js";
+import {
+  type Drag,
+  actionFor,
+  dropHint,
+  patternForOperation,
+  refuseDrop,
+} from "../web/src/manager/dragrules.js";
 
 const mods = (over: Partial<Record<"shiftKey" | "ctrlKey" | "metaKey", boolean>> = {}) => ({
   shiftKey: false,
@@ -96,6 +102,61 @@ test("every refusal reads as a reason, not a code", () => {
     assert.match(reason!, /^[a-z]/, `"${reason}" should start lower case, mid-sentence`);
     assert.doesNotMatch(reason!, /[.!]$/, `"${reason}" should not punctuate its own end`);
     assert.ok(reason!.split(" ").length >= 4, `"${reason}" is too terse to act on`);
+  }
+});
+
+// --- what the destination cell draws --------------------------------------------------------
+
+test("the hovered cell names the action it is about to perform", () => {
+  // The whole point. One outline for all three said only *that* something would happen; the
+  // status bar had the *what*, at the other end of the page from where the user is looking.
+  assert.deepEqual(dropHint(patterns, "pattern", 9, mods()), { action: "move", label: "MOVE" });
+  assert.deepEqual(dropHint(patterns, "pattern", 9, mods({ shiftKey: true })), {
+    action: "copy",
+    label: "COPY",
+  });
+  assert.deepEqual(dropHint(patterns, "pattern", 9, mods({ ctrlKey: true })), {
+    action: "swap",
+    label: "SWAP",
+  });
+});
+
+test("a refused drop draws nothing at all", () => {
+  // Not a fourth colour meaning "you cannot" — that would compete with the three that mean
+  // "this will happen", and the browser already draws a "no" cursor for a drop we decline.
+  const tracks: Drag = { level: "track", indices: [2] };
+  assert.equal(dropHint(tracks, "pattern", 11, mods()), undefined, "across levels");
+  assert.equal(dropHint(patterns, "pattern", 3, mods()), undefined, "onto itself");
+  assert.equal(dropHint(undefined, "pattern", 9, mods()), undefined, "nothing dragged");
+});
+
+test("holding ctrl over a batch draws nothing, because a batch swap is refused", () => {
+  // The subtle one: the cell is a perfectly good move or copy target, and becomes a non-target
+  // the instant Ctrl goes down. Drawing SWAP there would promise something that then refuses.
+  const batch: Drag = { level: "pattern", indices: [3, 7] };
+  assert.deepEqual(dropHint(batch, "pattern", 9, mods()), { action: "move", label: "MOVE" });
+  assert.equal(dropHint(batch, "pattern", 9, mods({ ctrlKey: true })), undefined);
+});
+
+test("the hint changes with the modifier and nothing else", () => {
+  // It has to be a pure function of the modifiers for the mid-drag repaint to be correct: the
+  // key handler recomputes it with no drag event to hand, so anything read from an event would
+  // be stale exactly when it matters.
+  const seen = new Set(
+    [mods(), mods({ shiftKey: true }), mods({ ctrlKey: true }), mods({ metaKey: true })].map(
+      (m) => dropHint(patterns, "pattern", 9, m)?.label,
+    ),
+  );
+  assert.deepEqual([...seen].sort(), ["COPY", "MOVE", "SWAP"]);
+});
+
+test("the label is what a person reads, not a code", () => {
+  // It is drawn across the destination at 0.78rem. Anything longer wraps, and anything like
+  // "DROP_ACTION_MOVE" would be unreadable at that size over a cell that already has content.
+  for (const m of [mods(), mods({ shiftKey: true }), mods({ ctrlKey: true })]) {
+    const hint = dropHint(patterns, "pattern", 9, m)!;
+    assert.match(hint.label, /^[A-Z]{4}$/, `"${hint.label}" should be one short upper-case word`);
+    assert.equal(hint.label, hint.action.toUpperCase(), "the label must name its own action");
   }
 });
 
