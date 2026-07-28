@@ -335,6 +335,26 @@ track"* — and the stored mask matches the mask derived from each preset's mach
 `PRESETS.dn2prj`, the only storage-version-2 project we hold; versions are per struct, so the
 offset simply means something else there. **Read it only on version 3.**
 
+### An empty track is named, not nameless — VERIFIED 2026-07-28
+
+**[verified]** In the captured blank patternKit every track's preset carries a name:
+`PRESET 1` … `PRESET 16`, **by track number**. An initialised track is therefore not an unnamed
+one, and a cleared `T2` comes back as `PRESET 2` — not `PRESET 1`, and not an empty string.
+
+Two consequences:
+
+- **Anything reading the blank must index it by destination.** `applyTrackMove` already fills a
+  vacated track from the blank's track of the same number; code predicting the result has to
+  line up the same way or it will expect `PRESET 1` everywhere.
+- **`empty` cannot be a name test.** `tracksummary.ts` defines empty as *no trigs and no locks*,
+  which is right for the reason above: a name-based test would call every initialised track
+  occupied.
+
+Found by the track hardware test's own guard, which holds the built file against every claim the
+printed sheet is about to make. The first cut of that sheet assumed a cleared track came back
+nameless; the guard refused to print it. Nothing shipped, and the fact is recorded rather than
+re-derived next time.
+
 **Unknown:** per-track length, speed, and scale fields. The emnyeca corpus has
 `Length_Field` and `Track_Step_State_Table` folders that would localise these; they were
 not analysed here.

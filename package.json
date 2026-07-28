@@ -15,6 +15,7 @@
     "track": "tsx src/cli/track.ts",
     "extract-blank": "tsx src/cli/extractblank.ts",
     "hwtest": "tsx src/cli/hardwaretest.ts",
+    "trackhwtest": "tsx src/cli/trackhwtest.ts",
     "tags": "tsx src/cli/tags.ts",
     "convert": "tsx src/cli/convert.ts",
     "sheet": "tsx src/cli/sheet.ts",
