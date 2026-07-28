@@ -135,9 +135,10 @@ ranking and allocation.
 
 - **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
 - **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
-  clear patterns across its banks with undo, and export once. Select one Digitone II pattern
-  and **Tracks…** drills into its 16 tracks, where the same four operations move tracks and a
-  **Move** selector picks which half travels.
+  clear patterns across its banks with undo, and export once. **Open another…** in the top bar
+  swaps projects without reloading, asking first if there are unsaved edits. Double-click a
+  Digitone II pattern — or select one and press **Tracks…** — to drill into its 16 tracks,
+  where the same four operations move tracks and a **Move** selector picks which half travels.
 
 The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts` and
 `trackmove.ts` plan and verify it, `session.ts` holds the history, `tracksummary.ts` says what

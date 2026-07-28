@@ -565,6 +565,23 @@ indexes changes.
 level up. A second implementation of "is this track empty" is a second answer waiting to
 disagree.
 
+**Two things the first cut got wrong, both found by the user opening the page.**
+
+The drill-down was only reachable from a button that stays disabled until exactly one pattern
+is selected, so it read as a feature that was not there. Double-clicking a pattern now opens
+its tracks, and the button says what it wants when it is disabled.
+
+Worse, **`hidden` did nothing** for `.tabs`, `.grid` and `.legend`. The attribute works by a UA
+rule of `display: none`, which any author rule setting `display` beats — and each of those
+classes sets one. Bank tabs rendered above an empty page, and the pattern grid stayed on screen
+underneath the track grid. `[hidden] { display: none !important }` restores it once for the
+whole page. `test/web.test.ts` now fails on any hidden element whose class carries a `display`,
+which found the two pre-existing cases as well as the one that prompted it.
+
+And a project could not be replaced without reloading the browser: the dropzone is the empty
+state and is hidden for good once a project opens. **Open another…** sits in the top bar and
+warns when there is undo history to lose, since nothing has been written to disk.
+
 #### What this did not change
 
 Sound locks were the other suspected hazard: they are sequence-side and reference the sound
