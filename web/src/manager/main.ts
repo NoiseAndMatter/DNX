@@ -211,6 +211,14 @@ function renderGrid(): void {
     cell.addEventListener("click", (event) => {
       onSlotClick(index, event);
     });
+    // Double-click opens the pattern's tracks. The header button is the discoverable route;
+    // this is the one people try first, and a drill-down that only exists behind a greyed-out
+    // button reads as a feature that is not there.
+    cell.addEventListener("dblclick", () => {
+      if (state.device?.kind !== "dn2") return;
+      state.selection = [index];
+      openTracks(index);
+    });
     grid.append(cell);
   }
 
@@ -247,7 +255,9 @@ function renderSelection(): void {
   drill.hidden = inTracks() || device?.kind !== "dn2";
   drill.disabled = selection.length !== 1;
   drill.textContent =
-    selection.length === 1 ? `Tracks of ${patternName(selection[0]!)}…` : "Tracks…";
+    selection.length === 1
+      ? `Tracks of ${patternName(selection[0]!)}…`
+      : "Tracks… (select one pattern)";
 
   $("back").hidden = !inTracks();
   $("scopeBox").hidden = !inTracks();
@@ -410,6 +420,15 @@ function askTarget(what: string): number | undefined {
   return undefined;
 }
 
+/** Drill into one pattern's tracks. Two routes reach it, so it lives in one place. */
+function openTracks(pattern: number): void {
+  state.trackFor = pattern;
+  state.selection = [];
+  state.anchor = undefined;
+  render();
+  status(`${patternName(pattern)} — 16 tracks. Operations now move tracks, not patterns.`);
+}
+
 /** The scope, named for the log, so history says which half moved rather than just "move". */
 function scopeSuffix(): string {
   if (!inTracks() || state.scope === "both") return "";
@@ -442,12 +461,7 @@ function wireOperations(): void {
 
   $("drill").addEventListener("click", () => {
     const pattern = state.selection[0];
-    if (pattern === undefined) return;
-    state.trackFor = pattern;
-    state.selection = [];
-    state.anchor = undefined;
-    render();
-    status(`${patternName(pattern)} — 16 tracks. Operations now move tracks, not patterns.`);
+    if (pattern !== undefined) openTracks(pattern);
   });
 
   $("back").addEventListener("click", () => {
@@ -505,6 +519,9 @@ async function load(file: File): Promise<void> {
   $("device").textContent = device.name;
   $("projname").textContent = device.projectName(loaded.image);
   $<HTMLButtonElement>("export").disabled = false;
+  // The dropzone is the empty state and gets hidden for good once a project is open, so
+  // without this there is no way to open a second one short of reloading the page.
+  $("reopen").hidden = false;
 
   render();
 
@@ -536,13 +553,46 @@ async function exportProject(): Promise<void> {
 
 // --- wiring -------------------------------------------------------------------------------
 
-$<HTMLInputElement>("file").addEventListener("change", (event) => {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  load(file).catch((error: unknown) =>
-    status(error instanceof Error ? error.message : String(error), "error"),
-  );
-});
+/**
+ * Wire a file input to `load`.
+ *
+ * Two inputs reach it: the dropzone's, which is the empty state, and the top bar's, which
+ * replaces an open project. Replacing one throws away its undo history — the session lives in
+ * memory and nothing has been written — so that route asks first. The empty-state one has
+ * nothing to lose and does not.
+ */
+function wireFileInput(id: string, guard: boolean): void {
+  $<HTMLInputElement>(id).addEventListener("change", (event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (guard && state.session?.canUndo) {
+      const ok = confirm(
+        `Opening ${file.name} discards the edits made to this project and its undo history.\n\n` +
+          `Nothing has been written to disk yet — export first if you want to keep them.\n\n` +
+          `Open anyway?`,
+      );
+      if (!ok) {
+        // Clear it, or picking the same file again fires no change event and looks broken.
+        input.value = "";
+        status("Cancelled — the open project is untouched.");
+        return;
+      }
+    }
+
+    load(file)
+      .catch((error: unknown) =>
+        status(error instanceof Error ? error.message : String(error), "error"),
+      )
+      .finally(() => {
+        input.value = "";
+      });
+  });
+}
+
+wireFileInput("file", false);
+wireFileInput("file2", true);
 
 document.addEventListener("keydown", (event) => {
   if (!(event.ctrlKey || event.metaKey)) return;
