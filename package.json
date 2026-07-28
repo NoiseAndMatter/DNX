@@ -13,6 +13,7 @@
     "copy": "tsx src/cli/copy.ts",
     "rearrange": "tsx src/cli/rearrange.ts",
     "track": "tsx src/cli/track.ts",
+    "rename": "tsx src/cli/rename.ts",
     "extract-blank": "tsx src/cli/extractblank.ts",
     "hwtest": "tsx src/cli/hardwaretest.ts",
     "trackhwtest": "tsx src/cli/trackhwtest.ts",

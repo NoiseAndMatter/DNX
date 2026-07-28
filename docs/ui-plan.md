@@ -59,6 +59,27 @@ Applies to both grids, and to the trig grid when that exists. The refusal cases 
 the browser's own "no" cursor and should keep doing so: a fourth state meaning "you cannot"
 would compete with the three that mean something.
 
+## Batch rename — TO DO
+
+**Requested by the user 2026-07-28, alongside the single rename that is now built.** Rename many
+patterns at once from a rule rather than one name at a time. The schemes named so far:
+
+- **by position** — the slot decides, so `A1 A2 A3` become `PART 1`, `PART 2`, `PART 3`
+- **by selection order** — the order they were clicked decides, which is not the same thing and
+  is the one a person reaches for after arranging something by hand
+- **from a base name** plus a counter, and other algorithms as they come up
+
+None of this reaches the writer. `planRename` and `applyRename` already take a `slot -> name`
+map, so a scheme is a naming function producing one of those and **nothing else** — every rule
+lands downstream of a writer that has already been verified and hardware-checked. The work is
+choosing the schemes and the UI for picking one, not renaming.
+
+Two things to settle when it is built. **Which order is "selection order"** must be visible
+before the rename runs, or the user is guessing which of two plausible orders they got — the
+preview should number the selection. And **duplicates**: the single rename warns and proceeds,
+which is right for one deliberate name, but a scheme that silently produces sixteen identical
+names is a different problem and should probably refuse.
+
 ## The paradigm: one project open, explorers as sources
 
 **One project is open and being edited at a time.** Within it: move patterns around, replace kits,
