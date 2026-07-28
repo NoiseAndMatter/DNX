@@ -95,13 +95,18 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <select id="input"></select>
   <button class="btn" id="rescan">Rescan</button>
   <button class="btn primary" id="probe" disabled>Probe</button>
+  <button class="btn" id="listen" disabled>Listen</button>
+  <button class="btn" id="save" disabled>Save capture</button>
 </header>
 
 <main>
   <div class="note">
     <p>
-      Read-only. This asks the device what it is, what firmware it runs, which messages it
-      supports, and what is on its +Drive. It writes nothing and changes nothing.
+      Read-only. <strong>Probe</strong> asks the device what it is, what firmware it runs, which
+      messages it supports, and what is on its +Drive. <strong>Listen</strong> sends nothing at
+      all &mdash; it captures whatever the device chooses to send, so you can trigger a dump from
+      the front panel (<span class="mono">SETTINGS &gt; SYSEX DUMP &gt; SYSEX SEND</span>) and
+      save the result as a <span class="mono">.syx</span>. Neither writes anything to the device.
       Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
       SysEx permission, which is the whole point: without it every request is silently dropped
       and the device looks like it is not answering.
