@@ -417,8 +417,8 @@ export function stepPatterns(steps: readonly TrackTestStep[]): number[] {
  * mechanism the sheet is read by rather than afterthoughts, so they are not repeated here.
  */
 export const QUIET_FAILURES: readonly string[] = [
-  "WHAT THE LOCKS DO, not just how many. The table counts them; only you can tell whether the lock that moved CUTOFF still moves CUTOFF. This is the regression the session is for — check it on at least one moved track and one cleared one.",
-  "TRIG CONDITIONS, microtiming and retrigs, which live in the trig record beside the note and would travel or not travel with it silently.",
+  "WHAT THE LOCKS DO, not just how many — the regression this session is for. The count is p-locks ONLY: a trig also shows its note and LEN highlighted, and those live in the trig record rather than the lock table, so the device will look like it has more locks than the sheet claims. Name the parameters and the page you see; a coherent set on one page is the pass, scattered ids are the bug.",
+  "TRIG CONDITIONS and microtiming, which live in the trig record beside the note and would travel or not travel with it silently. Retrigs are NOT decoded by this build, so nothing here can predict them — report what you see rather than checking it against a claim.",
   "PER-TRACK LENGTH, if the source pattern uses it. A track in the wrong length still plays, just gradually out of phase with the rest.",
   "THE ARPEGGIATOR and PRESET SETUP menus, which the manual puts inside the preset — so a preset move should carry them and a sequence move should not.",
   "TRACK LEVEL on the MIX page. Only `both` carries it; `sequence` and `preset` must leave it where it was, because LEVEL is in the kit and not in the preset.",
