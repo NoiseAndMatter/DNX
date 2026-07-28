@@ -40,7 +40,7 @@ speculative or unknown.
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI | first version — load, plan, export, all in the browser |
 | Session model with undo/redo | done |
-| Track move/copy/swap/clear inside a pattern | done, DN2 only — **hardware test built, not yet run** |
+| Track move/copy/swap/clear inside a pattern | done, DN2 only, **hardware-validated** |
 | Pattern rename | done, both devices — batch schemes to come |
 | WebMIDI — SysEx API, +Drive read, device probe | protocol layer done, **never met a device** |
 | WebMIDI — transfer, writing to a device | not started |
