@@ -95,6 +95,13 @@ export interface Device {
   patternVersion: number;
   /** Offset of the slot-index field, relative to the start of a pattern record. */
   slotIndexOffset: number;
+  /**
+   * Offset of the pattern's name field, relative to the start of a pattern record.
+   *
+   * Both families keep a 16-byte name there, at different offsets. Exposed because the rename
+   * librarian writes it and had no business knowing which family's constants to reach for.
+   */
+  patternNameOffset: number;
   patternCount: number;
   synthTrackCount: number;
   stepCount: number;
@@ -137,6 +144,7 @@ const DN1: Device = {
   layout: DN1_LAYOUT,
   patternVersion: DN1_PATTERN_VERSION,
   slotIndexOffset: DN1_PATTERN.slotIndexOffset,
+  patternNameOffset: DN1_PATTERN.nameOffset,
   patternCount: DN1_LAYOUT.patternCount,
   synthTrackCount: 4,
   stepCount: 64,
@@ -172,6 +180,7 @@ const DN2: Device = {
   layout: DN2_LAYOUT,
   patternVersion: DN2_PATTERN_VERSION,
   slotIndexOffset: DN2_PATTERN.slotIndexOffset,
+  patternNameOffset: DN2_PATTERN.nameOffset,
   patternCount: DN2_LAYOUT.patternCount,
   synthTrackCount: 16,
   stepCount: 128,
