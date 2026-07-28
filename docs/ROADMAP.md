@@ -842,11 +842,40 @@ The first probe of a real Digitone II, firmware 1.10E, build 0050:
 | Advertised messages | `0x01 0x02 0x03 0x04 0x06 0x07 0x09` and `0x50`–`0x5e` |
 
 **None of the nine file-API codes are present**, and `DirList` timed out — two independent
-signals agreeing. elk-herd gates the same way: its `hasDriveSamples` requires `0x10`, `0x11`,
-`0x12`, `0x20` and `0x21`, and a Digitone II would return false.
+signals agreeing.
 
-So: **the Digitone II has no +Drive file API.** Data moves by **dumps**, the `0x50`–`0x5e` band,
-of which we already parse `0x50` PATTERN_KIT byte-exactly and hold native captures.
+#### And then the Digitone 1, probed alongside it
+
+The user had both machines to hand, which turned a one-device observation into a family one.
+A Digitone 1 on 1.42A, build 0097:
+
+| | Digitone 1 | Digitone II |
+|---|---|---|
+| Product id (API space) | **20** | **43** |
+| Firmware / build | 1.42A / 0097 | 1.10E / 0050 |
+| API messages | `0x01 0x02 0x03 0x04` | `0x01 0x02 0x03 0x04 0x06 0x07 0x09` |
+| Dump band | `0x50`–`0x5d` | `0x50`–`0x5e` |
+| +Drive file API | **none** | **none** |
+
+Product id **20** confirms what `src/sysex/devices.ts` had only inferred, so both halves of that
+table are now hardware-checked.
+
+Four things follow:
+
+- **The file API is a Digitakt thing.** Two Digitones, two firmware generations, neither has it.
+  elk-herd having it says nothing about this family — which is exactly the inference that went
+  wrong above, now closed off properly rather than by one counterexample.
+- **`0x03` and `0x04` are family-wide and old**, present since the first Digitone and named by
+  no source we hold. That makes them the standing lead.
+- **`0x06`, `0x07` and `0x09` are Digitone II only.** `0x09` is `Query`, so the obvious way to
+  ask a device what `0x03` and `0x04` do is unavailable on exactly half the hardware.
+- **Build numbers are per product line.** The older machine reports the higher number — DN1
+  0097 against DN2 0050. elk-herd calls build "an increasing number", which is true within a
+  line and misleading across two.
+
+So: **the Digitone family has no +Drive file API.** Data moves by **dumps**, the `0x50` band, of
+which we already parse `0x50` PATTERN_KIT byte-exactly and hold native captures.
+
 
 #### Why this is the probe working, not the probe failing
 
@@ -967,9 +996,9 @@ librarian already uses; the collisions here are destination slots on the DN2's +
    the right order.
 
 **Answered 2026-07-28, and the answer is no — for this device.** The +Drive file API exists, but
-a **Digitone II does not implement it**: it advertises none of the nine file-API codes and
-`DirList` times out. elk-herd models the drive because it supports the **Digitakt II**, which
-does. See §3c-iv.
+**no Digitone implements it**: neither a Digitone II nor a Digitone 1 advertises any of the
+nine file-API codes, and `DirList` times out on both. elk-herd models the drive because it
+supports the **Digitakt II**. See §3c-iv.
 
 So transfer mode cannot be built on whole-project file reads. It has to move **dumps** — the
 `0x50`-`0x5e` band the device does advertise, of which `0x50` PATTERN_KIT is one we already
