@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   DRIVE_FILE_MESSAGES,
   DRIVE_MANAGE_MESSAGES,
+  OBSERVED_DIGITONE_1,
   OBSERVED_DIGITONE_II,
   capabilitiesOf,
   describeMessages,
@@ -69,6 +70,49 @@ test("the device's own ordering is preserved", () => {
   // and re-sorting it would throw away the only hint about how it groups them internally.
   const codes = describeMessages(OBSERVED_DIGITONE_II).map((m) => m.code);
   assert.deepEqual(codes, [...OBSERVED_DIGITONE_II]);
+});
+
+// --- what the two Digitones have in common ----------------------------------------------------
+
+test("neither Digitone has the +Drive file API, so it is a family fact", () => {
+  // The single most useful thing the side-by-side probe bought. One device without the API is a
+  // quirk; two, across two firmware generations, means the file API belongs to the Digitakt line
+  // and elk-herd having it says nothing about this family.
+  for (const [name, codes] of [
+    ["Digitone II", OBSERVED_DIGITONE_II],
+    ["Digitone 1", OBSERVED_DIGITONE_1],
+  ] as const) {
+    const caps = capabilitiesOf(codes);
+    assert.equal(caps.driveFiles, false, `${name} should not advertise the file API`);
+    assert.equal(caps.driveManagement, false, `${name} should not advertise drive management`);
+  }
+});
+
+test("0x03 and 0x04 are on both machines, and named by nobody", () => {
+  // The standing lead. Family-wide and old, which makes them more interesting than the DN2-only
+  // codes: whatever they are, they have been there since the first Digitone.
+  const shared = capabilitiesOf(OBSERVED_DIGITONE_II).unknownApi.filter((c) =>
+    capabilitiesOf(OBSERVED_DIGITONE_1).unknownApi.includes(c),
+  );
+  assert.deepEqual(shared, [0x03, 0x04]);
+});
+
+test("Query is Digitone II only, so the DN1 cannot be asked about itself", () => {
+  // Matters for anything two-device: the obvious way to learn what 0x03 and 0x04 do is to ask
+  // the device by key, and exactly half the hardware cannot answer.
+  assert.ok(OBSERVED_DIGITONE_II.includes(0x09), "the DN2 has Query");
+  assert.ok(!OBSERVED_DIGITONE_1.includes(0x09), "the DN1 does not");
+});
+
+test("both machines list the dump band in the same unsorted order", () => {
+  // 0x50, 0x52, 0x51 on both. Two devices agreeing on an ordering that is not numeric makes it a
+  // family trait worth preserving rather than noise worth sorting away.
+  const band = (codes: readonly number[]): number[] => codes.filter((c) => c >= 0x50);
+  const dn2 = band(OBSERVED_DIGITONE_II);
+  const dn1 = band(OBSERVED_DIGITONE_1);
+  assert.deepEqual(dn2.slice(0, 3), [0x50, 0x52, 0x51]);
+  assert.deepEqual(dn1, dn2.slice(0, dn1.length), "the DN1 band is a prefix of the DN2's");
+  assert.equal(dn2.length, dn1.length + 1, "the DN2 adds exactly one dump type, 0x5e");
 });
 
 // --- a device that does have the drive API ----------------------------------------------------
