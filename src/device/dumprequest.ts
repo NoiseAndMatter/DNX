@@ -48,6 +48,27 @@
 import { buildMessage } from "../sysex/container.js";
 import { ProductId } from "../sysex/devices.js";
 
+/**
+ * The dump protocol's product id for a device that identified itself over the **API**.
+ *
+ * These are two different numbering spaces for two different protocols, and conflating them is
+ * the mistake this function exists to make impossible. The `Device` response reports **20** for a
+ * Digitone and **43** for a Digitone II; the dump framing wants **0x0D** and **0x15**.
+ *
+ * Written after doing exactly that: the first dump request went out addressed to product 43,
+ * which is not a product in the dump space, and the device correctly ignored it. The module note
+ * warning about the two spaces was already in this file at the time — knowing the trap is not the
+ * same as not walking into it, which is why the conversion is a function rather than a caution.
+ */
+export function dumpProductFor(apiProductId: number): number | undefined {
+  return API_TO_DUMP_PRODUCT[apiProductId];
+}
+
+const API_TO_DUMP_PRODUCT: Readonly<Record<number, number>> = {
+  20: ProductId.DN1,
+  43: ProductId.DN2,
+};
+
 /** Request codes, each the matching response code plus `0x10`. */
 export const RequestCode = {
   PatternKit: 0x60,

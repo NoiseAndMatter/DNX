@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
-import { REQUEST_OPTIONS, RequestCode, dumpRequest, responseFor } from "../src/device/dumprequest.js";
+import {
+  REQUEST_OPTIONS,
+  RequestCode,
+  dumpProductFor,
+  dumpRequest,
+  responseFor,
+} from "../src/device/dumprequest.js";
 import { describeMessages, safeToSend } from "../src/device/capabilities.js";
 
 test("a request carries no payload, which is why it cannot write", () => {
@@ -72,4 +78,28 @@ test("every offered request is one we can build", () => {
     assert.ok(option.approximateBytes(ProductId.DN2) > 0, `${option.label} needs a size estimate`);
     assert.ok(option.approximateBytes(ProductId.DN1) > 0, `${option.label} needs a DN1 estimate`);
   }
+});
+
+test("the API product id is converted, never copied", () => {
+  // The two protocols number products differently: the Device response says 20 and 43, the dump
+  // framing wants 0x0D and 0x15. The first request built went out addressed to 43 — a product
+  // that does not exist in the dump space — and the device rightly ignored it.
+  assert.equal(dumpProductFor(20), ProductId.DN1);
+  assert.equal(dumpProductFor(43), ProductId.DN2);
+});
+
+test("an unknown product yields no id rather than a plausible one", () => {
+  // Better to refuse than to address a message to a guess. A Digitakt on the same port would
+  // report an API id we have no dump-space mapping for.
+  assert.equal(dumpProductFor(12), undefined);
+  assert.equal(dumpProductFor(42), undefined);
+  assert.equal(dumpProductFor(0), undefined);
+});
+
+test("a request is addressed with the dump-space id, and it is on the wire", () => {
+  // Byte 4 is the product. Checked as a byte rather than through our own parser, because the
+  // failure being guarded is precisely a well-formed message with the wrong number in it.
+  const bytes = dumpRequest(dumpProductFor(43)!, { code: RequestCode.ProjectSettings });
+  assert.equal(bytes[4], 0x15, `byte 4 should be 0x15, got 0x${bytes[4]!.toString(16)}`);
+  assert.notEqual(bytes[4], 43, "the API id must never reach the wire");
 });

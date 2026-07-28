@@ -44,7 +44,7 @@ import {
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
-import { REQUEST_OPTIONS, dumpRequest } from "../../../src/device/dumprequest.js";
+import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -73,11 +73,11 @@ function escapeHtml(text: string): string {
 let access: MIDIAccess | undefined;
 
 /**
- * The product id from the last successful probe.
+ * The **dump-protocol** product id for the device last probed.
  *
- * A dump request has to be addressed to a product — 13 for a Digitone, 21 for a Digitone II — and
- * guessing it would send a well-formed message to the wrong machine. So Request stays unavailable
- * until Probe has established what is actually on the other end.
+ * Converted from the API id the `Device` response gives, because they are different numbering
+ * spaces: the API says 20 and 43, the dump framing wants 0x0D and 0x15. The first request went
+ * out addressed to 43 and was rightly ignored.
  */
 let lastProductId: number | undefined;
 
@@ -240,7 +240,10 @@ async function probe(): Promise<void> {
     status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
 
-    lastProductId = device.productId;
+    // Converted, not copied: the Device response is in the API's product space and a dump request
+    // needs the dump protocol's. Sending the API id produces a well-formed message addressed to a
+    // product that does not exist there, which a device answers by ignoring it.
+    lastProductId = dumpProductFor(device.productId);
     $<HTMLSelectElement>("reqWhat").disabled = false;
     $<HTMLInputElement>("reqObj").disabled = false;
     $<HTMLButtonElement>("request").disabled = false;
@@ -694,7 +697,11 @@ $("request").addEventListener("click", () => {
   const objNr = option.indexed ? Number($<HTMLInputElement>("reqObj").value) : 0;
   const product = lastProductId;
   if (product === undefined) {
-    status("Press Probe first, so the device's product id is known.", "warn");
+    status(
+      `No dump-protocol product id for this device — probe it first, and if it has been probed, ` +
+        `it is a product this build does not know how to address.`,
+      "warn",
+    );
     return;
   }
 
