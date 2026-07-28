@@ -213,6 +213,15 @@ export function captureFileName(summary: CaptureSummary, when = new Date()): str
   if (!biggest) return `CAPTURE_${stamp}.syx`;
 
   const product = biggest.product.replace(/[^A-Za-z0-9]+/g, "");
+
+  // Named for the **whole** capture, not its largest group. A project dump is 128 PatternKit,
+  // 119 Sound and one ProjectSettings, and calling that file `PatternKit_128x` made the user
+  // reasonably think the other 120 messages had been lost. They were in the file all along; only
+  // the name lied.
+  if (summary.groups.length > 1) {
+    return `${product}_Project_${summary.messages}msg_${stamp}.syx`;
+  }
+
   const kind = biggest.name.replace(/\s*dump\s*/i, "").replace(/[^A-Za-z0-9]+/g, "") || `type${biggest.dumpType.toString(16)}`;
   return `${product}_${kind}_${biggest.count}x_${stamp}.syx`;
 }
