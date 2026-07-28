@@ -150,7 +150,8 @@ ranking and allocation.
 - **`/probe`** — the **device probe**. Read-only: asks a connected Elektron what it is, what
   firmware it runs, which messages it supports, and what is on its +Drive. Chrome or Edge only,
   and it asks for SysEx permission. It reads the device's capability list before sending
-  anything, so a message the device does not implement is refused rather than timed out.
+  anything, and **only ever sends messages classified read** — see `docs/device-probing.md` for
+  why that matters, and what a stray dump would do to your instrument.
 - **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
   clear patterns across its banks with undo, and export once. **Open another…** in the top bar
   swaps projects without reloading, asking first if there are unsaved edits. Double-click a

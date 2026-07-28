@@ -5,9 +5,11 @@ import {
   DRIVE_MANAGE_MESSAGES,
   OBSERVED_DIGITONE_1,
   OBSERVED_DIGITONE_II,
+  QUERY_KEYS,
   capabilitiesOf,
   describeMessages,
   hex,
+  safeToSend,
 } from "../src/device/capabilities.js";
 
 // --- the Digitone II, as it actually answered ---------------------------------------------
@@ -51,8 +53,9 @@ test("the two numbering spaces are told apart", () => {
   // One list carries both: 0x01..0x4f are API messages, 0x50..0x5e are dump types. Reading a
   // dump type as an API code, or the reverse, is how an afternoon disappears.
   const [device, kit] = describeMessages([0x01, 0x52]);
-  assert.deepEqual(device, { code: 0x01, name: "Device", known: true, kind: "api" });
+  assert.deepEqual(device, { code: 0x01, name: "Device", known: true, kind: "api", safety: "read" });
   assert.equal(kit!.kind, "dump");
+  assert.equal(kit!.safety, "write", "a kit dump sent to a device replaces its kit");
   assert.match(kit!.name, /Kit/);
 });
 
@@ -138,4 +141,51 @@ test("one missing code is enough to withhold the capability", () => {
 test("hex is padded, because 0x3 and 0x30 are different messages", () => {
   assert.equal(hex(0x03), "0x03");
   assert.equal(hex(0x30), "0x30");
+});
+
+// --- safety ------------------------------------------------------------------------------------
+
+test("the probe will never send a dump, named or not", () => {
+  // The hazard people miss: in this family a dump *is* the data, so an advertised dump code is
+  // not a question you can ask, it is "here, store this". Most of what a Digitone advertises is
+  // in that band, which makes this the single most important thing the gate refuses.
+  for (const code of capabilitiesOf(OBSERVED_DIGITONE_II).dumps) {
+    assert.equal(safeToSend(code), false, `${hex(code)} is a dump and must never be sent`);
+  }
+  assert.equal(describeMessages([0x5b])[0]!.safety, "write", "an unnamed dump is not a safer one");
+});
+
+test("an unclassified code is refused, not assumed harmless", () => {
+  // An allowlist fails safe; a blocklist fails dangerous. 0x03 and 0x04 could be reads, or could
+  // be a factory reset — there is no way to find out by sending them that is also safe.
+  for (const code of [0x03, 0x04, 0x06, 0x07, 0x7f]) {
+    assert.equal(safeToSend(code), false, `${hex(code)} has never been classified`);
+  }
+});
+
+test("write and unknown are kept apart", () => {
+  // Collapsing them would lose the fact that the unknowns are the interesting ones. "This is
+  // dangerous" and "we have no idea" are different states and only one is worth research.
+  assert.equal(describeMessages([0x20])[0]!.safety, "write", "FileDelete is known to destroy");
+  assert.equal(describeMessages([0x03])[0]!.safety, "unknown", "0x03 is merely unclassified");
+});
+
+test("the messages the probe does send are all reads", () => {
+  // Everything the page sends unprompted, checked against the same gate the page uses — so the
+  // claim "the probe only reads" is enforced rather than remembered.
+  for (const code of [0x01, 0x02, 0x09, 0x10, 0x30, 0x31, 0x32]) {
+    assert.equal(safeToSend(code), true, `${hex(code)} should be sendable`);
+  }
+});
+
+test("every query key looks like a key, not a command", () => {
+  // Keys are data going into a read, so they cannot do harm — but a list full of typos wastes a
+  // round trip each and makes a real answer harder to spot among the empties.
+  for (const key of QUERY_KEYS) {
+    assert.match(key, /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, `"${key}" is not noun.property shaped`);
+  }
+  assert.ok(
+    QUERY_KEYS.includes("sample_file.interleaved_stereo_support"),
+    "the one attested key should stay in the list as the shape the guesses are modelled on",
+  );
 });
