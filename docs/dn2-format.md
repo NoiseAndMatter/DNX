@@ -588,6 +588,20 @@ This is the piece the device story was waiting on. With the +Drive file API abse
 of the ROADMAP), asking for objects one at a time is the *only* way to read a device — and it
 works, at any granularity, without the 14.6 MB cost of a whole-project dump.
 
+**The Digitone 1 answers identically.** Same four requests, same matching responses, each payload
+exactly its own record:
+
+| Asked | Answered | DN1 payload | DN2 payload |
+|---|---|---|---|
+| `0x64` ProjectSettings | `0x54` | **11,776** | 512 |
+| `0x63` Sound | `0x53` | **302** | 359 |
+| `0x62` Kit | `0x52` | **2,560** | 10,752 |
+| `0x61` Pattern | `0x51` | **18,432** | 89,088 |
+
+Eight requests across two machines and two firmware generations, every one exact, every checksum
+good. So the convention is a **family** property rather than one device's — and a Digitone of
+either generation can be read on demand.
+
 > [!important] `supportedMessages` enumerates responses, not requests
 > Neither Digitone advertises `0x60`–`0x6f`, and both honour them. So **absence from that list is
 > not a refusal** — a lesson worth carrying to any other code that seems to be missing.
