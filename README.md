@@ -40,7 +40,7 @@ speculative or unknown.
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI | first version — load, plan, export, all in the browser |
 | Session model with undo/redo | done |
-| Track move/copy/swap/clear inside a pattern | done, DN2 only |
+| Track move/copy/swap/clear inside a pattern | done, DN2 only — **hardware test built, not yet run** |
 | WebMIDI | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
@@ -98,6 +98,11 @@ npm run track -- --project a.dn2prj --pattern A1 --clear T4 --apply --confirm --
 
 # Build the pattern-rearrangement hardware test: two projects and an interactive check sheet
 npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareTest
+
+# Build the track-operation hardware test: one project, A1 the reference, A2 upward one op each
+npm run trackhwtest -- --project a.dn2prj                          # which patterns can seed it
+npm run trackhwtest -- --project a.dn2prj --pattern G2 --out ../dn_sysex/99_HardwareTest
+npm run trackhwtest -- --project a.dn2prj --pattern G2 --only 4 --out ...   # one step at a time
 
 # What changed between two captures?
 npm run diff -- --chain --stride captures/

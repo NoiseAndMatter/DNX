@@ -589,6 +589,76 @@ pool. They turn out to be safe for track operations, because the pool is per **p
 track move stays inside one pattern — the indices remain valid. They would matter for a move
 *between* projects, which is the transfer mode in §3d.
 
+### 3c-ii. Taking track operations to the device — BUILT 2026-07-28, not yet run
+
+`npm run trackhwtest` builds the artefacts. Nothing at track level has been near a device, and
+two of the bugs PR #33 fixed are ones only a device can settle: the lock table's **parameter
+ids** (a lock on CUTOFF became a lock on parameter 3) and the **MIDI mask** (a moved MIDI track
+arrived as a synth track). Our reader agreeing with our writer is all the evidence there is.
+
+#### One pattern per operation, and the reference stays in the file
+
+Sixteen tracks is not enough room to keep thirteen operations from stepping on each other, so
+the region an operation gets is a whole **pattern**: each step works on its own copy of the same
+reference, and the reference itself sits untouched in `A1`. That is the pattern test's layout
+moved up a level, and it buys something that test did not have — the tester flips back to `A1`
+and reads the *before* off the device rather than off the sheet.
+
+For the same reason there is **one file, not two**. The pattern test kept a separate baseline
+because everything downstream depended on whether our captured blanks load at all, and that
+session answered it. Here the reference has to be in the same project, or the tester is
+switching projects to compare a preset name.
+
+#### The scope split is what makes it falsifiable
+
+A track has no name of its own, so identity is read from four things the device shows directly:
+the **preset name**, the **trig count**, the **lock count**, and whether the track is **MIDI**.
+The three scopes of the same move come first on the sheet because each isolates one half:
+
+| Scope | The destination gets | The destination keeps |
+|---|---|---|
+| `sequence` | trigs, locks | its own preset name |
+| `preset` | preset name, machine, MIDI bit | its own trigs |
+| `both` | both, and the track LEVEL | nothing |
+
+A bug that moves too much or too little shows up in one of those three rows. A test that only
+ran `both` could not tell a working split from a composite pretending to be one. The `preset`
+scope in particular has no precedent in anything tested so far.
+
+#### Seeds are chosen from real content, and refused when they would not bite
+
+A test aimed at empty tracks passes on a mover that does nothing. `chooseSeeds` requires two
+differently named synth tracks with trigs, parameter locks on one of them, and two **adjacent**
+empty synth tracks to land on — adjacent because a batch puts its second source at `to + 1`, and
+spares picked independently would have the sheet claim an arrival on a track the batch never
+writes. Running without `--pattern` surveys the project and ranks the candidates, since the
+requirements are specific enough that guessing a slot is a bad way to discover them.
+
+A missing MIDI track is **not** a refusal — they are rare in a sketch and eleven of thirteen
+rows still earn a session — but the two mask rows are dropped and the sheet says so on its face
+rather than quietly shipping eleven rows where thirteen were expected. Same for a pattern whose
+tracks all share a LEVEL: that column then proves nothing, and the sheet admits it.
+
+#### The expectations are a second statement of the rule, deliberately
+
+`expectedAfter` restates the scope rule from scratch instead of sharing the CLI's preview or
+calling the mover. An expectation derived from `applyTrackMove` would agree with
+`applyTrackMove` whatever either did, and the generator's guard — *does the built file actually
+show what the sheet is about to claim?* — would check nothing. It is the `fixtures-must-not-
+come-from-the-code-under-test` lesson applied to a whole artefact rather than to one test.
+
+It paid immediately. The guard refused the first build over seven rows, and the reason was a
+format fact nobody had written down: **an emptied track is named, not nameless.** The captured
+blank calls each track's preset `PRESET 1` … `PRESET 16`, by track number, so a cleared `T2`
+comes back as `PRESET 2`. Recorded in `docs/dn2-format.md` §5. The sheet is better for it — the
+tester now reads a concrete name off the screen instead of judging what counts as blank.
+
+#### What elk-herd could not help with, for once
+
+First time. It has no pattern editor at all, so there is nothing at track level to check against:
+`Related.elm` is project-level cross-referencing between patterns, samples and sounds. The
+manual remains the reference here.
+
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 
 **Recorded 2026-07-27 by the user, to be built when the project is more mature.** Not a
