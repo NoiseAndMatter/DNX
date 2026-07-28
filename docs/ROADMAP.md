@@ -611,12 +611,98 @@ receiving drag events at all.
 `.slot.target.<action>` rule. A fourth action would typecheck, name itself correctly, draw its
 label — and be styled like nothing at all, because a missing CSS rule is not an error.
 
-### 3c-ii. Taking track operations to the device — BUILT 2026-07-28, not yet run
+### 3c-ii. Track operations on the device — PASSED 2026-07-28, Digitone II firmware 1.10E
 
-`npm run trackhwtest` builds the artefacts. Nothing at track level has been near a device, and
-two of the bugs PR #33 fixed are ones only a device can settle: the lock table's **parameter
-ids** (a lock on CUTOFF became a lock on parameter 3) and the **MIDI mask** (a moved MIDI track
-arrived as a synth track). Our reader agreeing with our writer is all the evidence there is.
+**24 of 25 rows answered, 0 failing.** All thirteen operations across all three scopes behaved as
+the sheet claimed. Track operations are hardware-validated.
+
+Both regressions PR #33 fixed are confirmed gone:
+
+- **The MIDI mask.** Moving a MIDI track onto a synth track made the destination MIDI and left the
+  source an initialised synth track; swapping a MIDI and a synth track crossed the bit both ways
+  at once. Rows 4 and 5.
+- **The lock table.** See below — the one row left blank turns out to be the strongest evidence on
+  the sheet.
+
+#### The blank row was a pass, and the tester's note is what proves it
+
+Row 1 (`A2`, move `T2` onto `T1`, scope `both`) went unanswered: *"don't understand what the 4
+locks should be. The first step is holding the track sound and has locked note, LEN, and 4 params
+in MOD2: speed, MUL, DEST and DEP."*
+
+Read against the file, that observation **is** the check:
+
+| id | parameter |
+|---|---|
+| 2 | MOD 2 (LFO 2) **SPD** |
+| 6 | MOD 2 (LFO 2) **MULT** |
+| 14 | MOD 2 (LFO 2) **DEST** |
+| 30 | MOD 2 (LFO 2) **DEP** |
+
+Four locks, all on step 1, and the device showed exactly those four parameters on exactly that
+page. Had the lock bug survived, byte 0 of each record — the parameter id — would have been
+overwritten with the track number, collapsing all four onto id 0, and a vacated track would have
+shown a phantom lock on parameter 255. Neither happened, and **no plausible wrong answer looks
+like a coherent set of four MOD 2 parameters.**
+
+**Why the count disagreed with the screen:** `note` and `LEN` are **trig-record** fields —
+`track | step | note | velocity | noteLength | microTiming` — not parameter locks. Six things
+looked locked and exactly four of them are p-locks. The next sheet should say so, because it
+claims "4 locks" while the device highlights six knobs.
+
+#### What the bytes settle without a tester
+
+Diffing the reference kit against the moved one, the **only** kit bytes a `scope: both` move
+changed were inside the two sound slots (`+68…+767`, within `+60 + t·359`) and six bytes of one
+MIDI record. That answers three of the sheet's own quiet-failure items outright:
+
+- **Send FX and track LAYERING did not move.** They live in the kit outside the preset, and no
+  byte outside the sound slots changed. No tester check needed.
+- **The unknown array at `kit +10,264` did not move** — disclosed rather than moved, as designed.
+- **The MIDI mask at `+10,260` did not change** for a synth-to-synth move, which is correct.
+
+Trig by trig, the moved track carried **everything**: sound locks 43, 26 and 17, probabilities 50%
+and 75%, notes 59/65/62, note length 110, and the four p-locks — byte-identical to the source,
+with the destination left completely empty.
+
+#### The sheet asked for things without saying where they were
+
+The tester's other note was *"give me a few key steps and params to check"* for microtiming,
+trig conditions, send FX and layering. Fair, and my first reading of it was wrong: I assumed the
+seed had no microtiming to check. It has — `T1` steps 44 and 60 at +23, and the MIDI track's
+step 33 at +4. **Three of `T1`'s 36 steps, unmarked on a sheet that asked the tester to find
+them by ear.** That is a search, not a check.
+
+So the sheet now carries a **Where to look** table: every trig on the moved tracks that holds
+anything beyond a plain note, **rarest first** — microtiming, then p-locks, then trig
+conditions, with the repetitive sound-lock trigs summarised rather than listed. Attention is
+the scarce resource in a hardware session, and listing forty sound locks in step order buries
+the two microtimed trigs that were the point.
+
+Two more wordings changed for the same reason:
+
+- The lock item now says the count is **p-locks only**, and that `note` and `LEN` will also
+  look locked on the device because they live in the trig record. That mismatch is precisely
+  what stopped row 1 being answered.
+- The retrig item now says retrigs are **not decoded by this build**, so the sheet cannot
+  predict them and the tester should report rather than verify.
+
+#### One observation still open
+
+The project opened on **G2**, the pattern the test was seeded *from*, though the built file puts
+its reference at `A1`. The tail is inherited from the source project **verbatim** — 0 differing
+bytes of 109,572 — so a stored current-pattern would have come from `008 JAM.dn2prj`; but 97
+appears at no stable tail offset across the corpus, and the header differs from the source only in
+the project name. Unresolved, and settled by one behavioural test rather than more searching: load
+another project, move to a different pattern, reload this one. Returning to G2 means the file
+carries it; otherwise it is device state, which is what we already believed.
+
+### 3c-ii-a. How the test was built — BUILT 2026-07-28
+
+`npm run trackhwtest` builds the artefacts that produced the pass above. It was written when
+nothing at track level had been near a device, and two of the bugs PR #33 fixed were ones only
+a device could settle. The design notes below are kept because the next sheet — trigs, then
+kits — should be built the same way.
 
 #### One pattern per operation, and the reference stays in the file
 
