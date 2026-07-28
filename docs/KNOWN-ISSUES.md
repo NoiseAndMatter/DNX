@@ -121,6 +121,23 @@ slips are known. One short re-sweep of `DEP` around `±1.00` settles it.
 Measured as bytes per project differing from Elektron's conversion, with `EMPTY` as
 template. All are bounded by the budget test.
 
+### Rearranging patterns leaves the saved position stale — OPEN, found 2026-07-28
+
+A project stores the pattern and track the device was on when it was saved (`dn2-format.md` §5b,
+verified on hardware). **Nothing updates it**, so after any operation that moves patterns around,
+the project reopens on whatever now occupies the old slot.
+
+Harmless in that no music is lost, and visible immediately — the user found it by noticing a
+generated test project opening on `G2`, the pattern it had been seeded *from*.
+
+Not fixed alongside the discovery, deliberately, because the fix needs a decision that is not
+ours: **does the cursor follow the pattern it was on, or stay on the slot?** Both are defensible.
+Following the pattern matches *"I was working on this idea"*; staying put matches *"I was working
+on this position in the set"*. A `Shuffle` can answer either — `rereference` gives the new home
+of a moved slot — so it is a line of code once the question is settled.
+
+The same question applies to the track byte when a track operation runs inside the open pattern.
+
 ### ~~Every project we write inherits the template's identity token~~ — FIXED 2026-07-27
 
 **Found** by round-tripping a generated project through the device. Image header `0x18`–`0x1b`
