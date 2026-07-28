@@ -126,6 +126,31 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
 .slot .mc { font-size: .62rem; color: var(--dim); letter-spacing: .04em; }
 .slot.midi { border-color: var(--amber); }
 .slot.midi .id, .slot.midi .mc { color: var(--amber); }
+/* The pattern whose tracks are shown below, so the two sections are visibly connected. */
+.slot.opened { box-shadow: inset 0 -3px 0 var(--teal); }
+
+/*
+ * A stacked sub-section: patterns, then that pattern's tracks, then its trigs later. The rule
+ * above it and the generous gap are the separation — without them the second grid reads as
+ * more of the first, which is exactly how it looked when the two overlapped by accident.
+ */
+.sub { margin-top: 1.4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.sub h3 {
+  margin: 0 0 .6rem; font-size: .67rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .11em; color: var(--teal); display: flex; align-items: center; gap: .5rem;
+}
+.sub h3 .btn.ghost {
+  margin-left: auto; background: none; border-color: var(--line-soft); color: var(--muted);
+  font-size: .64rem; padding: .1rem .45rem; line-height: 1.2;
+}
+
+/* ---- drag and drop ------------------------------------------------------------------- */
+.slot.dragging { opacity: .4; }
+.slot.target { outline: 2px dashed var(--amber); outline-offset: -2px; background: #2b2a22; }
+kbd {
+  font: inherit; font-size: .92em; background: #2a3133; border: 1px solid var(--line);
+  border-radius: 2px; padding: 0 .25rem;
+}
 
 /* ---- scope selector ----------------------------------------------------------------- */
 .lbl { display: block; font-size: .66rem; letter-spacing: .07em; text-transform: uppercase;
@@ -186,11 +211,7 @@ label.file input { display: none; }
 
 <main>
   <section class="panel" id="gridPanel">
-    <h2>
-      <span id="bankTitle">Patterns</span>
-      <button class="btn ghost" id="drill" hidden>Tracks…</button>
-      <button class="btn ghost" id="back" hidden>← Patterns</button>
-    </h2>
+    <h2><span id="bankTitle">Patterns</span></h2>
     <div class="body">
       <div id="dropzone" class="dropzone">
         <p><strong>Open a project</strong> — a Digitone <code>.dnprj</code> or a Digitone II <code>.dn2prj</code>.</p>
@@ -198,17 +219,29 @@ label.file input { display: none; }
         <p class="hint">Nothing leaves this machine. The file is read, edited and written in the browser.</p>
       </div>
       <div class="grid" id="grid" hidden></div>
-      <div class="grid tracks" id="trackGrid" hidden></div>
       <div class="legend" id="legend" hidden>
         <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
         <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
         <span><i style="border:1px dashed var(--amber)"></i>storage version we do not read</span>
       </div>
-      <div class="legend" id="trackLegend" hidden>
-        <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
-        <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
-        <span><i style="border:1px solid var(--amber)"></i>MIDI track</span>
-      </div>
+
+      <!--
+        The next level down is a section of the same page, not a screen that replaces it. Trigs
+        will stack below this in turn, so the separator and the sub-heading are the pattern the
+        whole drill-down follows rather than decoration for one case.
+      -->
+      <section class="sub" id="trackSection" hidden>
+        <h3>
+          <span id="trackTitle">Tracks</span>
+          <button class="btn ghost" id="closeTracks" title="Close this section">✕</button>
+        </h3>
+        <div class="grid tracks" id="trackGrid"></div>
+        <div class="legend" id="trackLegend">
+          <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
+          <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
+          <span><i style="border:1px solid var(--amber)"></i>MIDI track</span>
+        </div>
+      </section>
     </div>
   </section>
 
