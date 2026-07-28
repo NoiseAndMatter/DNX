@@ -8,7 +8,11 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { isLengthValid } from "../project/container.js";
+import { decodeProjectImage } from "../project/dn2codec.js";
+import { readSavedPosition } from "../project/position.js";
 import { parseProject } from "../project/projectfile.js";
+import { deviceFor } from "../librarian/device.js";
+import { patternName } from "../sheet/naming.js";
 
 function ascii(bytes: Uint8Array): string {
   return [...bytes].map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");
@@ -30,6 +34,23 @@ function inspect(path: string, showObjects: boolean): void {
     `  length ${isLengthValid(payload) ? "ok" : `MISMATCH (stored ${payload.storedLength}, expected ${payload.computedLength})`}` +
       `  check=0x${payload.checkField.toString(16).padStart(8, "0")}  objects=${payload.objects.length}`,
   );
+
+  // Where the device was when it saved, if the hypothesis holds. DN2 only, and tagged speculative
+  // every single time: the offset is well evidenced across the corpus and has never been
+  // confirmed by asking a device. See `src/project/position.ts` for what the evidence is.
+  try {
+    const { image } = decodeProjectImage(payload.raw);
+    if (deviceFor(image).kind === "dn2") {
+      const saved = readSavedPosition(image);
+      const where =
+        saved.pattern === undefined
+          ? "not a possible slot"
+          : `${patternName(saved.pattern)}${saved.track === undefined ? "" : ` T${saved.track + 1}`}`;
+      console.log(`  saved position ${where}  [SPECULATIVE]`);
+    }
+  } catch {
+    // Not decodable as an image; the lines above have already said so.
+  }
 
   if (showObjects) {
     for (const obj of payload.objects) {
