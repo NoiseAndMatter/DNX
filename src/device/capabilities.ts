@@ -69,10 +69,13 @@ export const API_MESSAGES: Readonly<Record<number, { name: string; safety: Safet
 /**
  * Dump **request** codes — the read half of the dump protocol, each a response code plus `0x10`.
  *
- * Classified `read` on stated grounds, and the grounds are an inference: elk-herd implements all
- * five for the Digitakt family with an **empty body**, and a message with nothing in it has
- * nothing to write. Neither Digitone advertises them, and this project has already been wrong
- * once about generalising a Digitakt capability to a Digitone (ROADMAP §3c-iv).
+ * Classified `read`, and **verified on a Digitone II**: all four implemented requests answered
+ * with their matching response at exactly the record's size. The grounds were an inference —
+ * elk-herd implements them for the Digitakt family with an **empty body**, and a message with
+ * nothing in it has nothing to write — and this time the inference was right.
+ *
+ * Worth noting that neither Digitone *advertises* `0x60`–`0x6f` and both honour them. That list
+ * enumerates responses, so absence from it is not a refusal.
  *
  * So this is a deliberate, documented bend in the allowlist rather than an oversight — see
  * `src/device/dumprequest.ts` and `docs/device-probing.md`. `0x6f` WholeProject is left out

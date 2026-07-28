@@ -23,19 +23,26 @@
  * message ends immediately. An empty body is the reason to believe a request cannot write: there
  * is nothing in it to write.
  *
- * ## Why that is still an inference
+ * ## VERIFIED on a Digitone II, 2026-07-28
  *
- * Nothing above was observed on a **Digitone**. The evidence is a working implementation for a
- * sibling device, and this project has already been wrong once about exactly that kind of
- * generalisation — the +Drive file API is real on a Digitakt II and absent on both Digitones
- * (ROADMAP §3c-iv). Two machines shared a storage format and not a protocol surface.
+ * The inference held. All four implemented requests were sent to a real Digitone II and each
+ * answered with its matching response, **payload exactly the size of the record it names**:
  *
- * Neither Digitone advertises `0x60`–`0x6f` in `supportedMessages` either. That list carries the
- * `0x5n` *response* codes, so a request code being absent may mean "not supported" or may mean
- * "requests are not the kind of thing that list enumerates". We cannot tell.
+ * | Asked | Answered | Payload |
+ * |---|---|---|
+ * | `0x64` ProjectSettings | `0x54` | **512** |
+ * | `0x63` Sound | `0x53` | **359** |
+ * | `0x62` Kit | `0x52` | **10,752** |
+ * | `0x61` Pattern | `0x51` | **89,088** |
  *
- * So these are classified `read` deliberately and on stated grounds, not because the gate was
- * inconvenient — and `docs/device-probing.md` records the reasoning alongside the regime it bends.
+ * Every checksum good. So the `0x6n` convention holds on this family, and **a Digitone II can be
+ * asked for any object on demand** — which is what makes a transfer feature possible now that the
+ * +Drive file API has turned out not to exist here.
+ *
+ * Note what the request codes are **not**: neither Digitone lists `0x60`–`0x6f` in
+ * `supportedMessages`, and they work anyway. That list enumerates *responses*, so absence from it
+ * says nothing about whether a request is honoured — worth remembering before reading any other
+ * absence as a refusal.
  *
  * ## Start with the smallest thing
  *
