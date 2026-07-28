@@ -44,6 +44,7 @@ import {
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
+import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -70,6 +71,15 @@ function escapeHtml(text: string): string {
 }
 
 let access: MIDIAccess | undefined;
+
+/**
+ * The **dump-protocol** product id for the device last probed.
+ *
+ * Converted from the API id the `Device` response gives, because they are different numbering
+ * spaces: the API says 20 and 43, the dump framing wants 0x0D and 0x15. The first request went
+ * out addressed to 43 and was rightly ignored.
+ */
+let lastProductId: number | undefined;
 
 /**
  * What the user last chose, so a re-render does not undo it.
@@ -229,6 +239,14 @@ async function probe(): Promise<void> {
 
     status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
+
+    // Converted, not copied: the Device response is in the API's product space and a dump request
+    // needs the dump protocol's. Sending the API id produces a well-formed message addressed to a
+    // product that does not exist there, which a device answers by ignoring it.
+    lastProductId = dumpProductFor(device.productId);
+    $<HTMLSelectElement>("reqWhat").disabled = false;
+    $<HTMLInputElement>("reqObj").disabled = false;
+    $<HTMLButtonElement>("request").disabled = false;
 
     const caps = capabilitiesOf(device.supportedMessages);
 
@@ -516,13 +534,32 @@ function renderCapture(): void {
       ["Messages", String(group.count)],
       ["Bytes", group.bytes.toLocaleString()],
       ["Object numbers", objects],
+      // Said plainly, because "128 objects" against 182 messages reads as lost data. It is not:
+      // the field is one 7-bit byte, and the device reports 0 once it runs out.
+      ...(group.numbersExhausted
+        ? ([[
+            "Note",
+            `${group.count} messages but only ${group.objects.length} distinct numbers — the ` +
+              `object number is a 7-bit field and the device stops incrementing past 127. ` +
+              `Nothing was lost; beyond that point only send order identifies a record.`,
+          ]] as [string, string][])
+        : []),
       ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
     ]);
   }
 }
 
+/** A rolling indicator, so "still going" is visible without reading numbers. */
+const SPINNER = ["|", "/", "-", "\\"];
+
+let heartbeat: ReturnType<typeof setInterval> | undefined;
+
 function stopListening(): void {
   if (!listening) return;
+  if (heartbeat !== undefined) {
+    clearInterval(heartbeat);
+    heartbeat = undefined;
+  }
   listening.input.removeEventListener("midimessage", listening.onMessage);
   listening = undefined;
   $("listen").textContent = "Listen";
@@ -554,14 +591,37 @@ async function startListening(): Promise<void> {
   }
 
   capture.clear();
+  let ticks = 0;
+  let lastAt = 0;
   const onMessage = (event: MIDIMessageEvent): void => {
     if (!event.data) return;
     capture.add(new Uint8Array(event.data));
-    // Redrawn per message so a 13 MB project dump visibly progresses rather than looking hung.
-    // Summarising is cheap next to the transfer itself.
+    lastAt = Date.now();
     renderCapture();
-    status(`Receiving… ${capture.byteLength.toLocaleString()} bytes`);
+
+    // A project dump is minutes of silence punctuated by a message every so often, and a static
+    // byte count during that gap is indistinguishable from a stall. The spinner advances on every
+    // message and the message count rises, so *something moving* is visible without having to
+    // compare two numbers a minute apart.
+    status(
+      `${SPINNER[ticks++ % SPINNER.length]}  receiving — ` +
+        `${capture.byteLength.toLocaleString()} bytes, ${capture.summarise().messages} message(s)`,
+    );
   };
+
+  // And a heartbeat between messages, so the gap itself is legible: how long since the last one
+  // arrived is exactly the number that tells you whether to keep waiting or to stop.
+  heartbeat = setInterval(() => {
+    if (!listening || lastAt === 0) return;
+    const idle = Math.round((Date.now() - lastAt) / 1000);
+    if (idle >= 2) {
+      status(
+        `${SPINNER[ticks++ % SPINNER.length]}  waiting — ${capture.byteLength.toLocaleString()} ` +
+          `bytes so far, nothing for ${idle}s`,
+        idle >= 20 ? "warn" : "info",
+      );
+    }
+  }, 1000);
 
   input.addEventListener("midimessage", onMessage);
   listening = { input, onMessage };
@@ -595,3 +655,65 @@ $("save").addEventListener("click", () => {
   URL.revokeObjectURL(url);
   status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
 });
+
+
+// --- requesting --------------------------------------------------------------------------------
+
+/**
+ * Ask the device to send something.
+ *
+ * **The only thing on this page that transmits.** It goes out over the *dump* framing rather than
+ * the API's, and the reply is an ordinary dump — so it lands in the capture through the same
+ * listener the front-panel sends use, and needs no correlation logic of its own.
+ *
+ * Requires Listen to be running, deliberately: a request whose answer nobody is collecting is a
+ * transmission for no reason, and this is the one control where "for no reason" is worth avoiding.
+ */
+function fillRequestOptions(): void {
+  const select = $<HTMLSelectElement>("reqWhat");
+  select.innerHTML = REQUEST_OPTIONS.map(
+    (o) => `<option value="${o.code}">${escapeHtml(o.label)}</option>`,
+  ).join("");
+}
+
+function requestOption(): (typeof REQUEST_OPTIONS)[number] {
+  const code = Number($<HTMLSelectElement>("reqWhat").value);
+  return REQUEST_OPTIONS.find((o) => o.code === code) ?? REQUEST_OPTIONS[0]!;
+}
+
+$("request").addEventListener("click", () => {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing will be collecting the reply.", "warn");
+    return;
+  }
+
+  const option = requestOption();
+  const objNr = option.indexed ? Number($<HTMLInputElement>("reqObj").value) : 0;
+  const product = lastProductId;
+  if (product === undefined) {
+    status(
+      `No dump-protocol product id for this device — probe it first, and if it has been probed, ` +
+        `it is a product this build does not know how to address.`,
+      "warn",
+    );
+    return;
+  }
+
+  try {
+    output.send([...dumpRequest(product, { code: option.code, objNr })]);
+    status(
+      `Asked for ${option.label.toLowerCase()}${option.indexed ? ` ${objNr}` : ""} — ` +
+        `expecting roughly ${option.approximateBytes(product).toLocaleString()} bytes back.`,
+    );
+  } catch (error) {
+    status(`Could not send the request: ${error}`, "error");
+  }
+});
+
+fillRequestOptions();

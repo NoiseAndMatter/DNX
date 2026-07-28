@@ -965,6 +965,94 @@ never relies on it. Asserting the wrong one would fail every read on real hardwa
 like a device fault, so it is carried through untouched and the payload is checked against
 `length` instead. One session with a device settles it in a line.
 
+### 3f. Getting it to testers — PLANNED 2026-07-28, not started
+
+**Raised by the user**, who has a NAS at home and is willing to run a domain from it so that no
+files are shared during early testing. That instinct is right, and it turns out to cost very
+little, because of a property the project already has.
+
+#### DNX is already static files
+
+`npm run build:web` emits HTML and JavaScript and nothing else. There is no server-side code, no
+database, no session, no upload endpoint. `test/web.test.ts` enforces it: it walks each page's
+import graph and fails if anything reachable needs Node.
+
+So the deployment is a directory. The only thing the local server does that a static host cannot
+is find `EMPTY.dn2prj` on disk for the template endpoint — and the page already handles a 404
+there by showing a file picker, which is exactly the right behaviour when deployed.
+
+**And the user's projects never leave their machine.** Everything runs in the browser: the file
+is read locally, converted locally, exported locally. That is not a privacy feature bolted on, it
+is a consequence of the architecture, and it removes the entire category of concern that usually
+makes distributing a music tool hard.
+
+#### What the NAS actually needs
+
+1. **A domain**, with DNS pointing home. Anything works; a dynamic-DNS name is fine.
+2. **TLS.** Non-negotiable, see below. Caddy does automatic Let's Encrypt in about three lines of
+   config and renews itself.
+3. **Access control**, one of:
+   - **HTTP basic auth** — simplest, one shared credential, fine for a handful of trusted testers.
+   - **Cloudflare Tunnel with Access rules** — no inbound port on the home network at all,
+     per-person email-based access, and it can be revoked individually. More setup, better
+     properties, and free at this scale.
+4. **The built directory**, served. That is it.
+
+No hosting bill, no accounts to build, no data to protect.
+
+#### HTTPS is a hard requirement, not polish
+
+**WebMIDI requires a secure context.** Chrome will not grant `requestMIDIAccess` — let alone the
+SysEx permission — over plain HTTP from anything but `localhost`.
+
+So the certificate is not a nicety to add later: without it, the probe, the capture listener and
+any future transfer simply do not work for a tester. It has to be in place from the first
+deployment or the feature that most needs testing is the one that cannot be tested.
+
+Worth telling testers up front that **Chrome or Edge is required**, for the reason §3c-iv
+records: Firefox implements Web MIDI but gates SysEx behind a separate site-permission add-on and
+drops it **silently** when that is missing. A tester on Firefox will report "it does not see my
+device", and that report will be true and misleading at once.
+
+#### The encrypted-executable idea — recommended against
+
+The user asked whether the app could be distributed as an encrypted executable. It could, and it
+would not do what it is meant to do.
+
+- **It cannot protect the code.** Wrapping a web app in Electron ships the same JavaScript inside
+  a bigger download. Anything encrypted client-side must be decrypted client-side, which means
+  the key ships with it. This is not a solvable problem, it is a definitional one.
+- **It costs a great deal.** Electron means per-platform builds, code signing on two platforms,
+  an update mechanism, and a much larger surface to support — for testers who currently need to
+  open a URL.
+- **It makes testing worse.** Every fix becomes a release the tester has to install, instead of a
+  refresh.
+
+If the goal is **controlling who gets in**, authentication on the URL does that properly and
+revocably. If the goal is **stopping people copying the code**, nothing delivered to a browser
+achieves it, and a private repository plus a small trusted group achieves the practical version.
+
+#### What to be careful about
+
+**Never ship a template.** `EMPTY.dn2prj` must stay out of the deployment, for the reason
+`README.md` already gives: a template has to match the storage version the *device* writes, and
+shipping one silently makes it the template for every firmware. Testers supply their own.
+
+**Never ship the corpus.** It is the user's music, and `.gitignore` already refuses those
+extensions. The build output should be checked for stray `.dnprj`, `.dn2prj` and `.syx` before a
+first deploy, and that check is worth automating.
+
+**Version what testers are running.** A bug report against an unknown build is nearly useless.
+The hardware sheets already stamp a build time into the project name for exactly this reason, and
+the pages should carry the same stamp somewhere visible.
+
+#### If it outgrows the NAS
+
+Static files scale trivially: GitHub Pages, Cloudflare Pages and Netlify all host this for
+nothing, and the only reason not to start there is that the repository is private and the user
+would rather serve it from home first. Moving later is copying a directory — worth saying,
+because it means **choosing the NAS now costs nothing later**.
+
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 
 **Recorded 2026-07-27 by the user, to be built when the project is more mature.** Not a
