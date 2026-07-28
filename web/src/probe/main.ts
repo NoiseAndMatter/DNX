@@ -44,6 +44,7 @@ import {
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
+import { REQUEST_OPTIONS, dumpRequest } from "../../../src/device/dumprequest.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -70,6 +71,15 @@ function escapeHtml(text: string): string {
 }
 
 let access: MIDIAccess | undefined;
+
+/**
+ * The product id from the last successful probe.
+ *
+ * A dump request has to be addressed to a product — 13 for a Digitone, 21 for a Digitone II — and
+ * guessing it would send a well-formed message to the wrong machine. So Request stays unavailable
+ * until Probe has established what is actually on the other end.
+ */
+let lastProductId: number | undefined;
 
 /**
  * What the user last chose, so a re-render does not undo it.
@@ -229,6 +239,11 @@ async function probe(): Promise<void> {
 
     status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
+
+    lastProductId = device.productId;
+    $<HTMLSelectElement>("reqWhat").disabled = false;
+    $<HTMLInputElement>("reqObj").disabled = false;
+    $<HTMLButtonElement>("request").disabled = false;
 
     const caps = capabilitiesOf(device.supportedMessages);
 
@@ -637,3 +652,61 @@ $("save").addEventListener("click", () => {
   URL.revokeObjectURL(url);
   status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
 });
+
+
+// --- requesting --------------------------------------------------------------------------------
+
+/**
+ * Ask the device to send something.
+ *
+ * **The only thing on this page that transmits.** It goes out over the *dump* framing rather than
+ * the API's, and the reply is an ordinary dump — so it lands in the capture through the same
+ * listener the front-panel sends use, and needs no correlation logic of its own.
+ *
+ * Requires Listen to be running, deliberately: a request whose answer nobody is collecting is a
+ * transmission for no reason, and this is the one control where "for no reason" is worth avoiding.
+ */
+function fillRequestOptions(): void {
+  const select = $<HTMLSelectElement>("reqWhat");
+  select.innerHTML = REQUEST_OPTIONS.map(
+    (o) => `<option value="${o.code}">${escapeHtml(o.label)}</option>`,
+  ).join("");
+}
+
+function requestOption(): (typeof REQUEST_OPTIONS)[number] {
+  const code = Number($<HTMLSelectElement>("reqWhat").value);
+  return REQUEST_OPTIONS.find((o) => o.code === code) ?? REQUEST_OPTIONS[0]!;
+}
+
+$("request").addEventListener("click", () => {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing will be collecting the reply.", "warn");
+    return;
+  }
+
+  const option = requestOption();
+  const objNr = option.indexed ? Number($<HTMLInputElement>("reqObj").value) : 0;
+  const product = lastProductId;
+  if (product === undefined) {
+    status("Press Probe first, so the device's product id is known.", "warn");
+    return;
+  }
+
+  try {
+    output.send([...dumpRequest(product, { code: option.code, objNr })]);
+    status(
+      `Asked for ${option.label.toLowerCase()}${option.indexed ? ` ${objNr}` : ""} — ` +
+        `expecting roughly ${option.approximateBytes(product).toLocaleString()} bytes back.`,
+    );
+  } catch (error) {
+    status(`Could not send the request: ${error}`, "error");
+  }
+});
+
+fillRequestOptions();

@@ -67,6 +67,27 @@ export const API_MESSAGES: Readonly<Record<number, { name: string; safety: Safet
 };
 
 /**
+ * Dump **request** codes — the read half of the dump protocol, each a response code plus `0x10`.
+ *
+ * Classified `read` on stated grounds, and the grounds are an inference: elk-herd implements all
+ * five for the Digitakt family with an **empty body**, and a message with nothing in it has
+ * nothing to write. Neither Digitone advertises them, and this project has already been wrong
+ * once about generalising a Digitakt capability to a Digitone (ROADMAP §3c-iv).
+ *
+ * So this is a deliberate, documented bend in the allowlist rather than an oversight — see
+ * `src/device/dumprequest.ts` and `docs/device-probing.md`. `0x6f` WholeProject is left out
+ * entirely: asking a device for 14.6 MB is not the experiment that tells you whether requests
+ * work.
+ */
+export const REQUEST_MESSAGES: Readonly<Record<number, string>> = {
+  0x60: "PatternKit request",
+  0x61: "Pattern request",
+  0x62: "Kit request",
+  0x63: "Sound request",
+  0x64: "ProjectSettings request",
+};
+
+/**
  * Dump types, by code. From `src/sysex/devices.ts`, which derived them from real dumps.
  *
  * **Every one of these is refused, and the evidence behind that is graded — see
@@ -110,6 +131,12 @@ export interface MessageInfo {
 /** Name every advertised code, in the order the device listed them. */
 export function describeMessages(codes: readonly number[]): MessageInfo[] {
   return codes.map((code) => {
+    // Requests sit in the band above the dumps and are the only thing up there we will send.
+    const request = REQUEST_MESSAGES[code];
+    if (request !== undefined) {
+      return { code, name: request, known: true, kind: "api" as const, safety: "read" as const };
+    }
+
     // Anything in the dump band is a dump type even when we cannot name it: that band is where
     // Elektron puts them, and calling an unnamed 0x5b an API message would be a worse guess.
     // Every dump is a write, named or not — an unnamed one is not a safer one.
