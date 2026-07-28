@@ -157,7 +157,7 @@ async function probe(): Promise<void> {
 
   const results = $("results");
   results.innerHTML = "";
-  status(`Probing ${output.name}…`);
+  status(`Opening ${output.name}…`);
 
   // **Open both ports explicitly.**
   //
@@ -188,7 +188,13 @@ async function probe(): Promise<void> {
   input.addEventListener("midimessage", onMessage);
 
   try {
+    // Narrated step by step. A single "Probing…" that sits there for half a minute tells the
+    // user nothing about whether it is working, stuck, or nearly done — and it is the *first*
+    // request that fails when a port is closed, which a static message actively hides.
+    status(`Asking ${output.name} what it is…`);
     const device = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
+
+    status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
 
     const caps = capabilitiesOf(device.supportedMessages);
@@ -289,6 +295,7 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
       continue;
     }
 
+    status(`Query ${rows.length + 1} of ${QUERY_KEYS.length}: ${key}`);
     try {
       const frame = await session.request(
         Code.Query,
