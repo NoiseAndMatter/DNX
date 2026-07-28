@@ -45,8 +45,11 @@ import { patternName } from "../../../src/sheet/naming.js";
 import { buildProjectBlob, download, openProject, type LoadedProject } from "../project.js";
 import {
   type Drag,
+  type DropHint,
   type Level,
+  type Modifiers,
   actionFor,
+  dropHint,
   patternForOperation,
   refuseDrop,
 } from "./dragrules.js";
@@ -284,7 +287,7 @@ function renderSelection(): void {
   $("scopeBox").hidden = !inTracks();
   $("opHint").innerHTML =
     `Drag a ${inTracks() ? "track" : "pattern"} onto another to <strong>move</strong> it. ` +
-    `Hold <kbd>Shift</kbd> to copy, <kbd>Ctrl</kbd> to swap.<br>` +
+    `Hold <kbd>Shift</kbd> to copy, <kbd>Ctrl</kbd> to swap — the destination says which.<br>` +
     `Shift-click for a range, Ctrl-click to add to the selection.` +
     (inTracks() ? "" : `<br>Select one pattern and press <kbd>F2</kbd> to rename it.`);
 }
@@ -362,6 +365,41 @@ function onSlotClick(level: Level, index: number, event: MouseEvent): void {
 /** The drag in flight. Kept here rather than in `dataTransfer`, which cannot be read on hover. */
 let dragging: Drag | undefined;
 
+/**
+ * The cell the cursor is currently over, and what it is.
+ *
+ * Needed because **a modifier can change without the mouse moving.** `dragover` only fires while
+ * the pointer travels, so holding still and pressing Shift would leave the cell saying MOVE while
+ * the drop would copy — the one state this feature exists to make impossible. The key handlers
+ * below repaint this cell instead.
+ */
+let hovering: { cell: HTMLElement; level: Level; index: number } | undefined;
+
+/** Modifiers as of the last event of any kind, so a repaint can use them without an event. */
+let modifiers: Modifiers = { shiftKey: false, ctrlKey: false, metaKey: false };
+
+/** Strip the drop decoration from a cell. */
+function clearTarget(cell: HTMLElement): void {
+  cell.classList.remove("target", "move", "copy", "swap");
+  cell.removeAttribute("data-action");
+}
+
+/** Decorate the hovered cell, or clear it when the drop would be refused. */
+function paintTarget(cell: HTMLElement, hint: DropHint | undefined): void {
+  clearTarget(cell);
+  if (!hint) return;
+  cell.classList.add("target", hint.action);
+  // The label is drawn by CSS from the attribute rather than injected as a child, so it cannot
+  // disturb the cell's own content or survive a re-render that rebuilds the grid.
+  cell.setAttribute("data-action", hint.label);
+}
+
+/** Repaint whatever is under the cursor after a modifier changed. */
+function repaintHovered(): void {
+  if (!hovering || !dragging) return;
+  paintTarget(hovering.cell, dropHint(dragging, hovering.level, hovering.index, modifiers));
+}
+
 /** Click, drag and drop for one cell. Both grids go through it, so neither can drift. */
 function wireSlot(cell: HTMLElement, level: Level, index: number): void {
   cell.addEventListener("click", (event) => {
@@ -388,36 +426,48 @@ function wireSlot(cell: HTMLElement, level: Level, index: number): void {
 
   cell.addEventListener("dragend", () => {
     dragging = undefined;
-    for (const el of document.querySelectorAll(".slot.dragging, .slot.target")) {
-      el.classList.remove("dragging", "target");
+    hovering = undefined;
+    for (const el of document.querySelectorAll<HTMLElement>(".slot.dragging, .slot.target")) {
+      el.classList.remove("dragging");
+      clearTarget(el);
     }
     status("");
   });
 
   cell.addEventListener("dragover", (event) => {
-    const action = actionFor(event);
+    modifiers = event;
+    const hint = dropHint(dragging, level, index, event);
+
     // A refused drop is simply not accepted, which leaves the browser's own "no" cursor in
     // place — the clearest possible signal, and one we do not have to draw.
-    if (refuseDrop(dragging, level, index, action) !== undefined) return;
+    if (!hint) {
+      clearTarget(cell);
+      return;
+    }
 
     event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = action === "copy" ? "copy" : "move";
-    cell.classList.add("target");
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = hint.action === "copy" ? "copy" : "move";
+    }
+    hovering = { cell, level, index };
+    paintTarget(cell, hint);
     status(
-      `${action} ${dragging!.indices.map((i) => nameAt(level, i)).join(" ")} → ${nameAt(level, index)}` +
+      `${hint.action} ${dragging!.indices.map((i) => nameAt(level, i)).join(" ")} → ${nameAt(level, index)}` +
         (level === "track" ? scopeSuffix() : "") +
         `  ·  shift = copy, ctrl = swap`,
     );
   });
 
   cell.addEventListener("dragleave", () => {
-    cell.classList.remove("target");
+    if (hovering?.cell === cell) hovering = undefined;
+    clearTarget(cell);
   });
 
   cell.addEventListener("drop", (event) => {
     const action = actionFor(event);
     const refused = refuseDrop(dragging, level, index, action);
-    cell.classList.remove("target");
+    hovering = undefined;
+    clearTarget(cell);
     if (refused !== undefined) {
       // Only worth saying when something was actually being dragged; otherwise this is a stray
       // drop from outside the page and silence is the right response.
@@ -758,6 +808,17 @@ function wireFileInput(id: string, guard: boolean): void {
 
 wireFileInput("file", false);
 wireFileInput("file2", true);
+
+// A modifier pressed or released mid-drag changes what the drop will do, and `dragover` does not
+// fire unless the pointer moves. Without these two, holding still and pressing Shift leaves the
+// cell saying MOVE while the drop copies — the exact confusion the labels exist to prevent.
+for (const type of ["keydown", "keyup"] as const) {
+  document.addEventListener(type, (event) => {
+    if (!dragging) return;
+    modifiers = event;
+    repaintHovered();
+  });
+}
 
 document.addEventListener("keydown", (event) => {
   // F2 renames, the way it does in every file manager, and without a modifier.

@@ -42,22 +42,45 @@ the destination pool is already populated — converted sounds need deduplicatio
 allocation against it — and `planExpansion` allocates tracks across a whole project rather than
 into a destination pattern whose tracks may already be occupied. That one is a later phase.
 
-## Drag-and-drop feedback — TO DO
+## Drag-and-drop feedback — DONE 2026-07-28
 
-**Requested by the user 2026-07-28, after using the first cut.** The gesture works; what it is
-about to do is not visible enough. Two changes, both on the **destination** cell while a drag
-hovers it:
+**Requested by the user after using the first cut.** The gesture worked; what it was about to do
+was not visible enough — one amber outline for all three actions said only *that* something
+would happen, and the *what* lived in the status bar, at the other end of the page from the
+cursor.
 
-1. **Shade it by modifier**, so the action is readable without looking away to the status bar —
-   a distinct tint per action rather than one amber dashed outline for all three. Move, copy and
-   swap should not look alike.
-2. **Name the action in the middle of the cell** — `MOVE`, `COPY`, `SWAP` — overlaid on the
-   destination. The modifier is read at drop time, so this updates live as Shift or Ctrl is
-   pressed and released mid-drag, which is what makes it worth drawing at all.
+Both changes are on the **destination** cell while a drag hovers it:
 
-Applies to both grids, and to the trig grid when that exists. The refusal cases already lean on
-the browser's own "no" cursor and should keep doing so: a fourth state meaning "you cannot"
-would compete with the three that mean something.
+1. **A hue per action** — blue moves, green copies, amber exchanges. Three hues far enough apart
+   to read at a glance, and deliberately *not* a variation on the selection ring: selection is a
+   thin 2px outline, a drop target is a thick ring plus a saturated wash, so nobody has to work
+   out which is which.
+2. **The word across the middle of the cell** — `MOVE`, `COPY`, `SWAP`, over a scrim so it stays
+   legible on a full cell. Drawn from a `data-action` attribute rather than an injected child,
+   because a re-render rebuilds every cell and a stray `<span>` would outlive the drag that put
+   it there.
+
+Refusals still draw **nothing**, as planned: the browser's own "no" cursor already says it, and
+a fourth state meaning *you cannot* would compete with the three that mean *this will happen*.
+The subtle case is a batch with Ctrl held — a perfectly good move target that becomes a
+non-target the instant the modifier goes down, because a batch swap is refused. Drawing `SWAP`
+there would promise something that then refuses.
+
+### Two things it turned out to need
+
+**A modifier can change without the mouse moving.** `dragover` only fires while the pointer
+travels, so holding still and pressing Shift would leave the cell saying `MOVE` while the drop
+copied — exactly the confusion the labels exist to prevent. Document-level `keydown`/`keyup`
+handlers repaint the hovered cell instead, which is why `dropHint` is a pure function of the
+modifiers rather than of an event: the key handler has no drag event to read.
+
+**A cell's own children fire `dragleave` on it.** Moving from the cell onto one of its labels
+fires `dragleave` and then `dragenter`, so the decoration flickered off and on with the pointer
+standing still. `.slot > span { pointer-events: none }` fixes it at the source rather than by
+guarding the handler. The old outline was subtle enough to get away with this; a word across the
+middle is not.
+
+Applies to both grids, and to the trig grid when that exists.
 
 ## Batch rename — TO DO
 

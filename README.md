@@ -151,6 +151,8 @@ ranking and allocation.
   Digitone II pattern — or select one and press **Tracks…** — to drill into its 16 tracks,
   where the same four operations move tracks and a **Move** selector picks which half travels.
   Select one pattern and press <kbd>F2</kbd>, or **Rename…**, to rename it.
+  While dragging, the destination cell shades itself and says which action it is about to
+  perform — `MOVE`, `COPY` or `SWAP` — and updates as you press or release a modifier.
 
 The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts` and
 `trackmove.ts` plan and verify it, `session.ts` holds the history, `tracksummary.ts` says what
