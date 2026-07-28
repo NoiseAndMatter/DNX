@@ -5,14 +5,17 @@
  * capability discovery built into the protocol, and the reason to read it rather than assume is
  * now a matter of record:
  *
- * **We assumed the Digitone II had the +Drive filesystem API and it does not.** elk-herd supports
- * the Digitakt II, which does, and the assumption was generalised across the family without
- * evidence. The first probe of a real Digitone II reported none of the nine file-API codes, and
- * `DirList` timed out — two independent signals agreeing. Had the transfer layer been built on
- * the assumption, that is where it would have surfaced instead.
+ * **We assumed the Digitone had the +Drive filesystem API and it does not.** elk-herd supports
+ * the Digitakt II, which does, and the assumption was generalised across the storage family
+ * without evidence. A Digitone II reported none of the nine file-API codes and `DirList` timed
+ * out; a Digitone 1, probed alongside it, reported none of them either. Two devices, two
+ * firmware generations, same answer — so this is a **Digitone-family** fact, not one device's
+ * quirk, and the file API belongs to the Digitakt line.
  *
  * elk-herd gates the same way: its `hasDriveSamples` requires 0x10, 0x11, 0x12, 0x20 and 0x21 to
- * all be present, and by that test a Digitone II returns false.
+ * all be present, and by that test neither Digitone qualifies.
+ *
+ * Had the transfer layer been built on the assumption, that is where it would have surfaced.
  *
  * ## Two numbering spaces in one list
  *
@@ -136,11 +139,35 @@ export function hex(code: number): string {
 /**
  * What a Digitone II running 1.10E (build 0050) advertises.
  *
- * A capture, not a specification: one device, one firmware. Kept because it is the only
- * hardware evidence we have about which messages exist on this family, and because the tests
- * that check `capabilitiesOf` should be reading a real answer rather than one written to pass.
+ * A capture, not a specification: one device, one firmware. Kept because it is the hardware
+ * evidence behind everything above, and because the tests that check `capabilitiesOf` should be
+ * reading a real answer rather than one written to pass.
  */
 export const OBSERVED_DIGITONE_II: readonly number[] = [
   0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x09,
   0x50, 0x52, 0x51, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e,
+];
+
+/**
+ * What a Digitone 1 running 1.42A (build 0097) advertises.
+ *
+ * Probed side by side with the DN2, which turned a one-device observation into a family one:
+ *
+ * - **Neither Digitone has the +Drive file API.** So it is not a Digitone II quirk — the *file
+ *   API is a Digitakt thing*, and elk-herd having it says nothing about this family.
+ * - **`0x03` and `0x04` are on both**, so they are family-wide and old. They appear in no source
+ *   we have, elk-herd included, which makes them the standing lead.
+ * - **`0x06`, `0x07` and `0x09` are Digitone II only** — newer. `0x09` is `Query`, so the DN1
+ *   cannot be asked about itself by key.
+ * - The DN1 stops at `0x5d`; the DN2 adds `0x5e`. One more dump type on the newer machine.
+ * - Both list the dump band in the same unsorted order — `0x50 0x52 0x51 0x53 …` — which makes
+ *   that ordering a family trait rather than noise from one device.
+ *
+ * **Build numbers are per product line, not comparable.** The older machine reports the higher
+ * number: DN1 build 0097 at version 1.42A against DN2 build 0050 at 1.10E. elk-herd calls build
+ * "an increasing number", which is true within a line and misleading across two.
+ */
+export const OBSERVED_DIGITONE_1: readonly number[] = [
+  0x01, 0x02, 0x03, 0x04,
+  0x50, 0x52, 0x51, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d,
 ];

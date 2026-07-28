@@ -67,11 +67,21 @@ function escapeHtml(text: string): string {
 let access: MIDIAccess | undefined;
 
 /**
- * Ports are listed in pairs, and the pairing is a guess the user can override.
+ * What the user last chose, so a re-render does not undo it.
+ *
+ * Sending to a port opens it, and opening it fires `statechange`, which re-renders the lists.
+ * Without this the auto-guess ran again on every probe and snapped the selects back to whichever
+ * device it liked best — reported by the user while probing a Digitone and a Digitone II side by
+ * side, which is exactly when it is most annoying and least obvious.
+ */
+const chosen: { input?: string; output?: string } = {};
+
+/**
+ * Ports are listed in pairs, and the pairing is a guess **only until the user disagrees**.
  *
  * A device is an input and an output that happen to have similar names, and nothing in WebMIDI
  * says which belong together — an interface with four ports gives no hint at all. So the guess is
- * by name, and both selects stay editable.
+ * by name, and a choice, once made, outranks it for as long as that port exists.
  */
 function renderPorts(): void {
   if (!access) return;
@@ -104,6 +114,16 @@ function renderPorts(): void {
   if (best?.match) {
     outSelect.value = best.out.id;
     inSelect.value = best.match.inp.id;
+  }
+
+  // The user's choice wins, if the port is still there. Checked against the live port maps
+  // rather than against the select's own value, because a stale id would silently leave the
+  // control showing something that is no longer plugged in.
+  if (chosen.output !== undefined && access.outputs.has(chosen.output)) {
+    outSelect.value = chosen.output;
+  }
+  if (chosen.input !== undefined && access.inputs.has(chosen.input)) {
+    inSelect.value = chosen.input;
   }
 
   $<HTMLButtonElement>("probe").disabled = inputs.length === 0 || outputs.length === 0;
@@ -276,7 +296,17 @@ async function connect(): Promise<void> {
   }
 }
 
+for (const id of ["input", "output"] as const) {
+  $<HTMLSelectElement>(id).addEventListener("change", (event) => {
+    chosen[id] = (event.target as HTMLSelectElement).value;
+  });
+}
+
 $("rescan").addEventListener("click", () => {
+  // Rescan is the way back to the guess: forgetting the choice is the point of the button, and
+  // without this there would be no way to undo a mis-click short of reloading the page.
+  chosen.input = undefined;
+  chosen.output = undefined;
   void connect();
 });
 $("probe").addEventListener("click", () => {

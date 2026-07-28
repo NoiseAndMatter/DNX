@@ -42,8 +42,8 @@ speculative or unknown.
 | Session model with undo/redo | done |
 | Track move/copy/swap/clear inside a pattern | done, DN2 only, **hardware-validated** |
 | Pattern rename | done, both devices — batch schemes to come |
-| WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone II** |
-| WebMIDI — +Drive file access | **not possible on the DN2** — it does not implement the API |
+| WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
+| WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
 | WebMIDI — transfer by dumps | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
