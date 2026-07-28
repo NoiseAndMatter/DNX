@@ -103,7 +103,18 @@ export class DeviceSession {
    * reply delivered to the wrong caller — a bug that looks like corrupt data rather than like a
    * bookkeeping mistake.
    */
-  request(code: number, build: (msgId: number) => Uint8Array): Promise<ApiFrame> {
+  request(
+    code: number,
+    build: (msgId: number) => Uint8Array,
+    /**
+     * Override the session default for this one request.
+     *
+     * Added because a sweep of small queries and a file transfer want completely different
+     * patience: twelve keys at the transfer timeout is half a minute of waiting, and the device
+     * either answers a query at once or not at all.
+     */
+    timeoutMs: number = this.timeoutMs,
+  ): Promise<ApiFrame> {
     if (this.closed) return Promise.reject(new SessionClosed("this session has been closed"));
 
     const msgId = this.allocate();
@@ -112,10 +123,10 @@ export class DeviceSession {
         this.inFlight.delete(msgId);
         reject(
           new DeviceTimeout(
-            `no reply to message ${msgId} (code 0x${code.toString(16)}) after ${this.timeoutMs}ms`,
+            `no reply to message ${msgId} (code 0x${code.toString(16)}) after ${timeoutMs}ms`,
           ),
         );
-      }, this.timeoutMs);
+      }, timeoutMs);
 
       this.inFlight.set(msgId, { expect: code | RESPONSE_BIT, resolve, reject, timer });
 

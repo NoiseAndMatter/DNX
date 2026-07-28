@@ -159,9 +159,31 @@ async function probe(): Promise<void> {
   results.innerHTML = "";
   status(`Probing ${output.name}…`);
 
+  // **Open both ports explicitly.**
+  //
+  // `addEventListener("midimessage", …)` does *not* open an input. Only assigning
+  // `onmidimessage` opens one implicitly, and the spec is explicit about that asymmetry. Without
+  // this, a closed port silently delivers nothing and every request times out — indistinguishable
+  // from a device that is not listening, which is exactly how it was misread the first time.
+  //
+  // It worked at all only because the ports happened to already be open; anything that takes them
+  // and gives them back — Elektron Transfer, Overbridge, a DAW — leaves them closed.
+  try {
+    await Promise.all([input.open(), output.open()]);
+  } catch (error) {
+    status(`Could not open the port: ${error}. Something else may be holding it.`, "error");
+    return;
+  }
+
   const session = new DeviceSession({ send: (bytes) => output.send([...bytes]) });
+
+  // Counted so a failure can say *which* silence this is: nothing arriving at all, or traffic
+  // arriving that is not ours. Those have completely different causes and the same symptom.
+  let received = 0;
   const onMessage = (event: MIDIMessageEvent): void => {
-    if (event.data) session.receive(new Uint8Array(event.data));
+    if (!event.data) return;
+    received++;
+    session.receive(new Uint8Array(event.data));
   };
   input.addEventListener("midimessage", onMessage);
 
@@ -255,19 +277,50 @@ function card(into: HTMLElement, title: string, rows: [string, string][]): void 
  */
 async function runQueries(into: HTMLElement, session: DeviceSession): Promise<void> {
   const rows: [string, string][] = [];
+  let consecutiveSilences = 0;
 
   for (const key of QUERY_KEYS) {
+    // The premise was that an unrecognised key answers `none`, so guessing would be free. If the
+    // device instead says nothing, every guess costs a full timeout and a twelve-key sweep takes
+    // half a minute — which is what the user hit. Assumed rather than checked, and this is the
+    // apology: give up once the device has clearly stopped answering.
+    if (consecutiveSilences >= GIVE_UP_AFTER) {
+      rows.push([key, "not asked"]);
+      continue;
+    }
+
     try {
-      const frame = await session.request(Code.Query, (id) => queryRequest(id, key));
+      const frame = await session.request(
+        Code.Query,
+        (id) => queryRequest(id, key),
+        QUERY_TIMEOUT_MS,
+      );
       rows.push([key, describeQueryValue(readQueryResponse(frame.body))]);
-    } catch (error) {
-      rows.push([key, `— (${error instanceof Error ? error.message.split(":")[0] : "failed"})`]);
+      consecutiveSilences = 0;
+    } catch {
+      rows.push([key, "no reply"]);
+      consecutiveSilences++;
     }
   }
 
-  const answered = rows.filter(([, v]) => v !== "—" && !v.startsWith("—")).length;
-  card(into, `Query — ${answered} of ${rows.length} key(s) answered`, rows);
+  const answered = rows.filter(([, v]) => v !== "no reply" && v !== "not asked").length;
+  const stopped = rows.some(([, v]) => v === "not asked");
+  card(
+    into,
+    `Query — ${answered} of ${QUERY_KEYS.length} key(s) answered` +
+      (stopped ? `, stopped after ${GIVE_UP_AFTER} silent in a row` : ""),
+    rows,
+  );
 }
+
+/**
+ * Shorter than the default. A device that is going to answer a query answers at once; the two
+ * seconds a transfer needs are wrong for twelve small round trips in a row.
+ */
+const QUERY_TIMEOUT_MS = 400;
+
+/** Three silences means the device does not answer unknown keys, not that these three were bad. */
+const GIVE_UP_AFTER = 3;
 
 /**
  * Every advertised message, named.
