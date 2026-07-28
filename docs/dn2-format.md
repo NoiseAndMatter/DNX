@@ -425,6 +425,197 @@ pattern, or stay on the slot?) that only the user can answer.
 ---
 
 
+## 5c. What a device sends — VERIFIED on hardware 2026-07-28
+
+**[verified]** Captured from a Digitone II (1.10E, build 0050) using `SETTINGS > SYSEX DUMP >
+SYSEX SEND`, which the device initiates — nothing was transmitted to it.
+
+### A project is 248 messages, in three groups
+
+| Dump type | Count | Payload each | What |
+|---|---|---|---|
+| `0x50` PatternKit | **128** | **99,840 B** | every pattern slot, `objNr` 0..127 in order |
+| `0x53` Sound | **119** | **359 B** | the project sound pool, `objNr` 0..118 |
+| `0x54` ProjectSettings | **1** | **512 B** | one record, `objNr` 0 |
+
+Sent strictly in that order: all patterns, then all sounds, then settings.
+
+**All 128 patterns are sent regardless of occupancy.** The source project holds trigs in 14 of
+them; the device dumped every slot, blanks included. So a project transfer costs 14.6 MB whatever
+the project contains — which is a strong argument for per-pattern requests (`0x60`) over whole-
+project dumps once sending is implemented.
+
+**A PatternKit payload is 99,840 = 89,088 pattern + 10,752 kit**, exactly. The unit we had
+inferred, now seen on the wire.
+
+**A standalone Sound dump is 359 bytes** — precisely the kit's per-sound stride. So a preset is
+the same 359-byte record whether it sits inline in a kit or alone in the pool.
+
+**ProjectSettings is 512 bytes**, which is the first hard number we have for that object.
+
+### Speed: use USB alone
+
+DIN MIDI runs at 31.25 kbaud, about 3,125 B/s, so a 14.6 MB project takes **~78 minutes**. The
+manual says so directly (§13.4.2): *"If MIDI+USB is selected in the OUTPUT TO settings, MIDI data
+will limit the USB speed. When sending large chunks of data, make sure you only use the USB
+setting."* On USB alone the same dump completes in about a minute.
+
+### The device and the file differ in exactly two places
+
+Comparing all 128 dumped patterns against the same project file:
+
+1. **Unused lock records.** The file pads steps 64..127 with `0xFF`; the device sends `0x00`.
+   Only in records whose header marks them unused, so `readLockTable` returns identical results
+   from both — same records, same parameters, same live steps.
+
+2. **`sound + 354`, one byte in every preset.** The file holds **1**, the device sends **0**, in
+   all 16 presets of every kit. Nothing else in the kit differs — not the levels, not the MIDI
+   records, not the mask, not the unknown array at `+10,264`.
+
+   The same byte moved `1 → 0` across twelve pool sounds between two consecutive device saves
+   during the saved-position experiment (§5b), which points at a **runtime flag** the device
+   maintains rather than musical content. Unnamed, and recorded rather than guessed at.
+
+**Everything our parsers read agrees.** The DN2 pattern and kit readers are now validated against
+live device output rather than only against files Elektron's importer wrote — which matters,
+because those two had agreed partly by sharing an origin.
+
+### One bad checksum
+
+Pattern `G11` arrived with a stored checksum of 877 against 13,837 computed. Every other message
+in 248 was clean, and `G11` is an untouched blank in a project whose content stops at `A14`, so a
+transfer glitch is more likely than a format misunderstanding. Worth watching for on the next
+capture: if the same slot fails again it is not a glitch.
+
+### A kit is dumpable on its own — and it is exactly the kit record
+
+A `0x52` Kit dump sent from the kit manager carried a payload of **10,752 bytes**: precisely
+`DN2_LAYOUT.kitSize`. So a kit is a first-class, transferable object on a Digitone II, and it is
+the same record that sits inline in a project.
+
+`docs/references.md` called this *"strong evidence a kit is a first-class object"* on the basis of
+elk-herd implementing `0x62` request / `0x52` response for the Digitakt. **Now verified on this
+family, on hardware.**
+
+The captured kit matched no kit in the source project — the nearest was `A15`, 1,528 bytes away —
+which is expected when the send comes from the +Drive library or from an active kit that has been
+edited. It says nothing about the format and everything about which kit was selected.
+
+### And a standalone sound is exactly the kit's sound slot
+
+A `0x53` Sound dump sent from the preset manager carried **359 bytes**: precisely
+`DN2_KIT.soundSize`. Read with our own sound reader it gives `HIDDEN TEARS`, machine `FM TONE` —
+so a preset is one record, unchanged, whether it sits inline in a kit, alone in the project pool,
+or on its own over the wire.
+
+Its byte 354 reads **0**, matching every other dumped preset and supporting the runtime-flag
+reading above.
+
+---
+
+### The Digitone 1 sends a different shape — and omits its sound pool
+
+Captured the same way, from a Digitone 1 on 1.42A:
+
+| | Digitone 1 | Digitone II |
+|---|---|---|
+| Product id (dump space) | **13** (`0x0D`) | 21 (`0x15`) |
+| PatternKit payload | **20,992** = 18,432 pattern + 2,560 kit | 99,840 = 89,088 + 10,752 |
+| Sound payload | **302** | 359 |
+| A project dump | **128 PatternKit + 1 ProjectSettings** | 128 PatternKit + 119 Sound + 1 ProjectSettings |
+| ProjectSettings payload | **11,776** | 512 |
+
+Both PatternKit sizes are `patternSize + kitSize` **exactly**, on both machines. The unit is the
+same idea at two scales, and the product ids confirm what `src/sysex/devices.ts` had recorded.
+
+> [!warning] **A DN1 project dump carries no sounds**
+> There is **no `0x53` in a Digitone 1 project dump** — only patterns and settings — and its
+> ProjectSettings payload of 11,776 bytes is far too small to hold a 128 × 302 = 38,656-byte
+> pool.
+>
+> A DN1 kit carries its four track sounds inline, so a pattern dump is not sound-less. But
+> **sound-locked** sounds live in the project pool, and the pool is what the expander exists to
+> unfold. So a project reconstructed from a DN1 SysEx dump alone would be missing exactly the
+> data the DN1 → DN2 workflow depends on.
+>
+> The DN1 offers separate soundbank and pool sends in its own `SYSEX DUMP` menu, so the data is
+> reachable — it is simply **not part of a project dump**, and any transfer built on dumps has to
+> fetch it as a second step. On the DN2 the same information arrives automatically as 119
+> `0x53` messages.
+
+### The object number runs out at 128
+
+**[verified]** The object number is a single 7-bit SysEx byte, so it counts `0`–`127` and then
+**reports `0` for every message after that**. It does not wrap cyclically — it saturates.
+
+Seen on a Digitone sending +Drive soundbanks of different sizes:
+
+| Bank | Messages | Object numbers |
+|---|---|---|
+| 28 sounds | 28 | `0`–`27`, one each |
+| 182 sounds | 182 | `0`–`127`, then `0` × 54 |
+| 256 sounds | 256 | `0`–`127`, then `0` × 128 |
+
+The sounds after the 128th are **distinct records, not duplicates** — the names differ. So the
+data is all there and only the numbering stops being useful.
+
+> [!important] **Past 128 objects, only send order identifies a record**
+> Any transfer that reassembles a bank or a pool from dumps must count messages rather than trust
+> the object number. Under 128 the two agree, which is exactly the size at which the mistake
+> would never be caught in testing.
+
+The bank contents read correctly regardless: 302 bytes each, decoded by our own DN1 sound reader
+straight off the wire — `DIGIT-ONE`, `CHAPPET DL`, `PLUCKY EÅ`.
+
+---
+
+### Requesting works — a device answers on demand — VERIFIED 2026-07-28
+
+**[verified]** Every implemented request was sent to a Digitone II and answered with its matching
+response, payload **exactly** the size of the record it names:
+
+| Asked | Answered | Payload | Record |
+|---|---|---|---|
+| `0x64` ProjectSettings | `0x54` | 512 | 512 |
+| `0x63` Sound | `0x53` | 359 | `DN2_KIT.soundSize` |
+| `0x62` Kit | `0x52` | 10,752 | `DN2_LAYOUT.kitSize` |
+| `0x61` Pattern | `0x51` | 89,088 | `DN2_LAYOUT.patternSize` |
+
+All checksums good. The `0x5n` response / `0x6n` request convention, known only from elk-herd's
+Digitakt implementation, **holds on the Digitone family**.
+
+This is the piece the device story was waiting on. With the +Drive file API absent here (§3c-iv
+of the ROADMAP), asking for objects one at a time is the *only* way to read a device — and it
+works, at any granularity, without the 14.6 MB cost of a whole-project dump.
+
+**The Digitone 1 answers identically.** Same four requests, same matching responses, each payload
+exactly its own record:
+
+| Asked | Answered | DN1 payload | DN2 payload |
+|---|---|---|---|
+| `0x64` ProjectSettings | `0x54` | **11,776** | 512 |
+| `0x63` Sound | `0x53` | **302** | 359 |
+| `0x62` Kit | `0x52` | **2,560** | 10,752 |
+| `0x61` Pattern | `0x51` | **18,432** | 89,088 |
+
+Eight requests across two machines and two firmware generations, every one exact, every checksum
+good. So the convention is a **family** property rather than one device's — and a Digitone of
+either generation can be read on demand.
+
+> [!important] `supportedMessages` enumerates responses, not requests
+> Neither Digitone advertises `0x60`–`0x6f`, and both honour them. So **absence from that list is
+> not a refusal** — a lesson worth carrying to any other code that seems to be missing.
+
+Two traps cost time getting here, both ours rather than the device's:
+
+- **A MIDI input is not opened by `addEventListener`.** Only assigning `onmidimessage` opens one
+  implicitly. A closed port delivers nothing, which is indistinguishable from a silent device.
+- **The two protocols number products differently.** A request must be addressed in the *dump*
+  space — `0x0D` Digitone, `0x15` Digitone II — not with the id the API's `Device` response
+  reports (20 and 43). The first request went out to product 43 and was rightly ignored.
+
+---
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):

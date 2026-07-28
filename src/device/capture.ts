@@ -39,8 +39,17 @@ export interface CaptureGroup {
   /** `PatternKit dump`, or `unknown` — the same naming the probe uses elsewhere. */
   name: string;
   count: number;
-  /** Object numbers seen, so a project dump shows *which* patterns arrived. */
+  /**
+   * Distinct object numbers seen, so a project dump shows *which* patterns arrived.
+   *
+   * **Fewer than `count` does not mean messages were lost.** The object number is a single 7-bit
+   * SysEx byte, so it counts `0`–`127` and then reports `0` for everything after — observed on a
+   * Digitone sending banks of 182 and 256 sounds. Beyond 128 objects the number carries no
+   * information and only **send order** identifies a record.
+   */
   objects: number[];
+  /** True when more messages arrived than there are distinct object numbers. */
+  numbersExhausted: boolean;
   bytes: number;
   /** Messages whose stored checksum disagrees with the recomputed one. */
   badChecksum: number;
@@ -142,6 +151,7 @@ export function summariseCapture(data: Uint8Array): CaptureSummary {
         name: DUMP_MESSAGES[message.dumpType] ?? "unknown",
         count: 0,
         objects: [],
+        numbersExhausted: false,
         bytes: 0,
         badChecksum: 0,
       };
@@ -155,7 +165,10 @@ export function summariseCapture(data: Uint8Array): CaptureSummary {
     }
   }
 
-  for (const group of groups.values()) group.objects.sort((a, b) => a - b);
+  for (const group of groups.values()) {
+    group.objects.sort((a, b) => a - b);
+    group.numbersExhausted = group.count > group.objects.length;
+  }
 
   return {
     messages,
@@ -213,6 +226,15 @@ export function captureFileName(summary: CaptureSummary, when = new Date()): str
   if (!biggest) return `CAPTURE_${stamp}.syx`;
 
   const product = biggest.product.replace(/[^A-Za-z0-9]+/g, "");
+
+  // Named for the **whole** capture, not its largest group. A project dump is 128 PatternKit,
+  // 119 Sound and one ProjectSettings, and calling that file `PatternKit_128x` made the user
+  // reasonably think the other 120 messages had been lost. They were in the file all along; only
+  // the name lied.
+  if (summary.groups.length > 1) {
+    return `${product}_Project_${summary.messages}msg_${stamp}.syx`;
+  }
+
   const kind = biggest.name.replace(/\s*dump\s*/i, "").replace(/[^A-Za-z0-9]+/g, "") || `type${biggest.dumpType.toString(16)}`;
   return `${product}_${kind}_${biggest.count}x_${stamp}.syx`;
 }

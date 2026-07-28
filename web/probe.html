@@ -33,6 +33,10 @@ header {
 h1 { font-size: .82rem; margin: 0 .6rem 0 0; text-transform: uppercase; letter-spacing: .12em;
   color: var(--teal); font-weight: 600; }
 label.lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+input[type=number] {
+  background: #1b2123; color: var(--fg); border: 1px solid var(--line-soft);
+  border-radius: 3px; padding: .25rem .4rem; font: inherit; font-size: .8rem; width: 4.5rem;
+}
 select {
   background: #1b2123; color: var(--fg); border: 1px solid var(--line-soft);
   border-radius: 3px; padding: .25rem .4rem; font: inherit; font-size: .8rem; max-width: 16rem;
@@ -97,6 +101,10 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <button class="btn primary" id="probe" disabled>Probe</button>
   <button class="btn" id="listen" disabled>Listen</button>
   <button class="btn" id="save" disabled>Save capture</button>
+  <select id="reqWhat" disabled></select>
+  <label class="lbl" for="reqObj">obj</label>
+  <input id="reqObj" type="number" min="0" max="127" value="0" disabled>
+  <button class="btn" id="request" disabled>Request</button>
 </header>
 
 <main>
