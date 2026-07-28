@@ -150,6 +150,29 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+test("every drop action has a colour in the manager's stylesheet", () => {
+  // `dropHint` puts the action's own name on the cell as a class, so its hue comes from a rule
+  // named after it. A fourth action would typecheck, name itself correctly, draw its label — and
+  // be styled like nothing at all, silently, because a missing CSS rule is not an error.
+  //
+  // The actions are read out of `dragrules.ts` rather than listed here. A copy of the list is a
+  // copy that goes stale, and going stale is the thing this test exists to catch.
+  const rules = readFileSync(resolve(HERE, "../web/src/manager/dragrules.ts"), "utf8");
+  const union = /export type DropAction =([^;]+);/.exec(rules);
+  assert.ok(union, "DropAction is no longer a string union — rewrite this test, do not delete it");
+
+  const actions = [...union[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+  assert.ok(actions.length >= 3, `found ${actions.length} drop actions, expected at least 3`);
+
+  const markup = readFileSync(resolve(HERE, "../web/manager.html"), "utf8");
+  const css = markup.slice(markup.indexOf("<style"), markup.indexOf("</style>"));
+
+  const unstyled = actions.filter(
+    (action) => !new RegExp(`\\.slot\\.target\\.${action}\\b`).test(css),
+  );
+  assert.deepEqual(unstyled, [], "these drop actions have no `.slot.target.<action>` rule");
+});
+
 test("the manager reaches the librarian rather than reimplementing it", () => {
   // The UI holds no rules: shuffle says what a move means, rearrange plans and verifies it,
   // session holds the history. If that stops being true the browser and the CLI can disagree

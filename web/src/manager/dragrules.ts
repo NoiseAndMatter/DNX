@@ -83,3 +83,37 @@ export function refuseDrop(
   }
   return undefined;
 }
+
+/** What a hovered destination should draw on itself. */
+export interface DropHint {
+  action: DropAction;
+  /** Drawn across the middle of the cell. Short and shouty, because it sits over content. */
+  label: string;
+}
+
+/**
+ * What to show on the cell the cursor is over, or `undefined` to show nothing.
+ *
+ * Two jobs the status bar was doing alone, and doing badly because it is at the other end of
+ * the page from the cursor: say **which** of the three actions is about to happen, and say it
+ * where the user is already looking.
+ *
+ * `undefined` on a refusal is the deliberate part. The browser already draws a "no" cursor for
+ * a drop we decline, and that is both clearer and free; a fourth tint meaning *you cannot* would
+ * compete with the three that mean *this will happen*, and the eye would have to learn which is
+ * which. So a refused cell is drawn exactly like an untouched one.
+ *
+ * Pure, and separate from the handlers, for the same reason the rest of this module is: the
+ * question "does Ctrl over a second selected pattern show SWAP?" has a right answer, and finding
+ * it by dragging things with a mouse is not a test anyone runs twice.
+ */
+export function dropHint(
+  drag: Drag | undefined,
+  level: Level,
+  index: number,
+  modifiers: Modifiers,
+): DropHint | undefined {
+  const action = actionFor(modifiers);
+  if (refuseDrop(drag, level, index, action) !== undefined) return undefined;
+  return { action, label: action.toUpperCase() };
+}
