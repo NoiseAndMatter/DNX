@@ -62,6 +62,12 @@ button, input, select { font: inherit; color: inherit; }
   margin: 0; padding: .45rem .7rem; font-size: .67rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: .11em; color: var(--dim);
   border-bottom: 1px solid var(--line-soft);
+  display: flex; align-items: center; gap: .5rem;
+}
+.panel > h2 .btn.ghost {
+  margin-left: auto; background: none; border-color: var(--line-soft);
+  font-size: .64rem; letter-spacing: .07em; text-transform: uppercase;
+  padding: .18rem .5rem; color: var(--muted);
 }
 .panel > .body { padding: .7rem; }
 
@@ -104,6 +110,19 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
 .slot.unsupported { border-style: dashed; border-color: var(--amber); }
 .slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
 .slot.target { outline: 2px dashed var(--amber); outline-offset: -2px; }
+
+/* ---- the track grid: 16 tracks of one pattern, four across so names have room -------- */
+.grid.tracks { grid-template-columns: repeat(4, 1fr); }
+.slot .mc { font-size: .62rem; color: var(--dim); letter-spacing: .04em; }
+.slot.midi { border-color: var(--amber); }
+.slot.midi .id, .slot.midi .mc { color: var(--amber); }
+
+/* ---- scope selector ----------------------------------------------------------------- */
+.lbl { display: block; font-size: .66rem; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: .3rem; }
+#scope { width: 100%; background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 3px; padding: .34rem .4rem; font-size: .76rem; }
+#scope:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* ---- operation bar ------------------------------------------------------------------ */
 .ops { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
@@ -156,7 +175,11 @@ label.file input { display: none; }
 
 <main>
   <section class="panel" id="gridPanel">
-    <h2 id="bankTitle">Patterns</h2>
+    <h2>
+      <span id="bankTitle">Patterns</span>
+      <button class="btn ghost" id="drill" hidden>Tracks…</button>
+      <button class="btn ghost" id="back" hidden>← Patterns</button>
+    </h2>
     <div class="body">
       <div id="dropzone" class="dropzone">
         <p><strong>Open a project</strong> — a Digitone <code>.dnprj</code> or a Digitone II <code>.dn2prj</code>.</p>
@@ -164,10 +187,16 @@ label.file input { display: none; }
         <p class="hint">Nothing leaves this machine. The file is read, edited and written in the browser.</p>
       </div>
       <div class="grid" id="grid" hidden></div>
+      <div class="grid tracks" id="trackGrid" hidden></div>
       <div class="legend" id="legend" hidden>
         <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
         <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
         <span><i style="border:1px dashed var(--amber)"></i>storage version we do not read</span>
+      </div>
+      <div class="legend" id="trackLegend" hidden>
+        <span><i style="background:#1d2726;border:1px solid var(--teal-dim)"></i>holds trigs</span>
+        <span><i style="background:#1b2123;border:1px solid var(--line-soft)"></i>empty</span>
+        <span><i style="border:1px solid var(--amber)"></i>MIDI track</span>
       </div>
     </div>
   </section>
@@ -185,6 +214,16 @@ label.file input { display: none; }
         <p class="hint" id="opHint" style="margin:.6rem 0 0">
           Click slots to select. Shift-click for a range, Ctrl-click to add.
         </p>
+
+        <div id="scopeBox" hidden style="margin-top:.9rem">
+          <label class="lbl" for="scope">Move</label>
+          <select id="scope">
+            <option value="both">Sequence and preset</option>
+            <option value="sequence">Sequence only — trigs, conditions, locks</option>
+            <option value="preset">Preset only — the sound</option>
+          </select>
+          <p class="hint" id="scopeHint" style="margin:.45rem 0 0"></p>
+        </div>
       </div>
     </section>
 
