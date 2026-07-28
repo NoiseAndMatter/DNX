@@ -569,6 +569,39 @@ straight off the wire — `DIGIT-ONE`, `CHAPPET DL`, `PLUCKY EÅ`.
 
 ---
 
+### Requesting works — a device answers on demand — VERIFIED 2026-07-28
+
+**[verified]** Every implemented request was sent to a Digitone II and answered with its matching
+response, payload **exactly** the size of the record it names:
+
+| Asked | Answered | Payload | Record |
+|---|---|---|---|
+| `0x64` ProjectSettings | `0x54` | 512 | 512 |
+| `0x63` Sound | `0x53` | 359 | `DN2_KIT.soundSize` |
+| `0x62` Kit | `0x52` | 10,752 | `DN2_LAYOUT.kitSize` |
+| `0x61` Pattern | `0x51` | 89,088 | `DN2_LAYOUT.patternSize` |
+
+All checksums good. The `0x5n` response / `0x6n` request convention, known only from elk-herd's
+Digitakt implementation, **holds on the Digitone family**.
+
+This is the piece the device story was waiting on. With the +Drive file API absent here (§3c-iv
+of the ROADMAP), asking for objects one at a time is the *only* way to read a device — and it
+works, at any granularity, without the 14.6 MB cost of a whole-project dump.
+
+> [!important] `supportedMessages` enumerates responses, not requests
+> Neither Digitone advertises `0x60`–`0x6f`, and both honour them. So **absence from that list is
+> not a refusal** — a lesson worth carrying to any other code that seems to be missing.
+
+Two traps cost time getting here, both ours rather than the device's:
+
+- **A MIDI input is not opened by `addEventListener`.** Only assigning `onmidimessage` opens one
+  implicitly. A closed port delivers nothing, which is indistinguishable from a silent device.
+- **The two protocols number products differently.** A request must be addressed in the *dump*
+  space — `0x0D` Digitone, `0x15` Digitone II — not with the id the API's `Device` response
+  reports (20 and 43). The first request went out to product 43 and was rightly ignored.
+
+---
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):
