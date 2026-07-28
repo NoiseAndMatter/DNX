@@ -589,6 +589,28 @@ pool. They turn out to be safe for track operations, because the pool is per **p
 track move stays inside one pattern — the indices remain valid. They would matter for a move
 *between* projects, which is the transfer mode in §3d.
 
+#### The drag now says what it will do — DONE 2026-07-28
+
+The user's second piece of feedback on the same UI. The gesture worked, but one amber outline
+served all three actions, so the destination said only *that* something would happen and the
+*what* lived in the status bar at the far end of the page. The hovered cell now takes a hue per
+action — blue moves, green copies, amber exchanges — and draws the word across itself.
+
+The decision lives in `dragrules.ts` as `dropHint`, pure and tested, for the reason the rest of
+that module is: *"does Ctrl over a batch draw SWAP?"* has a right answer, and finding it by
+dragging things with a mouse is not a test anyone runs twice. It does not — a batch swap is
+refused, and a refusal draws **nothing**, leaving the browser's own "no" cursor to say so.
+
+Two things it needed that the plan had not anticipated, both written up in `docs/ui-plan.md`: a
+modifier can change **without the mouse moving**, so `dragover` never fires and document-level
+key handlers repaint the hovered cell instead; and a cell's own child labels fire `dragleave` on
+it, which made the decoration flicker until `.slot > span { pointer-events: none }` stopped them
+receiving drag events at all.
+
+`test/web.test.ts` now reads `DropAction` out of the source and fails if any action lacks a
+`.slot.target.<action>` rule. A fourth action would typecheck, name itself correctly, draw its
+label — and be styled like nothing at all, because a missing CSS rule is not an error.
+
 ### 3c-ii. Taking track operations to the device — BUILT 2026-07-28, not yet run
 
 `npm run trackhwtest` builds the artefacts. Nothing at track level has been near a device, and
