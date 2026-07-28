@@ -543,10 +543,29 @@ same idea at two scales, and the product ids confirm what `src/sysex/devices.ts`
 > fetch it as a second step. On the DN2 the same information arrives automatically as 119
 > `0x53` messages.
 
-The DN1's separate soundbank send was captured too: 128 sounds at 302 bytes each, object numbers
-`0`–`127`, read straight off the wire by our own DN1 sound reader — `DIGIT-ONE`, `CHAPPET DL`,
-`PLUCKY EÅ`. A second batch of 128 in the same capture all reported object number `0`, which
-suggests numbering is **per send** rather than global; not yet confirmed.
+### The object number runs out at 128
+
+**[verified]** The object number is a single 7-bit SysEx byte, so it counts `0`–`127` and then
+**reports `0` for every message after that**. It does not wrap cyclically — it saturates.
+
+Seen on a Digitone sending +Drive soundbanks of different sizes:
+
+| Bank | Messages | Object numbers |
+|---|---|---|
+| 28 sounds | 28 | `0`–`27`, one each |
+| 182 sounds | 182 | `0`–`127`, then `0` × 54 |
+| 256 sounds | 256 | `0`–`127`, then `0` × 128 |
+
+The sounds after the 128th are **distinct records, not duplicates** — the names differ. So the
+data is all there and only the numbering stops being useful.
+
+> [!important] **Past 128 objects, only send order identifies a record**
+> Any transfer that reassembles a bank or a pool from dumps must count messages rather than trust
+> the object number. Under 128 the two agree, which is exactly the size at which the mistake
+> would never be caught in testing.
+
+The bank contents read correctly regardless: 302 bytes each, decoded by our own DN1 sound reader
+straight off the wire — `DIGIT-ONE`, `CHAPPET DL`, `PLUCKY EÅ`.
 
 ---
 

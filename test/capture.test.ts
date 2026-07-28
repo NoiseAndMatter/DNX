@@ -141,8 +141,8 @@ test("a mixed capture is named for the whole thing, not its biggest group", () =
     unparsed: 0,
     trailingBytes: 0,
     groups: [
-      { productId: 21, product: "Digitone II", dumpType: 0x50, name: "PatternKit dump", count: 128, objects: [], bytes: 14_606_432, badChecksum: 0 },
-      { productId: 21, product: "Digitone II", dumpType: 0x53, name: "Sound dump", count: 119, objects: [], bytes: 50_694, badChecksum: 0 },
+      { productId: 21, product: "Digitone II", dumpType: 0x50, name: "PatternKit dump", count: 128, objects: [], numbersExhausted: false, bytes: 14_606_432, badChecksum: 0 },
+      { productId: 21, product: "Digitone II", dumpType: 0x53, name: "Sound dump", count: 119, objects: [], numbersExhausted: false, bytes: 50_694, badChecksum: 0 },
     ],
   };
   const name = captureFileName(summary, new Date(2026, 6, 28, 22, 51));
@@ -168,3 +168,20 @@ function splitForTest(data: Uint8Array): Uint8Array[] {
   }
   return out;
 }
+
+test("running out of object numbers is reported, not mistaken for lost messages", { skip }, () => {
+  // A Digitone sending a bank of 182 sounds numbers them 0..127 and then reports 0 for the rest —
+  // the field is a single 7-bit SysEx byte. Showing "128 objects" against 182 messages read as
+  // data loss, and the user reasonably asked whether the capture was buggy. It was not; the
+  // display was.
+  const bank = new Uint8Array(readFileSync(
+    join(CAPTURES, "..", "..", "..", "99_HardwareTest", "Digitone_Sound_182x_2308.syx"),
+  ));
+  const summary = summariseCapture(bank);
+  const sounds = summary.groups.find((g) => g.dumpType === 0x53);
+  if (!sounds) throw new Error("no sound dumps in the DN1 bank capture");
+
+  assert.equal(sounds.count, 182, "every message is counted");
+  assert.equal(sounds.objects.length, 128, "but only 128 distinct numbers exist to hand out");
+  assert.equal(sounds.numbersExhausted, true, "which has to be said, or it reads as lost data");
+});

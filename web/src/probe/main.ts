@@ -516,6 +516,16 @@ function renderCapture(): void {
       ["Messages", String(group.count)],
       ["Bytes", group.bytes.toLocaleString()],
       ["Object numbers", objects],
+      // Said plainly, because "128 objects" against 182 messages reads as lost data. It is not:
+      // the field is one 7-bit byte, and the device reports 0 once it runs out.
+      ...(group.numbersExhausted
+        ? ([[
+            "Note",
+            `${group.count} messages but only ${group.objects.length} distinct numbers — the ` +
+              `object number is a 7-bit field and the device stops incrementing past 127. ` +
+              `Nothing was lost; beyond that point only send order identifies a record.`,
+          ]] as [string, string][])
+        : []),
       ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
     ]);
   }
