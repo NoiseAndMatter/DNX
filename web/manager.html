@@ -40,6 +40,16 @@ body {
 }
 button, input, select { font: inherit; color: inherit; }
 
+/*
+ * `hidden` works by a UA rule of `display: none`, which *any* author rule setting `display`
+ * beats. Half this file sets `display` on a class that is also used with `hidden` — .tabs,
+ * .grid, .legend — so those elements rendered whether hidden or not: bank tabs above an empty
+ * page, and the pattern grid still on screen underneath the track grid. Restoring the UA
+ * behaviour once is the fix; `!important` is what that takes, and it is what normalize.css
+ * does for the same reason.
+ */
+[hidden] { display: none !important; }
+
 /* ---- top bar ------------------------------------------------------------------------ */
 .topbar {
   display: flex; align-items: center; gap: 1rem; padding: .55rem .9rem;
@@ -166,6 +176,7 @@ label.file input { display: none; }
   <span class="device" id="device" hidden></span>
   <span class="projname" id="projname"></span>
   <span class="spacer"></span>
+  <label class="btn file" id="reopen" hidden>Open another…<input type="file" id="file2" accept=".dnprj,.dn2prj"></label>
   <button class="btn" id="undo" disabled>Undo</button>
   <button class="btn" id="redo" disabled>Redo</button>
   <button class="btn primary" id="export" disabled>Export…</button>
