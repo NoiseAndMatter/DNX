@@ -69,12 +69,20 @@ export const API_MESSAGES: Readonly<Record<number, { name: string; safety: Safet
 /**
  * Dump types, by code. From `src/sysex/devices.ts`, which derived them from real dumps.
  *
- * **Every one of these is a write.** In this family a dump *is* the data: the device sends one to
- * hand you a pattern, and you send one to give it a pattern. So `0x50` addressed to an instrument
- * is "here is a pattern, store it" — which is how uploading works and exactly why sweeping the
- * advertised codes to see what happens is the one experiment not to run.
+ * **Every one of these is refused, and the evidence behind that is graded — see
+ * `docs/device-probing.md`.** The short version:
  *
- * Requesting a dump is a **different code**, `0x60` and up, and that is the read half.
+ * - `0x50` and `0x53` carrying data on a **Digitone** is verified from our own captures.
+ * - `0x5n` = data / `0x6n` = request is verified on the **Digitakt** family, from elk-herd's
+ *   working parser table, and elk-herd writes to a device by *sending* a `0x5n` — which is the
+ *   direct evidence that a `0x5n` addressed to an instrument means "store this".
+ * - That the `0x50`–`0x5e` a Digitone lists in `supportedMessages` **are** these dump types is
+ *   an **inference**. The values coincide and the band is contiguous, but that list comes from
+ *   an API message and every API code we can source is `0x01`–`0x4x`.
+ *
+ * The refusal does not rest on the inference, which is the point: if they are dump types they
+ * are writes, and if they are not they are undocumented API messages. Both are things not to
+ * send, so the gate is right either way and for a stated reason rather than a lucky one.
  */
 export const DUMP_MESSAGES: Readonly<Record<number, string>> = {
   0x50: "PatternKit dump",
