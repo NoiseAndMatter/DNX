@@ -6,19 +6,27 @@
  *
  * It exists because everything else in DNX was built against a corpus of 24 real project files,
  * and **the transport is the one part that cannot be.** So this is deliberately the least code
- * that gets a real answer out of a real device, and it answers three open questions in one
- * sitting:
+ * that gets a real answer out of a real device.
  *
- *  1. **The storage version.** `docs/dn2-format.md` §8a says v2 vs v3 is firmware, corroborated
- *     by elk-herd's Digitakt II build table, and has been waiting on a device build string ever
- *     since. `Version` returns exactly that.
- *  2. **What the DN2 actually implements.** `Device` returns `supportedMessages`, so we stop
- *     guessing that a Digitone II speaks what a Digitakt II speaks.
- *  3. **Whether whole projects can be read off the +Drive** — ROADMAP §3d's flagged unknown.
- *     `DirList` on `/` settles it in one round trip.
+ * ## It has already earned itself, on its first run
+ *
+ * Three questions went in. Two came back as expected: the firmware **build string** the
+ * storage-version question had waited on since `dn2-format.md` §8a, and a **product id of 43**,
+ * matching what `src/sysex/devices.ts` had recorded.
+ *
+ * The third came back **the opposite of what we had assumed.** ROADMAP §3d's plan rested on
+ * reading whole projects off the +Drive over SysEx, which elk-herd does on a Digitakt II — and a
+ * Digitone II advertises **none** of the nine file-API codes. `DirList` timed out because the
+ * device does not implement it. Had the transfer layer been built first, that is where it would
+ * have surfaced.
+ *
+ * So the probe now **reads the capability list before sending anything**, and refuses `DirList`
+ * on a device that does not claim it rather than waiting two seconds for a reply that is never
+ * coming. A timeout reads like our bug; a refusal reads like the device's answer, which is what
+ * it is.
  *
  * Kept off the manager on purpose. This is a diagnostic, and the manager should not grow a MIDI
- * dependency until the protocol has been proven against hardware.
+ * dependency until there is something for it to do over MIDI.
  */
 
 import {
@@ -32,6 +40,11 @@ import {
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
+import {
+  capabilitiesOf,
+  describeMessages,
+  hex,
+} from "../../../src/device/capabilities.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -132,29 +145,38 @@ async function probe(): Promise<void> {
     const device = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
 
+    const caps = capabilitiesOf(device.supportedMessages);
+
     card(results, "Device", [
       ["Name", device.deviceName],
       ["Product id (API space)", String(device.productId)],
       ["Firmware", `${version.version}  (build ${version.build})`],
-      ["Supported messages", device.supportedMessages.map((m) => `0x${m.toString(16).padStart(2, "0")}`).join(" ")],
+      ["Reads +Drive files", caps.driveFiles ? "yes" : "no"],
+      ["Manages +Drive", caps.driveManagement ? "yes" : "no"],
     ]);
 
-    status(`${device.deviceName}, firmware ${version.version}. Listing the +Drive…`, "ok");
+    // Named, not hex. A list of 22 raw codes is a transcription job; what a reader wants is
+    // which of them mean something and which do not.
+    messageCard(results, device.supportedMessages);
 
-    // The §3d question. A failure here is a result too, so it is reported rather than thrown.
-    try {
+    // Do not send a message the device says it does not implement. The first probe did, and
+    // spent two seconds timing out on a `DirList` that was never coming — which reads like a
+    // fault in us rather than a correct answer from the device.
+    if (caps.driveFiles) {
       const root = readDirListResponse(
         (await session.request(Code.DirList, (id) => dirListRequest(id, "/"))).body,
       );
       listing(results, "/", root);
+      status(`${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`, "ok");
+    } else {
+      card(results, "No +Drive file API on this device", [
+        ["Missing", caps.missingForDriveFiles.map(hex).join(" ")],
+        ["Means", "whole projects cannot be read off the +Drive by path"],
+        ["Instead", `${caps.dumps.length} dump type(s) are advertised — data moves as dumps`],
+      ]);
       status(
-        `${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`,
-        "ok",
-      );
-    } catch (error) {
-      card(results, "+Drive listing failed", [["Error", String(error)]]);
-      status(
-        `${device.deviceName} answered Device and Version but not DirList — worth recording.`,
+        `${device.deviceName} ${version.version}: no +Drive file API. Not a failure — the device ` +
+          `says it does not implement it, so nothing was sent.`,
         "warn",
       );
     }
@@ -188,6 +210,32 @@ function card(into: HTMLElement, title: string, rows: [string, string][]): void 
           `<span class="v">${escapeHtml(v) || "&mdash;"}</span></div>`,
       )
       .join("");
+  into.append(section);
+}
+
+/**
+ * Every advertised message, named.
+ *
+ * The unknown ones are shown rather than filtered out. A Digitone II advertises `0x03`, `0x04`,
+ * `0x06` and `0x07`, which appear in no source we have — and a list that quietly dropped them
+ * would hide the most interesting thing on the page.
+ */
+function messageCard(into: HTMLElement, codes: readonly number[]): void {
+  const rows = describeMessages(codes)
+    .map(
+      (m) =>
+        `<tr><td class="mono">${hex(m.code)}</td>` +
+        `<td class="mono">${m.kind}</td>` +
+        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td></tr>`,
+    )
+    .join("\n  ");
+
+  const section = document.createElement("section");
+  section.className = "card";
+  section.innerHTML =
+    `<h2>Supported messages (${codes.length})</h2>` +
+    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table>`;
   into.append(section);
 }
 

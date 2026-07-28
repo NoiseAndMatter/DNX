@@ -821,16 +821,56 @@ Re-reading the name is only our writer agreeing with our reader; the byte diff a
 offset, the layout and the record slicing agreed as well. A stray byte would be invisible to a
 name check right up until the device refused the project.
 
-### 3c-iv. WebMIDI, the protocol layer — BUILT 2026-07-28, unproven against hardware
+### 3c-iv. WebMIDI — the protocol layer, and a wrong assumption caught by the probe
 
-**The §3d flagged unknown is answered: yes, whole projects can be read off the +Drive.**
+**Corrected 2026-07-28, on hardware.** The section below originally opened by announcing that
+§3d's flagged unknown was *"answered: yes, whole projects can be read off the +Drive"*. **That
+was wrong for the Digitone II**, and the way it was wrong is worth more than the code.
 
-elk-herd's `SysEx/Message.elm` implements a general **filesystem** over SysEx, not a dump
-protocol: `DirList` (`0x10`), `FileReadOpen` by **path** (`0x30`), `FileRead` by byte range
-(`0x32`), `FileReadClose` (`0x31`). So a device hands us a `.dn2prj`, which is the exact unit
-every other part of DNX already works in. Nothing has to be rebuilt around patterns-over-the-wire.
+The +Drive filesystem API is real — elk-herd uses it — but elk-herd supports the **Digitakt II**,
+and the claim was generalised across the storage family without evidence. The family shares a
+*storage format*; it does not follow that it shares a *protocol surface*.
 
-#### The wire format
+#### What the device said
+
+The first probe of a real Digitone II, firmware 1.10E, build 0050:
+
+| | |
+|---|---|
+| Product id (API space) | **43** — matching what `src/sysex/devices.ts` already recorded |
+| Firmware / build | **1.10E / 0050** — the string the storage-version question waited on |
+| Advertised messages | `0x01 0x02 0x03 0x04 0x06 0x07 0x09` and `0x50`–`0x5e` |
+
+**None of the nine file-API codes are present**, and `DirList` timed out — two independent
+signals agreeing. elk-herd gates the same way: its `hasDriveSamples` requires `0x10`, `0x11`,
+`0x12`, `0x20` and `0x21`, and a Digitone II would return false.
+
+So: **the Digitone II has no +Drive file API.** Data moves by **dumps**, the `0x50`–`0x5e` band,
+of which we already parse `0x50` PATTERN_KIT byte-exactly and hold native captures.
+
+#### Why this is the probe working, not the probe failing
+
+The whole reason to build the smallest thing that needs hardware, before the thing that needs it
+badly, is to find out which assumptions are wrong while they are still cheap. Had the transfer
+layer been written first, this would have surfaced as a chunked read loop against a device that
+never answers.
+
+It is also why `Device` returns `supportedMessages` at all, and why reading it was worth doing
+rather than assuming. `src/device/capabilities.ts` now turns that list into answers, and the
+probe **checks before it sends** — a message the device does not implement produces a stated
+refusal rather than a two-second timeout that reads like our bug.
+
+#### What is left unexplored
+
+`0x03`, `0x04`, `0x06` and `0x07` are advertised and appear in **no source we have**, elk-herd
+included. On a device with no file API they are the only unexamined *messages*, so they are the
+next thing to look at — possibly via `0x09` Query, which elk-herd implements and which answers
+by key. Ten dump types in `0x55`–`0x5e` are uncatalogued, but that is a different question:
+almost certainly dumps, of data we have not named.
+
+#### The wire format, which was right
+
+
 
 ```
 F0 00 20 3C 10 00 <8-in-7 encoded payload> F7
@@ -926,11 +966,21 @@ librarian already uses; the collisions here are destination slots on the DN2's +
    inheriting a single identity from the template. Fixed before the feature needs it, which is
    the right order.
 
-**Unknown, and the thing to research first:** whether the +Drive file API lets us enumerate and
-read whole projects over SysEx. elk-herd's `Elektron/Drive.elm` models a drive as a tree of
-entries with hashes and sizes, and `Instrument.elm` lists file-operation commands
-(`dirCreate`, `dirDelete`, `fileDelete`, `itemRename`), which is strong evidence the transport
-exists. Reading a *project* rather than a pattern dump is the part to confirm.
+**Answered 2026-07-28, and the answer is no — for this device.** The +Drive file API exists, but
+a **Digitone II does not implement it**: it advertises none of the nine file-API codes and
+`DirList` times out. elk-herd models the drive because it supports the **Digitakt II**, which
+does. See §3c-iv.
+
+So transfer mode cannot be built on whole-project file reads. It has to move **dumps** — the
+`0x50`-`0x5e` band the device does advertise, of which `0x50` PATTERN_KIT is one we already
+parse byte-exactly and hold native captures for. That is a bigger job than copying a file: a
+project is assembled pattern by pattern rather than fetched whole, and the sound pool has to be
+reconciled rather than coming along for free.
+
+**It also removes a reason the two-device design was urgent.** Reading a DN1 catalogue over the
+file API was the cheap version of this feature; without it, transfer mode is a much larger piece
+of work and should be re-judged on its merits rather than inherited from a plan whose premise
+has gone.
 
 ### 3c. Songs — deferred by the user, with a constraint to remember
 

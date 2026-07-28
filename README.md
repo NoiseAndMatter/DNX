@@ -42,8 +42,9 @@ speculative or unknown.
 | Session model with undo/redo | done |
 | Track move/copy/swap/clear inside a pattern | done, DN2 only, **hardware-validated** |
 | Pattern rename | done, both devices — batch schemes to come |
-| WebMIDI — SysEx API, +Drive read, device probe | protocol layer done, **never met a device** |
-| WebMIDI — transfer, writing to a device | not started |
+| WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone II** |
+| WebMIDI — +Drive file access | **not possible on the DN2** — it does not implement the API |
+| WebMIDI — transfer by dumps | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
 gaps and the traps that have already cost time.
@@ -148,7 +149,8 @@ ranking and allocation.
 - **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
 - **`/probe`** — the **device probe**. Read-only: asks a connected Elektron what it is, what
   firmware it runs, which messages it supports, and what is on its +Drive. Chrome or Edge only,
-  and it asks for SysEx permission. Nothing here has met a device yet.
+  and it asks for SysEx permission. It reads the device's capability list before sending
+  anything, so a message the device does not implement is refused rather than timed out.
 - **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
   clear patterns across its banks with undo, and export once. **Open another…** in the top bar
   swaps projects without reloading, asking first if there are unsaved edits. Double-click a
