@@ -36,7 +36,13 @@ import {
 import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import { buildProjectBlob, download, openProject, type LoadedProject } from "../project.js";
-import { type Drag, type Level, actionFor, refuseDrop } from "./dragrules.js";
+import {
+  type Drag,
+  type Level,
+  actionFor,
+  patternForOperation,
+  refuseDrop,
+} from "./dragrules.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -410,12 +416,16 @@ function wireSlot(cell: HTMLElement, level: Level, index: number): void {
     const names = indices.map((i) => nameAt(level, i)).join(" ");
     dragging = undefined;
 
+    // The level is passed explicitly: what was dragged decides what happens, never what
+    // happens to be on screen.
+    const suffix = level === "track" ? scopeSuffix() : "";
+    const to = nameAt(level, index);
     if (action === "swap") {
-      run(`swap ${names} and ${nameAt(level, index)}${scopeSuffix()}`, swap(indices[0]!, index));
+      run(`swap ${names} and ${to}${suffix}`, swap(indices[0]!, index), level);
     } else if (action === "copy") {
-      run(`copy ${names} to ${nameAt(level, index)}${scopeSuffix()}`, copyMany(indices, index));
+      run(`copy ${names} to ${to}${suffix}`, copyMany(indices, index), level);
     } else {
-      run(`move ${names} to ${nameAt(level, index)}${scopeSuffix()}`, moveMany(indices, index));
+      run(`move ${names} to ${to}${suffix}`, moveMany(indices, index), level);
     }
   });
 }
@@ -428,12 +438,14 @@ function wireSlot(cell: HTMLElement, level: Level, index: number): void {
  * The order matters and is the CLI's: plan first so the user is told what would be destroyed,
  * ask, and only then apply — which verifies its own work before the session records it.
  */
-function run(label: string, shuffle: Shuffle): void {
+function run(label: string, shuffle: Shuffle, level: Level = state.level): void {
   const session = state.session;
   const device = state.device;
   if (!session || !device) return;
 
-  const tracks = state.trackFor;
+  // The level comes from the operation, never from what happens to be on screen. See
+  // `patternForOperation`, which carries the reasoning and the test.
+  const tracks = patternForOperation(level, state.trackFor);
   const scope = state.scope;
 
   // One shape for both levels. `planRearrange` and `planTrackMove` deliberately report the same

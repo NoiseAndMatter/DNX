@@ -33,6 +33,21 @@ export function actionFor(event: Modifiers): DropAction {
   return "move";
 }
 
+/**
+ * Which pattern an operation runs *inside*, or `undefined` when it operates on patterns.
+ *
+ * The bug this exists to prevent: the manager used to decide "is this a track operation?" by
+ * asking whether a track section was open. That was the same question only while opening
+ * tracks *replaced* the pattern grid. Once the two stacked, `openPattern` stayed set while
+ * patterns were on screen, so a pattern drag was executed as a track operation — silently, and
+ * with the indices reinterpreted, since A5 and T5 are both index 4.
+ *
+ * What was dragged decides what happens. What is on screen never does.
+ */
+export function patternForOperation(level: Level, openPattern: number | undefined): number | undefined {
+  return level === "track" ? openPattern : undefined;
+}
+
 export interface Drag {
   level: Level;
   /** Sources, in selection order — a batch lands in this order. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Drag, actionFor, refuseDrop } from "../web/src/manager/dragrules.js";
+import { type Drag, actionFor, patternForOperation, refuseDrop } from "../web/src/manager/dragrules.js";
 
 const mods = (over: Partial<Record<"shiftKey" | "ctrlKey" | "metaKey", boolean>> = {}) => ({
   shiftKey: false,
@@ -97,4 +97,24 @@ test("every refusal reads as a reason, not a code", () => {
     assert.doesNotMatch(reason!, /[.!]$/, `"${reason}" should not punctuate its own end`);
     assert.ok(reason!.split(" ").length >= 4, `"${reason}" is too terse to act on`);
   }
+});
+
+// --- which level an operation runs at ------------------------------------------------------
+
+test("a pattern operation never runs inside the open pattern", () => {
+  // The regression: the manager decided "is this a track operation?" by asking whether a track
+  // section was open. That was the same question only while opening tracks *replaced* the
+  // pattern grid. Once they stacked, dragging a pattern ran a track operation on the open one,
+  // reinterpreting the indices on the way — A5 and T5 are both index 4, so it looked plausible.
+  assert.equal(patternForOperation("pattern", 0), undefined);
+  assert.equal(patternForOperation("pattern", 7), undefined);
+});
+
+test("a track operation runs inside the open pattern", () => {
+  assert.equal(patternForOperation("track", 7), 7);
+  assert.equal(patternForOperation("track", 0), 0, "pattern 0 is a pattern, not an absence");
+});
+
+test("a track operation with no pattern open runs nowhere", () => {
+  assert.equal(patternForOperation("track", undefined), undefined);
 });

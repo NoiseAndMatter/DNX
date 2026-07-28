@@ -42,6 +42,23 @@ the destination pool is already populated — converted sounds need deduplicatio
 allocation against it — and `planExpansion` allocates tracks across a whole project rather than
 into a destination pattern whose tracks may already be occupied. That one is a later phase.
 
+## Drag-and-drop feedback — TO DO
+
+**Requested by the user 2026-07-28, after using the first cut.** The gesture works; what it is
+about to do is not visible enough. Two changes, both on the **destination** cell while a drag
+hovers it:
+
+1. **Shade it by modifier**, so the action is readable without looking away to the status bar —
+   a distinct tint per action rather than one amber dashed outline for all three. Move, copy and
+   swap should not look alike.
+2. **Name the action in the middle of the cell** — `MOVE`, `COPY`, `SWAP` — overlaid on the
+   destination. The modifier is read at drop time, so this updates live as Shift or Ctrl is
+   pressed and released mid-drag, which is what makes it worth drawing at all.
+
+Applies to both grids, and to the trig grid when that exists. The refusal cases already lean on
+the browser's own "no" cursor and should keep doing so: a fourth state meaning "you cannot"
+would compete with the three that mean something.
+
 ## The paradigm: one project open, explorers as sources
 
 **One project is open and being edited at a time.** Within it: move patterns around, replace kits,
