@@ -41,6 +41,7 @@ speculative or unknown.
 | Web UI | first version — load, plan, export, all in the browser |
 | Session model with undo/redo | done |
 | Track move/copy/swap/clear inside a pattern | done, DN2 only — **hardware test built, not yet run** |
+| Pattern rename | done, both devices — batch schemes to come |
 | WebMIDI | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
@@ -88,6 +89,11 @@ npm run rearrange -- --project a.dn2prj --copy A1 --to C5
 npm run rearrange -- --project a.dn2prj --clear B12 B13
 npm run rearrange -- --project a.dn2prj --keep A1 A4         # a clean test project
 npm run rearrange -- --project a.dn2prj --swap A1 B12 --apply --confirm --out new.dn2prj
+
+# Rename a pattern — both devices, dry run by default
+npm run rename -- --project a.dn2prj                              # what everything is called
+npm run rename -- --project a.dn2prj --pattern A1 --to "INTRO 01"
+npm run rename -- --project a.dn2prj --pattern A1 --to "INTRO 01" --apply --out new.dn2prj
 
 # Move tracks inside one pattern — Digitone II only, dry run by default
 npm run track -- --project a.dn2prj --pattern A1                  # what is on each track
@@ -144,6 +150,7 @@ ranking and allocation.
   swaps projects without reloading, asking first if there are unsaved edits. Double-click a
   Digitone II pattern — or select one and press **Tracks…** — to drill into its 16 tracks,
   where the same four operations move tracks and a **Move** selector picks which half travels.
+  Select one pattern and press <kbd>F2</kbd>, or **Rename…**, to rename it.
 
 The manager holds no rules of its own: `shuffle.ts` says what a move means, `rearrange.ts` and
 `trackmove.ts` plan and verify it, `session.ts` holds the history, `tracksummary.ts` says what
