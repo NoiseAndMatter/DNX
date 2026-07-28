@@ -36,11 +36,15 @@ import {
   dirListRequest,
   readDeviceResponse,
   readDirListResponse,
+  readQueryResponse,
   readVersionResponse,
+  describeQueryValue,
+  queryRequest,
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import {
+  QUERY_KEYS,
   capabilitiesOf,
   describeMessages,
   hex,
@@ -135,6 +139,22 @@ function renderPorts(): void {
   );
 }
 
+/**
+ * Whether this is a Chromium browser.
+ *
+ * Crude on purpose, and only used to add a hint to a failure that has already happened. Firefox
+ * implements Web MIDI but gates SysEx behind a separate site-permission add-on and drops it
+ * **silently** when that is missing — ports open, `send()` does not throw, nothing comes back.
+ * Indistinguishable from a dead device, and it cost an hour before Chrome was tried with nothing
+ * else changed.
+ */
+function isChromium(): boolean {
+  const brands = (navigator as { userAgentData?: { brands?: { brand: string }[] } }).userAgentData
+    ?.brands;
+  if (brands) return brands.some((b) => /Chromium|Google Chrome|Microsoft Edge/.test(b.brand));
+  return /Chrome\/|Edg\//.test(navigator.userAgent);
+}
+
 function sharedPrefix(a: string, b: string): number {
   let n = 0;
   while (n < a.length && n < b.length && a[n] === b[n]) n++;
@@ -153,16 +173,59 @@ async function probe(): Promise<void> {
 
   const results = $("results");
   results.innerHTML = "";
-  status(`Probing ${output.name}…`);
+  status(`Opening ${output.name}…`);
+
+  // **Open both ports explicitly.**
+  //
+  // `addEventListener("midimessage", …)` does *not* open an input. Only assigning
+  // `onmidimessage` opens one implicitly, and the spec is explicit about that asymmetry. Without
+  // this, a closed port silently delivers nothing and every request times out — indistinguishable
+  // from a device that is not listening, which is exactly how it was misread the first time.
+  //
+  // It worked at all only because the ports happened to already be open; anything that takes them
+  // and gives them back — Elektron Transfer, Overbridge, a DAW — leaves them closed.
+  //
+  // Bounded, because `open()` is a promise that can simply never settle — a port another
+  // application is holding does not reject, it waits. Without the race the page sits on
+  // "Opening…" indefinitely with no way to tell that from a slow device.
+  try {
+    await Promise.race([
+      Promise.all([input.open(), output.open()]),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`opening the port took longer than ${OPEN_TIMEOUT_MS}ms`)), OPEN_TIMEOUT_MS),
+      ),
+    ]);
+  } catch (error) {
+    status(`Could not open the port: ${error}. Something else may be holding it.`, "error");
+    card(results, "Could not open the port", [
+      ["Error", String(error)],
+      ["Input", `${input.name} — ${input.connection}`],
+      ["Output", `${output.name} — ${output.connection}`],
+      ["Usually", "another application has the port: Elektron Transfer, Overbridge, or a DAW"],
+    ]);
+    return;
+  }
 
   const session = new DeviceSession({ send: (bytes) => output.send([...bytes]) });
+
+  // Counted so a failure can say *which* silence this is: nothing arriving at all, or traffic
+  // arriving that is not ours. Those have completely different causes and the same symptom.
+  let received = 0;
   const onMessage = (event: MIDIMessageEvent): void => {
-    if (event.data) session.receive(new Uint8Array(event.data));
+    if (!event.data) return;
+    received++;
+    session.receive(new Uint8Array(event.data));
   };
   input.addEventListener("midimessage", onMessage);
 
   try {
+    // Narrated step by step. A single "Probing…" that sits there for half a minute tells the
+    // user nothing about whether it is working, stuck, or nearly done — and it is the *first*
+    // request that fails when a port is closed, which a static message actively hides.
+    status(`Asking ${output.name} what it is…`);
     const device = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
+
+    status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
 
     const caps = capabilitiesOf(device.supportedMessages);
@@ -200,11 +263,38 @@ async function probe(): Promise<void> {
         "warn",
       );
     }
+
+    // Query last, because it is the slow part: one round trip per key, and most keys are guesses
+    // that will come back empty. Everything above is already on screen by the time it starts.
+    if (device.supportedMessages.includes(Code.Query)) {
+      await runQueries(results, session);
+    }
   } catch (error) {
     status(String(error), "error");
+    // The counter is the whole diagnosis. Nothing arriving and the wrong thing arriving look
+    // identical from the outside — one is a dead port, the other is a live port carrying someone
+    // else's traffic — and guessing between them cost a session.
     card(results, "Probe failed", [
       ["Error", String(error)],
-      ["Check", "the right port pair, and that the interface passes SysEx"],
+      ["MIDI messages received", String(received)],
+      [
+        "Which means",
+        received === 0
+          ? "nothing arrived at all — wrong input port, a port something else is holding, or an interface that drops SysEx"
+          : "the port is live and carrying traffic, but none of it was an Elektron API reply — most likely the wrong pair, with this input belonging to another device",
+      ],
+      ["Ports", `${input.name} / ${output.name}, connection ${input.connection}`],
+      ...(received === 0 && !isChromium()
+        ? ([
+            [
+              "Browser",
+              "not Chromium — Firefox implements Web MIDI but gates SysEx behind a separate " +
+                "site-permission add-on, and filters it silently when that is missing. Confirmed: " +
+                "a probe that failed here succeeded in Chrome with nothing else changed. Try " +
+                "Chrome or Edge before looking further.",
+            ],
+          ] as [string, string][])
+        : []),
     ]);
   } finally {
     input.removeEventListener("midimessage", onMessage);
@@ -234,6 +324,68 @@ function card(into: HTMLElement, title: string, rows: [string, string][]): void 
 }
 
 /**
+ * Ask the device about itself, one key at a time.
+ *
+ * Every key is sent individually and its own failure is caught, because the interesting outcome
+ * is a *mixture*: most guesses come back empty and one or two do not. Aborting the run on the
+ * first timeout would throw away the answers that came after it.
+ *
+ * Keys that answer `none` are still shown. "This key does not exist" is a real result when the
+ * point of the exercise is mapping a namespace nobody has documented.
+ */
+async function runQueries(into: HTMLElement, session: DeviceSession): Promise<void> {
+  const rows: [string, string][] = [];
+  let consecutiveSilences = 0;
+
+  for (const key of QUERY_KEYS) {
+    // Insurance, not a fix for an observed problem — and worth saying so, because the comment
+    // here first claimed otherwise. A slow sweep looked like the device ignoring unknown keys; it
+    // was actually a browser silently dropping SysEx. On a working connection a Digitone II
+    // answers **every** key at once, `none` included, exactly as assumed. This stays because a
+    // device that does go quiet should not cost half a minute to find out about.
+    if (consecutiveSilences >= GIVE_UP_AFTER) {
+      rows.push([key, "not asked"]);
+      continue;
+    }
+
+    status(`Query ${rows.length + 1} of ${QUERY_KEYS.length}: ${key}`);
+    try {
+      const frame = await session.request(
+        Code.Query,
+        (id) => queryRequest(id, key),
+        QUERY_TIMEOUT_MS,
+      );
+      rows.push([key, describeQueryValue(readQueryResponse(frame.body))]);
+      consecutiveSilences = 0;
+    } catch {
+      rows.push([key, "no reply"]);
+      consecutiveSilences++;
+    }
+  }
+
+  const answered = rows.filter(([, v]) => v !== "no reply" && v !== "not asked").length;
+  const stopped = rows.some(([, v]) => v === "not asked");
+  card(
+    into,
+    `Query — ${answered} of ${QUERY_KEYS.length} key(s) answered` +
+      (stopped ? `, stopped after ${GIVE_UP_AFTER} silent in a row` : ""),
+    rows,
+  );
+}
+
+/**
+ * Shorter than the default. A device that is going to answer a query answers at once; the two
+ * seconds a transfer needs are wrong for twelve small round trips in a row.
+ */
+const QUERY_TIMEOUT_MS = 400;
+
+/** Long enough for a real port, short enough that a held one is obvious rather than a hang. */
+const OPEN_TIMEOUT_MS = 3000;
+
+/** Three silences means the device does not answer unknown keys, not that these three were bad. */
+const GIVE_UP_AFTER = 3;
+
+/**
  * Every advertised message, named.
  *
  * The unknown ones are shown rather than filtered out. A Digitone II advertises `0x03`, `0x04`,
@@ -246,7 +398,8 @@ function messageCard(into: HTMLElement, codes: readonly number[]): void {
       (m) =>
         `<tr><td class="mono">${hex(m.code)}</td>` +
         `<td class="mono">${m.kind}</td>` +
-        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td></tr>`,
+        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td>` +
+        `<td class="mono ${m.safety}">${m.safety}</td></tr>`,
     )
     .join("\n  ");
 
@@ -254,7 +407,11 @@ function messageCard(into: HTMLElement, codes: readonly number[]): void {
   section.className = "card";
   section.innerHTML =
     `<h2>Supported messages (${codes.length})</h2>` +
-    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th></tr></thead>` +
+    `<p class="hint">The probe only ever sends <span class="mono read">read</span>. A
+     <span class="mono write">write</span> changes the instrument; an
+     <span class="mono unknown">unknown</span> has never been shown not to, and those are
+     different things worth keeping apart.</p>` +
+    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th><th>Sending it</th></tr></thead>` +
     `<tbody>${rows}</tbody></table>`;
   into.append(section);
 }

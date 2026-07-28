@@ -67,6 +67,7 @@ export const RESPONSE_BIT = 0x80;
 export const Code = {
   Device: 0x01,
   Version: 0x02,
+  Query: 0x09,
   DirList: 0x10,
   FileReadOpen: 0x30,
   FileReadClose: 0x31,
@@ -172,6 +173,20 @@ export function versionRequest(msgId: number): Uint8Array {
   return encodeMessage(msgId, Code.Version);
 }
 
+/**
+ * Ask the device about itself by key.
+ *
+ * The one message in this protocol designed to be a **read**: a key goes in, a tagged value
+ * comes back, and an unrecognised key answers `none` rather than failing. That makes it the safe
+ * way to learn what a device can do — and, on a Digitone II, the only unexplored message we can
+ * send without guessing at whether it writes something.
+ *
+ * Digitone II only: a Digitone 1 does not advertise 0x09.
+ */
+export function queryRequest(msgId: number, key: string): Uint8Array {
+  return encodeMessage(msgId, Code.Query, string0(key));
+}
+
 /** List one directory of the +Drive. */
 export function dirListRequest(msgId: number, path: string): Uint8Array {
   return encodeMessage(msgId, Code.DirList, string0(path));
@@ -267,6 +282,56 @@ export function readDeviceResponse(body: Uint8Array): DeviceResponse {
 export function readVersionResponse(body: Uint8Array): VersionResponse {
   const r = new Reader(body);
   return { build: r.string0(), version: r.string0() };
+}
+
+/**
+ * A query answer: a type tag, then the value.
+ *
+ * `none` is a real answer, and the expected one for a key the device does not recognise — which
+ * is what makes probing keys safe rather than a guessing game with consequences.
+ */
+export type QueryValue =
+  | { kind: "none" }
+  | { kind: "bool"; value: boolean }
+  | { kind: "int"; signed: boolean; hi: number; lo: number }
+  | { kind: "string"; value: string };
+
+export function readQueryResponse(body: Uint8Array): QueryValue {
+  const r = new Reader(body);
+  const tag = r.u8();
+  switch (tag) {
+    case 0:
+      return { kind: "none" };
+    case 1:
+      return { kind: "bool", value: r.bool() };
+    // 64-bit, as two big-endian halves. Kept as halves rather than folded into a JS number,
+    // which loses precision above 2^53 — and a device reporting a size or a serial has every
+    // reason to exceed it.
+    case 2:
+      return { kind: "int", signed: true, hi: r.u32(), lo: r.u32() };
+    case 3:
+      return { kind: "int", signed: false, hi: r.u32(), lo: r.u32() };
+    case 4:
+      return { kind: "string", value: r.string0() };
+    default:
+      throw new ApiError(`unknown query response type ${tag}`);
+  }
+}
+
+/** How a query answer reads on screen. */
+export function describeQueryValue(value: QueryValue): string {
+  switch (value.kind) {
+    case "none":
+      return "—";
+    case "bool":
+      return value.value ? "true" : "false";
+    case "int":
+      return value.hi === 0
+        ? String(value.lo)
+        : `0x${value.hi.toString(16)}${value.lo.toString(16).padStart(8, "0")}`;
+    case "string":
+      return value.value;
+  }
 }
 
 /** Every entry, to the end of the message — the response carries no count. */
