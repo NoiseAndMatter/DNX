@@ -240,9 +240,19 @@ async function probe(): Promise<void> {
     }
   } catch (error) {
     status(String(error), "error");
+    // The counter is the whole diagnosis. Nothing arriving and the wrong thing arriving look
+    // identical from the outside — one is a dead port, the other is a live port carrying someone
+    // else's traffic — and guessing between them cost a session.
     card(results, "Probe failed", [
       ["Error", String(error)],
-      ["Check", "the right port pair, and that the interface passes SysEx"],
+      ["MIDI messages received", String(received)],
+      [
+        "Which means",
+        received === 0
+          ? "nothing arrived at all — wrong input port, a port something else is holding, or an interface that drops SysEx"
+          : "the port is live and carrying traffic, but none of it was an Elektron API reply — most likely the wrong pair, with this input belonging to another device",
+      ],
+      ["Ports", `${input.name} / ${output.name}, connection ${input.connection}`],
     ]);
   } finally {
     input.removeEventListener("midimessage", onMessage);
