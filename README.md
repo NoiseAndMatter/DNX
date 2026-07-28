@@ -42,7 +42,8 @@ speculative or unknown.
 | Session model with undo/redo | done |
 | Track move/copy/swap/clear inside a pattern | done, DN2 only — **hardware test built, not yet run** |
 | Pattern rename | done, both devices — batch schemes to come |
-| WebMIDI | not started |
+| WebMIDI — SysEx API, +Drive read, device probe | protocol layer done, **never met a device** |
+| WebMIDI — transfer, writing to a device | not started |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
 gaps and the traps that have already cost time.
@@ -113,7 +114,7 @@ npm run trackhwtest -- --project a.dn2prj --pattern G2 --only 4 --out ...   # on
 # What changed between two captures?
 npm run diff -- --chain --stride captures/
 
-# The web UI: expander at /, manager at /manager.html
+# The web UI: expander at /, manager at /manager, read-only device probe at /probe
 npm run web
 
 npm test
@@ -142,9 +143,12 @@ ranking and allocation.
 
 ## The web UI
 
-`npm run web` builds and serves at `http://127.0.0.1:8173`. Two pages:
+`npm run web` builds and serves at `http://127.0.0.1:8173`. Three pages:
 
 - **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
+- **`/probe`** — the **device probe**. Read-only: asks a connected Elektron what it is, what
+  firmware it runs, which messages it supports, and what is on its +Drive. Chrome or Edge only,
+  and it asks for SysEx permission. Nothing here has met a device yet.
 - **`/manager.html`** — the **manager**. Open a project of either family, move, copy, swap and
   clear patterns across its banks with undo, and export once. **Open another…** in the top bar
   swaps projects without reloading, asking first if there are unsaved edits. Double-click a
