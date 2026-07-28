@@ -204,22 +204,28 @@ export function hex(code: number): string {
  * to come back empty.
  */
 export const QUERY_KEYS: readonly string[] = [
-  // Attested, from elk-herd's `supportsStereo` comment.
+  // **Confirmed on a Digitone II**, which has no sampler at all and still answers `true`. So the
+  // namespace is a shared Elektron platform one rather than a per-product list, and a key can
+  // answer meaningfully about hardware that does not have the feature. Held onto as the one
+  // known-good key: if a future run stops answering this, the transport is broken, not the guess.
   "sample_file.interleaved_stereo_support",
 
-  // The shape of the attested key, applied to what this family has.
-  "project.storage_version",
-  "project.pattern_count",
-  "project.sound_count",
-  "pattern.storage_version",
-  "kit.storage_version",
-  "sound.storage_version",
+  // Everything below is a guess. The first sweep tried `project.`, `pattern.`, `kit.`, `sound.`
+  // and `device.` prefixes and **every one returned `none`** — so those namespaces are wrong,
+  // not merely those properties. These follow the only shape known to work, `<noun>_file.<prop>`,
+  // on the theory that the namespace is organised by *file type* rather than by concept.
+  "project_file.interleaved_stereo_support",
+  "project_file.max_count",
+  "pattern_file.max_count",
+  "kit_file.max_count",
+  "sound_file.max_count",
+  "preset_file.max_count",
+  "sample_file.max_count",
 
-  // Identity, which the Device and Version messages report in part and might expose in full.
-  "device.name",
-  "device.serial",
-  "device.firmware_version",
-  "device.build",
+  // And a few platform-level shapes, since the one hit is plainly a platform key.
+  "storage.version",
+  "system.version",
+  "firmware.version",
 ];
 
 /**

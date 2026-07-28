@@ -118,10 +118,37 @@ what people should be able to do without thinking.
 
 ## What we know so far
 
-| Device | Product id | Firmware / build | File API | Query |
-|---|---|---|---|---|
-| Digitone 1 | 20 | 1.42A / 0097 | none | no |
-| Digitone II | 43 | 1.10E / 0050 | none | yes |
+| Device | Product id | Firmware / build | File API | Query | Dump types |
+|---|---|---|---|---|---|
+| Digitone 1 | 20 | 1.42A / 0097 | none | no | 14 (`0x50`-`0x5d`) |
+| Digitone II | 43 | 1.10E / 0050 | none | yes | 15 (`0x50`-`0x5e`) |
+
+### Query works, and answers instantly
+
+Confirmed on a Digitone II: **all eleven keys answered in one sweep**, ten with `none` and one
+with a value. So the original premise holds — an unrecognised key comes back `none` rather than
+silence, which makes guessing keys genuinely free.
+
+A slow sweep during testing looked like the device ignoring unknown keys. It was not: it was a
+browser silently dropping SysEx. Worth recording, because the wrong lesson from that would have
+been "do not sweep keys."
+
+**The one key that answers:** `sample_file.interleaved_stereo_support` returns **`true` on a
+Digitone II** — a machine with no sampler whatsoever. That makes the namespace a shared Elektron
+platform one rather than a per-product list, and means a key can answer about a feature the
+hardware does not have. It is the only confirmed key on this family.
+
+Every `project.`, `pattern.`, `kit.`, `sound.` and `device.` guess returned `none`, so those
+namespaces are wrong rather than those properties being absent.
+
+### One browser note that cost an hour
+
+**Firefox implements Web MIDI but gates SysEx behind a separate site-permission add-on, and drops
+it silently when that is missing.** Ports open, `send()` does not throw, and nothing ever comes
+back — identical to a dead device. The same probe succeeded in Chrome with nothing else changed.
+
+Use **Chrome or Edge**. The probe now says so in its failure card when it sees zero bytes on a
+non-Chromium browser.
 
 Both advertise `0x01 Device`, `0x02 Version`, `0x03`, `0x04`, and the dump band. The DN2 adds
 `0x06`, `0x07` and `0x09 Query`.
