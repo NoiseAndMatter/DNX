@@ -548,6 +548,23 @@ problem, not a librarian's.
 
 The composite scope cannot hit it, because the preset travels with the sequence.
 
+#### Both surfaces, 2026-07-28
+
+`npm run track` mirrors `npm run rearrange` one level down — same four operations, same dry-run
+default, same `--apply --out` rule — plus `--pattern` and `--scope`. Its preview is
+scope-aware, which took a second pass: printing the source's summary for the destination read
+plausibly and described an operation the tool does not perform, because under `--scope
+sequence` the preset never moves.
+
+In the manager, selecting one DN2 pattern offers **Tracks…**, which drills into its 16 tracks.
+The same selection model, the same four buttons, the same undo. `state.trackFor` is the only
+new idea: one flag, not a second view, because a track move *is* a shuffle and only what it
+indexes changes.
+
+`librarian/tracksummary.ts` is what both read — the same reason `device.summarise` exists one
+level up. A second implementation of "is this track empty" is a second answer waiting to
+disagree.
+
 #### What this did not change
 
 Sound locks were the other suspected hazard: they are sequence-side and reference the sound
