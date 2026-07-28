@@ -130,6 +130,26 @@ test("a capture names itself after what it holds", { skip }, () => {
   assert.match(name, /\d+x/, `"${name}" should say how many messages`);
 });
 
+test("a mixed capture is named for the whole thing, not its biggest group", () => {
+  // A project dump is 128 PatternKit, 119 Sound and one ProjectSettings. Naming it
+  // `PatternKit_128x` made the user reasonably conclude the other 120 messages had been dropped.
+  // They were in the file; only the name lied.
+  const summary = {
+    messages: 248,
+    bytes: 14_657_727,
+    foreign: 0,
+    unparsed: 0,
+    trailingBytes: 0,
+    groups: [
+      { productId: 21, product: "Digitone II", dumpType: 0x50, name: "PatternKit dump", count: 128, objects: [], bytes: 14_606_432, badChecksum: 0 },
+      { productId: 21, product: "Digitone II", dumpType: 0x53, name: "Sound dump", count: 119, objects: [], bytes: 50_694, badChecksum: 0 },
+    ],
+  };
+  const name = captureFileName(summary, new Date(2026, 6, 28, 22, 51));
+  assert.match(name, /248msg/, `"${name}" should count every message, not just the biggest group`);
+  assert.doesNotMatch(name, /128x/, `"${name}" should not imply only 128 messages were saved`);
+});
+
 test("an empty capture still gets a usable name", () => {
   assert.match(captureFileName(summariseCapture(new Uint8Array()), new Date(2026, 6, 28, 9, 5)), /^CAPTURE_0905\.syx$/);
 });

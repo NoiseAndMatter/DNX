@@ -425,6 +425,94 @@ pattern, or stay on the slot?) that only the user can answer.
 ---
 
 
+## 5c. What a device sends — VERIFIED on hardware 2026-07-28
+
+**[verified]** Captured from a Digitone II (1.10E, build 0050) using `SETTINGS > SYSEX DUMP >
+SYSEX SEND`, which the device initiates — nothing was transmitted to it.
+
+### A project is 248 messages, in three groups
+
+| Dump type | Count | Payload each | What |
+|---|---|---|---|
+| `0x50` PatternKit | **128** | **99,840 B** | every pattern slot, `objNr` 0..127 in order |
+| `0x53` Sound | **119** | **359 B** | the project sound pool, `objNr` 0..118 |
+| `0x54` ProjectSettings | **1** | **512 B** | one record, `objNr` 0 |
+
+Sent strictly in that order: all patterns, then all sounds, then settings.
+
+**All 128 patterns are sent regardless of occupancy.** The source project holds trigs in 14 of
+them; the device dumped every slot, blanks included. So a project transfer costs 14.6 MB whatever
+the project contains — which is a strong argument for per-pattern requests (`0x60`) over whole-
+project dumps once sending is implemented.
+
+**A PatternKit payload is 99,840 = 89,088 pattern + 10,752 kit**, exactly. The unit we had
+inferred, now seen on the wire.
+
+**A standalone Sound dump is 359 bytes** — precisely the kit's per-sound stride. So a preset is
+the same 359-byte record whether it sits inline in a kit or alone in the pool.
+
+**ProjectSettings is 512 bytes**, which is the first hard number we have for that object.
+
+### Speed: use USB alone
+
+DIN MIDI runs at 31.25 kbaud, about 3,125 B/s, so a 14.6 MB project takes **~78 minutes**. The
+manual says so directly (§13.4.2): *"If MIDI+USB is selected in the OUTPUT TO settings, MIDI data
+will limit the USB speed. When sending large chunks of data, make sure you only use the USB
+setting."* On USB alone the same dump completes in about a minute.
+
+### The device and the file differ in exactly two places
+
+Comparing all 128 dumped patterns against the same project file:
+
+1. **Unused lock records.** The file pads steps 64..127 with `0xFF`; the device sends `0x00`.
+   Only in records whose header marks them unused, so `readLockTable` returns identical results
+   from both — same records, same parameters, same live steps.
+
+2. **`sound + 354`, one byte in every preset.** The file holds **1**, the device sends **0**, in
+   all 16 presets of every kit. Nothing else in the kit differs — not the levels, not the MIDI
+   records, not the mask, not the unknown array at `+10,264`.
+
+   The same byte moved `1 → 0` across twelve pool sounds between two consecutive device saves
+   during the saved-position experiment (§5b), which points at a **runtime flag** the device
+   maintains rather than musical content. Unnamed, and recorded rather than guessed at.
+
+**Everything our parsers read agrees.** The DN2 pattern and kit readers are now validated against
+live device output rather than only against files Elektron's importer wrote — which matters,
+because those two had agreed partly by sharing an origin.
+
+### One bad checksum
+
+Pattern `G11` arrived with a stored checksum of 877 against 13,837 computed. Every other message
+in 248 was clean, and `G11` is an untouched blank in a project whose content stops at `A14`, so a
+transfer glitch is more likely than a format misunderstanding. Worth watching for on the next
+capture: if the same slot fails again it is not a glitch.
+
+### A kit is dumpable on its own — and it is exactly the kit record
+
+A `0x52` Kit dump sent from the kit manager carried a payload of **10,752 bytes**: precisely
+`DN2_LAYOUT.kitSize`. So a kit is a first-class, transferable object on a Digitone II, and it is
+the same record that sits inline in a project.
+
+`docs/references.md` called this *"strong evidence a kit is a first-class object"* on the basis of
+elk-herd implementing `0x62` request / `0x52` response for the Digitakt. **Now verified on this
+family, on hardware.**
+
+The captured kit matched no kit in the source project — the nearest was `A15`, 1,528 bytes away —
+which is expected when the send comes from the +Drive library or from an active kit that has been
+edited. It says nothing about the format and everything about which kit was selected.
+
+### And a standalone sound is exactly the kit's sound slot
+
+A `0x53` Sound dump sent from the preset manager carried **359 bytes**: precisely
+`DN2_KIT.soundSize`. Read with our own sound reader it gives `HIDDEN TEARS`, machine `FM TONE` —
+so a preset is one record, unchanged, whether it sits inline in a kit, alone in the project pool,
+or on its own over the wire.
+
+Its byte 354 reads **0**, matching every other dumped preset and supporting the runtime-flag
+reading above.
+
+---
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):
