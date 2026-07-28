@@ -107,6 +107,49 @@ for (const [name, entry, html] of PAGES) {
   });
 }
 
+for (const [name, , html] of PAGES) {
+  test(`nothing on the ${name} page overrides its own hidden attribute`, () => {
+    // `hidden` works by a UA rule of `display: none`, which **any** author rule setting
+    // `display` beats. `label.file { display: inline-block }` did exactly that, so a control
+    // marked hidden in the markup rendered anyway — visible on load, before there was a
+    // project to use it on. It typechecks, the id exists, and the test above passes.
+    const markup = readFileSync(html, "utf8");
+    const css = markup.slice(markup.indexOf("<style"), markup.indexOf("</style>"));
+
+    // A blanket `[hidden] { display: none !important }` settles it for the whole page, which
+    // is the fix rather than a loophole — nothing an author rule can say outranks it.
+    if (/\[hidden\][^{]*\{[^}]*display\s*:\s*none\s*!important/.test(css)) return;
+
+    /** Class selectors the stylesheet gives an explicit `display`, and those it exempts. */
+    const displays = new Set<string>();
+    const exempted = new Set<string>();
+    for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const selector = rule[1]!;
+      if (!/(^|[^-\w])display\s*:/.test(rule[2]!)) continue;
+      for (const cls of selector.matchAll(/\.([\w-]+)/g)) {
+        (selector.includes("[hidden]") ? exempted : displays).add(cls[1]!);
+      }
+    }
+
+    const unprotected: string[] = [];
+    for (const tag of markup.matchAll(/<[a-z]+[^>]*\bhidden\b[^>]*>/g)) {
+      const classes = /class="([^"]+)"/.exec(tag[0]!)?.[1]?.split(/\s+/) ?? [];
+      for (const cls of classes) {
+        if (displays.has(cls) && !exempted.has(cls)) {
+          unprotected.push(`.${cls} — ${tag[0]!.slice(0, 60)}`);
+        }
+      }
+    }
+
+    assert.deepEqual(
+      [...new Set(unprotected)],
+      [],
+      `these hidden elements carry a class whose CSS sets display, so they render anyway. ` +
+        `Add a \`[hidden]\` rule restoring display:none`,
+    );
+  });
+}
+
 test("the manager reaches the librarian rather than reimplementing it", () => {
   // The UI holds no rules: shuffle says what a move means, rearrange plans and verifies it,
   // session holds the history. If that stops being true the browser and the CLI can disagree
