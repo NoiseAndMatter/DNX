@@ -27,7 +27,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { buildProjectFile } from "../project/projectfile.js";
-import { writeProjectName } from "../project/dn2image.js";
+import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
+import { readDn2Pattern } from "../project/dn2pattern.js";
+import { describePlock } from "../project/plockparams.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
 import {
   type ExportRow,
@@ -76,6 +78,64 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * The individual trigs worth looking at, named by step.
+ *
+ * Straight out of the 2026-07-28 session. The sheet asked the tester to check microtiming, trig
+ * conditions and sound locks and never said **where**, so the honest answer that came back was
+ * *"give me a few key steps and params to check"*. It was a fair complaint: `T1` carries
+ * microtiming on exactly two of its 36 steps, and finding them by ear is not a check, it is a
+ * search.
+ *
+ * Scoped to the tracks the test actually moves — a distinctive trig on a track no operation
+ * touches proves nothing and would only pad the list.
+ */
+interface Distinctive {
+  track: number;
+  step: number;
+  what: string;
+  /** Higher is rarer, and rarer is what a tester's attention should be spent on. */
+  rank: number;
+}
+
+function distinctiveTrigs(
+  image: Uint8Array,
+  pattern: number,
+  tracks: readonly number[],
+): Distinctive[] {
+  const parsed = readDn2Pattern(image, pattern, DN2_LAYOUT);
+  const out: Distinctive[] = [];
+
+  for (const track of tracks) {
+    for (const trig of parsed.tracks[track]?.trigs ?? []) {
+      const what: string[] = [];
+      let rank = 0;
+
+      // Ranked by scarcity, because attention is the scarce thing. A pattern can carry forty
+      // sound locks and two microtimed trigs; listing them in step order buries the two.
+      if (trig.microTiming !== 0) {
+        what.push(`microtiming ${trig.microTiming > 0 ? "+" : ""}${trig.microTiming}`);
+        rank += 4;
+      }
+      if (trig.locks && trig.locks.length > 0) {
+        what.push(
+          `p-locks on ${trig.locks.map((l) => describePlock(l.parameter) ?? `id ${l.parameter}`).join(", ")}`,
+        );
+        rank += 3;
+      }
+      if (trig.probability !== undefined) {
+        what.push(`probability ${trig.probability}%`);
+        rank += 2;
+      }
+      if (trig.soundLock !== undefined) what.push(`sound lock ${trig.soundLock}`);
+
+      if (what.length > 0) out.push({ track, step: trig.step + 1, what: what.join("; "), rank });
+    }
+  }
+
+  return out.sort((a, b) => b.rank - a.rank || a.track - b.track || a.step - b.step);
 }
 
 /** Stable per-row id, shared by the HTML controls and the exported table. */
@@ -169,6 +229,51 @@ function exportSpec(
   };
 }
 
+/**
+ * The individual steps worth checking, named.
+ *
+ * Added after the 2026-07-28 session, whose tester fairly answered *"give me a few key steps and
+ * params to check"* — the sheet had asked for microtiming, trig conditions and sound locks
+ * without saying where any of them were. Two of `T1`'s 36 steps carry microtiming; finding those
+ * by ear is a search, not a check.
+ */
+const SHOW_AT_MOST = 12;
+
+function renderDistinctive(distinctive: Distinctive[]): string {
+  if (distinctive.length === 0) return "";
+  const shown = distinctive.slice(0, SHOW_AT_MOST);
+  const rest = distinctive.length - shown.length;
+
+  const rows = shown
+    .map(
+      (d) =>
+        `<tr><td class="mono">${trackName(d.track)}</td>` +
+        `<td class="mono num">${d.step}</td><td>${escapeHtml(d.what)}</td></tr>`,
+    )
+    .join("\n  ");
+
+  const more =
+    rest === 0
+      ? ""
+      : `<p class="hint">${rest} further trig(s) carry only a sound lock. Those are the least
+likely to fail on their own &mdash; the pool is per project and these operations stay inside one
+pattern &mdash; so they are summarised rather than listed.</p>`;
+
+  return `<h2>Where to look</h2>
+<p class="lede">The trigs on the moved tracks carrying anything beyond a plain note, rarest
+first. These are the steps the quiet-failure checks are really about: each should survive an
+operation that carries the sequence, and travel with it when the sequence moves.</p>
+${more}
+<div class="scroll">
+<table>
+  <thead><tr><th>Track</th><th class="num">Step</th><th>Carries</th></tr></thead>
+  <tbody>
+  ${rows}
+  </tbody>
+</table>
+</div>`;
+}
+
 /** What the reference pattern holds, printed on the sheet so every row can be read against it. */
 function renderReference(before: readonly TrackSummary[], seeds: TrackSeeds): string {
   const role = new Map<number, string>([
@@ -203,6 +308,7 @@ function renderSheet(
   seeds: TrackSeeds,
   rows: { step: TrackTestStep; expected: TrackExpectation[] }[],
   caveats: string[],
+  distinctive: Distinctive[],
 ): string {
   const spec = exportSpec(stamp, rows);
   const meta = metaFields(stamp)
@@ -301,6 +407,8 @@ device, not just on this page.</p>
   </tbody>
 </table>
 </div>
+
+${renderDistinctive(distinctive)}
 
 ${caveatBlock}
 
@@ -530,6 +638,19 @@ function main(): void {
     );
   }
 
+  // Added after the 2026-07-28 session, which asked for microtiming and retrigs when the seed had
+  // neither. The tester spent attention on two rows that could not fail. A sheet asking for what
+  // the pattern cannot show is worse than one that admits the gap up front.
+  const moved = [seeds.locked, seeds.other, ...(seeds.midi === undefined ? [] : [seeds.midi])];
+  const distinctive = distinctiveTrigs(project.image, source, moved);
+  if (!distinctive.some((d) => d.what.includes("microtiming"))) {
+    caveats.push(
+      `no trig on ${moved.map(trackName).join(", ")} has non-zero microtiming, and those are the ` +
+        `tracks this sheet moves — so nothing here can show whether microtiming travels. Nudge a ` +
+        `trig off the grid on one of them and rebuild to cover it.`,
+    );
+  }
+
   let steps = stepsFor(seeds, before);
   const only = arg("only");
   if (only !== undefined) {
@@ -629,6 +750,7 @@ function main(): void {
       seeds,
       rows,
       caveats,
+      distinctive,
     ),
   );
 
