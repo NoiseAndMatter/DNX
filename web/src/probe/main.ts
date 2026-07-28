@@ -36,11 +36,15 @@ import {
   dirListRequest,
   readDeviceResponse,
   readDirListResponse,
+  readQueryResponse,
   readVersionResponse,
+  describeQueryValue,
+  queryRequest,
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import {
+  QUERY_KEYS,
   capabilitiesOf,
   describeMessages,
   hex,
@@ -200,6 +204,12 @@ async function probe(): Promise<void> {
         "warn",
       );
     }
+
+    // Query last, because it is the slow part: one round trip per key, and most keys are guesses
+    // that will come back empty. Everything above is already on screen by the time it starts.
+    if (device.supportedMessages.includes(Code.Query)) {
+      await runQueries(results, session);
+    }
   } catch (error) {
     status(String(error), "error");
     card(results, "Probe failed", [
@@ -234,6 +244,32 @@ function card(into: HTMLElement, title: string, rows: [string, string][]): void 
 }
 
 /**
+ * Ask the device about itself, one key at a time.
+ *
+ * Every key is sent individually and its own failure is caught, because the interesting outcome
+ * is a *mixture*: most guesses come back empty and one or two do not. Aborting the run on the
+ * first timeout would throw away the answers that came after it.
+ *
+ * Keys that answer `none` are still shown. "This key does not exist" is a real result when the
+ * point of the exercise is mapping a namespace nobody has documented.
+ */
+async function runQueries(into: HTMLElement, session: DeviceSession): Promise<void> {
+  const rows: [string, string][] = [];
+
+  for (const key of QUERY_KEYS) {
+    try {
+      const frame = await session.request(Code.Query, (id) => queryRequest(id, key));
+      rows.push([key, describeQueryValue(readQueryResponse(frame.body))]);
+    } catch (error) {
+      rows.push([key, `— (${error instanceof Error ? error.message.split(":")[0] : "failed"})`]);
+    }
+  }
+
+  const answered = rows.filter(([, v]) => v !== "—" && !v.startsWith("—")).length;
+  card(into, `Query — ${answered} of ${rows.length} key(s) answered`, rows);
+}
+
+/**
  * Every advertised message, named.
  *
  * The unknown ones are shown rather than filtered out. A Digitone II advertises `0x03`, `0x04`,
@@ -246,7 +282,8 @@ function messageCard(into: HTMLElement, codes: readonly number[]): void {
       (m) =>
         `<tr><td class="mono">${hex(m.code)}</td>` +
         `<td class="mono">${m.kind}</td>` +
-        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td></tr>`,
+        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td>` +
+        `<td class="mono ${m.safety}">${m.safety}</td></tr>`,
     )
     .join("\n  ");
 
@@ -254,7 +291,11 @@ function messageCard(into: HTMLElement, codes: readonly number[]): void {
   section.className = "card";
   section.innerHTML =
     `<h2>Supported messages (${codes.length})</h2>` +
-    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th></tr></thead>` +
+    `<p class="hint">The probe only ever sends <span class="mono read">read</span>. A
+     <span class="mono write">write</span> changes the instrument; an
+     <span class="mono unknown">unknown</span> has never been shown not to, and those are
+     different things worth keeping apart.</p>` +
+    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th><th>Sending it</th></tr></thead>` +
     `<tbody>${rows}</tbody></table>`;
   into.append(section);
 }

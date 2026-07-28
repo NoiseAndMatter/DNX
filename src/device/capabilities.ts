@@ -26,31 +26,56 @@
  */
 
 /**
- * API messages, by code. Named where we know them.
+ * How dangerous a message is to send.
+ *
+ * The reason this exists rather than a list of "ones to avoid": **an allowlist fails safe and a
+ * blocklist fails dangerous.** A code nobody has classified is one nobody has shown to be
+ * harmless, and the honest default for "we do not know what this does to your instrument" is not
+ * to send it.
+ *
+ * - `read` — proven to only report. Safe to send at will.
+ * - `write` — known to change the device. Never sent by the probe.
+ * - `unknown` — **not classified.** Never sent by the probe either, and deliberately not lumped
+ *   in with `write`: the distinction is between *"this is dangerous"* and *"we have no idea"*,
+ *   and collapsing them would lose the fact that these are the ones worth learning about.
+ */
+export type Safety = "read" | "write" | "unknown";
+
+/**
+ * API messages, by code, with what sending one does.
  *
  * Sources: elk-herd's `SysEx/Message.elm` for everything it implements, and this file for the
  * gaps. Four codes a Digitone II advertises — `0x03`, `0x04`, `0x06`, `0x07` — appear in no
- * source we have, so they are listed as unknown rather than guessed at.
+ * source we have, so they are `unknown` rather than guessed at.
  */
-export const API_MESSAGES: Readonly<Record<number, string>> = {
-  0x01: "Device",
-  0x02: "Version",
-  0x09: "Query",
-  0x10: "DirList",
-  0x11: "DirCreate",
-  0x12: "DirDelete",
-  0x20: "FileDelete",
-  0x21: "ItemRename",
-  0x23: "SampleFileInfo",
-  0x30: "FileReadOpen",
-  0x31: "FileReadClose",
-  0x32: "FileRead",
-  0x40: "FileWriteOpen",
-  0x41: "FileWriteClose",
-  0x42: "FileWrite",
+export const API_MESSAGES: Readonly<Record<number, { name: string; safety: Safety }>> = {
+  0x01: { name: "Device", safety: "read" },
+  0x02: { name: "Version", safety: "read" },
+  0x09: { name: "Query", safety: "read" },
+  0x10: { name: "DirList", safety: "read" },
+  0x11: { name: "DirCreate", safety: "write" },
+  0x12: { name: "DirDelete", safety: "write" },
+  0x20: { name: "FileDelete", safety: "write" },
+  0x21: { name: "ItemRename", safety: "write" },
+  0x23: { name: "SampleFileInfo", safety: "read" },
+  0x30: { name: "FileReadOpen", safety: "read" },
+  0x31: { name: "FileReadClose", safety: "read" },
+  0x32: { name: "FileRead", safety: "read" },
+  0x40: { name: "FileWriteOpen", safety: "write" },
+  0x41: { name: "FileWriteClose", safety: "write" },
+  0x42: { name: "FileWrite", safety: "write" },
 };
 
-/** Dump types, by code. From `src/sysex/devices.ts`, which derived them from real dumps. */
+/**
+ * Dump types, by code. From `src/sysex/devices.ts`, which derived them from real dumps.
+ *
+ * **Every one of these is a write.** In this family a dump *is* the data: the device sends one to
+ * hand you a pattern, and you send one to give it a pattern. So `0x50` addressed to an instrument
+ * is "here is a pattern, store it" — which is how uploading works and exactly why sweeping the
+ * advertised codes to see what happens is the one experiment not to run.
+ *
+ * Requesting a dump is a **different code**, `0x60` and up, and that is the read half.
+ */
 export const DUMP_MESSAGES: Readonly<Record<number, string>> = {
   0x50: "PatternKit dump",
   0x51: "Pattern dump",
@@ -71,24 +96,46 @@ export interface MessageInfo {
   name: string;
   known: boolean;
   kind: "api" | "dump";
+  safety: Safety;
 }
 
 /** Name every advertised code, in the order the device listed them. */
 export function describeMessages(codes: readonly number[]): MessageInfo[] {
   return codes.map((code) => {
-    const dump = DUMP_MESSAGES[code];
-    if (dump !== undefined) return { code, name: dump, known: true, kind: "dump" as const };
+    // Anything in the dump band is a dump type even when we cannot name it: that band is where
+    // Elektron puts them, and calling an unnamed 0x5b an API message would be a worse guess.
+    // Every dump is a write, named or not — an unnamed one is not a safer one.
+    const isDump = code >= 0x50 && code <= 0x5f;
+    if (isDump) {
+      const dump = DUMP_MESSAGES[code];
+      return {
+        code,
+        name: dump ?? "unknown",
+        known: dump !== undefined,
+        kind: "dump" as const,
+        safety: "write" as const,
+      };
+    }
+
     const api = API_MESSAGES[code];
     return {
       code,
-      name: api ?? "unknown",
+      name: api?.name ?? "unknown",
       known: api !== undefined,
-      // Anything in the dump band is a dump type even when we cannot name it; that band is
-      // where Elektron puts them, and calling an unnamed 0x5b an API message would be worse
-      // than calling it an unnamed dump.
-      kind: code >= 0x50 && code <= 0x5f ? ("dump" as const) : ("api" as const),
+      kind: "api" as const,
+      safety: api?.safety ?? ("unknown" as const),
     };
   });
+}
+
+/**
+ * Whether the probe may send this code unprompted.
+ *
+ * The single gate everything goes through, so "we only send reads" is enforced in one place
+ * rather than remembered in several.
+ */
+export function safeToSend(code: number): boolean {
+  return describeMessages([code])[0]!.safety === "read";
 }
 
 export interface Capabilities {
@@ -135,6 +182,37 @@ export function capabilitiesOf(codes: readonly number[]): Capabilities {
 export function hex(code: number): string {
   return `0x${code.toString(16).padStart(2, "0")}`;
 }
+
+/**
+ * Keys to ask a device about itself.
+ *
+ * Safe to try in bulk, and that is a property of `Query` rather than of the list: a key goes in,
+ * a tagged value comes back, and an unrecognised key answers `none`. So a wrong guess costs one
+ * round trip and tells us the key does not exist — which is itself information.
+ *
+ * Only the first is attested; elk-herd names it in a comment about stereo support. The rest are
+ * **guesses**, built from that one's shape (`noun_noun.property`) and from the things a Digitone
+ * would plausibly know about itself. They are here to map the namespace, and most are expected
+ * to come back empty.
+ */
+export const QUERY_KEYS: readonly string[] = [
+  // Attested, from elk-herd's `supportsStereo` comment.
+  "sample_file.interleaved_stereo_support",
+
+  // The shape of the attested key, applied to what this family has.
+  "project.storage_version",
+  "project.pattern_count",
+  "project.sound_count",
+  "pattern.storage_version",
+  "kit.storage_version",
+  "sound.storage_version",
+
+  // Identity, which the Device and Version messages report in part and might expose in full.
+  "device.name",
+  "device.serial",
+  "device.firmware_version",
+  "device.build",
+];
 
 /**
  * What a Digitone II running 1.10E (build 0050) advertises.
