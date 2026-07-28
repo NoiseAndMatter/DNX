@@ -43,6 +43,7 @@ import {
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
+import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -131,6 +132,7 @@ function renderPorts(): void {
   }
 
   $<HTMLButtonElement>("probe").disabled = inputs.length === 0 || outputs.length === 0;
+  $<HTMLButtonElement>("listen").disabled = inputs.length === 0;
   status(
     inputs.length === 0 || outputs.length === 0
       ? "No MIDI ports. Connect the device and press Rescan."
@@ -471,3 +473,125 @@ $("probe").addEventListener("click", () => {
 });
 
 void connect();
+
+// --- listening ---------------------------------------------------------------------------------
+
+/**
+ * Capture whatever the device chooses to send.
+ *
+ * **Sends nothing.** The Digitone dumps from its own front panel, so this half of the transport
+ * can be proven with the safety question entirely absent — which is why it is built before
+ * anything that transmits. The bytes are saved verbatim as a `.syx`, which is the same form as
+ * the corpus captures, so every existing tool works on the result the moment it lands.
+ */
+const capture = new DumpCapture();
+let listening: { input: MIDIInput; onMessage: (event: MIDIMessageEvent) => void } | undefined;
+
+function renderCapture(): void {
+  const summary = capture.summarise();
+  const results = $("results");
+  results.innerHTML = "";
+
+  const rows: [string, string][] = [
+    ["Bytes", summary.bytes.toLocaleString()],
+    ["Messages", String(summary.messages)],
+  ];
+  if (summary.foreign > 0) rows.push(["Not Elektron", `${summary.foreign} — ignored`]);
+  if (summary.unparsed > 0) rows.push(["Unreadable", String(summary.unparsed)]);
+  // A transfer stopped mid-message is normal, and saying so beats a summary that quietly
+  // describes a truncated capture as a complete one.
+  if (summary.trailingBytes > 0) {
+    rows.push(["Incomplete tail", `${summary.trailingBytes} bytes — a message was cut short`]);
+  }
+  card(results, listening ? "Listening…" : "Capture", rows);
+
+  for (const group of summary.groups) {
+    const objects =
+      group.objects.length === 0
+        ? "—"
+        : group.objects.length <= 12
+          ? group.objects.join(", ")
+          : `${group.objects.length} objects, ${group.objects[0]}…${group.objects[group.objects.length - 1]}`;
+    card(results, `${group.product} — ${group.name} (${hex(group.dumpType)})`, [
+      ["Messages", String(group.count)],
+      ["Bytes", group.bytes.toLocaleString()],
+      ["Object numbers", objects],
+      ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
+    ]);
+  }
+}
+
+function stopListening(): void {
+  if (!listening) return;
+  listening.input.removeEventListener("midimessage", listening.onMessage);
+  listening = undefined;
+  $("listen").textContent = "Listen";
+  $<HTMLButtonElement>("probe").disabled = false;
+  renderCapture();
+  status(
+    capture.isEmpty
+      ? "Nothing arrived. Trigger the dump from the device: SETTINGS > SYSEX DUMP > SYSEX SEND."
+      : `Stopped. ${capture.byteLength.toLocaleString()} bytes captured — press Save capture.`,
+    capture.isEmpty ? "warn" : "ok",
+  );
+}
+
+async function startListening(): Promise<void> {
+  if (!access) return;
+  const input = access.inputs.get($<HTMLSelectElement>("input").value);
+  if (!input) {
+    status("That input is no longer there. Press Rescan.", "error");
+    return;
+  }
+
+  // Explicitly, for the same reason the probe does: `addEventListener` does not open a port, and
+  // a closed one delivers nothing while looking exactly like a device that never sent.
+  try {
+    await input.open();
+  } catch (error) {
+    status(`Could not open ${input.name}: ${error}`, "error");
+    return;
+  }
+
+  capture.clear();
+  const onMessage = (event: MIDIMessageEvent): void => {
+    if (!event.data) return;
+    capture.add(new Uint8Array(event.data));
+    // Redrawn per message so a 13 MB project dump visibly progresses rather than looking hung.
+    // Summarising is cheap next to the transfer itself.
+    renderCapture();
+    status(`Receiving… ${capture.byteLength.toLocaleString()} bytes`);
+  };
+
+  input.addEventListener("midimessage", onMessage);
+  listening = { input, onMessage };
+  $("listen").textContent = "Stop";
+  $<HTMLButtonElement>("probe").disabled = true;
+  $<HTMLButtonElement>("save").disabled = false;
+  renderCapture();
+  status(`Listening on ${input.name}. Trigger the dump on the device.`);
+}
+
+$("listen").addEventListener("click", () => {
+  if (listening) stopListening();
+  else void startListening();
+});
+
+$("save").addEventListener("click", () => {
+  if (capture.isEmpty) {
+    status("Nothing captured yet.", "warn");
+    return;
+  }
+  const name = captureFileName(capture.summarise());
+  // Copied into a fresh buffer: a Uint8Array over a SharedArrayBuffer is not a valid BlobPart,
+  // and which kind you have depends on how the runtime allocated it.
+  const bytes = capture.bytes();
+  const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+  status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
+});

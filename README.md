@@ -147,8 +147,11 @@ ranking and allocation.
 `npm run web` builds and serves at `http://127.0.0.1:8173`. Three pages:
 
 - **`/`** — the **expander**. Pick a `.dnprj`, choose the options, export a `.dn2prj`.
-- **`/probe`** — the **device probe**. Read-only: asks a connected Elektron what it is, what
-  firmware it runs, which messages it supports, and what is on its +Drive. Chrome or Edge only,
+- **`/probe`** — the **device probe**. Read-only, and in two halves. **Probe** asks a connected
+  Elektron what it is, what firmware it runs and which messages it supports. **Listen** sends
+  nothing at all: it captures whatever the device chooses to send, so a dump triggered from the
+  front panel (`SETTINGS > SYSEX DUMP > SYSEX SEND`) can be saved as a `.syx` — the same form as
+  the corpus captures, so every existing tool reads it. Chrome or Edge only,
   and it asks for SysEx permission. It reads the device's capability list before sending
   anything, and **only ever sends messages classified read** — see `docs/device-probing.md` for
   why that matters, and what a stray dump would do to your instrument.
