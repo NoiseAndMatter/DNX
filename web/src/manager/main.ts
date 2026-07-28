@@ -24,6 +24,13 @@
 
 import { deviceFor, type Device } from "../../../src/librarian/device.js";
 import { planRearrange, applyRearrange } from "../../../src/librarian/rearrange.js";
+import {
+  NAME_SIZE,
+  applyRename,
+  planRename,
+  readPatternName,
+  verifyRename,
+} from "../../../src/librarian/rename.js";
 import { clear, copyMany, moveMany, swap, type Shuffle } from "../../../src/librarian/shuffle.js";
 import { Session, tag } from "../../../src/librarian/session.js";
 import {
@@ -267,12 +274,19 @@ function renderSelection(): void {
   $<HTMLButtonElement>("opMove").disabled = selection.length === 0;
   $<HTMLButtonElement>("opCopy").disabled = selection.length === 0;
 
+  // Rename takes exactly one pattern. Not a batch, because a batch needs a rule — by position,
+  // by selection order, from a base name — and there is no defensible default among those. Not
+  // a track either: a track's name *is* its preset's name, which belongs to the sound explorer
+  // rather than to a slot operation.
+  $<HTMLButtonElement>("opRename").disabled = inTracks() || selection.length !== 1;
+
   // The scope only means anything to a track operation, so it appears with one.
   $("scopeBox").hidden = !inTracks();
   $("opHint").innerHTML =
     `Drag a ${inTracks() ? "track" : "pattern"} onto another to <strong>move</strong> it. ` +
     `Hold <kbd>Shift</kbd> to copy, <kbd>Ctrl</kbd> to swap.<br>` +
-    `Shift-click for a range, Ctrl-click to add to the selection.`;
+    `Shift-click for a range, Ctrl-click to add to the selection.` +
+    (inTracks() ? "" : `<br>Select one pattern and press <kbd>F2</kbd> to rename it.`);
 }
 
 const SCOPE_HINTS: Readonly<Record<TrackScope, string>> = {
@@ -526,6 +540,60 @@ function askTarget(what: string): number | undefined {
   return undefined;
 }
 
+/**
+ * Rename one pattern.
+ *
+ * It does not go through `run()`, and that is the point rather than an omission: `run` is
+ * shuffle-shaped, and a rename moves nothing. `Session.apply` takes any image-to-image
+ * function, so a rename needed no new machinery at either layer — the seam was already right.
+ */
+function runRename(pattern: number): void {
+  const { session, device } = state;
+  if (!session || !device) return;
+
+  const current = readPatternName(session.image, device, pattern);
+  const typed = prompt(`Rename ${patternName(pattern)} (up to ${NAME_SIZE} characters)`, current);
+  if (typed === null) return;
+
+  const renames = new Map([[pattern, typed]]);
+  const plan = planRename(session.image, device, renames);
+
+  const blockers = plan.findings.filter((f) => f.severity === "blocker");
+  if (blockers.length > 0) {
+    status(blockers.map((f) => f.message).join(" "), "error");
+    return;
+  }
+  if (plan.changes.length === 0) {
+    status(`${patternName(pattern)} is already called "${current}".`, "warn");
+    return;
+  }
+
+  const change = plan.changes[0]!;
+  const changed = session.apply(tag(`rename ${patternName(pattern)} to "${change.to}"`), (image) => {
+    const result = applyRename(image, device, renames);
+    const verification = verifyRename(image, result.image, device, result.plan);
+    if (!verification.ok) {
+      throw new Error(`verification failed: ${verification.problems.join("; ")}`);
+    }
+    return result.image;
+  });
+
+  if (!changed) {
+    status("Rename changed nothing.", "warn");
+    return;
+  }
+
+  // The warnings carry what happened to the typed name — upper-casing, truncation, a dropped
+  // character — so a transformation is never silent.
+  const warnings = plan.findings.filter((f) => f.severity === "warning");
+  status(
+    `${patternName(pattern)} is now "${change.to}". ` +
+      (warnings.length ? warnings.map((w) => w.message).join(" ") : "Verified."),
+    warnings.length ? "warn" : "ok",
+  );
+  render();
+}
+
 /** The scope, named for the log, so history says which half moved rather than just "move". */
 function scopeSuffix(): string {
   if (!inTracks() || state.scope === "both") return "";
@@ -550,6 +618,11 @@ function wireOperations(): void {
   $("opSwap").addEventListener("click", () => {
     const [a, b] = state.selection as [number, number];
     run(`swap ${slotName(a)} and ${slotName(b)}${scopeSuffix()}`, swap(a, b));
+  });
+
+  $("opRename").addEventListener("click", () => {
+    const [pattern] = state.selection;
+    if (pattern !== undefined) runRename(pattern);
   });
 
   $("opClear").addEventListener("click", () => {
@@ -687,6 +760,15 @@ wireFileInput("file", false);
 wireFileInput("file2", true);
 
 document.addEventListener("keydown", (event) => {
+  // F2 renames, the way it does in every file manager, and without a modifier.
+  if (event.key === "F2") {
+    const button = $<HTMLButtonElement>("opRename");
+    if (!button.disabled) {
+      event.preventDefault();
+      button.click();
+    }
+    return;
+  }
   if (!(event.ctrlKey || event.metaKey)) return;
   if (event.key === "z" && !event.shiftKey) {
     event.preventDefault();

@@ -658,6 +658,60 @@ tester now reads a concrete name off the screen instead of judging what counts a
 First time. It has no pattern editor at all, so there is nothing at track level to check against:
 `Related.elm` is project-level cross-referencing between patterns, samples and sounds. The
 manual remains the reference here.
+### 3c-iii. Pattern rename — DONE 2026-07-28, batch schemes deferred
+
+Asked for by the user, with batch renaming — by position, by selection order, from a base name,
+or by some other rule — explicitly held back for later. `npm run rename`, plus **Rename…** and
+<kbd>F2</kbd> in the manager. Both devices: each keeps a 16-byte name in the pattern record.
+
+**It is the device's own operation.** DN2 manual §13.3.1, SETTINGS > PATTERN > RENAME. And the
+field is already hardware-validated from the other end: every expectation on the pattern
+rearrangement sheet was *"slot A13 should read `250423`"*, read off the device's screen and
+checked. The name we write is the name it shows.
+
+#### The librarian takes a map, though only one entry is ever passed today
+
+`planRename` / `applyRename` take `slot -> name`. A batch scheme produces one of those and
+nothing else, so every future rule lands downstream of a writer that has already been verified,
+and the first scheme is a naming function plus zero new plumbing.
+
+**A rename is deliberately not a `Shuffle`.** A shuffle answers *what ends up where* and every
+operation on it moves whole records; a rename moves nothing and edits sixteen bytes in place.
+Forcing it into that vocabulary would mean inventing a move that is not a move. Nothing needed
+it: `Session.apply` takes any image-to-image function, so undo, redo and history worked with no
+change at either layer. That is the seam being right rather than luck — it was built to store
+images, not operations.
+
+#### The alphabet came from the corpus, because the manual does not give one
+
+§6.5 describes the naming screen and not its character set, so 13,488 pattern and preset names
+were scanned. **Not one lowercase letter** anywhere. So input is upper-cased rather than
+refused: the device has no lowercase to show, and rejecting `kick` while the hardware simply
+types `KICK` is pedantry about a form with one meaning.
+
+Preset names use **all 16 bytes with no terminator**, so the field is 16 characters, not 15.
+(`writeProjectName` truncates to 15 for the *project* name, where the corpus never shows the
+last byte in use. A real difference, not an inconsistency to tidy away.)
+
+Beyond A-Z and the digits the corpus shows space, `!`, `%`, `&`, `-`, `_` and `Å Æ Ç Ö Ü`.
+Anything printable in Latin-1 is allowed rather than exactly that list, which could only ever
+record what nobody happened to type. A character the screen renders oddly is visible and fixed
+by renaming again; a tool that refuses `#` for no statable reason is not.
+
+Every transformation is **reported**, never silent — upper-casing, truncation, a dropped
+character. Someone who types twenty characters and gets sixteen back should be told rather than
+left to notice on the device.
+
+#### Two things the tests found
+
+A dropped character can expose a space that was in the middle a moment ago: `INTRO 😀` was
+becoming `INTRO ` with a trailing space, because the trim ran before the filter. It now runs
+after truncation too, which cutting mid-word can do the same way.
+
+And `verifyRename` checks that the write touched **sixteen bytes per slot and nothing else**.
+Re-reading the name is only our writer agreeing with our reader; the byte diff asks whether the
+offset, the layout and the record slicing agreed as well. A stray byte would be invisible to a
+name check right up until the device refused the project.
 
 ### 3d. Transfer mode — two devices at once, DN1 to DN2 — IDEA, deferred
 
