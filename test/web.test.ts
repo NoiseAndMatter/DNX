@@ -65,6 +65,48 @@ for (const [name, entry] of ENTRIES) {
   });
 }
 
+/** Every module reachable from an entry point, as file paths — the graph, not just its edges. */
+function reachableFiles(entry: string): string[] {
+  const seen = new Set<string>();
+  const queue = [entry];
+  while (queue.length) {
+    const file = queue.pop()!;
+    if (seen.has(file) || !existsSync(file)) continue;
+    seen.add(file);
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/^\s*(?:import|export)[^;]*?from\s+"([^"]+)"/gm)) {
+      const specifier = match[1]!;
+      if (specifier.startsWith(".")) queue.push(join(dirname(file), specifier.replace(/\.js$/, ".ts")));
+    }
+  }
+  return [...seen];
+}
+
+const PAGES: [string, string, string][] = [
+  ["expander", resolve(HERE, "../web/src/app.ts"), resolve(HERE, "../web/index.html")],
+  ["manager", resolve(HERE, "../web/src/manager/main.ts"), resolve(HERE, "../web/manager.html")],
+];
+
+for (const [name, entry, html] of PAGES) {
+  test(`every element the ${name} asks for exists in its page`, () => {
+    // `$("id")` throws at load when the id is missing, so a typo or a half-wired feature takes
+    // the whole page down — and nothing else catches it, because the module typechecks
+    // perfectly. Same class as the `/manager` 404: correct code, wrong wiring.
+    const declared = new Set(
+      [...readFileSync(html, "utf8").matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]!),
+    );
+
+    const missing: string[] = [];
+    for (const file of reachableFiles(entry)) {
+      for (const match of readFileSync(file, "utf8").matchAll(/\$(?:<[^>]*>)?\("([^"]+)"\)/g)) {
+        if (!declared.has(match[1]!)) missing.push(`${match[1]!} (in ${file})`);
+      }
+    }
+
+    assert.deepEqual(missing, [], `the ${name} references ids its page does not define`);
+  });
+}
+
 test("the manager reaches the librarian rather than reimplementing it", () => {
   // The UI holds no rules: shuffle says what a move means, rearrange plans and verifies it,
   // session holds the history. If that stops being true the browser and the CLI can disagree

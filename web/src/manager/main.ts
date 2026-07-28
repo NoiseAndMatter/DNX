@@ -26,6 +26,14 @@ import { deviceFor, type Device } from "../../../src/librarian/device.js";
 import { planRearrange, applyRearrange } from "../../../src/librarian/rearrange.js";
 import { clear, copyMany, moveMany, swap, type Shuffle } from "../../../src/librarian/shuffle.js";
 import { Session, tag } from "../../../src/librarian/session.js";
+import {
+  DN2_TRACK_COUNT,
+  type TrackScope,
+  applyTrackMove,
+  planTrackMove,
+  verifyTrackMove,
+} from "../../../src/librarian/trackmove.js";
+import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import { buildProjectBlob, download, openProject, type LoadedProject } from "../project.js";
 
@@ -51,9 +59,30 @@ interface State {
   selection: number[];
   /** Anchor for shift-click ranges. */
   anchor?: number;
+  /**
+   * The pattern whose tracks are open, or `undefined` while looking at patterns.
+   *
+   * One flag rather than two views, because everything else — selection, the four operation
+   * buttons, undo, the status bar — works identically at both levels. A track move *is* a
+   * shuffle; only what it indexes changes. Two parallel implementations of "which are
+   * selected" would be two places for the same bug.
+   */
+  trackFor?: number;
+  /** Which half of a track an operation moves. Only consulted inside the track view. */
+  scope: TrackScope;
 }
 
-const state: State = { bank: 0, selection: [] };
+const state: State = { bank: 0, selection: [], scope: "both" };
+
+/** True while the track view is open, which changes what a selection index means. */
+function inTracks(): boolean {
+  return state.trackFor !== undefined;
+}
+
+/** How the current level names its slots — `A1` for patterns, `T1` for tracks. */
+function slotName(index: number): string {
+  return inTracks() ? trackName(index) : patternName(index);
+}
 
 const BANKS = "ABCDEFGH";
 
@@ -96,13 +125,63 @@ function countOccupied(bank: number): number {
   return n;
 }
 
+/**
+ * The 16 tracks of one pattern.
+ *
+ * Deliberately the same cell shape as the pattern grid — id, name, detail — so the two levels
+ * read as one idea at two scales rather than two screens that happen to be adjacent.
+ */
+function renderTrackGrid(): void {
+  const { session, trackFor } = state;
+  if (!session || trackFor === undefined) return;
+
+  const grid = $("trackGrid");
+  grid.hidden = false;
+  $("grid").hidden = true;
+  $("legend").hidden = true;
+  $("trackLegend").hidden = false;
+  $("dropzone").hidden = true;
+  grid.innerHTML = "";
+
+  for (const track of summariseTracks(session.image, trackFor)) {
+    const cell = document.createElement("button");
+    cell.className = "slot";
+    if (!track.empty) cell.classList.add("occupied");
+    if (track.midi) cell.classList.add("midi");
+    cell.setAttribute("aria-selected", String(state.selection.includes(track.index)));
+
+    const detail = track.empty
+      ? "empty"
+      : `${track.trigCount} trigs${track.lockCount ? ` · ${track.lockCount} locks` : ""}`;
+
+    cell.innerHTML =
+      `<span class="id">${track.label}</span>` +
+      `<span class="nm">${escapeHtml(track.presetName || "—")}</span>` +
+      `<span class="mc">${escapeHtml(track.midi ? "MIDI" : (track.machine ?? "?"))}</span>` +
+      `<span class="tc">${detail}</span>`;
+
+    cell.addEventListener("click", (event) => {
+      onSlotClick(track.index, event);
+    });
+    grid.append(cell);
+  }
+
+  $("bankTitle").textContent = `${patternName(trackFor)} — tracks 1–${DN2_TRACK_COUNT}`;
+}
+
 function renderGrid(): void {
   const { device, session } = state;
   if (!device || !session) return;
+  if (inTracks()) {
+    renderTrackGrid();
+    return;
+  }
 
   const grid = $("grid");
   grid.hidden = false;
+  $("trackGrid").hidden = true;
   $("legend").hidden = false;
+  $("trackLegend").hidden = true;
   $("dropzone").hidden = true;
   grid.innerHTML = "";
 
@@ -143,7 +222,7 @@ function escapeHtml(text: string): string {
 }
 
 function renderSelection(): void {
-  const { selection } = state;
+  const { selection, device } = state;
   const box = $("selection");
   if (selection.length === 0) {
     box.className = "hint";
@@ -152,7 +231,7 @@ function renderSelection(): void {
     box.className = "";
     box.innerHTML =
       `<strong>${selection.length}</strong> selected: ` +
-      `<span style="font-family:ui-monospace,Consolas,monospace">${selection.map(patternName).join(" ")}</span>`;
+      `<span style="font-family:ui-monospace,Consolas,monospace">${selection.map(slotName).join(" ")}</span>`;
   }
 
   // Swap is deliberately not batched: many sources against many targets has no single obvious
@@ -161,7 +240,29 @@ function renderSelection(): void {
   $<HTMLButtonElement>("opClear").disabled = selection.length === 0;
   $<HTMLButtonElement>("opMove").disabled = selection.length === 0;
   $<HTMLButtonElement>("opCopy").disabled = selection.length === 0;
+
+  // Track operations are Digitone II only, so the drill-down offers itself only where it leads
+  // somewhere. Exactly one pattern, because a track lives in one.
+  const drill = $<HTMLButtonElement>("drill");
+  drill.hidden = inTracks() || device?.kind !== "dn2";
+  drill.disabled = selection.length !== 1;
+  drill.textContent =
+    selection.length === 1 ? `Tracks of ${patternName(selection[0]!)}…` : "Tracks…";
+
+  $("back").hidden = !inTracks();
+  $("scopeBox").hidden = !inTracks();
+  $("opHint").textContent = inTracks()
+    ? "Click tracks to select. Shift-click for a range, Ctrl-click to add."
+    : "Click slots to select. Shift-click for a range, Ctrl-click to add.";
 }
+
+const SCOPE_HINTS: Readonly<Record<TrackScope, string>> = {
+  // Each says what the device calls the same operation, so the mapping is learnable rather
+  // than something we invented.
+  both: "Both halves and the track level. The hardware has no single command for this.",
+  sequence: "The device's TRACK SEQUENCE copy — [FUNC] + [REC]/[STOP]/[PLAY]. The sound stays.",
+  preset: "The device's PRESET copy — [TRK] + [REC]/[STOP]/[PLAY]. The trigs stay. Level stays.",
+};
 
 function renderHistory(): void {
   const list = $("history");
@@ -191,6 +292,10 @@ function render(): void {
   renderGrid();
   renderSelection();
   renderHistory();
+  $("scopeHint").textContent = SCOPE_HINTS[state.scope];
+  // Bank tabs mean nothing inside one pattern. Only ever hide here — whether they show at all
+  // is renderTabs' call, and overriding that would resurrect them before a project is open.
+  if (inTracks()) $("tabs").hidden = true;
 }
 
 // --- selection ----------------------------------------------------------------------------
@@ -221,9 +326,20 @@ function onSlotClick(index: number, event: MouseEvent): void {
  */
 function run(label: string, shuffle: Shuffle): void {
   const session = state.session;
-  if (!session) return;
+  const device = state.device;
+  if (!session || !device) return;
 
-  const plan = planRearrange(session.image, shuffle);
+  const tracks = state.trackFor;
+  const scope = state.scope;
+
+  // One shape for both levels. `planRearrange` and `planTrackMove` deliberately report the same
+  // fields, so everything below this point — blockers, the confirmation, the warnings — is
+  // written once. That symmetry is why `trackmove.ts` mirrors the plan shape rather than
+  // inventing its own.
+  const plan =
+    tracks === undefined
+      ? planRearrange(session.image, shuffle)
+      : planTrackMove(session.image, device, tracks, shuffle, scope);
 
   const blockers = plan.findings.filter((f) => f.severity === "blocker");
   if (blockers.length > 0) {
@@ -233,10 +349,11 @@ function run(label: string, shuffle: Shuffle): void {
 
   if (plan.destructive.length > 0) {
     const lines = plan.destructive
-      .map(
-        (c) =>
-          `  ${patternName(c.slot)}${c.name ? ` "${c.name}"` : ""} — ${c.trigCount} trigs` +
-          (c.replacedBy !== undefined ? `, replaced by ${patternName(c.replacedBy)}` : ""),
+      .map((c) =>
+        "slot" in c
+          ? `  ${patternName(c.slot)}${c.name ? ` "${c.name}"` : ""} — ${c.trigCount} trigs` +
+            (c.replacedBy !== undefined ? `, replaced by ${patternName(c.replacedBy)}` : "")
+          : `  ${trackName(c.track)} — ${c.trigCount} trigs`,
       )
       .join("\n");
     if (!confirm(`This destroys work that cannot be recovered from the file:\n\n${lines}\n\nContinue?`)) {
@@ -246,6 +363,17 @@ function run(label: string, shuffle: Shuffle): void {
   }
 
   const changed = session.apply(tag(label), (image) => {
+    if (tracks !== undefined) {
+      const result = applyTrackMove(image, device, tracks, shuffle, {
+        confirmOverwrite: true,
+        scope,
+      });
+      const verification = verifyTrackMove(image, result.image, tracks, shuffle, scope);
+      if (!verification.ok) {
+        throw new Error(`verification failed: ${verification.problems.join("; ")}`);
+      }
+      return result.image;
+    }
     const result = applyRearrange(image, shuffle, { confirmOverwrite: true });
     if (!result.verification.ok) {
       throw new Error(`verification failed: ${result.verification.problems.join("; ")}`);
@@ -267,40 +395,75 @@ function run(label: string, shuffle: Shuffle): void {
   render();
 }
 
-/** Ask for a destination slot, accepting the device's own names. */
+/** Ask for a destination, accepting whatever the current level calls its slots. */
 function askTarget(what: string): number | undefined {
   const device = state.device;
   if (!device) return undefined;
-  const answer = prompt(`${what} — destination slot (A1 … ${patternName(device.patternCount - 1)})`);
+  const count = inTracks() ? DN2_TRACK_COUNT : device.patternCount;
+  const answer = prompt(`${what} — destination (${slotName(0)} … ${slotName(count - 1)})`);
   if (answer === null) return undefined;
 
   const wanted = answer.trim().toUpperCase();
-  for (let i = 0; i < device.patternCount; i++) if (patternName(i) === wanted) return i;
+  for (let i = 0; i < count; i++) if (slotName(i) === wanted) return i;
 
-  status(`Not a slot: "${answer}".`, "error");
+  status(`Not a ${inTracks() ? "track" : "slot"}: "${answer}".`, "error");
   return undefined;
+}
+
+/** The scope, named for the log, so history says which half moved rather than just "move". */
+function scopeSuffix(): string {
+  if (!inTracks() || state.scope === "both") return "";
+  return ` (${state.scope} only)`;
 }
 
 function wireOperations(): void {
   $("opMove").addEventListener("click", () => {
-    const to = askTarget(`Move ${state.selection.map(patternName).join(" ")}`);
+    const names = state.selection.map(slotName).join(" ");
+    const to = askTarget(`Move ${names}`);
     if (to === undefined) return;
-    run(`move ${state.selection.map(patternName).join(" ")} to ${patternName(to)}`, moveMany(state.selection, to));
+    run(`move ${names} to ${slotName(to)}${scopeSuffix()}`, moveMany(state.selection, to));
   });
 
   $("opCopy").addEventListener("click", () => {
-    const to = askTarget(`Copy ${state.selection.map(patternName).join(" ")}`);
+    const names = state.selection.map(slotName).join(" ");
+    const to = askTarget(`Copy ${names}`);
     if (to === undefined) return;
-    run(`copy ${state.selection.map(patternName).join(" ")} to ${patternName(to)}`, copyMany(state.selection, to));
+    run(`copy ${names} to ${slotName(to)}${scopeSuffix()}`, copyMany(state.selection, to));
   });
 
   $("opSwap").addEventListener("click", () => {
     const [a, b] = state.selection as [number, number];
-    run(`swap ${patternName(a)} and ${patternName(b)}`, swap(a, b));
+    run(`swap ${slotName(a)} and ${slotName(b)}${scopeSuffix()}`, swap(a, b));
   });
 
   $("opClear").addEventListener("click", () => {
-    run(`clear ${state.selection.map(patternName).join(" ")}`, clear(...state.selection));
+    run(`clear ${state.selection.map(slotName).join(" ")}${scopeSuffix()}`, clear(...state.selection));
+  });
+
+  $("drill").addEventListener("click", () => {
+    const pattern = state.selection[0];
+    if (pattern === undefined) return;
+    state.trackFor = pattern;
+    state.selection = [];
+    state.anchor = undefined;
+    render();
+    status(`${patternName(pattern)} — 16 tracks. Operations now move tracks, not patterns.`);
+  });
+
+  $("back").addEventListener("click", () => {
+    const was = state.trackFor;
+    state.trackFor = undefined;
+    // Return with the pattern still selected, so a drill-down and back is a no-op rather than
+    // something the user has to undo by re-clicking.
+    state.selection = was === undefined ? [] : [was];
+    state.anchor = was;
+    render();
+    status("Patterns.");
+  });
+
+  $<HTMLSelectElement>("scope").addEventListener("change", (event) => {
+    state.scope = (event.target as HTMLSelectElement).value as TrackScope;
+    render();
   });
 
   $("undo").addEventListener("click", () => {
@@ -334,6 +497,9 @@ async function load(file: File): Promise<void> {
   state.session = new Session(loaded.image);
   state.selection = [];
   state.bank = 0;
+  // A new project is a new set of patterns; staying drilled into slot 7 of the old one would
+  // show the right index of the wrong thing.
+  state.trackFor = undefined;
 
   $("device").hidden = false;
   $("device").textContent = device.name;
