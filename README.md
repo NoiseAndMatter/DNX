@@ -45,7 +45,8 @@ speculative or unknown.
 | WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
 | WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
-| WebMIDI — transfer by dumps | not started, see ROADMAP §3c-iv |
+| WebMIDI — reading a whole project by request | built, awaiting hardware, see ROADMAP §3c-v |
+| WebMIDI — writing to a device | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
 gaps and the traps that have already cost time.
@@ -152,7 +153,10 @@ ranking and allocation.
   Elektron what it is, what firmware it runs and which messages it supports. **Listen** sends
   nothing at all: it captures whatever the device chooses to send, so a dump triggered from the
   front panel (`SETTINGS > SYSEX DUMP > SYSEX SEND`) can be saved as a `.syx` — the same form as
-  the corpus captures, so every existing tool reads it. Chrome or Edge only,
+  the corpus captures, so every existing tool reads it. **Read project** asks for all 128
+  patterns, all 128 sound-pool slots and the project settings one at a time, waiting for each
+  answer before asking again, and reports what came back — the same capture without touching the
+  device's menus. Chrome or Edge only,
   and it asks for SysEx permission. It reads the device's capability list before sending
   anything, and **only ever sends messages classified read** — see `docs/device-probing.md` for
   why that matters, and what a stray dump would do to your instrument.
@@ -195,6 +199,7 @@ src/sysex/       SysEx dumps: 8-in-7 codec, container, device IDs
 src/project/     Project files: ZIP, LZ4, CRC, images, patterns, kits, sounds, tags
 src/expand/      Planning, routing, translation tables, the DN1 to DN2 converter
 src/librarian/   Pattern copy with sound-dependency resolution
+src/device/      Talking to a connected instrument: SysEx API, dump requests, capture, reading
 src/cli/         Command-line entry points
 web/             The browser UI: its own ZIP layer, then the same library as the CLI
 docs/            Format documentation, roadmap, known issues

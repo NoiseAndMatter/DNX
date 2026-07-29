@@ -965,6 +965,88 @@ never relies on it. Asserting the wrong one would fail every read on real hardwa
 like a device fault, so it is carried through untouched and the payload is checked against
 `length` instead. One session with a device settles it in a line.
 
+### 3c-v. Reading a whole project by request — BUILT 2026-07-29, not yet run on hardware
+
+Transfer mode's read half. Individual requests are verified on both machines (§5c of
+`dn2-format.md`); this turns one request into a plan of 257 and paces them.
+
+`src/device/readplan.ts` says what a project is made of. `src/device/dumpreader.ts` executes a
+plan. **Read project** on `/probe` is the page around them. Two files rather than one because
+*what a project consists of* is format knowledge and *how to pace a request stream* is a transport
+concern, and neither has anything to say about the other.
+
+#### Per object, not `0x6f` — and the Digitone 1 decided it
+
+elk-herd reads a whole Digitakt project with a **single** `0x6f` WholeProject request, then takes
+the arrival of ProjectSettings as the end of the stream (`Project/Update.elm`, `receiveDump`). One
+message out instead of 257. It was the obvious thing to copy and it is the wrong choice here:
+
+1. **A Digitone 1 project dump carries no sound pool.** Verified in §5c — 128 PatternKit and one
+   ProjectSettings, no `0x53` at all. The pool is exactly what the expander exists to unfold, so
+   on the machine this project's whole workflow *starts* from, a whole-project dump is
+   structurally incomplete. Asking for the 128 pool slots by number is the only way to get them.
+2. **`0x6f` has never been sent to either machine.** The five per-object requests have, twice
+   over, on both. That is the difference between a feature that works on the next hardware session
+   and one that needs the session after it.
+3. **A plan can be a subset.** "Read pattern A1" and "read the whole project" become the same code
+   path with a different list — which is what transfer mode actually needs. `0x6f` is
+   all-or-nothing at 14.6 MB every time, since §5c measured the device sending all 128 patterns
+   regardless of occupancy.
+
+The cost is 257 round trips instead of 1. At the observed USB throughput that is seconds.
+
+#### Paced by completion, not by a clock
+
+One request in flight; the next goes when the previous answer lands. A fixed delay would have to
+be tuned to the slowest case and would still be wrong for anything slower than that. The wait
+itself is sized from the payload, using elk-herd's own throughput figures — 200 B/ms for a
+Digitakt, 800 for a Digitakt II — adapted with attribution and used the other way round, to decide
+how long an answer of a given size may take rather than how fast to send one. A 3-second floor
+sits under it, because a Digitone II PatternKit at 800 B/ms is 143 ms and no silence that short
+means anything.
+
+#### Three failures it is shaped around
+
+1. **A silence must not stop the run.** A device may answer nothing for an empty slot. Aborting on
+   the first one throws away the two hundred answers after it — the same lesson the probe's query
+   sweep already paid for: the interesting result is a *mixture*, and only a run that continues
+   can show one.
+2. **A late answer must not be filed against the next step.** If step *n* times out and its answer
+   arrives while step *n+1* is waiting, matching on dump type alone puts it against the wrong
+   object and **every step after it is off by one** — silently, with all the bytes present and
+   every checksum good. So an answer whose object number belongs to a step already given up on is
+   counted `late` and the wait continues. A non-zero `late` count also names its own cause: the
+   transport is slower than the wait, which on a Digitone means SYSEX DUMP is on USB+MIDI rather
+   than USB (manual §13.4.2, ~3 kB/s on DIN).
+3. **We do not know whether a response echoes the requested object number.** It should. It has
+   never been checked for a *requested* object, and strict matching would turn that unknown into a
+   hang. So a mismatch resolves the step and is reported — which makes the first run the
+   experiment that settles it. If the count comes back non-zero, any rebuild must go by send order
+   rather than by the number in the message, exactly as §5c already requires past 128 objects.
+
+**No retries**, deliberately. A retry doubles the chance of failure 2 and buys little against a
+timeout already sized from the payload. A silent step is reported as silent, and a second pass
+over just those steps is a better tool than a retry because it is visible.
+
+#### What the first hardware run answers
+
+Nothing here has met a device; the pieces it is built from have. Four questions come back from one
+run, and the report card is laid out to state them rather than to celebrate a total:
+
+1. **Does a requested response echo the object number?** `objNrMismatches`.
+2. **Does the device answer for an empty pattern slot, or stay silent?** The front-panel dump sent
+   all 128 regardless of occupancy, so it should answer — `silent` says whether requesting behaves
+   the same way.
+3. **Does `0x63 n` reach the project sound pool, or a +Drive library sound?** Unresolved, and the
+   thing worth watching most closely: read the names out of the capture and hold them against the
+   project's pool. On a Digitone 1 this is the whole point of the exercise.
+4. **Is `G11`'s bad checksum a glitch?** §5c saw one bad checksum in 248 on an untouched blank. A
+   second capture of the same project says whether it repeats.
+
+The answers land in a `.syx` byte-identical in form to the 419 corpus captures, so every existing
+tool reads it the moment it is saved. **Rebuilding a project file from one is a separate job** and
+deliberately not started: reading has to be shown correct first.
+
 ### 3f. Getting it to testers — PLANNED 2026-07-28, not started
 
 **Raised by the user**, who has a NAS at home and is willing to run a domain from it so that no
