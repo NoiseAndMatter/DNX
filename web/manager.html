@@ -127,8 +127,21 @@ main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: 
 .slot.unsupported { border-style: dashed; border-color: var(--amber); }
 .slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
 
-/* ---- the track grid: 16 tracks of one pattern, four across so names have room -------- */
-.grid.tracks { grid-template-columns: repeat(4, 1fr); }
+/*
+ * ---- the track grid ------------------------------------------------------------------
+ *
+ * **No column override.** Tracks inherit the pattern grid's eight across, so 16 tracks land as
+ * two rows of eight — the same shape as a bank of 16 patterns, and the same shape as the
+ * device's own two rows of trig keys.
+ *
+ * It used to be four across, on the reasoning that names needed the room. That was the wrong
+ * trade: the user reported it as harder to drag around, and dragging is what this grid is for.
+ * Two grids with the same geometry also means a drag looks the same wherever it happens, which
+ * matters more than a few characters of preset name.
+ *
+ * Inheriting rather than restating `repeat(8, 1fr)` is deliberate — two numbers that must agree
+ * are two numbers that can disagree.
+ */
 .slot .mc { font-size: .62rem; color: var(--dim); letter-spacing: .04em; }
 .slot.midi { border-color: var(--amber); }
 .slot.midi .id, .slot.midi .mc { color: var(--amber); }

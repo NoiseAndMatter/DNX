@@ -152,6 +152,28 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+test("patterns and tracks are laid out on the same grid", () => {
+  // Both are drag targets, and a drag that behaves the same should look the same. The track grid
+  // was four across while patterns were eight, which the user reported as harder to drag around.
+  //
+  // Asserted as an *absence*: the track grid must not restate the column count, because two
+  // numbers that have to agree are two numbers that can disagree. If a future layout genuinely
+  // needs them to differ, rewrite this test with the reason rather than deleting it.
+  const markup = readFileSync(resolve(HERE, "../web/manager.html"), "utf8");
+
+  const base = /\.grid\s*\{[^}]*grid-template-columns:\s*repeat\((\d+)/.exec(markup);
+  assert.ok(base, ".grid no longer sets grid-template-columns");
+  assert.equal(base[1], "8", "a bank of 16 patterns should read as two rows of eight");
+
+  const tracks = /\.grid\.tracks\s*\{([^}]*)\}/.exec(markup);
+  if (tracks) {
+    assert.ok(
+      !/grid-template-columns/.test(tracks[1]!),
+      "the track grid overrides the column count again — it should inherit the pattern grid's",
+    );
+  }
+});
+
 test("every drop action has a colour in the manager's stylesheet", () => {
   // `dropHint` puts the action's own name on the cell as a class, so its hue comes from a rule
   // named after it. A fourth action would typecheck, name itself correctly, draw its label — and
