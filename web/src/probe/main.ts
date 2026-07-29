@@ -47,6 +47,9 @@ import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
+import { nullRoundTrip, verifyWrite } from "../../../src/device/dumpwrite.js";
+import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
+import { patternName } from "../../../src/sheet/naming.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -250,6 +253,8 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("reqObj").disabled = false;
     $<HTMLButtonElement>("request").disabled = false;
     $<HTMLButtonElement>("readProject").disabled = lastProductId === undefined;
+    // Stays disabled until there is something to write *back*, which can only come from reading.
+    $<HTMLButtonElement>("writeBack").disabled = lastProductId === undefined || capture.isEmpty;
 
     const caps = capabilitiesOf(device.supportedMessages);
 
@@ -605,6 +610,10 @@ async function startListening(): Promise<void> {
     // A read drives its own narration and owns the results area while it runs, so re-rendering
     // the capture on every message would tear down the progress it is drawing. The bytes are
     // already in the capture either way, which is the part that must not depend on the UI.
+    // The write verification takes precedence: it is waiting for one specific reply and the run
+    // is meaningless without it.
+    if (awaitingReply) awaitingReply(data);
+
     if (reading) {
       reading.receive(data);
       return;
@@ -843,6 +852,7 @@ async function readProject(): Promise<void> {
     $<HTMLButtonElement>("request").disabled = false;
     $<HTMLButtonElement>("listen").disabled = false;
     $<HTMLButtonElement>("save").disabled = capture.isEmpty;
+    $<HTMLButtonElement>("writeBack").disabled = capture.isEmpty;
   }
 }
 
@@ -930,4 +940,148 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
   if (report.foreign > 0) rows.push(["Other traffic", `${report.foreign} message(s), ignored`]);
 
   card(into, "Read report", rows);
+}
+
+
+// --- writing -------------------------------------------------------------------------------------
+
+/**
+ * The only control on this page that changes the instrument.
+ *
+ * It performs a **null round trip**: a record from the current capture is sent back to the slot it
+ * came from — identical bytes to the same place — and then requested again and compared. If the
+ * write path works, nothing changed; if it is broken, nothing changed either; and if the bytes land
+ * somewhere else, the read-back shows it while the original is still in the capture.
+ *
+ * That is deliberately the least interesting write imaginable, and it is the right first one. See
+ * `docs/device-probing.md` for the regime, and `src/device/dumpwrite.ts` for the guards that
+ * refuse everything this page does not explicitly ask for.
+ */
+let awaitingReply: ((data: Uint8Array) => void) | undefined;
+
+$("writeBack").addEventListener("click", () => {
+  void writeBack();
+});
+
+async function writeBack(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const productId = lastProductId;
+  if (!output || productId === undefined) {
+    status("Probe the device first — a write has to be addressed to a known product.", "warn");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
+    return;
+  }
+
+  // Sent back to its own slot, so the record has to come from this device in the first place.
+  const messages = splitCapture();
+  const candidate = messages.find((m) => m.dumpType === 0x50 && m.productId === productId);
+  if (!candidate) {
+    status(
+      "No PatternKit in the capture from this device. Read one first — Write back only ever " +
+        "returns a record to where it came from.",
+      "warn",
+    );
+    return;
+  }
+
+  const slot = patternName(candidate.objNr);
+  if (
+    !confirm(
+      `Write pattern ${slot} back to slot ${slot} on the device.\n\n` +
+        `This OVERWRITES that slot. The bytes are identical to what the device just sent, so ` +
+        `nothing should change — but this is a real write and there is no undo.\n\n` +
+        `Load a scratch project first. Continue?`,
+    )
+  ) {
+    return;
+  }
+
+  let message: Uint8Array;
+  try {
+    message = nullRoundTrip(productId, rebuildRaw(candidate));
+  } catch (error) {
+    status(`Refused: ${error}`, "error");
+    return;
+  }
+
+  const results = $("results");
+  results.innerHTML = "";
+  status(`Writing ${slot}…`, "warn");
+  output.send([...message]);
+
+  // Read it straight back. A device that stored the bytes and one that ignored the message look
+  // identical from the sending end; only this tells them apart.
+  status(`Written. Asking for ${slot} back…`);
+  const readBack = await new Promise<Uint8Array | undefined>((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(undefined);
+    }, VERIFY_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      let reply;
+      try {
+        reply = parseMessage(data);
+      } catch {
+        return;
+      }
+      if (reply.dumpType !== 0x50 || reply.objNr !== candidate.objNr) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(reply.payload);
+    };
+
+    output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]);
+  });
+
+  if (!readBack) {
+    card(results, "Write not verified", [
+      ["Slot", slot],
+      ["Wrote", `${candidate.payload.length.toLocaleString()} bytes`],
+      ["Read back", "nothing came within " + VERIFY_TIMEOUT_MS + "ms"],
+      [
+        "Means",
+        "the write may or may not have landed — unverified is not the same as failed, and the " +
+          "device is the place to check. The original is still in the capture.",
+      ],
+    ]);
+    status("Written but not verified. Check the device.", "warn");
+    return;
+  }
+
+  const verdict = verifyWrite(candidate.payload, readBack);
+  card(results, verdict.ok ? "Write verified" : "Write did NOT match", [
+    ["Slot", slot],
+    ["Bytes", candidate.payload.length.toLocaleString()],
+    ["Result", verdict.ok ? "the device returned exactly what was sent" : verdict.reason ?? "differs"],
+    ...(verdict.ok
+      ? ([["Means", "writing works on this device, at this record size, to this slot"]] as [string, string][])
+      : ([["Means", "the bytes did not land as sent — do not write anything else until this is understood"]] as [string, string][])),
+  ]);
+  status(verdict.ok ? `${slot} written and verified.` : `${slot} did not verify.`, verdict.ok ? "ok" : "error");
+}
+
+/** Long enough for a 114 KB PatternKit on a busy device. */
+const VERIFY_TIMEOUT_MS = 5000;
+
+/** The capture, as parsed messages. */
+function splitCapture(): ReturnType<typeof parseMessage>[] {
+  const out: ReturnType<typeof parseMessage>[] = [];
+  for (const raw of splitMessages(capture.bytes())) {
+    try {
+      out.push(parseMessage(raw));
+    } catch {
+      // Not a dump. Counted elsewhere; ignored here.
+    }
+  }
+  return out;
+}
+
+/** Re-emit a parsed message as bytes, so the writer can parse it back with its own guards. */
+function rebuildRaw(message: ReturnType<typeof parseMessage>): Uint8Array {
+  return rebuildMessage(message);
 }
