@@ -91,6 +91,17 @@ Load a **scratch project** as the active one, so anything that writes to "curren
 you do not mind losing. Send one message per run and record the result. A batch that changes
 something tells you far less than a sequence that does.
 
+### 4a. …except for messages already proven, where volume is a separate question
+
+**Read project** breaks rule 4 on purpose: it sends 257 requests in a row. That is defensible only
+because of *what* it sends — every one a `0x6n` request with an empty body, the same five messages
+already verified twice on both machines, through the same code path as the single **Request**
+button. Rule 4 is about **unknown** messages, and none of these are unknown any more.
+
+What it does introduce is a **volume** risk, which is a different thing and is handled separately:
+one request in flight at a time, a stop button, and a confirmation naming the size before anything
+goes out. A device answering 257 questions is still only ever answering questions.
+
 ### 5. Empty payload is not the same as safe
 
 A command with no arguments may still be *"do the thing"*. `Device` and `Version` take no
