@@ -1155,7 +1155,70 @@ sound-locked sounds are exactly what it unfolds onto their own tracks.
 
 #### What is deliberately not done
 
-Rebuilding **into** a device — that is the write half, §3c-iv, and it has not started.
+Rebuilding **into** a device — that is the write half, and it is §3c-vii below.
+
+### 3c-vii. Writing to a device — BUILT 2026-07-29, NOT YET RUN ON HARDWARE
+
+The first thing in DNX that can destroy someone's work. `docs/device-probing.md` gained a
+**Writing** section *before* any of this was written, and the parts that belong in code rather than
+prose are in `src/device/dumpwrite.ts` — because a rule that lives only in a document is a rule
+that holds until somebody is in a hurry.
+
+#### Why now, and not before
+
+Not because it was the remaining box. Because **reading made it verifiable**. Until a device could
+be read by request, "did that write land correctly?" could only be answered by looking at the
+instrument's screen. It can now be answered exactly: write a record, request it back, compare the
+bytes — the same round trip that caught `G11`.
+
+So the rule in code is: **a write is not finished until it has been read back and compared.** Not
+"the device did not complain" — the device does not complain. A device that stored the bytes, one
+that ignored the message, and one that stored them in the wrong slot are indistinguishable from
+the sending end.
+
+#### The first write is the one that cannot change anything
+
+`nullRoundTrip` sends a record **back to the slot it came from**, identical bytes to the same
+place. If the write path works, nothing changed. If it is broken, nothing changed either. If the
+bytes land somewhere else, the read-back shows it while the original is still in the capture.
+
+It is deliberately the least interesting write imaginable, and it is a named function rather than a
+comment on a general one so that it is the *easy* thing to do.
+
+The page enforces the same order: **Write back** stays disabled until a device has been probed
+*and* something has been captured, because a record can only be sent back to where it came from if
+it came from somewhere.
+
+#### Five guards, each refusing rather than warning
+
+1. **Payload size must equal the record's size for that family.** A short payload is not a partial
+   write to tolerate; it is a different message.
+2. **Object number range.** One byte stands between the intended slot and somebody's work.
+3. **Storage version must match a witness** — a record actually read from the target device in this
+   session. Checking against a firmware table would only test our belief about the firmware;
+   checking against the device's own bytes tests the device. An unversioned record reads as
+   `unknown` and fails rather than passing silently.
+4. **`0x54` ProjectSettings needs a stated reason.** It is global state, not one slot — on a DN1 it
+   is everything up to the song table.
+5. **A Digitone 1's `0x53` needs one too.** Its *read* direction turned out ambiguous — kit track
+   sound or pool slot — so its write direction is unproven, and an unproven write is not the place
+   to find out.
+
+#### What is unknown, and is treated as unknown
+
+- **Does a write reach the +Drive project or the active copy in RAM?** §5b's round-trip evidence
+  points at the active copy, which would mean a write needs a manual save to persist — a safety
+  feature if true. It is not established, so the code assumes the write is permanent.
+- **What happens writing to an occupied slot.** Prompt, overwrite, refusal — unknown. Which is why
+  the first non-null write should go to an empty one.
+
+#### The hardware session, in order
+
+1. Export every project that matters. Confirm the exports parse.
+2. Load a **scratch** project. Read it, so there is both a capture and a witness.
+3. **Write back** — the null round trip. Verify.
+4. Only then: write a record to an *empty* slot, and read the whole project again to confirm
+   nothing else moved.
 
 ### 3f. Getting it to testers — PLANNED 2026-07-28, not started
 
