@@ -49,11 +49,12 @@ speculative or unknown.
 | Rebuild a project file from a capture | done — 99.5% from the wire, the rest from a donor |
 | WebMIDI — writing to a device | **works, verified on a Digitone II** — null round trip read back byte-identical |
 | WebMIDI — copy a pattern into another slot on the device | **works, verified on a Digitone II** — one byte differs, and it is the slot index |
-| Manager reads and writes a **live device** | first version — **Open device…** / **Write to device**, untested on hardware |
+| Manager reads and writes a **live device** | done, **hardware-verified on a Digitone II** — no file in the loop |
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
 
-`docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
-gaps and the traps that have already cost time.
+`docs/ROADMAP.md` tracks progress and what is next. `docs/MILESTONES.md` records when things
+actually landed. `docs/KNOWN-ISSUES.md` tracks defects, gaps and the traps that have already cost
+time.
 
 ## Usage
 
