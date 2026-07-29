@@ -48,6 +48,9 @@ select {
 .btn:hover:not(:disabled) { border-color: var(--teal); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.primary { border-color: var(--teal); color: var(--teal); }
+/* The only control on this page that changes the instrument. It should not look like the others. */
+.btn.danger { border-color: var(--salmon); color: var(--salmon); }
+.btn.danger:hover:not(:disabled) { border-color: var(--salmon); background: #2c1f1e; }
 
 main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: column; gap: .7rem; }
 
@@ -106,6 +109,7 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <input id="reqObj" type="number" min="0" max="127" value="0" disabled>
   <button class="btn" id="request" disabled>Request</button>
   <button class="btn" id="readProject" disabled>Read project</button>
+  <button class="btn danger" id="writeBack" disabled title="Send a captured record back to the slot it came from">Write back</button>
 </header>
 
 <main>
@@ -118,7 +122,11 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
       save the result as a <span class="mono">.syx</span>. <strong>Read project</strong> asks for
       all 128 patterns, all 128 sound-pool slots and the project settings, one at a time, waiting
       for each answer before asking again &mdash; the same capture, without touching the device's
-      menus. Requests carry an empty body, so none of this writes anything to the device.
+      menus. Requests carry an empty body, so none of that writes anything to the device.
+      <strong>Write back</strong> is the one exception and the only control here that changes your
+      instrument: it sends a record from the current capture back to the slot it came from &mdash;
+      identical bytes to the same place &mdash; then reads it again and compares. Load a scratch
+      project first, and read <span class="mono">docs/device-probing.md</span>.
       Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
       SysEx permission, which is the whole point: without it every request is silently dropped
       and the device looks like it is not answering.

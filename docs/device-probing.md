@@ -110,6 +110,66 @@ reasoning has to come from the message's meaning, never from the size of its bod
 
 ---
 
+## Writing to a device
+
+Everything above is about reading. **This section is about the first thing in DNX that can destroy
+someone's work**, and it is written before the code rather than after it.
+
+A `0x5n` sent *to* an instrument means **store this**. There is no dry run on the wire, no undo,
+and no confirmation prompt from the device — it takes the bytes and keeps them. elk-herd writes a
+project this way, which is the direct evidence for what these messages do in this direction.
+
+### The one thing that changed, and why writing is now testable
+
+Until a device could be *read* by request, "did that write land correctly?" could only be answered
+by looking at the instrument's screen. It can now be answered exactly: **write a record, request it
+back, compare the bytes.** That is the same round trip that caught `G11`, and it is what makes a
+write verifiable rather than merely apparently-successful.
+
+So the rule is: **a write is not finished until it has been read back and compared.** Not "the
+device did not complain" — the device does not complain.
+
+### Start with the write that cannot change anything
+
+The first write should be a **null round trip**: take a record just read from this device and send
+it back to the slot it came from. Identical bytes to the same place.
+
+- If the write path works, nothing changed.
+- If the write path is broken, nothing changed either.
+- If the bytes land somewhere else, the read-back shows it and the original is still in the
+  capture.
+
+Only after that succeeds is it worth writing a record to a *different* slot, and only then a
+record from a *different* project.
+
+### Five guards, and what each one is for
+
+1. **A scratch project, loaded on the device.** Same rule as probing an unknown code, for the same
+   reason. Export everything first and confirm the exports parse.
+2. **The object number.** It is the only thing standing between the intended slot and someone's
+   work, and it is one byte. Range-checked in code, and shown in the confirmation.
+3. **Payload size must equal the record's size for that family.** A short payload is not a partial
+   write to be tolerated; it is a message that means something else.
+4. **Storage version must match.** A record captured under one firmware, written to a device
+   running another, is precisely the corruption this project has spent its whole life avoiding.
+   The strong form of the check is the one to use: *the record being written must match the
+   version of a record read from this same device in this same session.*
+5. **Never `0x54` ProjectSettings, and never `0x53` on a Digitone 1, without a specific reason.**
+   Settings is global state rather than one slot. And a DN1's `0x53` is ambiguous in the *read*
+   direction — kit sound or pool sound — so its write direction is unproven, and an unproven write
+   is not a place to find out.
+
+### What is still unknown, and must be treated as unknown
+
+- **Does a write reach the +Drive project or the active copy in RAM?** The round-trip evidence
+  from §5b points at the active copy, which would mean a write needs a manual save to persist.
+  If so that is a *safety feature* — the device asks before making it permanent — but it is not
+  established, so do not rely on it either way. Assume the write is permanent.
+- **Whether a write to an occupied slot prompts, overwrites, or is refused.** Unknown. This is why
+  the first non-null write goes to an empty slot.
+
+---
+
 ## If you want to probe an unknown code anyway
 
 It is a legitimate thing to want, and this is how to make it as cheap as possible to be wrong:
