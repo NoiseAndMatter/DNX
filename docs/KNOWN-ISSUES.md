@@ -26,8 +26,34 @@ silence among its possible outcomes.** It now narrates every step into a card th
 whatever happens next — bytes on the wire, send result, request issued, reply or timeout — so a
 failure says *which step* failed instead of saying nothing.
 
-Still unknown as a result: whether that first write actually landed. The device is the place to
-check, and re-running Write back now answers it properly.
+### The fix was inadequate, and the third attempt is the structural one
+
+The `writing` flag did not hold, and the user reported the card still vanishing. The flag is only
+true *during* the write, so **any** message arriving afterwards redraws `#results` and destroys
+whatever is in it — a reply that beat the timeout, a late one that missed it, anything.
+
+Flags cannot fix this, because the problem is that two features share one element. The verdict now
+lives in its own `#writeResult`, which `renderCapture` does not know exists. Nothing that redraws
+the capture can destroy it, whatever the ordering. A late reply also **upgrades** the card instead
+of wiping it, which is what a slow-but-successful write needs.
+
+The general lesson: **when a redraw keeps eating something, stop guarding the redraw and move the
+thing out of its reach.**
+
+### And a false explanation the same capture exposed
+
+The capture summary told the user that 129 patternKits with 128 distinct numbers meant the object
+number had **saturated**. It had not — the 129th was our own verification re-read. The check was
+just `count > distinct`, which is true of any repeat.
+
+The bytes genuinely cannot tell the two apart, so the note no longer picks: it states the counts
+and names both causes. **A confident wrong explanation is worse than an honest ambiguous one** —
+the same lesson `G11` and the Digitone 1's `0x63` both taught.
+
+### The write itself worked
+
+Verified from the capture, offline: pattern `A1` read back **byte-for-byte identical**, 99,840
+bytes, both checksums good. Writing to a Digitone II works.
 
 ---
 
