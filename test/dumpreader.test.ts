@@ -204,6 +204,57 @@ test("a second pass covers both the silent and the corrupt", async () => {
   );
 });
 
+test("a device that goes quiet on one code is believed, and the rest is skipped", async () => {
+  // The six minutes a Digitone 1 cost. It answers 0x63 for its four kit sounds and stays silent
+  // for 4..127; without this the run spent 124 x 3s waiting for answers that were never coming.
+  const { reader, sent } = fakeDevice((request) =>
+    request.objNr < 4 ? respondTo(request) : undefined,
+  );
+
+  const report = await reader.run(planProjectRead(ProductId.DN2, { sounds: true }));
+
+  assert.equal(report.ok, 4, "the four it does answer");
+  assert.equal(report.silent, 3, "three silences is the evidence, not 124");
+  assert.equal(report.skipped, 121);
+  assert.equal(sent.length, 7, "nothing is sent once the code is abandoned");
+  assert.deepEqual(report.gaveUpOn, [{ code: 0x63, after: 3 }]);
+});
+
+test("a lone dropout does not abandon a code", async () => {
+  // Consecutive, not cumulative. Three scattered silences in a good run are three dropouts.
+  const { reader } = fakeDevice((request) =>
+    [2, 40, 90].includes(request.objNr) ? undefined : respondTo(request),
+  );
+
+  const report = await reader.run(planProjectRead(ProductId.DN2, { sounds: true }));
+
+  assert.equal(report.silent, 3);
+  assert.equal(report.skipped, 0);
+  assert.deepEqual(report.gaveUpOn, []);
+});
+
+test("giving up on sounds does not stop patterns being asked for", async () => {
+  // Per code, because the codes are independent: a device with no sounds still has patterns.
+  const { reader } = fakeDevice((request) =>
+    request.dumpType === 0x63 ? undefined : respondTo(request),
+  );
+
+  const report = await reader.run(planProjectRead(ProductId.DN2));
+
+  assert.equal(report.results.filter((r) => r.step.code === 0x60 && r.status === "ok").length, 128);
+  assert.equal(report.results.filter((r) => r.step.code === 0x64 && r.status === "ok").length, 1);
+  assert.deepEqual(report.gaveUpOn, [{ code: 0x63, after: 3 }]);
+});
+
+test("the report carries throughput, for comparing one operation against another", async () => {
+  const { reader } = fakeDevice((request) => respondTo(request));
+  const report = await reader.run(planProjectRead(ProductId.DN2, { settings: true }));
+
+  assert.ok(report.elapsedMs >= 0);
+  assert.equal(report.bytesPerSecond, 0, "an instant clock cannot divide by zero");
+  assert.ok(report.bytes > 512);
+});
+
 test("the wait is sized from the payload, with a floor", async () => {
   const [pattern] = planProjectRead(ProductId.DN2, { patterns: true });
   const [settings] = planProjectRead(ProductId.DN1, { settings: true });

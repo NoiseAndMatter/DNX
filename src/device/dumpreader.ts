@@ -27,6 +27,22 @@
  *    and strict matching would turn that unknown into a hang. So a mismatch resolves the step and
  *    is reported, which turns the first run into the experiment that settles it.
  *
+ * ## Giving up on a request code, after the Digitone 1 made the case
+ *
+ * A Digitone 1 answers `0x63` for its four kit sounds and stays silent for 4..127. The plan used
+ * to ask for 128 regardless, so a DN1 project read spent **124 × 3 seconds — over six minutes —
+ * waiting for answers that were never coming**, which the user reasonably read as the transfer
+ * dropping to MIDI speed. It was our own timeout floor, 124 times.
+ *
+ * The plan now asks a DN1 for four. This is the second half of the fix and the general one: after
+ * `GIVE_UP_AFTER` consecutive silences on one request code, stop asking on that code and mark the
+ * rest `skipped`. A device that has ignored three in a row is telling us something, and the right
+ * response is to believe it rather than to spend a minute per ten objects confirming it.
+ *
+ * Per code, not per run, because the codes are independent: a device with no sounds to give still
+ * has patterns. Consecutive, not cumulative, because a single dropout in the middle of a good run
+ * is a dropout and not an answer.
+ *
  * ## Retries, deliberately absent
  *
  * A retry doubles the chance of exactly failure 2, and buys little: the timeout is already sized
@@ -40,8 +56,14 @@ import { ProductId } from "../sysex/devices.js";
 import { dumpRequest } from "./dumprequest.js";
 import { type ReadStep, wireBytes } from "./readplan.js";
 
-/** How this step ended. */
-export type StepStatus = "ok" | "silent" | "stopped";
+/**
+ * How this step ended.
+ *
+ * `skipped` is distinct from `silent` on purpose: one is a question the device declined to answer,
+ * the other is a question we chose not to ask. Collapsing them would make a run that gave up early
+ * look like a device that failed 124 times.
+ */
+export type StepStatus = "ok" | "silent" | "stopped" | "skipped";
 
 export interface StepResult {
   step: ReadStep;
@@ -95,6 +117,19 @@ export interface ReadReport {
   badChecksums: number;
   /** True when `stop()` ended the run before the plan did. */
   stopped: boolean;
+  /**
+   * Steps never sent, because the device had gone quiet on that request code.
+   *
+   * A Digitone 1 asked for 128 sounds answers four. Reported rather than hidden: "124 skipped"
+   * says the device has no more to give, where 124 timeouts would say the transfer is broken.
+   */
+  skipped: number;
+  /** Request codes abandoned, and after how many silences. */
+  gaveUpOn: { code: number; after: number }[];
+  /** Wall-clock milliseconds the run took, so throughput can be compared between operations. */
+  elapsedMs: number;
+  /** Received bytes per second, framing included. Zero when nothing arrived. */
+  bytesPerSecond: number;
 }
 
 export interface DumpReaderOptions {
@@ -110,6 +145,14 @@ export interface DumpReaderOptions {
    * Override the size-derived wait. Only for tests and for a transport we have not met.
    */
   timeoutMs?: number;
+  /**
+   * Consecutive silences on one request code before the rest of that code is skipped.
+   *
+   * Three, matching the probe's query sweep. Low enough that a Digitone 1's 124 unanswerable sound
+   * requests cost nine seconds instead of six minutes, high enough that a single dropout in an
+   * otherwise good run does not abandon the code.
+   */
+  giveUpAfter?: number;
 }
 
 /**
@@ -138,6 +181,14 @@ const MIN_TIMEOUT_MS = 3000;
 /** Room for a device that is doing something else as well as answering. */
 const SLACK = 4;
 
+/**
+ * Consecutive silences on one request code before the rest of that code is skipped.
+ *
+ * Three, the same number the probe's query sweep settled on, and for the same reason: a device
+ * that has ignored three in a row is answering, and the answer is no.
+ */
+const GIVE_UP_AFTER = 3;
+
 /** How long to allow for one step's answer. */
 export function timeoutFor(step: ReadStep, productId: number): number {
   const rate = BYTES_PER_MS[productId] ?? DEFAULT_BYTES_PER_MS;
@@ -165,11 +216,17 @@ export class DumpReader {
   private foreign = 0;
   private stopping = false;
 
+  /** Consecutive silences per request code, and the codes we have stopped asking on. */
+  private readonly silences = new Map<number, number>();
+  private readonly gaveUpOn = new Map<number, number>();
+  private readonly giveUpAfter: number;
+
   constructor(options: DumpReaderOptions) {
     this.options = options;
     this.now = options.now ?? (() => Date.now());
     this.setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = options.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+    this.giveUpAfter = options.giveUpAfter ?? GIVE_UP_AFTER;
   }
 
   /**
@@ -204,6 +261,9 @@ export class DumpReader {
       return;
     }
 
+    // Consecutive, so a lone dropout in a good run does not count towards giving up.
+    this.silences.set(waiting.step.code, 0);
+
     this.settle(waiting, {
       step: waiting.step,
       status: "ok",
@@ -227,16 +287,23 @@ export class DumpReader {
   /** Send every step in the plan, one at a time, and say what came back. */
   async run(plan: readonly ReadStep[]): Promise<ReadReport> {
     const results: StepResult[] = [];
+    const startedAt = this.now();
 
     for (const step of plan) {
       if (this.stopping) break;
-      const result = await this.step(step);
+
+      // Nothing is sent for a code we have given up on. This is the six minutes a Digitone 1 cost
+      // before it existed — 124 sound requests it was never going to answer, three seconds each.
+      const result = this.gaveUpOn.has(step.code)
+        ? { step, status: "skipped" as const }
+        : await this.step(step);
+
       results.push(result);
       this.options.onProgress?.(result, results.length, plan.length);
       if (result.status === "stopped") break;
     }
 
-    return this.report(results);
+    return this.report(results, this.now() - startedAt);
   }
 
   private step(step: ReadStep): Promise<StepResult> {
@@ -251,6 +318,7 @@ export class DumpReader {
           const waiting = this.waiting;
           if (!waiting || waiting.step !== step) return;
           this.abandon(step);
+          this.noteSilence(step.code);
           this.settle(waiting, { step, status: "silent", elapsedMs: timeoutMs });
         }, timeoutMs),
       };
@@ -267,6 +335,14 @@ export class DumpReader {
     waiting.resolve(result);
   }
 
+  private noteSilence(code: number): void {
+    const runOfSilence = (this.silences.get(code) ?? 0) + 1;
+    this.silences.set(code, runOfSilence);
+    if (runOfSilence >= this.giveUpAfter && !this.gaveUpOn.has(code)) {
+      this.gaveUpOn.set(code, runOfSilence);
+    }
+  }
+
   private abandon(step: ReadStep): void {
     const set = this.abandoned.get(step.expect) ?? new Set<number>();
     set.add(step.objNr);
@@ -277,12 +353,17 @@ export class DumpReader {
     return this.abandoned.get(dumpType)?.has(objNr) ?? false;
   }
 
-  private report(results: StepResult[]): ReadReport {
+  private report(results: StepResult[], elapsedMs: number): ReadReport {
+    const bytes = results.reduce((total, r) => total + (r.wireBytes ?? 0), 0);
     return {
       results,
       ok: results.filter((r) => r.status === "ok").length,
       silent: results.filter((r) => r.status === "silent").length,
-      bytes: results.reduce((total, r) => total + (r.wireBytes ?? 0), 0),
+      skipped: results.filter((r) => r.status === "skipped").length,
+      gaveUpOn: [...this.gaveUpOn].map(([code, after]) => ({ code, after })),
+      elapsedMs,
+      bytesPerSecond: elapsedMs > 0 ? Math.round((bytes / elapsedMs) * 1000) : 0,
+      bytes,
       late: this.late,
       foreign: this.foreign,
       objNrMismatches: results.filter((r) => r.status === "ok" && r.objNr !== r.step.objNr).length,
