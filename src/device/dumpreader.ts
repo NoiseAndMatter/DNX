@@ -82,6 +82,17 @@ export interface ReadReport {
   objNrMismatches: number;
   /** Steps whose payload was not the size the plan predicted. */
   sizeMismatches: number;
+  /**
+   * Answers whose stored checksum disagreed with the recomputed one.
+   *
+   * Promoted to the report after the first hardware run made the case for it. A Digitone II sent
+   * `G11` with a bad checksum and 6,433 wrong bytes in one 248-message dump, and returned it
+   * perfectly the next night — so corruption here is **real, rare and silent**, and a transfer
+   * that trusted a single pass would have written those bytes into a project. Counted at the top
+   * level rather than left for a caller to derive, because the derivation is exactly the step
+   * somebody skips.
+   */
+  badChecksums: number;
   /** True when `stop()` ended the run before the plan did. */
   stopped: boolean;
 }
@@ -278,7 +289,28 @@ export class DumpReader {
       sizeMismatches: results.filter(
         (r) => r.status === "ok" && r.payloadBytes !== r.step.payloadBytes,
       ).length,
+      badChecksums: results.filter((r) => r.checksumOk === false).length,
       stopped: this.stopping,
     };
   }
+}
+
+/**
+ * The steps worth asking for again: the ones that answered nothing, and the ones that answered
+ * badly.
+ *
+ * A second pass over a short list rather than a retry inside the run — the difference being that
+ * this one is *visible*, and that it cannot desync the first pass by racing it. The first hardware
+ * run is the argument: 257 objects, and the only thing wrong with any of them was a checksum that
+ * a re-read would have fixed in under a second.
+ *
+ * **A caller re-running these has to decide what to do with the duplicates.** The bytes land in
+ * the same capture, so the `.syx` then holds two copies of a record. Harmless for inspection, and
+ * a decision anything rebuilding a project file has to make explicitly — later wins, on the
+ * grounds that a step is only retried because the earlier answer was unusable.
+ */
+export function stepsToRetry(report: ReadReport): ReadStep[] {
+  return report.results
+    .filter((r) => r.status === "silent" || r.checksumOk === false)
+    .map((r) => r.step);
 }

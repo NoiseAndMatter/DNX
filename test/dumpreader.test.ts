@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildMessage, parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
 import { RequestCode, responseFor } from "../src/device/dumprequest.js";
-import { DumpReader, timeoutFor } from "../src/device/dumpreader.js";
+import { DumpReader, stepsToRetry, timeoutFor } from "../src/device/dumpreader.js";
 import { RESPONSE_SIZES, planProjectRead } from "../src/device/readplan.js";
 
 /**
@@ -166,6 +166,42 @@ test("progress is reported per step, with the total", async () => {
 
   await reader.run(planProjectRead(ProductId.DN2, { settings: true }));
   assert.deepEqual(seen, ["1/1 Project settings"]);
+});
+
+test("a bad checksum is counted, and its step is offered for a second pass", async () => {
+  // The failure the first hardware run found: one pattern in 248 arrived corrupt with a good-
+  // looking everything-else, and read back perfectly the next night. Rare, silent, and fatal to
+  // anything that trusts a single pass.
+  const { reader } = fakeDevice((request) => {
+    const reply = respondTo(request);
+    if (request.objNr === 5) reply[reply.length - 5] = reply[reply.length - 5]! ^ 0x7f;
+    return reply;
+  });
+
+  const report = await reader.run(planProjectRead(ProductId.DN2, { sounds: true }));
+
+  assert.equal(report.ok, 128, "a bad checksum still counts as an answer — it arrived");
+  assert.equal(report.badChecksums, 1);
+  assert.deepEqual(
+    stepsToRetry(report).map((s) => s.label),
+    ["Sound 5"],
+  );
+});
+
+test("a second pass covers both the silent and the corrupt", async () => {
+  const { reader } = fakeDevice((request) => {
+    if (request.objNr === 1) return undefined;
+    const reply = respondTo(request);
+    if (request.objNr === 2) reply[reply.length - 5] = reply[reply.length - 5]! ^ 0x7f;
+    return reply;
+  });
+
+  const report = await reader.run(planProjectRead(ProductId.DN2, { sounds: true }));
+
+  assert.deepEqual(
+    stepsToRetry(report).map((s) => s.objNr),
+    [1, 2],
+  );
 });
 
 test("the wait is sized from the payload, with a floor", async () => {
