@@ -1329,7 +1329,19 @@ Guards: a transfer-sized change is refused unless asked for deliberately, every 
 `settleMsAfter`, and verification is a **separate call**, because a device acknowledges nothing and
 a function claiming to *write and verify* would be reporting one outcome for two operations.
 
-**Not yet run on hardware.** `Next_Session.md` carries what to check first.
+**PASSED on hardware, 2026-07-30 09:21.** A project opened from a Digitone II, patterns moved,
+written back, all of it verified — **no file anywhere in the loop**. See `MILESTONES.md`.
+
+#### One thing the device does that could be misread
+
+**The DN2 announces the pattern it has just taken, and shows only the last one.** Write several and
+its screen names one. That is the instrument's own UI reacting to the most recent record, not a
+report of what arrived — it acknowledges a SysEx write with *nothing at all*, so the message is
+neither a confirmation nor a count.
+
+The user checked, and every changed pattern was transmitted. Recorded because **"one message" reads
+as "one pattern written"**, and a later session watching that screen could reasonably conclude a
+batch had failed when it had not. The only proof remains a re-read.
 
 ### 4a. The insight that makes it cheap — live management needs no image
 
