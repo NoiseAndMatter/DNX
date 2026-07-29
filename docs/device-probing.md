@@ -161,10 +161,17 @@ record from a *different* project.
 
 ### What is still unknown, and must be treated as unknown
 
-- **Does a write reach the +Drive project or the active copy in RAM?** The round-trip evidence
-  from §5b points at the active copy, which would mean a write needs a manual save to persist.
-  If so that is a *safety feature* — the device asks before making it permanent — but it is not
-  established, so do not rely on it either way. Assume the write is permanent.
+- ~~Does a write reach the +Drive project or the active copy in RAM?~~ **ANSWERED 2026-07-30: the
+  active project, not the +Drive.** A written pattern survives a power cycle and is **lost when
+  another project is loaded without saving**. The device's own SAVE PROJECT is the commit step.
+
+  **The obvious test was worthless and is worth remembering as a trap.** Power-cycling without
+  saving proves nothing here, because a Digitone restores its exact working state on boot — so
+  both possible answers predict the same observation. Switching projects is what discriminates. A
+  test that cannot come out both ways is not a test.
+
+  Practical consequence: a write is **reversible until the user saves**, which is a stronger undo
+  than anything in this codebase — but only for someone who has been told.
 - **Whether a write to an occupied slot prompts, overwrites, or is refused.** Unknown. This is why
   the first non-null write goes to an empty slot.
 

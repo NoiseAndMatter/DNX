@@ -1301,8 +1301,9 @@ async function writeToChosenSlot(): Promise<void> {
     [
       "Next",
       verdict.ok
-        ? "Read project again to confirm nothing else moved — then power-cycle without saving " +
-          "to find out whether this reached the +Drive or only the active copy in RAM"
+        ? "SAVE PROJECT on the device to keep this. A write lands in the active project, not the " +
+          "+Drive — it survives a power cycle but is lost the moment another project is loaded. " +
+          "Which also means: to undo it, load another project without saving."
         : "write nothing else until this is understood",
     ],
   ]);
