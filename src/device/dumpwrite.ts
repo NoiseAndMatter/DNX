@@ -104,6 +104,36 @@ export function storageVersion(payload: Uint8Array): number | undefined {
   );
 }
 
+/**
+ * Where a record of a given code keeps its object header, and therefore its version.
+ *
+ * **Written after the guard turned out to be inert for the record we write most.** A PatternKit is
+ * `pattern ++ kit`, and only the kit half opens with `BEEFBACE` — so reading the version from byte
+ * 0 returned `undefined` for every patternKit, both sides of the comparison matched as unknown,
+ * and the version check silently passed on everything.
+ *
+ * A guard that cannot fail is not a guard. Found by a test that expected a refusal and got a
+ * successful write.
+ */
+export function versionOffset(productId: number, code: number): number | undefined {
+  const layout = productId === ProductId.DN1 ? DN1_LAYOUT : productId === ProductId.DN2 ? DN2_LAYOUT : undefined;
+  if (!layout) return undefined;
+  switch (code) {
+    case WriteCode.PatternKit: return layout.patternSize;
+    case WriteCode.Kit:
+    case WriteCode.Sound: return 0;
+    // A pattern record and a settings record carry no `BEEFBACE` header on either family, so there
+    // is no version to compare. Returning undefined says so; it does not guess at zero.
+    default: return undefined;
+  }
+}
+
+/** The storage version a record of this code declares, or undefined when it declares none. */
+export function versionOf(productId: number, code: number, payload: Uint8Array): number | undefined {
+  const at = versionOffset(productId, code);
+  return at === undefined ? undefined : storageVersion(payload.subarray(at));
+}
+
 export interface WriteRequest {
   code: WriteCode;
   /** The slot to overwrite. */
@@ -159,8 +189,10 @@ export function dumpWrite(productId: number, request: WriteRequest): Uint8Array 
     );
   }
 
-  const target = storageVersion(request.witness);
-  const ours = storageVersion(request.payload);
+  // Read from where this record actually keeps its header — see `versionOffset`. Reading byte 0
+  // made the check pass on every patternKit ever written.
+  const target = versionOf(productId, request.code, request.witness);
+  const ours = versionOf(productId, request.code, request.payload);
   if (target !== undefined && ours !== target) {
     throw new WriteRefused(
       `this record is storage version ${ours ?? "unknown"} and the device answered with version ` +
