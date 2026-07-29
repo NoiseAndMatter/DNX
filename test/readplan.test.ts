@@ -4,9 +4,17 @@ import { ProductId } from "../src/sysex/devices.js";
 import { DN1_LAYOUT, DN2_LAYOUT, DN1_KIT, DN2_KIT } from "../src/project/dn2image.js";
 import { POOL_SOUND_COUNT } from "../src/project/soundmap.js";
 import { RequestCode } from "../src/device/dumprequest.js";
-import { PATTERN_COUNT, RESPONSE_SIZES, planBytes, planProjectRead, wireBytes } from "../src/device/readplan.js";
+import {
+  PATTERN_COUNT,
+  RESPONSE_SIZES,
+  planBytes,
+  planProjectRead,
+  poolNeedsPanelDump,
+  soundRequestCount,
+  wireBytes,
+} from "../src/device/readplan.js";
 
-test("a whole project is 128 patterns, 128 pool sounds and one settings record", () => {
+test("a whole Digitone II project is 128 patterns, 128 pool sounds and one settings record", () => {
   const plan = planProjectRead(ProductId.DN2);
   assert.equal(plan.length, PATTERN_COUNT + POOL_SOUND_COUNT + 1);
 
@@ -14,6 +22,22 @@ test("a whole project is 128 patterns, 128 pool sounds and one settings record",
   assert.equal(counted(RequestCode.PatternKit), 128);
   assert.equal(counted(RequestCode.Sound), 128);
   assert.equal(counted(RequestCode.ProjectSettings), 1);
+});
+
+test("a Digitone 1 is asked for four sounds, because four is all it answers", () => {
+  // **[verified]** on hardware: a DN1 answers 0x63 for its four kit track sounds and stays silent
+  // for 4..127. Asking for 128 returned nothing and cost 124 timeouts — over six minutes.
+  const plan = planProjectRead(ProductId.DN1);
+  assert.equal(plan.filter((s) => s.code === RequestCode.Sound).length, 4);
+  assert.equal(plan.length, PATTERN_COUNT + 4 + 1, "133 objects, which is what the device sent");
+  assert.equal(soundRequestCount(ProductId.DN1), 4);
+  assert.equal(soundRequestCount(ProductId.DN2), POOL_SOUND_COUNT);
+});
+
+test("only the Digitone 1 needs its pool captured from the front panel", () => {
+  // Not a limitation of the plan: a DN1 offers its pool over neither request nor project dump.
+  assert.equal(poolNeedsPanelDump(ProductId.DN1), true);
+  assert.equal(poolNeedsPanelDump(ProductId.DN2), false);
 });
 
 test("the plan follows the order a device dumps itself in", () => {
