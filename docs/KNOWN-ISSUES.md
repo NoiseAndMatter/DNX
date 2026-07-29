@@ -5,6 +5,32 @@ converter.
 
 ---
 
+## The first write reported nothing at all — FIXED 2026-07-29
+
+**Write back** was run on hardware and the UI did not visibly change. **Three** separate defects,
+each of which alone produces exactly that symptom, which is why the result was total silence:
+
+1. **A rejected promise was discarded.** The click handler used `void writeBack()`. `output.send()`
+   can throw — a 114 KB SysEx message is not small — and the rejection went nowhere. Now caught,
+   and the send is wrapped separately, so *"we refused before sending"* and *"the port rejected
+   it"* are different messages rather than the same nothing.
+2. **The capture renderer cleared the results area.** Every incoming message called
+   `renderCapture()`, which wipes `#results` and redraws the capture cards. The verification reply
+   *is* an incoming message, so it wiped the area a moment before the verdict was appended — and
+   the verdict then landed below the capture cards, off screen.
+3. **A guard firing showed only in the status bar**, one line at the bottom of the page, easily
+   missed.
+
+The lesson generalises past this page: **the one control that changes the instrument must not have
+silence among its possible outcomes.** It now narrates every step into a card that survives
+whatever happens next — bytes on the wire, send result, request issued, reply or timeout — so a
+failure says *which step* failed instead of saying nothing.
+
+Still unknown as a result: whether that first write actually landed. The device is the place to
+check, and re-running Write back now answers it properly.
+
+---
+
 ## The failure mode to understand first
 
 Conversion is a **transplant**: the caller supplies a DN2 project the device itself wrote,

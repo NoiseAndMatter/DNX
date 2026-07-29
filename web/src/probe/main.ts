@@ -618,6 +618,9 @@ async function startListening(): Promise<void> {
       reading.receive(data);
       return;
     }
+    // A write owns the results area until it has a verdict. Redrawing the capture here is what
+    // buried the last one.
+    if (writing) return;
     renderCapture();
 
     // A project dump is minutes of silence punctuated by a message every so often, and a static
@@ -959,8 +962,32 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
  */
 let awaitingReply: ((data: Uint8Array) => void) | undefined;
 
+/**
+ * True while a write is in flight, so the capture renderer leaves the results area alone.
+ *
+ * Without it the reply to the verification request triggered `renderCapture`, which clears
+ * `#results` and redraws the capture cards — burying the verdict below them, or wiping it. The
+ * first hardware run reported "nothing seems to change in the UI", and this was one of the three
+ * reasons why.
+ */
+let writing = false;
+
 $("writeBack").addEventListener("click", () => {
-  void writeBack();
+  // **Never `void` a promise on this page.** A rejected `writeBack` used to vanish without a
+  // trace: `output.send()` can throw on a 114 KB message, and the only symptom was a UI that did
+  // nothing at all. Silence is the one outcome a control that changes an instrument must not have.
+  writeBack().catch((error: unknown) => {
+    status(`The write failed: ${String(error)}`, "error");
+    card($("results"), "Write failed", [
+      ["Error", String(error)],
+      [
+        "Meaning",
+        "the message was not sent, or the port rejected it. Nothing was written — but check the " +
+          "device, because 'we threw before sending' and 'the send threw partway' look the same " +
+          "from here.",
+      ],
+    ]);
+  });
 });
 
 async function writeBack(): Promise<void> {
@@ -1004,17 +1031,49 @@ async function writeBack(): Promise<void> {
   try {
     message = nullRoundTrip(productId, rebuildRaw(candidate));
   } catch (error) {
-    status(`Refused: ${error}`, "error");
+    // A guard firing is a result, not a non-event. Shown as a card because the status bar alone
+    // was missed on the first hardware run.
+    verdictCard($("results"), "Write refused before anything was sent", [
+      ["Slot", slot],
+      ["Reason", String(error)],
+      ["Device", "untouched — the message was never built, let alone sent"],
+    ]);
+    status(`Refused: ${String(error)}`, "error");
     return;
   }
 
   const results = $("results");
   results.innerHTML = "";
-  status(`Writing ${slot}…`, "warn");
-  output.send([...message]);
+  writing = true;
+
+  // Narrated step by step, and the log survives whatever happens next. The first hardware run
+  // could not tell "the button did nothing" from "the write went out and nothing came back",
+  // which are completely different problems with the same appearance.
+  const log: [string, string][] = [
+    ["Slot", slot],
+    ["Record", `${candidate.payload.length.toLocaleString()} bytes payload`],
+    ["Message", `${message.length.toLocaleString()} bytes on the wire`],
+  ];
+  const trace = (what: string, detail: string): void => {
+    log.push([what, detail]);
+    results.innerHTML = "";
+    card(results, "Write in progress", log);
+  };
+  trace("Sending", `0x50 to slot ${slot}…`);
+
+  try {
+    status(`Writing ${slot}…`, "warn");
+    output.send([...message]);
+  } catch (error) {
+    writing = false;
+    trace("Send failed", String(error));
+    status(`The device rejected the message: ${String(error)}`, "error");
+    return;
+  }
 
   // Read it straight back. A device that stored the bytes and one that ignored the message look
   // identical from the sending end; only this tells them apart.
+  trace("Sent", "asking for it back to see what actually landed");
   status(`Written. Asking for ${slot} back…`);
   const readBack = await new Promise<Uint8Array | undefined>((resolve) => {
     const timer = setTimeout(() => {
@@ -1035,34 +1094,61 @@ async function writeBack(): Promise<void> {
       resolve(reply.payload);
     };
 
-    output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]);
+    try {
+      output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]);
+    } catch (error) {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      trace("Read-back request failed", String(error));
+      resolve(undefined);
+    }
   });
 
+  writing = false;
+
   if (!readBack) {
-    card(results, "Write not verified", [
-      ["Slot", slot],
-      ["Wrote", `${candidate.payload.length.toLocaleString()} bytes`],
-      ["Read back", "nothing came within " + VERIFY_TIMEOUT_MS + "ms"],
+    log.push(["Read back", `nothing came within ${VERIFY_TIMEOUT_MS}ms`]);
+    verdictCard(results, "Write NOT verified", [
+      ...log,
       [
         "Means",
-        "the write may or may not have landed — unverified is not the same as failed, and the " +
-          "device is the place to check. The original is still in the capture.",
+        "unverified is not the same as failed. The write may have landed; the device is the place " +
+          "to check, and the original is still in the capture either way.",
       ],
     ]);
-    status("Written but not verified. Check the device.", "warn");
+    status("Written but not verified — nothing came back. Check the device.", "warn");
     return;
   }
 
   const verdict = verifyWrite(candidate.payload, readBack);
-  card(results, verdict.ok ? "Write verified" : "Write did NOT match", [
-    ["Slot", slot],
-    ["Bytes", candidate.payload.length.toLocaleString()],
+  verdictCard(results, verdict.ok ? "Write VERIFIED" : "Write did NOT match", [
+    ...log,
+    ["Read back", `${readBack.length.toLocaleString()} bytes`],
     ["Result", verdict.ok ? "the device returned exactly what was sent" : verdict.reason ?? "differs"],
-    ...(verdict.ok
-      ? ([["Means", "writing works on this device, at this record size, to this slot"]] as [string, string][])
-      : ([["Means", "the bytes did not land as sent — do not write anything else until this is understood"]] as [string, string][])),
+    [
+      "Means",
+      verdict.ok
+        ? "writing works on this device, at this record size, to this slot"
+        : "the bytes did not land as sent — write nothing else until this is understood",
+    ],
   ]);
-  status(verdict.ok ? `${slot} written and verified.` : `${slot} did not verify.`, verdict.ok ? "ok" : "error");
+  status(
+    verdict.ok ? `${slot} written and verified — writing works.` : `${slot} did NOT verify.`,
+    verdict.ok ? "ok" : "error",
+  );
+}
+
+/**
+ * The verdict, put where it will actually be seen.
+ *
+ * `card` appends, and after a read the results area already holds several capture cards — so an
+ * appended verdict landed below the fold. This one replaces the area outright and scrolls to it.
+ * The outcome of the only control that changes the instrument should not have to be hunted for.
+ */
+function verdictCard(into: HTMLElement, title: string, rows: [string, string][]): void {
+  into.innerHTML = "";
+  card(into, title, rows);
+  into.scrollIntoView({ block: "start" });
 }
 
 /** Long enough for a 114 KB PatternKit on a busy device. */
