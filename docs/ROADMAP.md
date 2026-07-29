@@ -1070,6 +1070,93 @@ The bytes land in a `.syx` byte-identical in form to the 419 corpus captures, so
 tool reads it the moment it is saved. **Rebuilding a project file from one is a separate job** and
 deliberately not started: reading had to be shown correct first, and now it has been.
 
+### 3c-vi. Rebuilding a project from a capture — DONE 2026-07-29, both families on real captures
+
+`npm run rebuild`. A `.syx` read off a device becomes a `.dn2prj` / `.dnprj`.
+`src/project/rebuild.ts` plans, applies and verifies; the CLI has the shape the other tools use —
+look first, `--apply --out` to commit, never overwrite an input.
+
+Proven end to end on both machines:
+
+- **Digitone II**: the 257-message read rebuilt to a project that opens, lists its 14 occupied
+  patterns and their trig counts, and passes the payload check.
+- **Digitone 1**: the 133-message read **plus** a 93-message front-panel pool send rebuilt to
+  98.03% from the wire — and `npm run plan` resolves **31 distinct sounds** through its sound
+  locks, exactly the 31 pool slots the patterns reference. The locks resolve, so the pool landed
+  in the right slots.
+
+#### A capture is 99.5% of a project, and the rest comes from a donor
+
+Measured, with the placements in `dn2-format.md` §5c. On a Digitone II, 12,825,984 of 12,889,604
+bytes are on the wire. The **63,620 that are not** are the image header (project name and the
+identity token), the tail before the pool, and everything after the settings record — where the
+**song table and slot array** live.
+
+So this is a *restore onto a donor*, not a reconstruction from nothing, and the report **names**
+what the donor supplied rather than counting it. "63,620 bytes came from elsewhere" tells nobody
+anything; "the song table came from elsewhere" tells them whether to care. The default donor is
+the template, because a device-authored blank contributes an *empty* song table rather than
+another project's.
+
+**A new identity is minted**, for the reason PR #26 established: a rebuild authors a project, and
+inheriting `0x18` made everything built from `EMPTY.dn2prj` claim to be `EMPTY`.
+
+#### Three refusals, each earned
+
+1. **A bad checksum is never written.** `G11` is the whole argument — one message in 248 with
+   6,433 wrong bytes and nothing else out of place. A rejected record leaves the donor's bytes in
+   place and is named.
+2. **More records of one kind than there are slots.** A +Drive soundbank of 182 or 256 sounds
+   would place its first 128 and then overwrite all of them with the saturated remainder. The
+   refusal costs something honest, and the cost is stated: a read *plus a repair pass* also
+   exceeds the count and is indistinguishable from the bytes, so both are refused.
+3. **A Digitone 1's sound records, until told what they are.** See below.
+
+#### The DN1 ambiguity, found by being challenged
+
+A Digitone 1 sends **kit track sounds and pool sounds under the same dump type** — both `0x53`,
+both numbered, both 302 bytes. Placing a request's four kit sounds as pool slots 0–3 would
+overwrite sound-lock targets with whatever the tracks happened to be using: silent corruption of
+exactly the data a DN1→DN2 expansion depends on.
+
+It was caught because the user asked whether we had really understood that a DN1 project *does*
+have a 128-slot pool. It does, and the rebuilder was about to write into it on a guess. It now
+refuses until told, and a DN2 needs no such flag because `0x63` is the pool there either way.
+
+`--pool <file.syx>` is the workflow that follows from the hardware: give it the project read and
+the panel pool send, and it drops the project capture's own `0x53` records — which are kit sounds
+already carried inside their patternKit — before merging.
+
+#### How the DN1's `0x63` was pinned down, four ways
+
+Worth recording, because the first reading was asserted on one piece of evidence and the user was
+right to push twice:
+
+1. **Count.** Four answers where the pool holds 93.
+2. **Silence on occupied slots.** The project's locks reference 31 distinct slots up to 91; the
+   device answered none of them.
+3. **Contents at matching indices.** Pool slots 0–3 are `VBASS HZ-DAFT`, `GNARLY_PUNCH`,
+   `-- BASS 6 MF`, `BASS 1 MF`. `0x63` returned `CZ NE`, `MOVEMENT`, `TROLLEY TK`, `CATHARSIS`.
+   No overlap.
+4. **Index alignment with a kit.** Each matched one pattern's track slots in order — sound 0 to
+   track 1, sound 3 to track 4.
+
+Three of the four are absent from the pool entirely, and that is the *normal* case rather than an
+oddity. On a Digitone 1 a sound can be assigned to a track **straight from the +Drive sound
+library**, and it then lives only inline in that kit. The pool is the project's own quick-access
+store, and its other job is the one that constrains us: **a sound lock can only point into the
+pool.** So a track sound need never appear there, and `MOVEMENT` is in both only because it was
+loaded into the pool as well.
+
+**Which is why a two-capture restore is complete.** The `0x50` records carry every track sound
+whatever its origin, library or pool; the panel pool send carries every lock target. Between them
+nothing a DN1 project can hold is unreachable — which is what the expansion depends on, since
+sound-locked sounds are exactly what it unfolds onto their own tracks.
+
+#### What is deliberately not done
+
+Rebuilding **into** a device — that is the write half, §3c-iv, and it has not started.
+
 ### 3f. Getting it to testers — PLANNED 2026-07-28, not started
 
 **Raised by the user**, who has a NAS at home and is willing to run a domain from it so that no
