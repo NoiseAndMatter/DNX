@@ -47,7 +47,7 @@ speculative or unknown.
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
 | WebMIDI — reading a whole project by request | done, **hardware-validated on DN2** — 257/257, byte-identical to a device dump |
 | Rebuild a project file from a capture | done — 99.5% from the wire, the rest from a donor |
-| WebMIDI — writing to a device | built, **not yet run on hardware** — null round trip only, see ROADMAP §3c-vii |
+| WebMIDI — writing to a device | **works, verified on a Digitone II** — null round trip read back byte-identical |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
 gaps and the traps that have already cost time.
