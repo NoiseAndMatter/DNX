@@ -665,6 +665,77 @@ dump against tonight's requested read — same device, same project:
 So `0x60` returns the stored record rather than a live or re-serialised view of it, and two
 independent acquisition paths agree byte for byte.
 
+#### Where a dumped record sits in the image — VERIFIED 2026-07-29
+
+**[verified]** by searching real images for a captured payload. Both placements are unambiguous,
+and they are what lets a capture be written back into a project.
+
+| | Digitone 1 | Digitone II |
+|---|---|---|
+| Pattern | `headerSize + n × patternSize` | same |
+| Kit | `kitBase + n × kitSize` | same |
+| Sound pool slot | `tailBase + 4 + n × 302` | `tailBase + 10,756 + n × 359` |
+| **ProjectSettings** | **`tailBase + 38,912`**, 11,776 B | **`tailBase + 56,832`**, 512 B |
+
+The DN2 placement matched **510 of 512** bytes against a corpus project, and the two that differed
+are `+9` and `+11` — the latter exactly `SAVED_PATTERN_OFFSET`. So §5b's saved-position bytes are
+**fields of the ProjectSettings record**, not loose tail offsets.
+
+The DN1 placement was the same offset in **all 23** corpus projects at 99.5–99.9%, and the
+arithmetic closes exactly: `tailRegionBase + TAIL.settingsOffset` is `0xFC`, and
+`0xFC + 11,776 = 0x2EFC` is precisely `TAIL.songOffset`. **A DN1 ProjectSettings dump is the
+post-pool tail from the settings block up to but not including the song table** — settings, the
+1,024 × 11 slot array, the CC map and the mixer. **No songs.**
+
+##### A capture is 99.5% of a project
+
+Everything else has to come from a donor: the 512-byte image header (project name, identity token
+at `0x18`), the 10,756 bytes of tail before the pool, 124 bytes before the settings record, and
+the 52,228 bytes after it where the song table and slot array live. **63,620 bytes, 0.49%.**
+
+#### `0x63` addresses different objects on the two families — VERIFIED 2026-07-29
+
+**[verified]**, and it is the sharpest behavioural difference found between the two machines.
+
+- **Digitone II** — `0x63 n` returns **project sound pool slot `n`**. All 128 answered, 0–118
+  named and 119–127 empty, byte-identical to the pool in the project file.
+- **Digitone 1** — `0x63 n` returns the **active kit's track sound `n`**. Exactly four answers,
+  `n` = 0..3, matching that kit's track slots in order, and silence from 4 to 127.
+
+The alternative reading — "a pool with only four entries" — was checked rather than dismissed.
+The same DN1 project's sound locks reference **31 distinct pool slots, up to slot 91**, across 398
+locked trigs, and the device stayed silent on every one. It is declining slots it provably holds.
+
+Confirmed on hardware by a front-panel pool send: **93 `0x53` messages, `objNr` 0–92 contiguous**,
+covering every slot the project's locks reference. Three of the four sounds `0x63` returned are
+**not in the pool at all**, and at matching indices nothing agrees — pool 0–3 are `VBASS HZ-DAFT`,
+`GNARLY_PUNCH`, `-- BASS 6 MF`, `BASS 1 MF` against `CZ NE`, `MOVEMENT`, `TROLLEY TK`, `CATHARSIS`.
+
+That absence is the normal case, not an anomaly: **a DN1 sound can be assigned to a track straight
+from the +Drive library**, and it then lives only inline in that kit. The pool is the project's own
+quick-access store, and its other role is the binding one — **a sound lock can only point into the
+pool**. So a track sound need never be there.
+
+The consequence for a restore is that **two captures are complete**: `0x50` carries every track
+sound whatever its origin, and the panel pool send carries every lock target.
+
+> [!warning] **A Digitone 1's sound pool has no known request**
+> `0x63` is not it, and a DN1 project dump carries no `0x53` at all. The pool is real — 128 slots
+> at `tailBase + 4`, and what every sound lock points at — but nothing we have tried reaches it.
+>
+> **This is ignorance, not impossibility.** A DN1 advertises `0x50`–`0x5d` and we can name only
+> `0x50`–`0x54`; **nine dump types are unidentified**, whose requests would be `0x65`–`0x6d`, and
+> none has been sent. Neither has `0x6f`.
+>
+> The free experiment: the DN1's front panel sends the whole sound pool. Capture one with Listen —
+> which transmits nothing — and the dump type it arrives as names the request to try.
+
+Practical consequence for anything rebuilding a project: **the two cases are indistinguishable
+from the bytes.** Both are `0x53`, both carry an object number, both are 302 bytes. Placing a
+request's four kit sounds as pool slots 0–3 would overwrite sound-lock targets with whatever the
+tracks happened to be using — so `src/project/rebuild.ts` refuses to place DN1 sound records until
+told which they are.
+
 #### The 128th pattern explains itself
 
 The one disagreement is **`G11`** — pattern index 106, 6,433 differing bytes. Precisely the slot
