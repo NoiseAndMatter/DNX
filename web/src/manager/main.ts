@@ -42,7 +42,21 @@ import {
 } from "../../../src/librarian/trackmove.js";
 import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
-import { buildProjectBlob, download, openProject, type LoadedProject } from "../project.js";
+import {
+  buildProjectBlob,
+  download,
+  fetchServedTemplate,
+  openProject,
+  type LoadedProject,
+} from "../project.js";
+import {
+  type ConnectedDevice,
+  type DeviceProjectHandle,
+  DeviceSourceError,
+  connectDevice,
+  readProject,
+  writeBack,
+} from "./devicesource.js";
 import {
   type Drag,
   type DropHint,
@@ -100,6 +114,15 @@ interface State {
 
 
 const state: State = { bank: 0, selection: [], level: "pattern", scope: "both" };
+
+/**
+ * The instrument this project came from, when it came from one.
+ *
+ * Undefined for a file, and that is the whole design: a device is a **source**, not a mode. The
+ * session, undo, every operation and the exporter work on the image either way; this only decides
+ * whether **Write to device** has anywhere to write to.
+ */
+let deviceHandle: DeviceProjectHandle | undefined;
 
 /** True when the current selection is tracks, which is what decides what an operation does. */
 function inTracks(): boolean {
@@ -329,6 +352,12 @@ function render(): void {
   renderSelection();
   renderHistory();
   $("scopeHint").textContent = SCOPE_HINTS[state.scope];
+
+  // Enabled only when there is something to send. An edit is what makes a write meaningful, and a
+  // button that is live with nothing to do invites a pointless 114 KB transfer.
+  if (deviceHandle && state.session) {
+    $<HTMLButtonElement>("writedevice").disabled = state.session.image === deviceHandle.original;
+  }
 }
 
 // --- selection ----------------------------------------------------------------------------
@@ -712,6 +741,14 @@ function wireOperations(): void {
   $("export").addEventListener("click", () => {
     void exportProject();
   });
+
+  $("opendevice").addEventListener("click", () => {
+    void loadFromDevice();
+  });
+
+  $("writedevice").addEventListener("click", () => {
+    void writeToDevice();
+  });
 }
 
 // --- open and export ----------------------------------------------------------------------
@@ -753,6 +790,124 @@ async function load(file: File): Promise<void> {
     status(`${file.name} open. This project has songs; moving patterns may desync them.`, "warn");
   } else {
     status(`${file.name} open.`, "ok");
+  }
+}
+
+// --- a device as a source ---------------------------------------------------------------------
+
+/**
+ * Read a project off a connected instrument and open it exactly as if it were a file.
+ *
+ * Everything downstream is unchanged. `load` and this share the same four lines of state because
+ * they produce the same thing: an image, a device kind, and a session to edit it in.
+ */
+async function loadFromDevice(): Promise<void> {
+  let connected: ConnectedDevice;
+  status("Looking for an instrument…");
+  try {
+    connected = await connectDevice();
+  } catch (error) {
+    status(
+      error instanceof DeviceSourceError ? error.message : `MIDI refused: ${String(error)}`,
+      "error",
+    );
+    return;
+  }
+
+  // The donor supplies the 0.49% no dump carries — header, song table, slot array. A
+  // device-authored blank is the right one: it contributes an *empty* song table.
+  const template = await fetchServedTemplate();
+  if (!template) {
+    connected.close();
+    status(
+      "No template available, and a device read needs one for the parts no dump carries — the " +
+        "header, the song table and the slot array. Open a project file first, or run the local " +
+        "server so it can serve EMPTY.dn2prj.",
+      "error",
+    );
+    return;
+  }
+
+  try {
+    status(`Reading ${connected.name} — this takes about a minute…`);
+    const { image, handle } = await readProject(connected, template.image, (done, total, label) => {
+      // Every object, because a minute of silence is indistinguishable from a stall.
+      if (done % 8 === 0 || done === total) status(`Reading ${connected.name}: ${done}/${total} — ${label}`);
+    });
+
+    const device = deviceFor(image);
+    state.file = template;
+    state.device = device;
+    state.session = new Session(image);
+    state.selection = [];
+    state.bank = 0;
+    state.trackFor = undefined;
+    deviceHandle = handle;
+
+    $("device").hidden = false;
+    $("device").textContent = `${device.name} (live)`;
+    $("projname").textContent = device.projectName(image);
+    $<HTMLButtonElement>("export").disabled = false;
+    $("reopen").hidden = false;
+    $("writedevice").hidden = false;
+    $<HTMLButtonElement>("writedevice").disabled = true;
+    render();
+
+    status(
+      handle.problems.length > 0
+        ? `${connected.name} read with problems: ${handle.problems.join("; ")}. Read again before editing.`
+        : `${connected.name} open. Edits stay here until you press Write to device.`,
+      handle.problems.length > 0 ? "warn" : "ok",
+    );
+  } catch (error) {
+    connected.close();
+    status(`Could not read the device: ${String(error)}`, "error");
+  }
+}
+
+/**
+ * Send the edits back — only the records that changed.
+ *
+ * A move is two messages, a rename one. The alternative, writing the image back, is 14.6 MB and
+ * minutes of transfer to change one slot.
+ */
+async function writeToDevice(): Promise<void> {
+  const handle = deviceHandle;
+  const session = state.session;
+  if (!handle || !session) return;
+
+  const button = $<HTMLButtonElement>("writedevice");
+  button.disabled = true;
+  try {
+    status("Working out what changed…");
+    const result = await writeBack(handle, session.image, (done, total, label) =>
+      status(`Writing ${done}/${total} — ${label}`),
+    );
+
+    if (result.written === 0 && result.untransmittable.length === 0) {
+      status("Nothing to write — the device already holds this.", "ok");
+      return;
+    }
+
+    // Said plainly and every time. A write lands in the active project, not the +Drive, so it is
+    // lost the moment another project is loaded — which is also the undo.
+    const parts = [
+      `${result.written} pattern(s) written, ${result.bytes.toLocaleString()} bytes.`,
+      "**Press SAVE PROJECT on the device to keep this** — a write reaches the active project, not",
+      "the +Drive, so it survives a power cycle but is lost when another project is loaded.",
+    ];
+    if (result.untransmittable.length > 0) {
+      parts.push(`NOT sent: ${result.untransmittable.join("; ")}. Export to a file for those.`);
+    }
+    status(parts.join(" ").replace(/\*\*/g, ""), result.untransmittable.length > 0 ? "warn" : "ok");
+
+    // The device now holds what we sent, so that becomes the baseline the next write diffs
+    // against. Without this, writing twice would resend everything the first write already did.
+    handle.original = Uint8Array.from(session.image);
+  } catch (error) {
+    status(`The write stopped: ${String(error)}`, "error");
+  } finally {
+    button.disabled = false;
   }
 }
 
