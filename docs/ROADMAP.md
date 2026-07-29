@@ -965,10 +965,18 @@ never relies on it. Asserting the wrong one would fail every read on real hardwa
 like a device fault, so it is carried through untouched and the payload is checked against
 `length` instead. One session with a device settles it in a line.
 
-### 3c-v. Reading a whole project by request — BUILT 2026-07-29, not yet run on hardware
+### 3c-v. Reading a whole project by request — PASSED 2026-07-29, Digitone II
 
 Transfer mode's read half. Individual requests are verified on both machines (§5c of
 `dn2-format.md`); this turns one request into a plan of 257 and paces them.
+
+> [!success] **First run: 257 of 257, zero silences, zero bad checksums**
+> 14,662,233 bytes, every payload exactly its predicted size. Object numbers echo the request.
+> Against last night's front-panel dump of the same project: **127/128 patternKits and 119/119
+> sounds byte-identical, and ProjectSettings identical**. Full detail in `dn2-format.md` §5c.
+>
+> Two of the three questions below were answered as hoped, one better than hoped, and the
+> 128th pattern turned out to be last night's bad checksum — see *What the run answered*.
 
 `src/device/readplan.ts` says what a project is made of. `src/device/dumpreader.ts` executes a
 plan. **Read project** on `/probe` is the page around them. Two files rather than one because
@@ -1028,24 +1036,39 @@ means anything.
 timeout already sized from the payload. A silent step is reported as silent, and a second pass
 over just those steps is a better tool than a retry because it is visible.
 
-#### What the first hardware run answers
+#### What the run answered — 2026-07-29, Digitone II 1.10E
 
-Nothing here has met a device; the pieces it is built from have. Four questions come back from one
-run, and the report card is laid out to state them rather than to celebrate a total:
+Four questions went in, deliberately, and the report card was laid out to state them rather than
+to celebrate a total. All four came back in one run of 14.6 MB.
 
-1. **Does a requested response echo the object number?** `objNrMismatches`.
-2. **Does the device answer for an empty pattern slot, or stay silent?** The front-panel dump sent
-   all 128 regardless of occupancy, so it should answer — `silent` says whether requesting behaves
-   the same way.
-3. **Does `0x63 n` reach the project sound pool, or a +Drive library sound?** Unresolved, and the
-   thing worth watching most closely: read the names out of the capture and hold them against the
-   project's pool. On a Digitone 1 this is the whole point of the exercise.
-4. **Is `G11`'s bad checksum a glitch?** §5c saw one bad checksum in 248 on an untouched blank. A
-   second capture of the same project says whether it repeats.
+1. **Does a requested response echo the object number?** **Yes** — `0`–`127` in request order on
+   all three response types. So a reassembly may trust the number in the message, and the
+   send-order rule §5c requires past 128 objects never bites inside a request stream, because a
+   request cannot address past 127 in the first place.
+2. **Does the device answer for an empty pattern slot?** **Yes, every one.** Zero silences in 257,
+   blank patterns and empty pool slots included. Requesting behaves as dumping does.
+3. **Does `0x63 n` reach the project sound pool?** **Yes — and it enumerates more of it than a
+   dump does.** All 128 slots answered: 0–118 named, **119–127 empty**, and 119 is exactly how
+   many `0x53` messages the front-panel dump sends. A dump carries the *occupied* pool; a request
+   walks the whole table. Anything sizing a pool from a dump would have sized it 119.
+4. **Was `G11`'s bad checksum a glitch?** **Yes, and now provably.** Tonight's 257 checksums are
+   all good, and the only pattern that differs from last night's dump is `G11` — index 106, 6,433
+   bytes. The corrupt copy is the old one.
 
-The answers land in a `.syx` byte-identical in form to the 419 corpus captures, so every existing
+And the result none of the four asked for, which is the one that matters most: **requesting and
+dumping return the same bytes.** 127/128 patternKits, 119/119 sounds and ProjectSettings all
+byte-identical across two independent acquisition paths. `0x60` returns the stored record, not a
+live or re-serialised view of it.
+
+The generalisable lesson is in question 4. The checksum caught the corruption, a re-read fixed it,
+and a transfer that trusted a single pass would have written 6,433 wrong bytes into a project.
+**A read is not finished until its checksums are** — so whatever rebuilds a project from a capture
+must verify per message and be able to re-ask for just the failures. The `silent`-step report is
+already the right shape for that; it needs a bad-checksum list beside it.
+
+The bytes land in a `.syx` byte-identical in form to the 419 corpus captures, so every existing
 tool reads it the moment it is saved. **Rebuilding a project file from one is a separate job** and
-deliberately not started: reading has to be shown correct first.
+deliberately not started: reading had to be shown correct first, and now it has been.
 
 ### 3f. Getting it to testers — PLANNED 2026-07-28, not started
 
