@@ -19,11 +19,22 @@ import {
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
 
-/** A record with an Elektron object header, so it declares a storage version like a real one. */
+/**
+ * A record with an Elektron object header, so it declares a storage version like a real one.
+ *
+ * **A patternKit keeps its header in the kit half**, because it is `pattern ++ kit` and only the
+ * kit opens with `BEEFBACE`. These tests used to put it at byte 0 — which is exactly why they all
+ * passed against a version guard that read byte 0, found nothing on either side, and let every
+ * patternKit through. The tests encoded the bug they existed to catch. See `versionOffset`.
+ */
 function record(size: number, version: number, fill = 0x11): Uint8Array {
   const bytes = new Uint8Array(size).fill(fill);
-  bytes.set([0xbe, 0xef, 0xba, 0xce], 0);
-  bytes.set([(version >>> 24) & 0xff, (version >>> 16) & 0xff, (version >>> 8) & 0xff, version & 0xff], 4);
+  const at = size === PATTERN_KIT ? DN2_LAYOUT.patternSize : 0;
+  bytes.set([0xbe, 0xef, 0xba, 0xce], at);
+  bytes.set(
+    [(version >>> 24) & 0xff, (version >>> 16) & 0xff, (version >>> 8) & 0xff, version & 0xff],
+    at + 4,
+  );
   return bytes;
 }
 

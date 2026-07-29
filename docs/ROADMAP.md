@@ -1303,6 +1303,34 @@ than the only one.
 Recorded in full, because the ordering below is not arbitrary: several of these unlock each other,
 and one is a much bigger jump than it looks.
 
+### 4a-i. BUILT 2026-07-30 — a device is a source, and files are not demoted
+
+`src/device/deviceproject.ts` and `web/src/manager/devicesource.ts`. **Open device…** reads a whole
+project off a connected instrument and opens it exactly as a file opens; **Write to device** sends
+back only the records the edits changed.
+
+**Nothing above it changed.** `rearrange`, `trackmove`, `rename` and `convert` all work on a decoded
+image and know nothing about MIDI, so every one of them now works on a live device without being
+touched. A project read off a Digitone can be exported to a `.dn2prj`, and one opened from disk can
+be written to a device — the symmetry is free because the library speaks images, and it is what
+keeps files a first-class option rather than a fallback.
+
+The shape, in one line: **edit as an image, transmit as a diff.**
+
+- Reading gives an image because that is what the rest of the codebase speaks.
+- Writing an image back would be ruinous — 128 patternKits is 14.6 MB and minutes of transfer to
+  change one slot — so `writeChangedRecords` diffs the edited image against the one that came off
+  the device. **A move is two messages; a rename is one.**
+- The missing 0.49% disposes of itself: those regions are donor-supplied and therefore identical on
+  both sides of the diff, so they are never transmitted. An edit that *did* touch them — a song, a
+  project name — is **named** rather than silently dropped.
+
+Guards: a transfer-sized change is refused unless asked for deliberately, every send is followed by
+`settleMsAfter`, and verification is a **separate call**, because a device acknowledges nothing and
+a function claiming to *write and verify* would be reporting one outcome for two operations.
+
+**Not yet run on hardware.** `Next_Session.md` carries what to check first.
+
 ### 4a. The insight that makes it cheap — live management needs no image
 
 The obvious way to build "manager on a live device" is to read the whole project, edit the image,

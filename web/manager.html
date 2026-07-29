@@ -244,9 +244,16 @@ label.file input { display: none; }
   <span class="projname" id="projname"></span>
   <span class="spacer"></span>
   <label class="btn file" id="reopen" hidden>Open another…<input type="file" id="file2" accept=".dnprj,.dn2prj"></label>
+  <!--
+    A device is a source alongside files, not a mode. What comes back is an ordinary image, so
+    everything else on this page — session, undo, the grid, Export — works on it unchanged.
+  -->
+  <button class="btn" id="opendevice">Open device…</button>
   <button class="btn" id="undo" disabled>Undo</button>
   <button class="btn" id="redo" disabled>Redo</button>
   <button class="btn primary" id="export" disabled>Export…</button>
+  <!-- The only control here that changes an instrument, and it looks unlike the others. -->
+  <button class="btn danger" id="writedevice" hidden disabled>Write to device</button>
 </div>
 
 <div class="tabs" id="tabs" hidden></div>
