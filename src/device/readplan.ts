@@ -6,26 +6,59 @@
  * of the format knowledge, while *how to pace a request stream* is a transport concern that has
  * nothing to say about Digitones.
  *
- * ## Per object, not `0x6f` — and the Digitone 1 is why
+ * ## `0x63` addresses different things on the two families — VERIFIED 2026-07-29
+ *
+ * **A Digitone II answers `0x63 n` from the project sound pool**: all 128 slots, 0–118 named and
+ * 119–127 empty, byte-identical to the pool in the project file.
+ *
+ * **A Digitone 1 answers `0x63 n` from the active kit's track sounds**: exactly four, `n` = 0..3,
+ * and silence from 4 to 127. Each one matched the corresponding track slot of one pattern's kit —
+ * sound 0 to track 1, sound 1 to track 2, sound 3 to track 4 — and four is the DN1's synth-track
+ * count.
+ *
+ * **The obvious alternative reading is ruled out by the capture itself.** "A pool with only four
+ * entries" would look identical, so it was checked rather than dismissed: the same project's sound
+ * locks reference **31 distinct pool slots, up to slot 91**, across 398 locked trigs. The device
+ * stayed silent on every one of them. It is declining to hand over slots it provably holds, so
+ * `0x63` is not addressing the pool.
+ *
+ * ### What that does not establish
+ *
+ * Only that **`0x63` is not the way in.** A Digitone 1 advertises `0x50`–`0x5d` and we can name
+ * just `0x50`–`0x54`, so **nine dump types are unidentified** and their requests would be
+ * `0x65`–`0x6d`. None has ever been sent, and neither has `0x6f`. The pool may well be
+ * requestable by a code nobody here has tried, and it would be wrong to write "unreachable".
+ *
+ * The free experiment that settles it: the DN1's front panel already sends the whole sound pool.
+ * Capturing one with **Listen**, which transmits nothing at all, names the dump type the pool
+ * travels as — and the matching request is that code minus `0x10`.
+ *
+ * Until then a DN1 pool comes from that panel send. Any DN1 workflow needing sound-locked sounds —
+ * which is every DN1→DN2 expansion — captures it as a separate step.
+ *
+ * This correction removes the first reason this module was written the way it is. It was
+ * originally justified partly by "asking for the 128 pool slots by number is the only way to get
+ * them on a DN1", and that is **false**: it does not work. The decision below still holds, on the
+ * reasons that survived.
+ *
+ * ## Per object, not `0x6f`
  *
  * elk-herd reads a Digitakt project with a single `0x6f` WholeProject request and treats the
  * arrival of ProjectSettings as the end of the stream (`Project/Update.elm`, `receiveDump`). That
  * is one message out instead of 257, and it is tempting.
  *
- * It is the wrong choice here, for reasons the hardware already gave us:
+ * Three reasons to stay per-object, all of them still standing after the DN1 run:
  *
- * 1. **A Digitone 1 project dump carries no sound pool.** Verified — `docs/dn2-format.md` §5c:
- *    128 PatternKit plus one ProjectSettings, and no `0x53` at all. The pool is exactly what the
- *    expander exists to unfold, so a whole-project dump is *structurally incomplete* on the
- *    machine this project's whole workflow starts from. Asking for the 128 pool slots by number
- *    is the only way to get them.
- * 2. **`0x6f` has never been sent to either machine.** The five per-object requests have, twice
- *    over, on both. Building on the proven one is not caution for its own sake — it is the
- *    difference between a feature that works tonight and one that needs another hardware session.
- * 3. **A plan can be a subset.** "Read pattern A1" and "read the whole project" are then the same
- *    code path with a different list, which is what transfer mode actually needs. `0x6f` is
+ * 1. **`0x6f` has never been sent to either machine.** The five per-object requests have, twice
+ *    over, on both, and now a whole project's worth on each. Building on the proven one is the
+ *    difference between a feature that works and one that needs another hardware session.
+ * 2. **A plan can be a subset.** "Read pattern A1" and "read the whole project" are the same code
+ *    path with a different list, which is what transfer mode actually needs. `0x6f` is
  *    all-or-nothing and costs 14.6 MB every time — §5c measured the device sending all 128
  *    patterns regardless of occupancy.
+ * 3. **On a Digitone II, requesting sees more than dumping.** A front-panel dump sends the 119
+ *    *occupied* pool slots; requesting enumerates all 128. Anything sizing a pool from a dump
+ *    would size it 119.
  *
  * The cost is 257 round trips instead of 1. At the observed USB throughput that is seconds, and
  * it buys resumability, selectivity and a per-object account of what arrived.
@@ -45,6 +78,31 @@ import { RequestCode, responseFor } from "./dumprequest.js";
 
 /** Pattern slots on both families: 8 banks of 16. */
 export const PATTERN_COUNT = 128;
+
+/**
+ * How many sounds `0x63` will answer for, by family. **[verified]** on hardware, both machines.
+ *
+ * The Digitone II enumerates its 128-slot project pool. The Digitone 1 answers only its four kit
+ * track sounds — so its pool is unreachable by request and must be captured from the front panel.
+ * Asking a DN1 for 128 is not merely useless, it costs 124 timeouts.
+ */
+export function soundRequestCount(dumpProductId: number): number {
+  return dumpProductId === ProductId.DN1 ? DN1_KIT_SOUNDS : POOL_SOUND_COUNT;
+}
+
+/** Synth tracks on a Digitone 1, and therefore sounds in its kit. */
+const DN1_KIT_SOUNDS = 4;
+
+/**
+ * True when no request we know of reaches this device's sound pool.
+ *
+ * The Digitone 1 case, and worded as ignorance rather than impossibility: `0x63` is proven not to
+ * be the way in, and nine of its dump types remain unidentified. Until one of them is tried, a
+ * workflow that needs sound-locked sounds captures the pool from `SETTINGS > SYSEX DUMP`.
+ */
+export function poolNeedsPanelDump(dumpProductId: number): boolean {
+  return dumpProductId === ProductId.DN1;
+}
 
 /**
  * Payload sizes each family answers with, in bytes.
@@ -120,11 +178,11 @@ export function planProjectRead(dumpProductId: number, options: ReadPlanOptions 
   }
 
   if (options.sounds ?? false) {
-    // 128 slots, both families — `POOL_SOUND_COUNT`, established from the project image. The
-    // Digitone II sent only 119 of them when dumping itself, which is consistent with a device
-    // that skips empty slots and says nothing about how many there are. A slot that answers
-    // nothing is the reader's business, not the plan's.
-    for (let i = 0; i < POOL_SOUND_COUNT; i++) {
+    // **Not the same object on the two machines**, and not the same count either — see the module
+    // note. A Digitone II answers 128 pool slots; a Digitone 1 answers four kit track sounds and
+    // stays silent for the rest. Asking a DN1 for 128 costs 124 timeouts and returns nothing, so
+    // the plan asks for what the device actually has.
+    for (let i = 0; i < soundRequestCount(dumpProductId); i++) {
       steps.push({
         code: RequestCode.Sound,
         objNr: i,

@@ -46,6 +46,7 @@ speculative or unknown.
 | WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
 | WebMIDI — reading a whole project by request | done, **hardware-validated on DN2** — 257/257, byte-identical to a device dump |
+| Rebuild a project file from a capture | done — 99.5% from the wire, the rest from a donor |
 | WebMIDI — writing to a device | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
@@ -113,6 +114,12 @@ npm run hwtest -- --project a.dn2prj --keep A1 B5 --out ../dn_sysex/99_HardwareT
 npm run trackhwtest -- --project a.dn2prj                          # which patterns can seed it
 npm run trackhwtest -- --project a.dn2prj --pattern G2 --out ../dn_sysex/99_HardwareTest
 npm run trackhwtest -- --project a.dn2prj --pattern G2 --only 4 --out ...   # one step at a time
+
+# Turn a capture read off a device back into a project file (dry run by default).
+# The donor supplies the 0.49% the wire never carries: header, song table, slot array.
+npm run rebuild -- --capture device.syx
+npm run rebuild -- --capture device.syx --donor EMPTY.dn2prj --name RECOVERED --apply --out r.dn2prj
+npm run rebuild -- --capture dn1.syx --dn1-sounds pool --apply --out r.dnprj
 
 # What changed between two captures?
 npm run diff -- --chain --stride captures/

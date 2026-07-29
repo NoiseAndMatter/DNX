@@ -857,10 +857,29 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
   const rows: [string, string][] = [
     ["Answered", `${report.ok} of ${report.results.length}`],
     ["Bytes", report.bytes.toLocaleString()],
-    ["Took", `${(elapsedMs / 1000).toFixed(1)}s`],
+    [
+      "Took",
+      `${(elapsedMs / 1000).toFixed(1)}s` +
+        (report.bytesPerSecond > 0
+          ? ` — ${(report.bytesPerSecond / 1000).toFixed(0)} kB/s`
+          : ""),
+    ],
   ];
 
   if (report.stopped) rows.push(["Stopped", "by you, before the plan finished"]);
+
+  // Said as an answer, not as a failure. A Digitone 1 asked for 128 sounds gives four; without
+  // this line that reads as 124 things going wrong rather than as a device with four sounds.
+  if (report.skipped > 0) {
+    rows.push([
+      "Not asked for",
+      `${report.skipped} — the device went quiet on ${report.gaveUpOn
+        .map((g) => hex(g.code))
+        .join(", ")} after ${report.gaveUpOn[0]?.after ?? 0} in a row, so the rest was skipped. ` +
+        `On a Digitone 1 that is expected for sounds: it answers 0x63 for its four kit tracks ` +
+        `only, and its sound pool has to be sent from SETTINGS > SYSEX DUMP instead.`,
+    ]);
+  }
 
   if (report.silent > 0) {
     const first = report.results.find((r) => r.status === "silent");
