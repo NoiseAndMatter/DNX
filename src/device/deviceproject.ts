@@ -1,0 +1,361 @@
+/**
+ * A device as a project source and sink, so the manager and the expander stop needing a file.
+ *
+ * **The point of this module is that nothing above it has to change.** `rearrange.ts`,
+ * `trackmove.ts`, `rename.ts` and `convert.ts` all work on a decoded image and know nothing about
+ * MIDI. This reads an image off an instrument and writes one back, so every one of them works on a
+ * live device without being touched.
+ *
+ * ## Why an image, when §4a says live management does not need one
+ *
+ * Both are true, and the difference is where the saving happens.
+ *
+ * Reading gives us an image because that is what the rest of the codebase speaks, and reading is
+ * cheap in the sense that matters: it is one request per record and the device is idle afterwards.
+ *
+ * **Writing is where an image would be ruinous** — 128 patternKits is 14.6 MB and minutes of
+ * transfer, to change one slot. So `writeChangedRecords` diffs the image the user edited against
+ * the image that came off the device, and sends **only the records that differ**. A pattern move
+ * becomes two messages. A rename becomes one. The plan layer stays exactly as it is, and the wire
+ * carries what actually changed rather than what happens to be in memory.
+ *
+ * That is the whole trick: **edit as an image, transmit as a diff.**
+ *
+ * ## What a device-sourced image is missing, and why it is still safe to edit
+ *
+ * A capture is 99.5% of an image (§3c-vi): the header, the tail before the pool, and everything
+ * after the settings record — the song table and the slot array — never come over the wire, so
+ * they are filled from a donor.
+ *
+ * That would matter if we wrote the image back wholesale. **We never do.** Only records that
+ * differ are sent, the donor-supplied regions are byte-identical on both sides of the diff by
+ * construction, and so they are never transmitted. The 0.49% is inert.
+ *
+ * ## Pacing, which is not optional
+ *
+ * Every send is followed by `settleMsAfter`. A request issued immediately behind a 114 KB write is
+ * dropped by a device still ingesting it — found on hardware, where a write landed correctly and
+ * the read-back that followed it got no reply at all. elk-herd has always paced its sends this
+ * way; see `dumpwrite.ts`.
+ */
+
+import { type SysExMessage, parseMessage } from "../sysex/container.js";
+import { ProductId } from "../sysex/devices.js";
+import { patternName } from "../sheet/naming.js";
+import { type ImageLayout } from "../project/dn2image.js";
+import { kitRecord, patternRecord } from "../project/dn2image.js";
+import {
+  type RebuildPlan,
+  PLACEMENTS,
+  applyRebuild,
+  planRebuild,
+} from "../project/rebuild.js";
+import { DumpReader, type ReadReport } from "./dumpreader.js";
+import { type ReadStep, planProjectRead } from "./readplan.js";
+import { WriteCode, dumpWrite, settleMsAfter, storageVersion } from "./dumpwrite.js";
+
+/**
+ * The transport, reduced to what this needs.
+ *
+ * `send` puts bytes on the wire; arriving messages are pushed in by the caller through the
+ * `receive` handle this hands back. Deliberately not a MIDI port: the browser owns those, and a
+ * module that took one could not be tested without hardware.
+ */
+export interface DeviceIo {
+  send(bytes: Uint8Array): void;
+  /** Injected so tests need no real clock. */
+  wait?(ms: number): Promise<void>;
+}
+
+const realWait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+export interface ReadProjectOptions {
+  /** Dump-protocol product id — `0x0D` or `0x15`. */
+  productId: number;
+  io: DeviceIo;
+  /**
+   * A project of the same family, supplying the 0.49% no capture carries.
+   *
+   * Required, and the requirement is honest rather than incidental: without it there is no image,
+   * only most of one. A device-authored blank is the right default — it contributes an *empty*
+   * song table rather than another project's.
+   */
+  donor: Uint8Array;
+  onProgress?: (done: number, total: number, label: string) => void;
+}
+
+export interface DeviceProject {
+  image: Uint8Array;
+  /** What arrived, so a caller can refuse to edit a project that did not read cleanly. */
+  report: ReadReport;
+  plan: RebuildPlan;
+  /**
+   * Records the device answered with, kept as the **witness** every later write is checked
+   * against. `dumpwrite.ts` refuses a write whose storage version disagrees with a record the
+   * device itself produced, and this is where those records come from.
+   */
+  witness: Map<number, Uint8Array>;
+}
+
+/** Read a whole project off a device and assemble it into an editable image. */
+export async function readProjectFromDevice(options: ReadProjectOptions): Promise<DeviceProject> {
+  const { productId, io, donor } = options;
+  const received: Uint8Array[] = [];
+
+  const reader = new DumpReader({
+    productId,
+    send: (bytes) => io.send(bytes),
+    onProgress: (result, done, total) => options.onProgress?.(done, total, result.step.label),
+  });
+
+  const feed = (data: Uint8Array): void => {
+    received.push(Uint8Array.from(data));
+    reader.receive(data);
+  };
+  attach(io, feed);
+
+  try {
+    const report = await reader.run(planProjectRead(productId));
+    const messages = parse(received);
+    const plan = planRebuild(messages);
+    const image = applyRebuild(donor, plan);
+
+    const witness = new Map<number, Uint8Array>();
+    for (const m of messages) {
+      if (!witness.has(m.dumpType)) witness.set(m.dumpType, m.payload);
+    }
+
+    return { image, report, plan, witness };
+  } finally {
+    detach(io);
+  }
+}
+
+export interface WriteChangedOptions {
+  productId: number;
+  io: DeviceIo;
+  /** The image as it came off the device. */
+  before: Uint8Array;
+  /** The image after editing. */
+  after: Uint8Array;
+  layout: ImageLayout;
+  /** A patternKit the device produced, proving the storage version we are writing. */
+  witness: Uint8Array;
+  onProgress?: (done: number, total: number, label: string) => void;
+  /** Refuse to send more than this many records without the caller saying so. */
+  limit?: number;
+}
+
+export interface WrittenRecord {
+  slot: number;
+  label: string;
+  bytes: number;
+}
+
+export interface WriteOutcome {
+  written: WrittenRecord[];
+  /** Total bytes put on the wire, framing included. */
+  bytes: number;
+  /**
+   * True when the edit touched regions this cannot transmit — the header, the song table, the
+   * slot array, the sound pool.
+   *
+   * Reported rather than silently dropped. An edit that changed a song and was told "3 patterns
+   * written" would be a lie by omission, and songs are the one thing this project has always
+   * refused to risk.
+   */
+  untransmittable: string[];
+}
+
+/**
+ * The default ceiling on one operation.
+ *
+ * A manager move touches two slots and a batch move a handful. Anything approaching a whole
+ * project is either a mistake or a transfer, and a transfer should say so explicitly rather than
+ * arrive as a surprise 14.6 MB send.
+ */
+export const DEFAULT_WRITE_LIMIT = 16;
+
+export class WriteTooLarge extends Error {}
+
+/**
+ * Send only the records that changed.
+ *
+ * Diffing whole records rather than tracking edits is deliberate. It means this cannot disagree
+ * with the librarian about what an operation did — whatever `rearrange` or `trackmove` produced,
+ * the bytes are the bytes — and it works for an edit path that has not been written yet.
+ */
+export async function writeChangedRecords(options: WriteChangedOptions): Promise<WriteOutcome> {
+  const { productId, io, before, after, layout, witness } = options;
+  const wait = io.wait ?? realWait;
+
+  if (before.length !== after.length || before.length !== layout.imageSize) {
+    throw new WriteTooLarge(
+      `the two images are ${before.length} and ${after.length} bytes; this layout is ` +
+        `${layout.imageSize}. Only two readings of the same project can be diffed.`,
+    );
+  }
+
+  const changed: number[] = [];
+  for (let slot = 0; slot < layout.patternCount; slot++) {
+    if (
+      differs(patternRecord(before, slot, layout), patternRecord(after, slot, layout)) ||
+      differs(kitRecord(before, slot, layout), kitRecord(after, slot, layout))
+    ) {
+      changed.push(slot);
+    }
+  }
+
+  const untransmittable = elsewhere(before, after, layout);
+
+  const limit = options.limit ?? DEFAULT_WRITE_LIMIT;
+  if (changed.length > limit) {
+    throw new WriteTooLarge(
+      `${changed.length} patterns changed and the limit is ${limit}. That is a transfer rather ` +
+        `than an edit — raise the limit deliberately, because at ${Math.round(
+          (changed.length * 114) / 1024,
+        )} MB it is minutes of transfer, not seconds.`,
+    );
+  }
+
+  const written: WrittenRecord[] = [];
+  let bytes = 0;
+
+  for (const slot of changed) {
+    const payload = new Uint8Array(layout.patternSize + layout.kitSize);
+    payload.set(patternRecord(after, slot, layout), 0);
+    payload.set(kitRecord(after, slot, layout), layout.patternSize);
+
+    const message = dumpWrite(productId, {
+      code: WriteCode.PatternKit,
+      objNr: slot,
+      payload,
+      witness,
+    });
+
+    io.send(message);
+    bytes += message.length;
+    written.push({ slot, label: patternName(slot), bytes: message.length });
+    options.onProgress?.(written.length, changed.length, patternName(slot));
+
+    // Not optional. See the module note: a device still ingesting a dump drops whatever comes next.
+    await wait(settleMsAfter(message.length, productId));
+  }
+
+  return { written, bytes, untransmittable };
+}
+
+/**
+ * Verify by reading back what was just written.
+ *
+ * Separate from the write on purpose. A device acknowledges nothing, so the write path cannot know
+ * whether it succeeded, and a function that claimed to *write and verify* would be reporting one
+ * outcome for two operations — which is how a partial success gets called a success.
+ */
+export async function readBackRecords(
+  options: { productId: number; io: DeviceIo; slots: readonly number[]; timeoutMs?: number },
+): Promise<Map<number, Uint8Array>> {
+  const { productId, io, slots } = options;
+  const wait = io.wait ?? realWait;
+  const out = new Map<number, Uint8Array>();
+
+  for (const slot of slots) {
+    const step: ReadStep = {
+      code: 0x60,
+      objNr: slot,
+      expect: 0x50,
+      label: patternName(slot),
+      payloadBytes: PLACEMENTS[productId]?.layout.patternSize ?? 0,
+    };
+    const reader = new DumpReader({
+      productId,
+      send: (bytes) => io.send(bytes),
+      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    });
+    const seen: Uint8Array[] = [];
+    attach(io, (data) => {
+      seen.push(Uint8Array.from(data));
+      reader.receive(data);
+    });
+    try {
+      await reader.run([step]);
+      const reply = parse(seen).find((m) => m.dumpType === 0x50 && m.objNr === slot);
+      if (reply) out.set(slot, reply.payload);
+    } finally {
+      detach(io);
+    }
+    await wait(settleMsAfter(0, productId));
+  }
+
+  return out;
+}
+
+/** Storage version of a device's own patternKit, for a caller that wants to show it. */
+export function deviceStorageVersion(witness: Uint8Array, layout: ImageLayout): number | undefined {
+  // The kit half opens with BEEFBACE; the pattern half does not, on either family.
+  return storageVersion(witness.subarray(layout.patternSize));
+}
+
+// --- plumbing ------------------------------------------------------------------------------------
+
+/**
+ * Where arriving messages go.
+ *
+ * Module-level and single-slot, because a device has one conversation at a time and two overlapping
+ * readers on one port would silently steal each other's replies. Two *devices* get two `DeviceIo`s
+ * and two sessions — the multi-device requirement lives there, not here.
+ */
+const listeners = new WeakMap<DeviceIo, (data: Uint8Array) => void>();
+
+export function attach(io: DeviceIo, onMessage: (data: Uint8Array) => void): void {
+  listeners.set(io, onMessage);
+}
+
+export function detach(io: DeviceIo): void {
+  listeners.delete(io);
+}
+
+/** Feed a message arriving from the device. The caller's MIDI handler calls this. */
+export function deliver(io: DeviceIo, data: Uint8Array): void {
+  listeners.get(io)?.(data);
+}
+
+function parse(raw: readonly Uint8Array[]): SysExMessage[] {
+  const out: SysExMessage[] = [];
+  for (const bytes of raw) {
+    try {
+      out.push(parseMessage(bytes));
+    } catch {
+      // Not a dump — clock, notes, someone else's traffic.
+    }
+  }
+  return out;
+}
+
+function differs(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+  return false;
+}
+
+/**
+ * Regions that changed but cannot be sent, named.
+ *
+ * The honest half of "edit as an image, transmit as a diff": an image has parts the wire does not
+ * carry, and an edit that touched them has to be told about rather than quietly dropped.
+ */
+function elsewhere(before: Uint8Array, after: Uint8Array, layout: ImageLayout): string[] {
+  const out: string[] = [];
+  if (differs(before.subarray(0, layout.headerSize), after.subarray(0, layout.headerSize))) {
+    out.push("the image header — project name and identity, which no dump carries");
+  }
+  if (differs(before.subarray(layout.tailBase), after.subarray(layout.tailBase))) {
+    out.push(
+      "the tail — the sound pool, project settings, the slot array and the song table. Only some " +
+        "of that is transmittable at all, and none of it by this function.",
+    );
+  }
+  return out;
+}
+
+export { ProductId };
