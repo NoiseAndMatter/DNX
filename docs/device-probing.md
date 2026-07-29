@@ -173,7 +173,22 @@ record from a *different* project.
   Practical consequence: a write is **reversible until the user saves**, which is a stronger undo
   than anything in this codebase — but only for someone who has been told.
 - **Whether a write to an occupied slot prompts, overwrites, or is refused.** Unknown. This is why
-  the first non-null write goes to an empty slot.
+  the first non-null write went to an empty slot.
+
+  **Do not expect a handshake.** The device answers a write with *nothing at all* — success and
+  refusal are both silence, which is the entire reason the read-back exists. elk-herd writes whole
+  Digitakt projects by sending `0x5n` directly, with no confirmation step anywhere in it. Something
+  could still be hiding in the unidentified `0x55`–`0x5e`, but nothing observed points at one, and
+  a guard rail nobody can see is not a guard rail.
+
+  So the outcome has to be read back and compared **three** ways, not two: against what was sent
+  (**overwritten**), against what the slot held before (**refused**), and against neither
+  (**something else**). Comparing only against what you sent makes a refusal and a mangled write
+  look the same.
+
+  **The experiment is free**, because of the finding above: a write lands in the active project, so
+  loading another project without saving discards it. Nothing needs restoring, and that is a better
+  safety net than any handshake would be.
 
 ---
 
