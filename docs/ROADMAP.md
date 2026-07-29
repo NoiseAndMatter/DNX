@@ -1374,6 +1374,46 @@ But that is a safety property only if the user knows about it. **The manager mus
 moment it writes and not in a help page: a live manager that silently depends on a save is one that
 loses work at the next project change. Treat it as a functional requirement of §4a.
 
+### 4b-i. The expansion planner — BUILT 2026-07-30, library only
+
+`src/expand/deviceexpand.ts`. Joins stages that were each already proven: read a DN1, read the DN2,
+convert and expand, diff, send only what changed. **Plans and transmits nothing.**
+
+#### The destination device is its own template
+
+`convertProject` transplants into a DN2 project, which until now meant a **file** — found via
+`DN_TEMPLATE`, `DN_CORPUS` or a sibling checkout. Reading the **destination** supplies one for free,
+and a better one: **its storage version is right by construction**, because it came off the machine
+that has to load the result. §8a is a long story about versions differing between firmwares, and a
+template read from the target cannot be the wrong version for the target.
+
+It doubles as the **diff baseline**, so expanding onto a DN2 that already holds most of the answer
+costs only the patterns that changed rather than 14.6 MB every time.
+
+#### The refusal is the substance
+
+A DN1's pool **cannot be requested** — `0x63` reaches the four kit track sounds, and a project dump
+carries no `0x53` at all — and the pool is *exactly* what expansion unfolds, since sound-locked
+trigs point into it. Expanding from a DN1 read alone would convert without error, write
+successfully, and lose every sound-locked sound.
+
+#### The corpus caught the guard being wrong within a minute
+
+The first version refused on **any** empty referenced slot. `003 AMBZ.dnprj` promptly failed it:
+five trigs locked to pool slot 11, which holds a **framed but nameless** sound. That is a dangling
+lock in a real project — nothing to do with how it was read, and the file path has always tolerated
+it. Refusing would have blocked a project that converts perfectly well.
+
+The guard now separates two failures that look identical from one slot's point of view:
+
+| | Signal | Response |
+|---|---|---|
+| Dangling lock | some referenced slots empty, pool otherwise populated | **warn** |
+| Uncaptured pool | locks exist and **all 128** slots are empty | **refuse** |
+
+**Framing cannot distinguish them** — a real DN1 pool is 128/128 framed with as few as eleven
+sounds actually in it. The name field can.
+
 ### 4b. Two devices at once — DN1 to DN2 without a file
 
 Already in the architecture rather than waiting on a refactor: `DeviceSession` keeps all state per
