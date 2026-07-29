@@ -47,9 +47,12 @@ import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
-import { nullRoundTrip, verifyWrite } from "../../../src/device/dumpwrite.js";
+import { looksBlank, nullRoundTrip, verifyWrite, writeToSlot } from "../../../src/device/dumpwrite.js";
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
-import { patternName } from "../../../src/sheet/naming.js";
+import { patternIndex, patternName } from "../../../src/sheet/naming.js";
+import { ProductId } from "../../../src/sysex/devices.js";
+import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
+import { blankPatternKit } from "../../../src/librarian/blank.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -858,6 +861,9 @@ async function readProject(): Promise<void> {
     $<HTMLButtonElement>("listen").disabled = false;
     $<HTMLButtonElement>("save").disabled = capture.isEmpty;
     $<HTMLButtonElement>("writeBack").disabled = capture.isEmpty;
+    // Refreshed here rather than on every message: parsing a 14 MB capture to repopulate a select
+    // is not something to do 257 times during a read.
+    fillWriteSources();
   }
 }
 
@@ -1140,6 +1146,200 @@ async function writeBack(): Promise<void> {
     verdict.ok ? `${slot} written and verified — writing works.` : `${slot} did NOT verify.`,
     verdict.ok ? "ok" : "error",
   );
+}
+
+// --- writing to a different slot -----------------------------------------------------------------
+
+/**
+ * The first write that actually changes something.
+ *
+ * The null round trip proved the path with bytes that were already there. This one moves a pattern
+ * into a slot it was not in, which is the operation the manager will eventually perform over MIDI
+ * — and it is the experiment that answers the two things `docs/device-probing.md` still lists as
+ * unknown: whether a write reaches the +Drive or only the active copy in RAM, and what happens to
+ * a slot that already holds work.
+ *
+ * The destination defaults to `H16` because the last slot of the last bank is the least likely to
+ * hold anything, and the control refuses a non-blank destination unless the user says otherwise —
+ * judged against the **captured blank**, which is itself a device artefact rather than our idea of
+ * what empty looks like.
+ */
+function fillWriteSources(): void {
+  const select = $<HTMLSelectElement>("writeFrom");
+  const patterns = splitCapture().filter((m) => m.dumpType === 0x50);
+  const seen = new Set<number>();
+  const options: string[] = [];
+  for (const m of patterns) {
+    if (seen.has(m.objNr)) continue;
+    seen.add(m.objNr);
+    options.push(`<option value="${m.objNr}">${escapeHtml(patternName(m.objNr))}</option>`);
+  }
+  select.innerHTML = options.join("");
+  const usable = options.length > 0 && lastProductId !== undefined;
+  select.disabled = !usable;
+  $<HTMLInputElement>("writeTo").disabled = !usable;
+  $<HTMLButtonElement>("writeSlot").disabled = !usable;
+}
+
+$("writeSlot").addEventListener("click", () => {
+  writeToChosenSlot().catch((error: unknown) => {
+    status(`The write failed: ${String(error)}`, "error");
+    verdictCard("Write failed", [["Error", String(error)]]);
+  });
+});
+
+async function writeToChosenSlot(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const productId = lastProductId;
+  if (!output || productId === undefined) {
+    status("Probe the device first.", "warn");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
+    return;
+  }
+
+  const destination = patternIndex($<HTMLInputElement>("writeTo").value);
+  if (destination === undefined) {
+    status(`"${$<HTMLInputElement>("writeTo").value}" is not a slot. Use A1 to H16.`, "error");
+    return;
+  }
+
+  const sourceObj = Number($<HTMLSelectElement>("writeFrom").value);
+  const messages = splitCapture();
+  const source = messages.find((m) => m.dumpType === 0x50 && m.objNr === sourceObj);
+  if (!source) {
+    status("That pattern is no longer in the capture. Read the project again.", "warn");
+    return;
+  }
+  if (destination === sourceObj) {
+    status("That is the slot it came from — use Write back for the null round trip.", "warn");
+    return;
+  }
+
+  // Is there something in the way? Judged against the device's own blank, not ours.
+  const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
+  const existing = messages.find((m) => m.dumpType === 0x50 && m.objNr === destination);
+  let occupancy = "not in the capture — unknown, so assume it holds something";
+  if (existing) {
+    const blank = blankPatternKit(device, destination);
+    const verdict = looksBlank(
+      existing.payload, blank, device.slotIndexOffset, device.layout.patternSize + 8, 16,
+    );
+    occupancy = verdict.blank
+      ? "empty — matches the device's own blank exactly"
+      : `HOLDS WORK — ${verdict.differingBytes.toLocaleString()} bytes differ from a blank`;
+  }
+
+  const from = patternName(sourceObj);
+  const to = patternName(destination);
+  if (
+    !confirm(
+      `Copy pattern ${from} into slot ${to}.\n\n` +
+        `Destination: ${occupancy}\n\n` +
+        `This OVERWRITES ${to} on the device and cannot be undone from here.\n` +
+        `${from} is unaffected. Continue?`,
+    )
+  ) {
+    return;
+  }
+
+  const log: [string, string][] = [
+    ["From", from],
+    ["To", to],
+    ["Destination was", occupancy],
+  ];
+  const trace = (what: string, detail: string): void => {
+    log.push([what, detail]);
+    verdictCard("Write in progress", log);
+  };
+
+  let message: Uint8Array;
+  try {
+    message = writeToSlot(productId, rebuildRaw(source), destination, device.slotIndexOffset);
+  } catch (error) {
+    verdictCard("Write refused before anything was sent", [
+      ...log,
+      ["Reason", String(error)],
+      ["Device", "untouched"],
+    ]);
+    status(`Refused: ${String(error)}`, "error");
+    return;
+  }
+
+  trace("Sending", `${message.length.toLocaleString()} bytes to ${to}…`);
+  try {
+    output.send([...message]);
+  } catch (error) {
+    trace("Send failed", String(error));
+    status(`The device rejected the message: ${String(error)}`, "error");
+    return;
+  }
+
+  trace("Sent", `asking for ${to} back`);
+  const readBack = await awaitPatternKit(output, productId, destination);
+  if (!readBack) {
+    verdictCard("Write NOT verified — yet", [
+      ...log,
+      ["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
+      ["Means", "unverified is not failed. Read the project again and compare."],
+    ]);
+    status(`${to} written; no read-back yet.`, "warn");
+    return;
+  }
+
+  // Compared against what was *sent*, not against the source: the slot index byte legitimately
+  // differs between them, and comparing to the source would report that as a failure every time.
+  const sent = parseMessage(message).payload;
+  const verdict = verifyWrite(sent, readBack);
+  verdictCard(verdict.ok ? `Write VERIFIED — ${from} is now in ${to}` : "Write did NOT match", [
+    ...log,
+    ["Read back", `${readBack.length.toLocaleString()} bytes`],
+    ["Result", verdict.ok ? "the device returned exactly what was sent" : verdict.reason ?? "differs"],
+    [
+      "Next",
+      verdict.ok
+        ? "Read project again to confirm nothing else moved — then power-cycle without saving " +
+          "to find out whether this reached the +Drive or only the active copy in RAM"
+        : "write nothing else until this is understood",
+    ],
+  ]);
+  status(verdict.ok ? `${from} written to ${to} and verified.` : `${to} did NOT verify.`, verdict.ok ? "ok" : "error");
+}
+
+/** Ask for one patternKit and wait for it, tolerating a late reply. */
+function awaitPatternKit(
+  output: MIDIOutput, productId: number, objNr: number,
+): Promise<Uint8Array | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(undefined);
+    }, VERIFY_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      let reply;
+      try {
+        reply = parseMessage(data);
+      } catch {
+        return;
+      }
+      if (reply.dumpType !== 0x50 || reply.objNr !== objNr) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(reply.payload);
+    };
+
+    try {
+      output.send([...dumpRequest(productId, { code: 0x60, objNr })]);
+    } catch {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(undefined);
+    }
+  });
 }
 
 /**
