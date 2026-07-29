@@ -214,12 +214,78 @@ export function verifyWrite(sent: Uint8Array, readBack: Uint8Array): WriteVerdic
  * original is still in the capture. There is no cheaper way to find out whether writing works at
  * all, which is why this is a named function rather than a comment on a general one.
  */
+/**
+ * Whether a captured patternKit is an untouched slot.
+ *
+ * Used to decide whether a write **destroys** something or merely fills a hole. It compares
+ * against the captured blank rather than counting trigs, because the blank is itself a device
+ * artefact — `librarian/blank.ts` extracted it from a device-initialised project — so this asks
+ * "is this what the device puts in an empty slot?" rather than "does this look empty to us?".
+ *
+ * The slot-index byte and the kit name are excluded: a blank in slot 5 legitimately differs from a
+ * blank in slot 0 at exactly those places, and treating that as content would call every empty
+ * slot occupied.
+ */
+export function looksBlank(
+  patternKit: Uint8Array,
+  blank: { pattern: Uint8Array; kit: Uint8Array },
+  slotIndexOffset: number,
+  kitNameOffset: number,
+  kitNameSize: number,
+): { blank: boolean; differingBytes: number } {
+  const patternSize = blank.pattern.length;
+  if (patternKit.length !== patternSize + blank.kit.length) {
+    return { blank: false, differingBytes: patternKit.length };
+  }
+
+  let differing = 0;
+  for (let i = 0; i < patternSize; i++) {
+    if (i === slotIndexOffset) continue;
+    if (patternKit[i] !== blank.pattern[i]) differing++;
+  }
+  for (let i = 0; i < blank.kit.length; i++) {
+    if (i >= kitNameOffset && i < kitNameOffset + kitNameSize) continue;
+    if (patternKit[patternSize + i] !== blank.kit[i]) differing++;
+  }
+  return { blank: differing === 0, differingBytes: differing };
+}
+
 export function nullRoundTrip(productId: number, captured: Uint8Array): Uint8Array {
   const message = parseMessage(captured);
   return dumpWrite(productId, {
     code: message.dumpType as WriteCode,
     objNr: message.objNr,
     payload: message.payload,
+    witness: message.payload,
+  });
+}
+
+/**
+ * Send a captured record to a **different** slot.
+ *
+ * The first write that actually changes something, and the reason the null round trip came first:
+ * this one cannot be undone by the fact that the bytes were already there.
+ *
+ * The record carries the slot it believes it occupies — `librarian/blank.ts` sets that byte when
+ * it mints a blank, and `shuffle`/`rearrange` maintain it when moving patterns inside a file. A
+ * record written to a slot it does not claim is a record the device may file under its own idea of
+ * where it belongs, so the byte is restamped here rather than hoped about.
+ */
+export function writeToSlot(
+  productId: number,
+  captured: Uint8Array,
+  destination: number,
+  slotIndexOffset: number,
+): Uint8Array {
+  const message = parseMessage(captured);
+  const payload = Uint8Array.from(message.payload);
+  payload[slotIndexOffset] = destination;
+
+  return dumpWrite(productId, {
+    code: message.dumpType as WriteCode,
+    objNr: destination,
+    payload,
+    // The source record came off this device, so it is its own proof of version.
     witness: message.payload,
   });
 }

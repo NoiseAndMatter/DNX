@@ -33,7 +33,7 @@ header {
 h1 { font-size: .82rem; margin: 0 .6rem 0 0; text-transform: uppercase; letter-spacing: .12em;
   color: var(--teal); font-weight: 600; }
 label.lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-input[type=number] {
+input[type=text], input[type=number] {
   background: #1b2123; color: var(--fg); border: 1px solid var(--line-soft);
   border-radius: 3px; padding: .25rem .4rem; font: inherit; font-size: .8rem; width: 4.5rem;
 }
@@ -110,6 +110,10 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <button class="btn" id="request" disabled>Request</button>
   <button class="btn" id="readProject" disabled>Read project</button>
   <button class="btn danger" id="writeBack" disabled title="Send a captured record back to the slot it came from">Write back</button>
+  <select id="writeFrom" disabled title="Which captured pattern to send"></select>
+  <label class="lbl" for="writeTo">to</label>
+  <input id="writeTo" type="text" value="H16" size="4" disabled title="Destination slot, e.g. H16">
+  <button class="btn danger" id="writeSlot" disabled title="Copy a captured pattern into another slot on the device">Write to slot</button>
 </header>
 
 <main>

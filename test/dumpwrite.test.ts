@@ -7,11 +7,13 @@ import {
   WriteCode,
   WriteRefused,
   dumpWrite,
+  looksBlank,
   needsJustification,
   nullRoundTrip,
   recordSize,
   storageVersion,
   verifyWrite,
+  writeToSlot,
 } from "../src/device/dumpwrite.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
@@ -177,6 +179,37 @@ test("the null round trip sends a captured record back where it came from", () =
   assert.equal(written.objNr, original.objNr, "same slot");
   assert.equal(written.dumpType, original.dumpType);
   assert.deepEqual([...written.payload], [...original.payload], "same bytes");
+});
+
+test("writing to a different slot restamps the slot the record claims", () => {
+  // A record carries the slot it believes it occupies. Sent somewhere else without restamping, the
+  // device may file it under its own idea of where it belongs.
+  const SLOT_AT = 12;
+  const payload = record(PATTERN_KIT, 3);
+  payload[SLOT_AT] = 0;
+  const captured = buildMessage({ productId: ProductId.DN2, dumpType: 0x50, objNr: 0, payload });
+
+  const written = parseMessage(writeToSlot(ProductId.DN2, captured, 99, SLOT_AT));
+
+  assert.equal(written.objNr, 99, "addressed to the destination");
+  assert.equal(written.payload[SLOT_AT], 99, "and the record agrees with the address");
+  assert.equal(payload[SLOT_AT], 0, "the source record is not modified");
+});
+
+test("a blank slot is recognised despite its slot index and kit name", () => {
+  // A blank in slot 5 differs from a blank in slot 0 at exactly those places. Counting them as
+  // content would call every empty slot occupied and make the guard useless.
+  const blank = { pattern: new Uint8Array(100).fill(7), kit: new Uint8Array(40).fill(9) };
+  const captured = new Uint8Array(140);
+  captured.set(blank.pattern, 0);
+  captured.set(blank.kit, 100);
+  captured[3] = 42; // slot index
+  captured.set([1, 2, 3, 4], 100 + 8); // kit name
+
+  assert.deepEqual(looksBlank(captured, blank, 3, 8, 16), { blank: true, differingBytes: 0 });
+
+  captured[50] = 0xff;
+  assert.deepEqual(looksBlank(captured, blank, 3, 8, 16), { blank: false, differingBytes: 1 });
 });
 
 test("verify is the only proof a write worked", () => {

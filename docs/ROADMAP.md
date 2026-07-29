@@ -1232,6 +1232,148 @@ it came from somewhere.
 4. Only then: write a record to an *empty* slot, and read the whole project again to confirm
    nothing else moved.
 
+### 3c-viii. Writing to a chosen slot — BUILT 2026-07-30
+
+The first write that changes something. `writeToSlot` copies a captured pattern into a different
+slot, **restamping the slot-index byte the record carries** — a record written to a slot it does
+not claim is one the device may file under its own idea of where it belongs.
+
+The destination is judged against the **captured blank** rather than against our idea of empty.
+`looksBlank` ignores the slot index and the kit name, because a blank in slot 5 legitimately
+differs from a blank in slot 0 at exactly those places, and counting that as content would call
+every empty slot occupied.
+
+This is the experiment that answers the last two unknowns in `device-probing.md`:
+
+1. **+Drive or RAM?** Write, then power-cycle **without saving**. If the pattern survives, writes
+   reach the +Drive. If it does not, they reach the active copy and the device's own save is the
+   commit step — which would be a safety feature worth relying on.
+2. **What happens to an occupied slot?** Overwrite, prompt, or refusal. The control defaults to
+   `H16` and warns when the destination holds work, so the answer is obtained deliberately rather
+   than discovered.
+
+---
+
+## 4. The device-first future — PLANNED 2026-07-30
+
+**Raised by the user**, and it reframes what DNX is: not a file tool that can talk to a device, but
+a **device manager** that also reads and writes files. Files stay — as the second option rather
+than the only one.
+
+Recorded in full, because the ordering below is not arbitrary: several of these unlock each other,
+and one is a much bigger jump than it looks.
+
+### 4a. The insight that makes it cheap — live management needs no image
+
+The obvious way to build "manager on a live device" is to read the whole project, edit the image,
+write it back. **That is the wrong shape**, and §3c-vi already shows why: a capture is 99.5% of an
+image, so a round trip needs a donor for the header, the song table and the slot array — none of
+which a pattern move touches.
+
+The right shape is per-record. Moving `A1` to `B5` on a live device is:
+
+```
+0x60 read slot 0   →   0x50 write slot 20
+```
+
+Two messages, ~230 KB, no image, no donor, no missing 0.49%. **Every manager operation is already
+expressible as reads and writes of records the device speaks**, because `shuffle.ts` describes a
+rearrangement as pure data — `movesTo` / `cameFrom` / `sourceOf` — and never needed an image to say
+what a move *means*. It needed one only to apply it.
+
+So the work is a **second applier**: `rearrange.ts` writes into a `Uint8Array`, the device version
+writes into an instrument. Same plan, same verify-after-write shape, different target. This is the
+highest-value item on the list and among the cheapest, because the plan layer exists and is already
+hardware-validated.
+
+**Settle first:** whether a write reaches the +Drive or only RAM (§3c-viii). If it is RAM, live
+management is *safer* than it sounds — nothing is permanent until the user saves — but the UI must
+say so, because a manager that silently needs a save on the device is a manager that loses work.
+
+### 4b. Two devices at once — DN1 to DN2 without a file
+
+Already in the architecture rather than waiting on a refactor: `DeviceSession` keeps all state per
+instance, one per device, and a test delivers one device's reply to the other's session and checks
+it does not settle. That was done in §3c-iv for exactly this.
+
+Every stage now exists and has been proven separately:
+
+```
+DN1  --0x60 x128-->  patternKits  --+
+                                    +--> convert / expand --> 0x50 x128 --> DN2
+     --panel pool send-->  pool  ---+
+```
+
+**The one gap is not technical.** A DN1's pool cannot be requested (§5c), so that step needs the
+user to press buttons on the DN1. Any "one click, DN1 to DN2" claim must be honest about that — or
+wait for one of the nine unidentified DN1 dump types to turn out to be the pool.
+
+### 4c. Sound explorer and kit creator — DN2
+
+`0x62` Kit and `0x63` Sound are verified requests on the DN2, and `0x63` reaches the **project
+pool** there, all 128 slots. So a sound explorer over the live pool is largely a UI job on top of
+readers that already exist — `soundparams.ts`, `machine.ts`, `soundmap.ts`.
+
+The kit creator needs kit *writes*, `0x52` — the same class as the pattern writes now proven, with
+the same guards. Lower risk than it sounds, and it must reuse `dumpwrite.ts` rather than grow its
+own send path.
+
+### 4d. Sound Pool editor — DN1
+
+Harder than 4c, for a reason worth stating up front: **the DN1 pool is read-only over SysEx as far
+as anyone here knows.** `0x63` reaches kit sounds, not the pool, and a panel send is
+one-directional. So a pool *editor* has an unsolved write path — unless a `0x53` written to a DN1
+lands in the pool after all, which is precisely the ambiguity §3c-vi refuses to guess at.
+
+**Settle that before designing the editor.** One careful experiment on a scratch project answers
+it: write a `0x53` and see whether the pool or the kit changed.
+
+### 4e. Track editor — trigs, steps, p-locks
+
+The format work is done: `dn2pattern.ts` and `dn1.ts` read trigs, sound locks, p-locks, microtiming
+and conditions; `plockparams.ts` and `machineplock.ts` name the parameters, and the
+machine-relative lock ids are mapped.
+
+What does not exist is **writing a trig**. Everything built so far moves whole records; this is the
+first feature that has to *compose* one. Genuinely a new layer — the lock table is referential and
+allocated from a pool, so adding a p-lock is not a byte poke.
+
+Sequence: a read-only step view first, which is nearly free and immediately useful, then editing.
+
+### 4f. Sound editor, with audio from the device
+
+**The biggest jump here, and it is not the editor.** The phrase "sound editor with playback"
+bundles two unrelated problems:
+
+1. **Editing a sound** — a UI over the 359-byte record, bounded, with the parameter map largely
+   done. **Auditioning is the hard part**: to hear an edit the device must *have* it, so audition
+   = **a write** plus a MIDI note. That means either overwriting a real sound to preview it or
+   finding a scratch destination. This is a safety design problem, not a UI one, and it should be
+   settled before anything is built.
+2. **USB audio and an oscilloscope** — a different browser API entirely. Web MIDI carries no audio;
+   this is `getUserMedia` against the device's USB audio interface plus Web Audio for the scope.
+   Independent of everything else on this list.
+
+   **Unverified, and it decides the feature:** that either Digitone presents a USB audio input a
+   browser can open *without* the Overbridge driver. An hour with
+   `navigator.mediaDevices.enumerateDevices()` settles it. Check before planning around it.
+
+### Suggested order, and why
+
+1. **§3c-viii's two questions** — +Drive vs RAM, occupied slots. Everything below inherits the
+   answers, and it is one short hardware session.
+2. **4a, the live manager.** Highest value, least new risk, plan layer already built and validated.
+3. **4c, sound explorer (DN2).** Reads only, on requests already proven.
+4. **4b, transfer mode.** The thing this project was started for.
+5. **4e, track view** read-only, then editing.
+6. **4d, DN1 pool editor**, once its write path is settled.
+7. **4f**, split: the sound editor once audition is designed; the oscilloscope whenever, since it
+   depends on nothing else here.
+
+**Files do not go away.** Every item keeps its file path — a file is the only thing that survives a
+device being sold, wiped or updated, and the corpus is what every test in this repository runs
+against.
+
 ### 3f. Getting it to testers — PLANNED 2026-07-28, not started
 
 **Raised by the user**, who has a NAS at home and is willing to run a domain from it so that no
