@@ -544,12 +544,17 @@ function renderCapture(): void {
       ["Object numbers", objects],
       // Said plainly, because "128 objects" against 182 messages reads as lost data. It is not:
       // the field is one 7-bit byte, and the device reports 0 once it runs out.
+      // Observed, then both causes named — because the bytes genuinely cannot tell them apart.
+      // This used to assert saturation, and said so on a capture of 129 patternKits where the
+      // extra one was our own verification re-read. A confident wrong explanation is worse than
+      // an honest ambiguous one.
       ...(group.numbersExhausted
         ? ([[
             "Note",
-            `${group.count} messages but only ${group.objects.length} distinct numbers — the ` +
-              `object number is a 7-bit field and the device stops incrementing past 127. ` +
-              `Nothing was lost; beyond that point only send order identifies a record.`,
+            `${group.count} messages, ${group.objects.length} distinct numbers. Either the object ` +
+              `number saturated — it is a 7-bit field, so a bank of more than 128 reports 0 for ` +
+              `the rest and only send order identifies those — or some objects simply arrived ` +
+              `twice, which is what a re-read or a verification does. Nothing is lost either way.`,
           ]] as [string, string][])
         : []),
       ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
@@ -618,9 +623,6 @@ async function startListening(): Promise<void> {
       reading.receive(data);
       return;
     }
-    // A write owns the results area until it has a verdict. Redrawing the capture here is what
-    // buried the last one.
-    if (writing) return;
     renderCapture();
 
     // A project dump is minutes of silence punctuated by a message every so often, and a static
@@ -962,23 +964,13 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
  */
 let awaitingReply: ((data: Uint8Array) => void) | undefined;
 
-/**
- * True while a write is in flight, so the capture renderer leaves the results area alone.
- *
- * Without it the reply to the verification request triggered `renderCapture`, which clears
- * `#results` and redraws the capture cards — burying the verdict below them, or wiping it. The
- * first hardware run reported "nothing seems to change in the UI", and this was one of the three
- * reasons why.
- */
-let writing = false;
-
 $("writeBack").addEventListener("click", () => {
   // **Never `void` a promise on this page.** A rejected `writeBack` used to vanish without a
   // trace: `output.send()` can throw on a 114 KB message, and the only symptom was a UI that did
   // nothing at all. Silence is the one outcome a control that changes an instrument must not have.
   writeBack().catch((error: unknown) => {
     status(`The write failed: ${String(error)}`, "error");
-    card($("results"), "Write failed", [
+    verdictCard("Write failed", [
       ["Error", String(error)],
       [
         "Meaning",
@@ -1033,7 +1025,7 @@ async function writeBack(): Promise<void> {
   } catch (error) {
     // A guard firing is a result, not a non-event. Shown as a card because the status bar alone
     // was missed on the first hardware run.
-    verdictCard($("results"), "Write refused before anything was sent", [
+    verdictCard("Write refused before anything was sent", [
       ["Slot", slot],
       ["Reason", String(error)],
       ["Device", "untouched — the message was never built, let alone sent"],
@@ -1042,13 +1034,7 @@ async function writeBack(): Promise<void> {
     return;
   }
 
-  const results = $("results");
-  results.innerHTML = "";
-  writing = true;
-
-  // Narrated step by step, and the log survives whatever happens next. The first hardware run
-  // could not tell "the button did nothing" from "the write went out and nothing came back",
-  // which are completely different problems with the same appearance.
+  // Narrated step by step into the verdict element, which nothing else on this page redraws.
   const log: [string, string][] = [
     ["Slot", slot],
     ["Record", `${candidate.payload.length.toLocaleString()} bytes payload`],
@@ -1056,8 +1042,7 @@ async function writeBack(): Promise<void> {
   ];
   const trace = (what: string, detail: string): void => {
     log.push([what, detail]);
-    results.innerHTML = "";
-    card(results, "Write in progress", log);
+    verdictCard("Write in progress", log);
   };
   trace("Sending", `0x50 to slot ${slot}…`);
 
@@ -1065,7 +1050,6 @@ async function writeBack(): Promise<void> {
     status(`Writing ${slot}…`, "warn");
     output.send([...message]);
   } catch (error) {
-    writing = false;
     trace("Send failed", String(error));
     status(`The device rejected the message: ${String(error)}`, "error");
     return;
@@ -1104,24 +1088,44 @@ async function writeBack(): Promise<void> {
     }
   });
 
-  writing = false;
-
   if (!readBack) {
-    log.push(["Read back", `nothing came within ${VERIFY_TIMEOUT_MS}ms`]);
-    verdictCard(results, "Write NOT verified", [
+    log.push(["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`]);
+    verdictCard("Write NOT verified — yet", [
       ...log,
       [
         "Means",
-        "unverified is not the same as failed. The write may have landed; the device is the place " +
-          "to check, and the original is still in the capture either way.",
+        "unverified is not the same as failed. The write may well have landed; the reply may " +
+          "simply be slower than the wait. Still listening — if it arrives this card updates.",
       ],
     ]);
-    status("Written but not verified — nothing came back. Check the device.", "warn");
+    status("Written; the read-back has not arrived yet. Still listening.", "warn");
+
+    // **Keep waiting after giving up.** A reply that missed the timeout used to arrive, trigger a
+    // capture redraw, and wipe the verdict — which is how a slow but successful write came to look
+    // like a control that does nothing. A late answer is an answer, so it upgrades the card.
+    awaitingReply = (data) => {
+      let reply;
+      try {
+        reply = parseMessage(data);
+      } catch {
+        return;
+      }
+      if (reply.dumpType !== 0x50 || reply.objNr !== candidate.objNr) return;
+      awaitingReply = undefined;
+      const late = verifyWrite(candidate.payload, reply.payload);
+      verdictCard(late.ok ? "Write VERIFIED (reply was late)" : "Write did NOT match", [
+        ...log,
+        ["Read back", `${reply.payload.length.toLocaleString()} bytes, after the wait expired`],
+        ["Result", late.ok ? "the device returned exactly what was sent" : late.reason ?? "differs"],
+        ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
+      ]);
+      status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+    };
     return;
   }
 
   const verdict = verifyWrite(candidate.payload, readBack);
-  verdictCard(results, verdict.ok ? "Write VERIFIED" : "Write did NOT match", [
+  verdictCard(verdict.ok ? "Write VERIFIED" : "Write did NOT match", [
     ...log,
     ["Read back", `${readBack.length.toLocaleString()} bytes`],
     ["Result", verdict.ok ? "the device returned exactly what was sent" : verdict.reason ?? "differs"],
@@ -1139,13 +1143,18 @@ async function writeBack(): Promise<void> {
 }
 
 /**
- * The verdict, put where it will actually be seen.
+ * The verdict, put somewhere the capture renderer cannot reach.
  *
- * `card` appends, and after a read the results area already holds several capture cards — so an
- * appended verdict landed below the fold. This one replaces the area outright and scrolls to it.
- * The outcome of the only control that changes the instrument should not have to be hunted for.
+ * **Third attempt, and the first structural one.** The first version appended to `#results` and was
+ * cleared by the next incoming message. The second guarded that with a `writing` flag — which
+ * still lost, because the flag is only true *during* the write and any message arriving afterwards
+ * redraws the area: a reply that beat the timeout, a late one that missed it, anything at all.
+ *
+ * Flags cannot fix this. The verdict lives in its own element, and `renderCapture` does not know
+ * that element exists. Nothing that redraws the capture can destroy it, whatever the ordering.
  */
-function verdictCard(into: HTMLElement, title: string, rows: [string, string][]): void {
+function verdictCard(title: string, rows: [string, string][]): void {
+  const into = $("writeResult");
   into.innerHTML = "";
   card(into, title, rows);
   into.scrollIntoView({ block: "start" });

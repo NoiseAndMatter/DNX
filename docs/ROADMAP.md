@@ -1157,7 +1157,19 @@ sound-locked sounds are exactly what it unfolds onto their own tracks.
 
 Rebuilding **into** a device — that is the write half, and it is §3c-vii below.
 
-### 3c-vii. Writing to a device — BUILT 2026-07-29, NOT YET RUN ON HARDWARE
+### 3c-vii. Writing to a device — WORKS, verified on a Digitone II 2026-07-29
+
+> [!success] **The null round trip verified, first attempt**
+> Pattern `A1` written back to slot `A1`, then requested: **99,840 bytes, byte-for-byte identical,
+> both checksums good.** The device returned exactly what was sent, so writing works on this
+> family — and since the bytes were identical to the slot they came from, nothing on the
+> instrument changed.
+>
+> Verified **offline from the saved capture**, because the page was still eating its own verdict at
+> the time. The capture holds both reads of `A1` — the original and the read-back — so the proof
+> did not depend on the UI working. `KNOWN-ISSUES.md` has that story; the short version is that
+> **the evidence outlived the bug**, which is the argument for capturing raw bytes rather than
+> rendering conclusions.
 
 The first thing in DNX that can destroy someone's work. `docs/device-probing.md` gained a
 **Writing** section *before* any of this was written, and the parts that belong in code rather than
