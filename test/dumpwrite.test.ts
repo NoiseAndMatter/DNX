@@ -11,6 +11,7 @@ import {
   needsJustification,
   nullRoundTrip,
   recordSize,
+  settleMsAfter,
   storageVersion,
   verifyWrite,
   writeToSlot,
@@ -210,6 +211,20 @@ test("a blank slot is recognised despite its slot index and kit name", () => {
 
   captured[50] = 0xff;
   assert.deepEqual(looksBlank(captured, blank, 3, 8, 16), { blank: false, differingBytes: 1 });
+});
+
+test("a device is left alone after a dump, for as long as the dump takes it", () => {
+  // Found on hardware: a 114 KB write landed correctly and the read-back request that followed got
+  // no reply, because it went out with zero delay behind the dump. elk-herd has always paced this.
+  const patternKitOnTheWire = 114_118;
+
+  const dn2 = settleMsAfter(patternKitOnTheWire, ProductId.DN2);
+  const dn1 = settleMsAfter(patternKitOnTheWire, ProductId.DN1);
+  assert.ok(dn2 >= 300, `${dn2}ms for 114 KB at 800 B/ms`);
+  assert.ok(dn1 > dn2, "the older machine is slower per byte, so it gets longer");
+
+  // A floor, because a small record still needs the device to come back to itself.
+  assert.equal(settleMsAfter(0, ProductId.DN2), 250);
 });
 
 test("verify is the only proof a write worked", () => {

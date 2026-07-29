@@ -177,6 +177,29 @@ export function dumpWrite(productId: number, request: WriteRequest): Uint8Array 
   });
 }
 
+/**
+ * How long to leave a device alone after sending it a dump, before asking it anything.
+ *
+ * **Found on hardware.** A 114 KB pattern was written to an occupied slot and landed correctly —
+ * the user confirmed it on the device — but the read-back request that followed **got no reply at
+ * all**. The request went out with zero delay behind 114 KB of SysEx, and the device, still
+ * ingesting, dropped it.
+ *
+ * elk-herd has always done this and it is the one part of its send path we had not copied:
+ * `SysEx.elm`'s `sendDump` sleeps `size / bytesPerMs + 20` before doing anything else, at 200 B/ms
+ * for a Digitakt and 800 for a Digitakt II. Same figures, same purpose, adapted with attribution.
+ *
+ * Note what the symptom looked like: a write that worked and a UI that hung waiting. Nothing about
+ * it pointed at pacing, which is why the fix belongs in code that every write path shares rather
+ * than in whichever caller noticed.
+ */
+export function settleMsAfter(wireBytes: number, productId: number): number {
+  const rate = productId === ProductId.DN1 ? 200 : 800;
+  // A larger floor than elk-herd's 20 ms: it is pacing a stream of sends it controls, while this
+  // is followed immediately by a request whose loss is silent and looks like a dead device.
+  return Math.max(250, Math.ceil(wireBytes / rate) + 200);
+}
+
 export interface WriteVerdict {
   ok: boolean;
   /** First differing byte, when they differ. */

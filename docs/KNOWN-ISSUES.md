@@ -5,6 +5,32 @@ converter.
 
 ---
 
+## A write worked and the read-back vanished — FIXED 2026-07-30
+
+A 114 KB pattern was written to an occupied slot and **landed correctly** — confirmed on the device
+by eye — while the page sat on *"asking for A14 back"* forever. No reply ever came.
+
+**The request was sent with zero delay behind 114 KB of SysEx**, and the device, still ingesting,
+dropped it. elk-herd has always paced this and it is the one part of its send path we had not
+copied: `SysEx.elm`'s `sendDump` sleeps `size / bytesPerMs + 20` before doing anything else, at
+200 B/ms for a Digitakt and 800 for a Digitakt II. `settleMsAfter` now does the same.
+
+Two things worth keeping from how this was found:
+
+1. **The symptom pointed nowhere near the cause.** A write that worked plus a UI that hung looks
+   like a broken read path, a dead port, or a device that ignores requests. Nothing about it says
+   *pacing*. The fix therefore belongs in code every write path shares, not in whichever caller
+   happened to notice.
+2. **The captures nearly produced a confident wrong answer.** Comparing the two most recent ones
+   showed `A14` unchanged, and the conclusion drawn was that the write never landed — possibly that
+   the device refuses occupied slots, which would have been a significant false finding. The later
+   capture was in fact the **pre-write baseline**. The user's manual check of the device is what
+   caught it.
+
+   The lesson is about captures rather than about writing: **a capture is only evidence if you know
+   where it sits in the sequence.** Filenames carry a timestamp and nothing about what had happened
+   to the device by then.
+
 ## The first write reported nothing at all — FIXED 2026-07-29
 
 **Write back** was run on hardware and the UI did not visibly change. **Three** separate defects,
