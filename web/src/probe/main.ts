@@ -1239,8 +1239,9 @@ async function writeToChosenSlot(): Promise<void> {
     !confirm(
       `Copy pattern ${from} into slot ${to}.\n\n` +
         `Destination: ${occupancy}\n\n` +
-        `This OVERWRITES ${to} on the device and cannot be undone from here.\n` +
-        `${from} is unaffected. Continue?`,
+        `This overwrites ${to} in the device's ACTIVE project. ${from} is unaffected.\n\n` +
+        `To undo: load another project on the device without saving. A write does not reach the ` +
+        `+Drive until you press SAVE PROJECT.\n\nContinue?`,
     )
   ) {
     return;
@@ -1294,20 +1295,58 @@ async function writeToChosenSlot(): Promise<void> {
   // differs between them, and comparing to the source would report that as a failure every time.
   const sent = parseMessage(message).payload;
   const verdict = verifyWrite(sent, readBack);
-  verdictCard(verdict.ok ? `Write VERIFIED — ${from} is now in ${to}` : "Write did NOT match", [
+
+  // **Three outcomes, not two.** A device that overwrote and a device that refused both answer the
+  // request and both stay silent about the write itself, so "did not match what we sent" is not a
+  // diagnosis. Held against what the slot contained *before*, the answer is unambiguous — and on a
+  // refusal it also says the original is intact, which is the thing the user needs to know.
+  const wasThere = existing && verifyWrite(existing.payload, readBack).ok;
+  const outcome = verdict.ok
+    ? "overwritten"
+    : wasThere
+      ? "refused"
+      : "unexpected";
+
+  const title =
+    outcome === "overwritten"
+      ? `Write VERIFIED — ${from} is now in ${to}`
+      : outcome === "refused"
+        ? `Device REFUSED the write — ${to} is unchanged`
+        : "Write did NOT match, and neither does the original";
+
+  verdictCard(title, [
     ...log,
     ["Read back", `${readBack.length.toLocaleString()} bytes`],
-    ["Result", verdict.ok ? "the device returned exactly what was sent" : verdict.reason ?? "differs"],
+    [
+      "Result",
+      outcome === "overwritten"
+        ? "the device returned exactly what was sent"
+        : outcome === "refused"
+          ? `${to} still holds exactly what it held before — the device declined the write, ` +
+            `silently, and nothing was lost`
+          : `matches neither what was sent nor what was there: ${verdict.reason ?? "differs"}`,
+    ],
     [
       "Next",
-      verdict.ok
+      outcome === "overwritten"
         ? "SAVE PROJECT on the device to keep this. A write lands in the active project, not the " +
           "+Drive — it survives a power cycle but is lost the moment another project is loaded. " +
           "Which also means: to undo it, load another project without saving."
-        : "write nothing else until this is understood",
+        : outcome === "refused"
+          ? "Nothing to undo. The device protects occupied slots, which is worth knowing before " +
+            "any bulk operation is built on writes."
+          : "Write nothing else until this is understood. Load another project without saving to " +
+            "discard whatever happened.",
     ],
   ]);
-  status(verdict.ok ? `${from} written to ${to} and verified.` : `${to} did NOT verify.`, verdict.ok ? "ok" : "error");
+  status(
+    outcome === "overwritten"
+      ? `${from} written to ${to} and verified.`
+      : outcome === "refused"
+        ? `${to} was not overwritten — the device refused.`
+        : `${to} holds something unexpected.`,
+    outcome === "overwritten" ? "ok" : outcome === "refused" ? "warn" : "error",
+  );
 }
 
 /** Ask for one patternKit and wait for it, tolerating a late reply. */
