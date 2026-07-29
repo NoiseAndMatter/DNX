@@ -45,7 +45,7 @@ speculative or unknown.
 | WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
 | WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
-| WebMIDI — reading a whole project by request | built, awaiting hardware, see ROADMAP §3c-v |
+| WebMIDI — reading a whole project by request | done, **hardware-validated on DN2** — 257/257, byte-identical to a device dump |
 | WebMIDI — writing to a device | not started, see ROADMAP §3c-iv |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,

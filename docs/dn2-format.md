@@ -616,6 +616,68 @@ Two traps cost time getting here, both ours rather than the device's:
 
 ---
 
+### A whole project read by request — VERIFIED 2026-07-29
+
+**[verified]** 257 requests to a Digitone II — 128 `0x60` PatternKit, 128 `0x63` Sound, one
+`0x64` ProjectSettings. **Every one answered.** 14,662,233 bytes in 257 messages:
+
+| | |
+|---|---|
+| Silences | **0** — the device answers for blank patterns and empty pool slots alike |
+| Payload sizes | **exactly** 99,840 / 359 / 512, all 257 |
+| Bad checksums | **0** |
+| Object numbers | `0`–`127` in order, on all three types |
+
+#### A response echoes the object number it was asked for
+
+**[verified]** The open question this run existed to settle. All three response types returned
+`0`–`127` in request order, so under 128 objects a reassembly may trust the number in the message.
+The field still saturates past 128 — that limit belongs to the field, not to requesting — but a
+request cannot address past 127 anyway, so within one request stream the two never disagree.
+
+#### `0x63 n` reaches the project sound pool, and reveals more of it than a dump does
+
+**[verified]**, and the answer is better than expected. All 128 slots answered: **0–118 named,
+119–127 empty**. The device's own front-panel project dump sends exactly **119** `0x53` messages —
+the occupied ones. So:
+
+- **a dump sends the occupied pool; a request enumerates the whole pool.** The nine empty slots
+  are visible only by asking, and a rebuild that inferred pool size from a dump would size it 119.
+- the 119 that both carry are **identical by position, 119/119**.
+
+Cross-checked against a file as well: the 128 requested sounds are **byte-identical to the sound
+pool of `008 JAM.dn2prj`**, all 128 — which validates the pool offset (`tailBase + 10,756`) and
+the sound reader against live device output. That project's *patterns* no longer match the file,
+the device's copy having been played and re-saved since, which is why the comparison that carries
+the weight is the next one.
+
+#### Requesting and dumping return the same bytes
+
+**[verified]**, and this is what makes requesting trustworthy. Last night's front-panel project
+dump against tonight's requested read — same device, same project:
+
+| | |
+|---|---|
+| PatternKits identical | **127 / 128** |
+| Sounds identical, by position | **119 / 119** |
+| ProjectSettings | **0 differing bytes of 512** |
+
+So `0x60` returns the stored record rather than a live or re-serialised view of it, and two
+independent acquisition paths agree byte for byte.
+
+#### The 128th pattern explains itself
+
+The one disagreement is **`G11`** — pattern index 106, 6,433 differing bytes. Precisely the slot
+whose checksum failed in last night's dump, alone in 248 messages. Tonight all 257 checksums are
+good, so the corrupt copy is the old one: the glitch is **confirmed as a transfer glitch rather
+than a format misunderstanding**, with a good copy of the same record to prove it.
+
+Worth saying plainly, because it generalises: the checksum caught it, a re-read fixed it, and a
+transfer that trusted one pass would have written 6,433 wrong bytes into a project. **A read is
+not finished until its checksums are.**
+
+---
+
 ## 6. Matched-pair cross-check (DN1 source → DN2 import)
 
 **[verified]** `002 MORNING_JAM.dnprj` (DN1) against `MORNING_JAM.dn2prj` (DN2):

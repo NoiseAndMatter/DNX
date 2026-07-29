@@ -45,7 +45,7 @@ import {
 import { DeviceSession } from "../../../src/device/session.js";
 import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
-import { DumpReader, type ReadReport } from "../../../src/device/dumpreader.js";
+import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
 import {
   QUERY_KEYS,
@@ -894,8 +894,20 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
         `${odd?.step.payloadBytes}`,
     ]);
   }
-  const badChecksums = report.results.filter((r) => r.checksumOk === false).length;
-  if (badChecksums > 0) rows.push(["Bad checksums", String(badChecksums)]);
+  // Given its own line and its own instruction, because this is the failure the hardware found:
+  // one Digitone II pattern arrived with a bad checksum and 6,433 wrong bytes, and came back
+  // perfectly on the next read. Rare, silent, and fixed by asking again.
+  if (report.badChecksums > 0) {
+    const retry = stepsToRetry(report);
+    rows.push([
+      "Bad checksums",
+      `${report.badChecksums} — corrupt in transit, not a format problem. Read again and these ` +
+        `will almost certainly be clean: ${retry
+          .slice(0, 6)
+          .map((s) => s.label)
+          .join(", ")}${retry.length > 6 ? `, +${retry.length - 6} more` : ""}`,
+    ]);
+  }
   if (report.foreign > 0) rows.push(["Other traffic", `${report.foreign} message(s), ignored`]);
 
   card(into, "Read report", rows);
