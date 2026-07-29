@@ -105,6 +105,7 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="reqObj">obj</label>
   <input id="reqObj" type="number" min="0" max="127" value="0" disabled>
   <button class="btn" id="request" disabled>Request</button>
+  <button class="btn" id="readProject" disabled>Read project</button>
 </header>
 
 <main>
@@ -114,7 +115,10 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
       messages it supports, and what is on its +Drive. <strong>Listen</strong> sends nothing at
       all &mdash; it captures whatever the device chooses to send, so you can trigger a dump from
       the front panel (<span class="mono">SETTINGS &gt; SYSEX DUMP &gt; SYSEX SEND</span>) and
-      save the result as a <span class="mono">.syx</span>. Neither writes anything to the device.
+      save the result as a <span class="mono">.syx</span>. <strong>Read project</strong> asks for
+      all 128 patterns, all 128 sound-pool slots and the project settings, one at a time, waiting
+      for each answer before asking again &mdash; the same capture, without touching the device's
+      menus. Requests carry an empty body, so none of this writes anything to the device.
       Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
       SysEx permission, which is the whole point: without it every request is silently dropped
       and the device looks like it is not answering.

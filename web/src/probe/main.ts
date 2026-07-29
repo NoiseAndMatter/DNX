@@ -45,6 +45,8 @@ import {
 import { DeviceSession } from "../../../src/device/session.js";
 import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
+import { DumpReader, type ReadReport } from "../../../src/device/dumpreader.js";
+import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
 import {
   QUERY_KEYS,
   capabilitiesOf,
@@ -247,6 +249,7 @@ async function probe(): Promise<void> {
     $<HTMLSelectElement>("reqWhat").disabled = false;
     $<HTMLInputElement>("reqObj").disabled = false;
     $<HTMLButtonElement>("request").disabled = false;
+    $<HTMLButtonElement>("readProject").disabled = lastProductId === undefined;
 
     const caps = capabilitiesOf(device.supportedMessages);
 
@@ -595,8 +598,17 @@ async function startListening(): Promise<void> {
   let lastAt = 0;
   const onMessage = (event: MIDIMessageEvent): void => {
     if (!event.data) return;
-    capture.add(new Uint8Array(event.data));
+    const data = new Uint8Array(event.data);
+    capture.add(data);
     lastAt = Date.now();
+
+    // A read drives its own narration and owns the results area while it runs, so re-rendering
+    // the capture on every message would tear down the progress it is drawing. The bytes are
+    // already in the capture either way, which is the part that must not depend on the UI.
+    if (reading) {
+      reading.receive(data);
+      return;
+    }
     renderCapture();
 
     // A project dump is minutes of silence punctuated by a message every so often, and a static
@@ -717,3 +729,174 @@ $("request").addEventListener("click", () => {
 });
 
 fillRequestOptions();
+
+
+// --- reading a whole project -------------------------------------------------------------------
+
+/**
+ * Ask the device for every object a project is made of, one at a time.
+ *
+ * The read half of transfer mode. `readplan.ts` says what to ask for and `dumpreader.ts` paces it;
+ * everything here is the page: a confirmation before pulling 14.6 MB, a progress line, a stop
+ * button, and a report at the end. The bytes go into the same capture the front-panel listener
+ * fills, so **Save capture** writes a `.syx` every existing tool already reads.
+ *
+ * Requires Listen, like Request does — the listener is what feeds both the capture and the reader,
+ * and a read with nothing collecting is a transfer for no reason.
+ */
+let reading: DumpReader | undefined;
+
+$("readProject").addEventListener("click", () => {
+  if (reading) {
+    reading.stop();
+    status("Stopping after the object in flight…", "warn");
+    return;
+  }
+  void readProject();
+});
+
+async function readProject(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing will be collecting the answers.", "warn");
+    return;
+  }
+  const productId = lastProductId;
+  if (productId === undefined) {
+    status("Probe the device first: a read needs to know which product to address.", "warn");
+    return;
+  }
+
+  let plan;
+  try {
+    plan = planProjectRead(productId);
+  } catch (error) {
+    status(String(error), "error");
+    return;
+  }
+
+  const megabytes = (planBytes(plan) / 1_000_000).toFixed(1);
+  if (
+    !confirm(
+      `Ask for all ${plan.length} objects — roughly ${megabytes} MB.\n\n` +
+        `Nothing is written to the device; every request carries an empty body.\n\n` +
+        `Make sure SETTINGS > SYSEX DUMP is set to USB rather than USB+MIDI: DIN MIDI ` +
+        `throttles the transfer to about 3 kB/s, which would take over an hour.`,
+    )
+  ) {
+    return;
+  }
+
+  const results = $("results");
+  results.innerHTML = "";
+  const progress = document.createElement("section");
+  progress.className = "card";
+  results.append(progress);
+
+  const started = Date.now();
+  const reader = new DumpReader({
+    productId,
+    send: (bytes) => output.send([...bytes]),
+    onProgress: (result, done, total) => {
+      const seconds = (Date.now() - started) / 1000;
+      // Remaining time from the rate so far rather than from a constant: the two families differ
+      // by an order of magnitude and a hard-coded estimate would be wrong on one of them.
+      const left = done === 0 ? 0 : Math.round((seconds / done) * (total - done));
+      progress.innerHTML =
+        `<h2>Reading — ${done} of ${total}</h2>` +
+        `<div class="row"><span class="k">Now</span><span class="v">` +
+        `${escapeHtml(result.step.label)} — ${escapeHtml(result.status)}</span></div>` +
+        `<div class="row"><span class="k">Received</span><span class="v">` +
+        `${capture.byteLength.toLocaleString()} bytes</span></div>` +
+        `<div class="row"><span class="k">About</span><span class="v">${left}s to go</span></div>`;
+      status(
+        `${SPINNER[done % SPINNER.length]}  reading ${done}/${total} — ${result.step.label}`,
+        result.status === "ok" ? "info" : "warn",
+      );
+    },
+  });
+
+  reading = reader;
+  $("readProject").textContent = "Stop read";
+  $<HTMLButtonElement>("request").disabled = true;
+  $<HTMLButtonElement>("listen").disabled = true;
+
+  try {
+    const report = await reader.run(plan);
+    reportCard(results, report, Date.now() - started);
+    status(
+      `${report.ok} of ${plan.length} objects read, ${capture.byteLength.toLocaleString()} bytes.` +
+        (report.silent > 0 ? ` ${report.silent} silent.` : "") +
+        " Press Save capture.",
+      report.silent === 0 ? "ok" : "warn",
+    );
+  } catch (error) {
+    status(`The read stopped: ${error}`, "error");
+  } finally {
+    reading = undefined;
+    $("readProject").textContent = "Read project";
+    $<HTMLButtonElement>("request").disabled = false;
+    $<HTMLButtonElement>("listen").disabled = false;
+    $<HTMLButtonElement>("save").disabled = capture.isEmpty;
+  }
+}
+
+/**
+ * What the run found.
+ *
+ * Silences, late answers and mismatches are reported as counts with what each one means, because
+ * every one of them is a question about the device rather than a failure of ours — and the first
+ * run of this is the experiment that answers two of them.
+ */
+function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): void {
+  const rows: [string, string][] = [
+    ["Answered", `${report.ok} of ${report.results.length}`],
+    ["Bytes", report.bytes.toLocaleString()],
+    ["Took", `${(elapsedMs / 1000).toFixed(1)}s`],
+  ];
+
+  if (report.stopped) rows.push(["Stopped", "by you, before the plan finished"]);
+
+  if (report.silent > 0) {
+    const first = report.results.find((r) => r.status === "silent");
+    rows.push([
+      "No answer",
+      `${report.silent} object(s), first at ${first?.step.label ?? "?"} — either the device sends ` +
+        `nothing for that slot, or the transport is too slow for the wait`,
+    ]);
+  }
+  if (report.late > 0) {
+    rows.push([
+      "Answered late",
+      `${report.late} — the wait is too short for this transport. If SYSEX DUMP is set to ` +
+        `USB+MIDI, switch it to USB: DIN throttles this to about 3 kB/s (manual §13.4.2).`,
+    ]);
+  }
+  if (report.objNrMismatches > 0) {
+    rows.push([
+      "Object number differed",
+      `${report.objNrMismatches} — the device does not echo the requested index, so a rebuild ` +
+        `must go by send order rather than by the number in the message`,
+    ]);
+  }
+  if (report.sizeMismatches > 0) {
+    const odd = report.results.find(
+      (r) => r.status === "ok" && r.payloadBytes !== r.step.payloadBytes,
+    );
+    rows.push([
+      "Unexpected size",
+      `${report.sizeMismatches} — e.g. ${odd?.step.label}: ${odd?.payloadBytes} bytes, expected ` +
+        `${odd?.step.payloadBytes}`,
+    ]);
+  }
+  const badChecksums = report.results.filter((r) => r.checksumOk === false).length;
+  if (badChecksums > 0) rows.push(["Bad checksums", String(badChecksums)]);
+  if (report.foreign > 0) rows.push(["Other traffic", `${report.foreign} message(s), ignored`]);
+
+  card(into, "Read report", rows);
+}
