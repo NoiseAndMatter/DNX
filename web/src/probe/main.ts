@@ -47,7 +47,13 @@ import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
-import { looksBlank, nullRoundTrip, verifyWrite, writeToSlot } from "../../../src/device/dumpwrite.js";
+import {
+  looksBlank,
+  nullRoundTrip,
+  settleMsAfter,
+  verifyWrite,
+  writeToSlot,
+} from "../../../src/device/dumpwrite.js";
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -1061,8 +1067,13 @@ async function writeBack(): Promise<void> {
     return;
   }
 
-  // Read it straight back. A device that stored the bytes and one that ignored the message look
-  // identical from the sending end; only this tells them apart.
+  // Read it back — but not immediately. A request sent behind 114 KB of SysEx is dropped by a
+  // device still ingesting it, which on hardware looked like a write that worked and a page that
+  // hung. elk-herd has always paced its sends this way; see `settleMsAfter`.
+  const settle = settleMsAfter(message.length, productId);
+  trace("Settling", `${settle}ms before asking — the device is still taking it in`);
+  await new Promise((resolve) => setTimeout(resolve, settle));
+
   trace("Sent", "asking for it back to see what actually landed");
   status(`Written. Asking for ${slot} back…`);
   const readBack = await new Promise<Uint8Array | undefined>((resolve) => {
@@ -1278,6 +1289,13 @@ async function writeToChosenSlot(): Promise<void> {
     status(`The device rejected the message: ${String(error)}`, "error");
     return;
   }
+
+  // **Let the device finish taking it in before asking it anything.** A request sent immediately
+  // behind 114 KB of SysEx is dropped by a device still ingesting — the write lands and the reply
+  // never comes, which is exactly how this looked on hardware.
+  const settle = settleMsAfter(message.length, productId);
+  trace("Settling", `${settle}ms before asking — the device is still taking it in`);
+  await new Promise((resolve) => setTimeout(resolve, settle));
 
   trace("Sent", `asking for ${to} back`);
   const readBack = await awaitPatternKit(output, productId, destination);
