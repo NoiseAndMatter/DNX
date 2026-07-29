@@ -1232,7 +1232,49 @@ it came from somewhere.
 4. Only then: write a record to an *empty* slot, and read the whole project again to confirm
    nothing else moved.
 
-### 3c-viii. Writing to a chosen slot — BUILT 2026-07-30
+### 3c-viii. Writing to a chosen slot — PASSED 2026-07-30, Digitone II
+
+> [!success] **A pattern copied into an empty slot, exactly**
+> `A1` written to `H16`. Read back and compared against the whole earlier capture: **`H16` is
+> byte-identical to `A1` across all 99,840 bytes except one** — the slot-index byte at `0x15AF0`,
+> which correctly reads 127. **No other slot in the project changed.**
+>
+> A write is surgical, the restamp works, and the device accepts a pattern into a slot it did not
+> come from.
+
+#### Where a write lands — and why the obvious test is worthless
+
+**[verified]** This section originally proposed power-cycling without saving to find out whether a
+write reaches the +Drive. **That test cannot answer the question**, and the user said so:
+
+> *"DN1 and DN2 allow you to work on them and if you just switch them off without saving, when you
+> switch them on they restore themselves to the exact same state."*
+
+The working state is **itself persistent across power cycles**, so surviving a reboot is consistent
+with *both* answers. The experiment as designed produced a result that meant nothing — a reminder
+that a test has to be able to come out both ways before it is worth running.
+
+The discriminating test is switching projects:
+
+> *"if I change projects it will tell me there are unsaved changes, and if I disregard and don't
+> save, then open the modified project again, it will not contain the change."*
+
+**So a write lands in the device's active project state, not in the +Drive project file.** It
+survives power loss and does not survive loading another project. The device's own **SAVE PROJECT**
+is the commit step.
+
+#### What follows, and it is mostly good news
+
+- **A write is not permanent until the user saves.** A real safety property, and a stronger one
+  than anything in our code: the undo for any live edit is *don't save, load another project*.
+- **It is only a safety property if the user knows.** A live manager that writes without saying
+  "now save on the device" silently loses work at the next project change. That is a **UI
+  requirement for §4a**, not a footnote.
+- **`0x54` ProjectSettings stays gated.** Nothing here says what a settings write touches, and the
+  active-state finding does not extend to it.
+- Still unknown, deliberately: **what happens writing to an occupied slot.** `H16` was blank.
+
+#### How it is built
 
 The first write that changes something. `writeToSlot` copies a captured pattern into a different
 slot, **restamping the slot-index byte the record carries** — a record written to a slot it does
@@ -1245,12 +1287,10 @@ every empty slot occupied.
 
 This is the experiment that answers the last two unknowns in `device-probing.md`:
 
-1. **+Drive or RAM?** Write, then power-cycle **without saving**. If the pattern survives, writes
-   reach the +Drive. If it does not, they reach the active copy and the device's own save is the
-   commit step — which would be a safety feature worth relying on.
-2. **What happens to an occupied slot?** Overwrite, prompt, or refusal. The control defaults to
-   `H16` and warns when the destination holds work, so the answer is obtained deliberately rather
-   than discovered.
+**Both** of `device-probing.md`'s open questions were aimed at here; one is answered above, and the
+other — **what happens to an occupied slot** — is still open. The control defaults to `H16` and
+warns when the destination holds work, so that answer can be obtained deliberately rather than
+discovered.
 
 ---
 
@@ -1286,9 +1326,13 @@ writes into an instrument. Same plan, same verify-after-write shape, different t
 highest-value item on the list and among the cheapest, because the plan layer exists and is already
 hardware-validated.
 
-**Settle first:** whether a write reaches the +Drive or only RAM (§3c-viii). If it is RAM, live
-management is *safer* than it sounds — nothing is permanent until the user saves — but the UI must
-say so, because a manager that silently needs a save on the device is a manager that loses work.
+**Answered 2026-07-30 (§3c-viii): a write lands in the active project, not the +Drive.** So live
+management is *safer* than it sounds — nothing is permanent until the user presses SAVE PROJECT on
+the device, and the undo for any live edit is to load another project without saving.
+
+But that is a safety property only if the user knows about it. **The manager must say so**, at the
+moment it writes and not in a help page: a live manager that silently depends on a save is one that
+loses work at the next project change. Treat it as a functional requirement of §4a.
 
 ### 4b. Two devices at once — DN1 to DN2 without a file
 
@@ -1320,13 +1364,29 @@ own send path.
 
 ### 4d. Sound Pool editor — DN1
 
-Harder than 4c, for a reason worth stating up front: **the DN1 pool is read-only over SysEx as far
-as anyone here knows.** `0x63` reaches kit sounds, not the pool, and a panel send is
-one-directional. So a pool *editor* has an unsolved write path — unless a `0x53` written to a DN1
-lands in the pool after all, which is precisely the ambiguity §3c-vi refuses to guess at.
+> [!warning] **Corrected 2026-07-30.** This section said the DN1 pool had "no known write path".
+> That was wrong in emphasis, and the user caught it: it conflated the *request* code with the
+> *data* message.
+>
+> - **`0x63`** is the request. On a DN1 it is aimed at the kit's four track sounds.
+> - **`0x53`** is the data message — and the panel pool send proves the pool **travels as `0x53`
+>   with an object number**, straight from the device.
+>
+> `0x63` being aimed elsewhere says nothing about where a `0x53` *write* lands. If anything the
+> evidence points the other way: the device emits pool sounds as `0x53 n`, which makes `0x53` the
+> obvious candidate for writing them back. The write path is **untested, not unknown.**
 
-**Settle that before designing the editor.** One careful experiment on a scratch project answers
-it: write a `0x53` and see whether the pool or the kit changed.
+The experiment is cheap and well defined: on a scratch project, write one `0x53` and then dump the
+pool from the panel. If slot *n* changed, the pool is writable and the editor is mostly UI. If the
+kit changed instead, the ambiguity is real and the editor needs another route.
+
+**A related placement risk, found while re-examining this.** The pool dump numbered its 93 messages
+`0`–`92` contiguously, and `rebuild.ts` places them by that number as pool slots. It could equally
+be a **send counter over occupied slots** — which is a different placement if the pool has holes.
+The end-to-end check does not discriminate: 31 locks resolving to 31 sounds happens either way,
+with the wrong names in one case. Testable cheaply — clear one middle pool slot, dump again, and
+see whether the count drops to 92 with a **gap in the numbering** (slot) or stays contiguous
+(counter).
 
 ### 4e. Track editor — trigs, steps, p-locks
 
@@ -1354,9 +1414,15 @@ bundles two unrelated problems:
    this is `getUserMedia` against the device's USB audio interface plus Web Audio for the scope.
    Independent of everything else on this list.
 
-   **Unverified, and it decides the feature:** that either Digitone presents a USB audio input a
-   browser can open *without* the Overbridge driver. An hour with
-   `navigator.mediaDevices.enumerateDevices()` settles it. Check before planning around it.
+   **Settled by the user, 2026-07-30: both Digitones are USB class-compliant and provide audio in
+   and out over USB.** No Overbridge driver required, so the browser can open them like any other
+   input. This section previously flagged that as unverified and blocking; it is neither. The
+   oscilloscope is a real feature, and it can be built at any time because nothing else depends on
+   it.
+
+   What remains is a permissions detail rather than a capability one: audio input is a
+   `getUserMedia` prompt, so the page needs a secure context — which §3f already requires for Web
+   MIDI anyway.
 
 ### Suggested order, and why
 
