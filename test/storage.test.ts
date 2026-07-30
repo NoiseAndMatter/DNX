@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { decodeMessage } from "../src/device/api.js";
 import {
   FREEZES,
+  STORED_FORM,
   ListingError,
   StorageCode,
   copyRequest,
@@ -181,13 +182,24 @@ test("a path outside Windows-1252 is refused before it reaches the wire", () => 
 // requests were guessed at for three days from replies alone, and the guesses froze the instrument
 // three times. Pinning them to the exact bytes is what stops that being re-derived.
 
-test("open-for-read matches Transfer's request exactly", () => {
-  // 2f 70 72 6f 6a 65 63 74 73 2f 37 00  00 00 08 00  01
-  // /projects/7\0                         2048         ?
-  const sent = decodeMessage(openRequest(1, "/projects/7", FREEZES)).body;
+test("the trailing byte selects the file's form, and we omit it on purpose", () => {
+  // Transfer sends `01` and gets the stored .dnprj payload; omitting the byte returns the raw
+  // image. Measured on hardware, on the same project, twice:
+  //
+  //   with 01     40 chunks,    ~90 KB           the stored payload
+  //   omitted     1,358 chunks, 2,781,743 bytes  the raw image
+  //
+  // DNX wants raw - byte-for-byte what decodeProjectImage produces from the file, no LZ4 step.
+  // Sending it was tried this session and broke `imageFrom`; this pins the regression.
+  const path = [0x2f, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x37, 0x00];
+  const size = [0x00, 0x00, 0x08, 0x00];
+
+  assert.deepEqual([...decodeMessage(openRequest(1, "/projects/7", FREEZES)).body], [...path, ...size]);
+
+  // Transfer's exact request stays reachable, for a caller that wants a `.dnprj` to save to disk.
   assert.deepEqual(
-    [...sent],
-    [0x2f, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x37, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01],
+    [...decodeMessage(openRequest(1, "/projects/7", FREEZES, 2048, STORED_FORM)).body],
+    [...path, ...size, 0x01],
   );
 });
 

@@ -143,6 +143,7 @@ export function openRequest(
   path: string,
   acknowledge?: typeof FREEZES,
   chunkSize = DEFAULT_CHUNK_SIZE,
+  form?: typeof STORED_FORM,
 ): Uint8Array {
   if (acknowledge !== FREEZES) throw new ListingError(FREEZE_WARNING);
   // Refused here rather than sent, because "no NUL" is the one property both freezes share and an
@@ -157,34 +158,42 @@ export function openRequest(
   // Safe to append: the path's NUL is already on the wire, so this cannot recreate the unterminated
   // body that froze the device three times. Inferred, like everything else about this request.
   const name = string0(path);
-  const body = new Uint8Array(name.length + 5);
+  // **The trailing byte is omitted, and that is now a measured decision rather than an oversight.**
+  //
+  // Sending Transfer's `01` was tried and it changes what comes back: `/projects/1` returned 40
+  // chunks and ~90 KB — the stored `.dnprj` payload — where omitting the byte returns 1,358 chunks
+  // and 2,781,743 bytes, the raw uncompressed image.
+  //
+  // DNX wants the raw form. It is byte-for-byte identical to the image `decodeProjectImage`
+  // produces from the file (`test/drive.test.ts`), so there is no LZ4 step and nothing to get
+  // wrong. The compressed form would have to be decompressed to be useful, and `imageFrom` refuses
+  // it outright rather than slicing 31 bytes off something that is not an image.
+  //
+  // `form` exists so the other behaviour is reachable — a caller wanting a `.dnprj` to save to disk
+  // wants exactly what Transfer asks for.
+  const trailer = form === undefined ? 0 : 1;
+  const body = new Uint8Array(name.length + 4 + trailer);
   body.set(name, 0);
   body.set(u32Bytes(chunkSize), name.length);
-  // The trailing byte, **now seen in Transfer's own request** rather than inferred from a reply:
-  //
-  //     2f 70 72 6f 6a 65 63 74 73 2f 37 00   00 00 08 00   01
-  //     /projects/7\0                          2048          ?
-  //
-  // What it selects is unestablished, and there is a live suspicion it matters a great deal: with
-  // this byte, Transfer's read of `/projects/7` was **21,522 bytes**; without it, our read of
-  // `/projects/1` was **2,781,743** — the raw image rather than the stored `.dnprj` payload. Same
-  // message, two very different files.
-  //
-  // Sent as Transfer sends it, because matching a working client exactly is free and guessing is
-  // what this file is a monument to. `RAW_IMAGE` is here for whoever tests the other value.
-  body[name.length + 4] = STORED_FORM;
+  if (form !== undefined) body[name.length + 4] = form;
   return encodeMessage(msgId, StorageCode.Open, body);
 }
 
 /**
- * The trailing byte of an open-for-read.
+ * The trailing byte of an open-for-read — **[verified]** to select the file's form.
  *
- * `STORED_FORM` is what Elektron Transfer sends. `RAW_IMAGE` is a guess at the other value, and the
- * name records a **hypothesis**, not a finding: our reads omitted the byte entirely and returned the
- * uncompressed image, which is not the same as having sent a zero.
+ * | request | `/projects/1` returned |
+ * |---|---|
+ * | path, chunk size, **`01`** | 40 chunks, ~90 KB — the stored `.dnprj` payload |
+ * | path, chunk size, **byte absent** | 1,358 chunks, **2,781,743 bytes** — the raw image |
+ *
+ * Transfer sends `01`. DNX omits it, because the raw image is byte-for-byte what
+ * `decodeProjectImage` produces from the file and needs no decompression.
+ *
+ * What a literal `00` does is still untested — omitting a byte and sending a zero are not the same
+ * thing, and this file has paid for that distinction before.
  */
 export const STORED_FORM = 0x01;
-export const RAW_IMAGE = 0x00;
 
 /**
  * The two bodies that froze a Digitone 1, kept so nobody rediscovers them.
