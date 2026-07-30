@@ -86,7 +86,23 @@ message carried no data, changed nothing, and asked a perfectly reasonable quest
 
 **How to apply.** Before sending anything that returns a handle, an id, a session or a lock: know
 the message that releases it, and send that release in a `finally`. If you cannot, do not send the
-first one. `openRequest` is now gated behind a token that says as much.
+first one. `src/device/storagesession.ts` is the worked example — the sequence is a module
+precisely so the close cannot be forgotten at an early return, and `openRequest`'s token is passed
+from there because that `finally` is the only thing that makes the promise true.
+
+> [!note] **The rule survived its own explanation being wrong — 2026-07-30**
+> Decoding Transfer's replies later suggested the freeze was probably a **short request body**
+> rather than the leaked handle (`device-storage.md` §5a). So the diagnosis that produced this rule
+> was likely mistaken.
+>
+> The rule stands anyway, and that is the interesting part. *"Send the release in a `finally`"* was
+> the right practice for a reason that had nothing to do with why it was written down: an
+> allocate-with-no-release is unsafe whether or not it was the thing that killed the device that
+> day. **A practice justified by a wrong diagnosis is not automatically a wrong practice** — but it
+> does need re-deriving before it is trusted, rather than inherited.
+>
+> What *was* wrong was the confidence. "The likely cause is ours: we never sent `0x56`" was written
+> as a finding, on evidence that never fit it — a leaked handle does not swallow the first reply.
 
 ### 0a. Prove the link before believing a silence
 
