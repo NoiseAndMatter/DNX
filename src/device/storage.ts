@@ -124,12 +124,25 @@ export function openRequest(
   msgId: number,
   path: string,
   acknowledge?: typeof FREEZES,
+  chunkSize = DEFAULT_CHUNK_SIZE,
 ): Uint8Array {
   if (acknowledge !== FREEZES) throw new ListingError(FREEZE_WARNING);
   // Refused here rather than sent, because "no NUL" is the one property both freezes share and an
   // empty argument is the shortest way to write it.
   if (path.length === 0) throw new ListingError("0x54 needs a path — an empty one is what froze it");
-  return encodeMessage(msgId, StorageCode.Open, string0(path));
+
+  // **The chunk size is asked for, not announced.** The open reply's second field read 2,048 on all
+  // three of Transfer's opens and **16** on ours, which sank it as a constant and then explained
+  // itself: Transfer *requests* 2,048 and we requested nothing, so we got a 16-byte default. At 16
+  // bytes a chunk a 4 MiB project is 262,144 messages, which is precisely the runaway that followed.
+  //
+  // Safe to append: the path's NUL is already on the wire, so this cannot recreate the unterminated
+  // body that froze the device three times. Inferred, like everything else about this request.
+  const name = string0(path);
+  const body = new Uint8Array(name.length + 4);
+  body.set(name, 0);
+  body.set(u32Bytes(chunkSize), name.length);
+  return encodeMessage(msgId, StorageCode.Open, body);
 }
 
 /**
