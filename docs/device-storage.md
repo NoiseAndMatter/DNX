@@ -37,6 +37,19 @@ at *different codes* — `0x53`–`0x5a` in the **API** space.
 > The pattern is the point: the first pillar was corrected, and then the same overconfidence was
 > rebuilt on the second within the hour.
 
+> [!success] **Retried, and now genuinely absent — 2026-07-30**
+> `0x10` was sent from the probe's **Ask** control with Transfer closed. No reply within 4 seconds,
+> and the **link check passed** — the device answered `Device` immediately afterwards, so the
+> silence is the instrument's and not a blocked send.
+>
+> **`DirList` is not implemented on a Digitone.** Verified, not assumed. elk-herd's file API does
+> not apply to this family, and reverse-engineering `0x53`–`0x5c` from Transfer's responses was
+> necessary rather than redundant.
+>
+> Worth keeping for the shape as much as the answer: the original negative was *right about the
+> conclusion and wrong about the evidence*, and it stayed unverified for three days because being
+> right by accident feels identical from the inside to being right on purpose.
+
 The first observation was worthless on its own and this project had already proved it: neither
 Digitone advertises `0x60`–`0x6f` either, and both honour them. That lesson was written down in
 `device-probing.md` and then contradicted two sections later.
@@ -301,6 +314,35 @@ With Transfer open and idle, the device answers a continuous loop of three:
 **not** a counter or a change-token — most likely a device identity, the same shape as the 4-byte
 project identity at image `0x18`. Worth confirming by capturing a Digitone II's, which should
 differ.
+
+### `0x03` does not carry the loaded project — **[verified]** 2026-07-30
+
+Asked directly from the probe, several times, **with a different project loaded in between**:
+`d2 ef a8 fd` every time. Identical to what Transfer saw across 1,991 samples.
+
+That closes it as project state and narrows what it can be. Every sample until now had been taken
+while Transfer sat *idle*, so constancy proved nothing; a value tracking the loaded project would
+have looked exactly that constant. Now it has been varied against and did not move.
+
+**It is device-scoped.** The remaining check is one click: ask a Digitone II. Different bytes
+confirms a device identity outright; the same bytes make it a protocol constant and something else
+entirely.
+
+### What does *not* carry the loaded project
+
+The question — *which stored slot is the instrument playing?* — is still open, and these are ruled
+out, each tested rather than reasoned about:
+
+| Route | Result |
+|---|---|
+| `/projects` listing, including the four unexplained trailer bytes | **no change** across a project load |
+| `0x03` | **no change** across a project load |
+| `0x09` Query | `project.`, `pattern.`, `kit.`, `sound.`, `device.` namespaces all answer `none` |
+| `0x10` DirList | **not implemented** — verified with a proven link |
+| The dump protocol | cannot reach it: the project name and slot live in the image **header**, which no dump carries |
+
+The native surface for this one question is close to exhausted, which is what makes capturing
+Elektron Transfer's own **requests** the next step rather than the first one.
 
 **This is also a trap.** 1,991 × 3 messages of background poll traffic arrive on the same input as
 anything we do. See `KNOWN-ISSUES.md`: a probe that accepts "the next message" as its reply will
