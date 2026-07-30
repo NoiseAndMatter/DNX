@@ -265,44 +265,55 @@ confirmed one field at a time. `/` returned `projects` and `soundbanks` on the f
 `listRequest` takes them as one `Page`, never separately, so a request for nothing cannot be
 written by accident.
 
-> [!danger] **`0x54` froze a Digitone 1 twice — treat it as the most dangerous message we send**
-> Reproduced twice on 2026-07-30 with a well-formed request and a valid project id from a
-> `/projects` listing. The device stops responding entirely: **capture 0 bytes**, no error, no
-> reply. Only a power cycle recovers it, and anything unsaved in the active project goes with it.
->
-> **Two explanations are live, and the first one is probably wrong.**
->
-> 1. *A leaked handle* — `0x54` allocates and we never sent `0x56`. True, and worth fixing, but it
->    does not fit: a leak does not kill a device on the **first** allocation, and it does not
->    swallow the reply. We saw no answer at all, and Transfer's open answers in ten bytes every
->    time.
-> 2. *A short request body* — the reply carries a **chunk size** (§3a), which strongly suggests the
->    request supplies one. The device answered our **path** with `invalid project id` (parsed,
->    understood, argument rejected) and answered our **four-byte** body with silence and death.
->    That is what reading past the end of a short message looks like.
->
-> `storagesession.ts` now owns the sequence and sends the close in a `finally` on every path, so
-> hypothesis 1 is closed off regardless. `id+chunk` is the default request body and `id` is kept
-> selectable, so the two arms can be told apart rather than assumed. Both remain gated behind the
-> token in `storage.ts`.
->
-> **Test on a Digitone II first** — it has never been frozen — and expect to reboot a Digitone 1.
-
-### `0x54` — open a project **by id, not by path**
-
-The device named the argument type itself. Sent a path, it answered **`invalid project id`** —
-not `Invalid path`, which is what `0x53` says. It had parsed the message, recognised the code, and
-objected to the *kind* of argument.
+### `0x54` — open a file **by path** — three attempts, two of them fatal
 
 ```
-0x54   u32 projectId
+0x54   path\0
 ```
 
-The id is the `index` from a `/projects` listing: **1-based**, and the same numbering as the
-author's own filenames — `002 MORNING_JAM.dnprj` is id 2.
+| Body sent | NUL-terminated | Device |
+|---|---|---|
+| `path\0` | **yes** | answered `invalid project id` |
+| `u32 id` | no | **froze** |
+| `u32 id, u32 2048, u8 1` | no | **froze** |
 
-So the two halves of this API address differently. **`0x53` browses a tree by path; `0x54` opens a
-project by slot.** Worth knowing before assuming one convention covers both.
+**The freeze tracks the missing terminator, not the length or the content.** That is what a string
+parse running off the end of a buffer looks like: the handler reads a NUL-terminated argument the
+way every other message in this API does, finds no NUL, and walks until something gives.
+
+So the request takes a **full path to a file** — `/projects/PRESETS`, not `/projects`.
+
+> [!danger] **`0x54` froze a Digitone 1 three times — the most dangerous message we send**
+> Each time the device stopped responding entirely: **capture 0 bytes**, no error, no reply. Only a
+> power cycle recovers it, and anything unsaved in the active project goes with it.
+>
+> Three diagnoses, in the order they were believed:
+>
+> 1. **A leaked handle** — we never sent `0x56`. True, and worth fixing, but it never fit: a leak
+>    does not kill a device on the *first* allocation and does not swallow the reply.
+> 2. **A short body** — the reply carries a chunk size, so perhaps the request supplies one. Sent
+>    `u32 id, u32 2048, u8 1`. **It froze the device again**, so length is not it either.
+> 3. **The missing NUL**, above. The only body the device has ever answered.
+>
+> `storagesession.ts` guarantees the close regardless, and the message stays gated behind a token.
+> **Two hypotheses have already been wrong; this is the third.**
+
+#### And the error message was misread — which is what cost the two power cycles
+
+`invalid project id` was recorded as the device *naming its own argument type*: "not `Invalid
+path`, which is what `0x53` says — it objected to the **kind** of argument", written down as *"a
+more useful error than most documentation"*.
+
+**It says nothing of the kind.** It says the path resolved to no valid project — which was exactly
+true, because the probe reused whatever sat in the listing box, and that was `/projects`: a
+**directory**.
+
+> **An error names what failed, not what was wanted.** `0x53` says `Invalid path` when it cannot
+> *parse* a path; `0x54` says `invalid project id` when it cannot *resolve* one. Two stages of the
+> same string argument, not two argument types.
+
+A graceful, accurate error was read as an invitation to change the argument type. The invitation
+was imaginary and the device paid for it.
 
 ### What the listing shows
 
