@@ -525,6 +525,17 @@ export interface Chunk {
   metadata: boolean;
   /** Bytes 5–17 exactly as they arrived: index, an unidentified word, the flag, and a checksum. */
   header: Uint8Array;
+  /**
+   * The chunk's checksum, **as the device computed it**.
+   *
+   * The same field a write request carries at offset 8 — verified by uploading a sound to
+   * `/soundbanks/C/29` (`cb 49 92 19`) and reading that sound back (`cb 49 92 19`). The algorithm
+   * is unknown and does not match CRC-32 in any of eleven forms, chained or cumulative.
+   *
+   * Which does not block writing back **what we just read**: the device has already told us the
+   * answer for these exact bytes. Carried for that.
+   */
+  checksum: number;
 }
 
 /**
@@ -568,6 +579,7 @@ export function parseRead(body: Uint8Array): Chunk {
     data,
     metadata: declared === 0,
     header: body.subarray(5, READ_HEADER),
+    checksum: u32(body, 14),
   };
 }
 
