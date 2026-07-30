@@ -131,8 +131,10 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <input id="lsPath" type="text" value="/" size="12" disabled>
   <label class="lbl" for="lsFrom">from</label>
   <input id="lsFrom" type="number" min="0" value="0" size="3" disabled title="Page cursor. 0 asks for the whole listing.">
+  <label class="lbl" for="lsCount">count</label>
+  <input id="lsCount" type="number" min="0" value="0" size="3" disabled title="0 asks for the whole listing. A start without a count asks for nothing.">
   <button class="btn" id="lsSend" disabled>List</button>
-  <button class="btn" id="lsOpen" disabled title="Open a file by path — 0x54, still inferred">Open file</button>
+  <button class="btn" id="lsOpen" disabled title="Open a project by its slot id — takes the number in the 'from' box">Open project</button>
 </header>
 
 <main>
