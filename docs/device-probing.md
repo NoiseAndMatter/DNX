@@ -192,6 +192,53 @@ record from a *different* project.
 
 ---
 
+## Trying an unidentified request — and why the earlier conclusion was too strong
+
+**Corrected 2026-07-30.** This document, and ROADMAP §3c-iv, concluded that whole projects cannot
+be addressed on a Digitone because neither machine advertises the file API and `DirList` timed out.
+
+**The first half of that is worthless, and this project proved it.** Neither Digitone advertises
+`0x60`–`0x6f` either, and both honour them — the lesson *"`supportedMessages` enumerates responses,
+so absence is not a refusal"* is written down two sections above, and was then contradicted by
+using absence as evidence about the file API.
+
+Two facts push the other way:
+
+1. **Elektron's Transfer writes projects into chosen slots on a Digitone.** A mechanism exists.
+2. **Project storage on both machines is a flat indexed list, not a filesystem** — no folders, the
+   same shape as sound storage. So `DirList` may have been the *wrong question* rather than an
+   unimplemented one: a Digitone has no sampler, so it has no files to manage. elk-herd's file API
+   is a **Digitakt** feature because a Digitakt has samples.
+
+A flat list addressed by index is what the **dump protocol** already does, and nine or ten dump
+types per machine remain unidentified. That is where a project object would sit.
+
+### The control on the probe page
+
+**Try code** sends one `0x6n` request with an empty body and reports whatever comes back. It obeys
+the rules above rather than sidestepping them:
+
+- **One code per press.** There is no sweep-all, because rule 4 is one message per run and the
+  whole value is knowing which code produced what.
+- **The known five are in the list as controls.** A silent unknown code means nothing until a known
+  one has spoken on the same connection — otherwise "not implemented" and "not listening" are
+  indistinguishable.
+- **Only `0x60`–`0x6f` can be built.** Enforced in `probecodes.ts`, not left to care: a `0x5n` is a
+  write, and the difference is one bit in one byte.
+- The reply is **measured against record sizes we can name**, because every record identified so
+  far was recognised by its size first.
+
+The safety argument is the same inference that made `0x60`–`0x64` acceptable — an empty body has
+nothing to store — and it is still an inference. Scratch project, one at a time, look at the device
+in between.
+
+**Try the Digitone 1 first.** Not because it is likelier to answer, but because its answer is worth
+more: the DN1's sound pool cannot be requested at all, so if a project-level object exists and
+carries a whole project, on a DN1 it would likely carry the pool with it — removing the only manual
+step in the expander flow. On a DN2 the same finding is merely convenient.
+
+---
+
 ## If you want to probe an unknown code anyway
 
 It is a legitimate thing to want, and this is how to make it as cheap as possible to be wrong:
