@@ -58,6 +58,34 @@ no way to find out by sending them that is also a way to find out safely.
 
 ## The regime
 
+### 0. Prove the link before believing a silence
+
+**Added 2026-07-30, after three days of not doing it.**
+
+`output.send()` does not throw when another application holds the MIDI output. It returns normally
+and the bytes go nowhere. So a silence means *the device did not answer* **or** *we never spoke*,
+and nothing on the wire distinguishes them.
+
+Send something the device must answer — `Device` works, it takes no arguments and every Elektron
+implements it — and **match the reply to your own message id**, because Transfer polls `Device` too
+and a bare code match will pass on its traffic as yours.
+
+Until that control passes, **a negative result is not a result.** Two conclusions in this project
+were built on silences that may never have been transmitted: that a Digitone has no file API, and
+that a run of unknown codes was unimplemented. The first was wrong; the second had to be discarded
+and re-run.
+
+> A tool that cannot tell whether it spoke has no business drawing conclusions from silence.
+
+### 0a. And do not let a negative install a guard against retesting it
+
+The probe once refused to send `DirList` because a previous `DirList` had timed out. That is
+**self-sealing**: a possibly-false negative became code that guaranteed nobody would find out.
+
+A guard against sending something is a claim about the device. Write down what the claim rests on,
+so a later session can see whether it still holds — and if the evidence is a single silence, it
+does not hold.
+
 ### 1. Allowlist, never blocklist
 
 An allowlist fails safe; a blocklist fails dangerous. `src/device/capabilities.ts` classifies
