@@ -5,6 +5,31 @@ converter.
 
 ---
 
+## Silence proved nothing, and we kept treating it as evidence — FIXED 2026-07-30
+
+**`output.send()` does not throw when another application holds the MIDI output.** It returns
+normally and the bytes go nowhere. So a silence means either *the device did not answer* or *we
+never spoke* — and the probe had no way to tell those apart while drawing conclusions from
+silences for three days.
+
+What it cost:
+
+- **`DirList` timing out** was one of two pillars under *"the +Drive file API does not exist on a
+  Digitone"*. The API exists. If Transfer was running at the time, that request may never have been
+  sent — so `0x10` is **untested**, not absent.
+- **A run of unknown-code silences** (`0x65`, `0x66`, `0x67`, `0x6c`–`0x6e`) was recorded as "not
+  implemented" while Transfer held the port. Every one is void.
+
+**Fixed** with `linkIsAlive()`: before any silence is interpreted, send `Device` — which every
+Elektron answers, which takes no arguments — and match the reply to *our* message id, since
+Transfer polls `Device` too. A negative is now reported as **verified** or **void**, and a void one
+says plainly not to record it.
+
+elk-herd has had a `LoopbackProbe` in `SysEx/Client.elm` all along. It was read on day one and
+filed as housekeeping.
+
+> **A tool that cannot tell whether it spoke has no business drawing conclusions from silence.**
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.

@@ -57,6 +57,8 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
+import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import { decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -283,6 +285,12 @@ async function probe(): Promise<void> {
     // The unnamed part of that list is where a project object would be, so the codes to try are
     // built from what this device actually advertises rather than from a fixed list.
     fillProbeCodes(device.supportedMessages);
+
+    // Enabled regardless of what the device advertises. `supportedMessages` lists *responses*, and
+    // this API's codes are not in it on either machine — which is exactly the reasoning that made
+    // us conclude for two days that the file API did not exist.
+    $<HTMLInputElement>("lsPath").disabled = false;
+    $<HTMLButtonElement>("lsSend").disabled = false;
 
     // Do not send a message the device says it does not implement. The first probe did, and
     // spent two seconds timing out on a `DirList` that was never coming — which reads like a
@@ -1405,6 +1413,200 @@ function awaitPatternKit(
   });
 }
 
+// --- proving the link before believing a silence ---------------------------------------------------
+
+/**
+ * Ask the device something it must answer, and report whether it did.
+ *
+ * **`output.send()` does not throw when another application holds the port.** It returns normally
+ * and the bytes go nowhere — so a silence means either *the device did not answer* or *we never
+ * spoke*, and this page has had no way to tell those apart. It has been resolving that ambiguity
+ * by assumption for three days.
+ *
+ * The cost is on the record. `DirList` timing out was one of the two pillars holding up the
+ * conclusion *"the +Drive file API does not exist on a Digitone"* — and if Transfer was running at
+ * the time, that request may never have left the machine. The API turned out to exist. Later, a
+ * run of unknown-code "silences" was recorded while Transfer held the port, and every one of them
+ * is void for the same reason.
+ *
+ * elk-herd has had a `LoopbackProbe` in `SysEx/Client.elm` all along. It was read on day one and
+ * filed as housekeeping.
+ *
+ * `Device` is the control because every Elektron answers it, it takes no arguments, and it is
+ * already the first thing the probe sends. **A tool that cannot tell whether it spoke has no
+ * business drawing conclusions from silence.**
+ */
+async function linkIsAlive(output: MIDIOutput): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(false);
+    }, LINK_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      if (!isApiMessage(data)) return;
+      let frame;
+      try {
+        frame = decodeMessage(data);
+      } catch {
+        return;
+      }
+      // Transfer polls `Device` too, so a bare code match would pass on its traffic. Ours is the
+      // one answering the id we just sent.
+      if (frame.code !== Code.Device + 0x80 || frame.respId !== LINK_ID) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(true);
+    };
+
+    try {
+      output.send([...deviceRequest(LINK_ID)]);
+    } catch {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(false);
+    }
+  });
+}
+
+/** Fixed and high, so a reply can be matched to it and it cannot collide with Transfer's low ids. */
+const LINK_ID = 40_000;
+const LINK_TIMEOUT_MS = 1500;
+
+/** Shown when the control fails, because the cause is almost always the same one. */
+const LINK_DEAD =
+  "the device did not answer a message it always answers, so nothing we send is reaching it. " +
+  "Another application — Elektron Transfer, Overbridge, a DAW — is most likely holding the output " +
+  "port. Close it and try again. Until this passes, a silence proves nothing.";
+
+// --- listing the +Drive --------------------------------------------------------------------------
+
+/**
+ * Ask the device what is on its +Drive.
+ *
+ * The first use of the storage API — see `docs/device-storage.md`. **The responses were decoded
+ * from Elektron Transfer's own traffic; the request is a reconstruction**, because Web MIDI let us
+ * watch the device's half of that conversation and never Transfer's.
+ *
+ * Being wrong is cheap: it is a read, and the device answers a bad path with **`Invalid path`** in
+ * as many words. So this is the rare case where guessing is the right move rather than a shortcut.
+ *
+ * Unlike the dump protocol, a listing states each entry's **position** in a 32-bit field — which is
+ * the thing the 7-bit object number cannot do, and the reason a project browser is possible at all.
+ */
+$("lsSend").addEventListener("click", () => {
+  listPath().catch((error: unknown) => {
+    status(`Listing failed: ${String(error)}`, "error");
+    verdictCard("Listing failed", [["Error", String(error)]]);
+  });
+});
+
+async function listPath(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing collects the reply.", "warn");
+    return;
+  }
+
+  const path = $<HTMLInputElement>("lsPath").value;
+  const log: [string, string][] = [
+    ["Path", path || "(empty — the root)"],
+    ["Sending", `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string`],
+    ["Note", "the request shape is inferred; a wrong guess is answered 'Invalid path'"],
+  ];
+  verdictCard("Listing…", log);
+
+  const reply = await new Promise<Uint8Array | undefined>((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(undefined);
+    }, LIST_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      // Only an API frame answering *this* code counts. Transfer polls the same port constantly,
+      // and accepting "the next message" is exactly how its traffic got reported as our answer.
+      if (!isApiMessage(data)) return;
+      let frame;
+      try {
+        frame = decodeMessage(data);
+      } catch {
+        return;
+      }
+      if (frame.code !== StorageCode.List + 0x80) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(frame.body);
+    };
+
+    try {
+      output.send([...listRequest(nextListId++, path)]);
+    } catch (error) {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      log.push(["Send failed", String(error)]);
+      resolve(undefined);
+    }
+  });
+
+  if (!reply) {
+    // The control that separates "it did not answer" from "we never spoke". Without it, both look
+    // the same and the temptation is to record the more interesting one.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? "No listing — but the device is answering" : "Nothing is reaching the device", [
+      ...log,
+      ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
+      ["Link check", alive ? "PASSED — Device answered, so the silence is real" : "FAILED"],
+      [
+        "Means",
+        alive
+          ? "this device does not implement the listing, or the request shape is wrong. A genuine " +
+            "negative, worth recording."
+          : LINK_DEAD,
+      ],
+    ]);
+    status(alive ? "No listing, and the link is fine." : "Nothing is reaching the device.", alive ? "warn" : "error");
+    return;
+  }
+
+  try {
+    const listing = parseListing(reply);
+    const rows: [string, string][] = [
+      ...log,
+      ["Entries", `${listing.entries.length}, starting at ${listing.first}`],
+      ["Next cursor", String(listing.next)],
+    ];
+    for (const e of listing.entries.slice(0, 40)) {
+      rows.push([
+        `${String(e.index).padStart(4)}  ${e.kind === "directory" ? "dir " : "file"}`,
+        `${e.name}${e.size !== undefined ? `  ${e.size.toLocaleString()} B` : ""}` +
+          `${e.children !== undefined ? `  ${e.children} items` : ""}`,
+      ]);
+    }
+    if (listing.entries.length > 40) rows.push(["…", `${listing.entries.length - 40} more`]);
+
+    verdictCard(`${path || "/"} — ${listing.entries.length} entries`, rows);
+    status(`${path || "/"}: ${listing.entries.length} entries. The storage API works.`, "ok");
+  } catch (error) {
+    verdictCard("The device answered, but the listing did not decode", [
+      ...log,
+      ["Error", String(error)],
+      ["Bytes", [...reply.subarray(0, 32)].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
+      ["Means", String(error).includes("Invalid path") ? "the path was wrong — the request shape is right, which is the bigger news" : "the response format differs from what was decoded"],
+    ]);
+    status(String(error), "warn");
+  }
+}
+
+/** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
+let nextListId = 30_000;
+
+const LIST_TIMEOUT_MS = 4000;
+
 // --- trying an unidentified request code ---------------------------------------------------------
 
 /**
@@ -1511,19 +1713,23 @@ async function tryUnknownCode(): Promise<void> {
   });
 
   if (!reply) {
-    verdictCard(`${hex(code)} — no answer`, [
+    // **This is the check whose absence voided a whole afternoon.** A run of silences was recorded
+    // as "not implemented" while Elektron Transfer held the output port, so those requests may
+    // never have been sent at all. The control makes a negative worth something.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? `${hex(code)} — no answer (link verified)` : `${hex(code)} — NOTHING WAS SENT`, [
       ...log,
       ["Result", `nothing within ${UNKNOWN_TIMEOUT_MS}ms`],
+      ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
       [
         "Means",
-        info.known
-          ? "a code we KNOW works stayed silent, so the transport is the problem rather than the " +
-            "code. Nothing else is worth trying until a control answers."
-          : "not implemented, or it wants something we did not send. Try the next one, and run a " +
-            "known code occasionally as a control.",
+        alive
+          ? "the link is proven, so this is a real negative: the code is not implemented, or it " +
+            "wants an argument we did not send. Worth recording."
+          : `${LINK_DEAD} **This result is void** — do not record it.`,
       ],
     ]);
-    status(`${hex(code)}: silence.`, info.known ? "error" : "warn");
+    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void — nothing reached the device.`, alive ? "warn" : "error");
     return;
   }
 
