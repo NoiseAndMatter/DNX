@@ -487,6 +487,21 @@ in 248 was clean, and `G11` is an untouched blank in a project whose content sto
 transfer glitch is more likely than a format misunderstanding. Worth watching for on the next
 capture: if the same slot fails again it is not a glitch.
 
+#### It happened again, to a different pattern — 2026-07-30
+
+The `0x6f` capture below carries **one bad checksum at object 112** (`H1`): stored 1,296 against
+11,584 computed. Same shape as `G11`, different slot — so this is **not** a bad pattern record, and
+the earlier suspicion of a per-slot format problem is now dead twice over.
+
+The useful reading is the opposite of reassuring. Two captures, two corrupt patterns, **one each**,
+in different slots: a large transfer over this wire corrupts a message roughly once in a couple of
+hundred, silently, and only the checksum notices. Both were caught, both re-read clean.
+
+> **A read is not finished until its checksums are, and a rebuild that skips that check will
+> eventually write a corrupt pattern into a project and pass every test we have.**
+> `src/project/rebuild.ts` refuses on a bad checksum for this reason; that refusal is not
+> defensive coding, it is the observed failure rate.
+
 ### A kit is dumpable on its own — and it is exactly the kit record
 
 A `0x52` Kit dump sent from the kit manager carried a payload of **10,752 bytes**: precisely
@@ -750,6 +765,30 @@ from the bytes.** Both are `0x53`, both carry an object number, both are 302 byt
 request's four kit sounds as pool slots 0–3 would overwrite sound-lock targets with whatever the
 tracks happened to be using — so `src/project/rebuild.ts` refuses to place DN1 sound records until
 told which they are.
+
+### `0x6f` on the Digitone II — VERIFIED 2026-07-30
+
+The same single request works on the DN2, and it replaces the 257-request read plan outright.
+
+| | `0x6f`, one request | per-object, 257 requests |
+|---|---|---|
+| Messages back | **248** | 257 |
+| Bytes | **14,658,351** | 14,657,727 |
+| PatternKit | 128 | 128 |
+| Sound | 119 | 128 asked for |
+| ProjectSettings | 1 | 1 |
+
+It answers with `0x50` rather than the `0x5f` the `+0x10` convention predicts, exactly as on the
+DN1 and exactly as elk-herd's `StartDump` describes: `0x6f` starts a **stream**, so what arrives is
+a run of ordinary dump responses, not one reply.
+
+**119 sounds, not 128.** The pool has holes and the device sends what is there — the same behaviour
+the per-object plan works around by giving up after three consecutive silences, except here there
+is nothing to give up on and no silences to interpret.
+
+So `readplan.ts`'s 257 requests are now the fallback rather than the method: one message, no pacing
+decisions, no retry policy, and no per-code give-up heuristic. What it does **not** remove is the
+checksum check — this very capture carries a corrupt pattern (§ *One bad checksum*).
 
 ### The Digitone 1's request band, mapped — VERIFIED 2026-07-30
 

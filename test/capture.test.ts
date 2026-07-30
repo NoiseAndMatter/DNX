@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DumpCapture, captureFileName, summariseCapture } from "../src/device/capture.js";
+import { Code, encodeMessage } from "../src/device/api.js";
+import { DumpCapture, apiName, captureFileName, summariseCapture } from "../src/device/capture.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 /**
@@ -17,6 +18,18 @@ function anyCapture(): Uint8Array {
   const files = readdirSync(CAPTURES).filter((f) => /\.syx$/i.test(f));
   if (files.length === 0) throw new Error(`no .syx captures in ${CAPTURES}`);
   return new Uint8Array(readFileSync(join(CAPTURES, files[0]!)));
+}
+
+/**
+ * A capture this project's probe made from a real device, in the private corpus's session folder.
+ *
+ * Named rather than globbed: each of these is evidence of one specific thing that went wrong, and
+ * a test that took whichever file came first would pass by finding something else. Missing files
+ * throw, which is the point — a fixture that quietly is not there is a test that quietly is not
+ * one.
+ */
+function hardwareTest(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(join(CAPTURES, "..", "..", "..", "99_HardwareTest", name)));
 }
 
 test("a real device capture is described, not merely accepted", { skip }, () => {
@@ -140,6 +153,7 @@ test("a mixed capture is named for the whole thing, not its biggest group", () =
     foreign: 0,
     unparsed: 0,
     trailingBytes: 0,
+    api: [],
     groups: [
       { productId: 21, product: "Digitone II", dumpType: 0x50, name: "PatternKit dump", count: 128, objects: [], numbersExhausted: false, bytes: 14_606_432, badChecksum: 0 },
       { productId: 21, product: "Digitone II", dumpType: 0x53, name: "Sound dump", count: 119, objects: [], numbersExhausted: false, bytes: 50_694, badChecksum: 0 },
@@ -148,6 +162,63 @@ test("a mixed capture is named for the whole thing, not its biggest group", () =
   const name = captureFileName(summary, new Date(2026, 6, 28, 22, 51));
   assert.match(name, /248msg/, `"${name}" should count every message, not just the biggest group`);
   assert.doesNotMatch(name, /128x/, `"${name}" should not imply only 128 messages were saved`);
+});
+
+// --- the other protocol --------------------------------------------------------------------------
+
+test("API traffic is counted as API, not described as a mangled dump", () => {
+  // A capture of 5,973 API messages was reported as `product 16` with every checksum BAD, because
+  // this summariser is a *dump* parser: fed `F0 00 20 3C 10 00 …` it reads byte 4 as a product and
+  // byte 6 as a dump type and invents both. That hid Elektron Transfer polling the device for the
+  // best part of an hour, and a wrong conclusion was recorded on the strength of it.
+  const summary = summariseCapture(encodeMessage(7, Code.Device));
+
+  assert.deepEqual(summary.groups, [], "not a dump, so not in the dump groups");
+  assert.equal(summary.api.length, 1);
+  assert.equal(summary.api[0]!.code, Code.Device);
+  assert.match(summary.api[0]!.name, /Device request/);
+  assert.equal(summary.foreign, 0, "it is Elektron's, just not a dump");
+  assert.equal(summary.unparsed, 0, "and it is readable — by the right parser");
+});
+
+test("the storage codes are named, because a capture full of 0xd3 tells nobody anything", () => {
+  const listing = summariseCapture(encodeMessage(9, 0x53));
+  assert.equal(listing.api[0]!.name, "directory listing request");
+  // The reply is the request +0x80, so 0xd3 has to resolve back to the same name.
+  assert.equal(apiName(0xd3), "directory listing reply");
+  assert.equal(apiName(0xda), "mutation ack reply");
+  // An unknown code says so rather than borrowing a neighbour's name.
+  assert.equal(apiName(0x77), "unknown 0x77");
+});
+
+test("a capture of Elektron Transfer reads as Transfer, not as 5,973 broken dumps", { skip }, () => {
+  // The file that caused this. Nearly an hour of Transfer polling a Digitone 1, saved by the probe
+  // as `product16_Project_5973msg_1338.syx` — a product that does not exist and a project that was
+  // never dumped. The whole capture is the other protocol.
+  const summary = summariseCapture(hardwareTest("product16_Project_5973msg_1338.syx"));
+
+  assert.deepEqual(summary.groups, [], "there is not one dump in this file");
+  assert.equal(summary.foreign, 0);
+  assert.ok(summary.api.length > 0, "the API traffic has to land somewhere");
+
+  const counted = summary.api.reduce((n, g) => n + g.count, 0);
+  assert.equal(counted + summary.unparsed, summary.messages, "every message is accounted for");
+
+  // Transfer's idle loop is Device / Version / 0x03, and the replies carry the request's code
+  // +0x80 — so finding 0x81 by name is what proves the decode rather than the counting.
+  const names = summary.api.map((g) => g.name);
+  for (const expected of ["Device reply", "Version reply", "idle poll reply"]) {
+    assert.ok(names.includes(expected), `expected ${expected} in ${names.join(", ")}`);
+  }
+
+  const device = summary.api.find((g) => g.code === 0x81)!;
+  assert.equal(device.replies, device.count, "a reply carries the id of the request it answers");
+});
+
+test("a capture that is all API is named for that, not for a product that does not exist", { skip }, () => {
+  const summary = summariseCapture(hardwareTest("product16_Project_5973msg_1338.syx"));
+  const name = captureFileName(summary, new Date(2026, 6, 30, 13, 38));
+  assert.match(name, /^API_5973msg_1338\.syx$/, `"${name}" should say API and the true count`);
 });
 
 test("an empty capture still gets a usable name", () => {
@@ -174,10 +245,7 @@ test("running out of object numbers is reported, not mistaken for lost messages"
   // the field is a single 7-bit SysEx byte. Showing "128 objects" against 182 messages read as
   // data loss, and the user reasonably asked whether the capture was buggy. It was not; the
   // display was.
-  const bank = new Uint8Array(readFileSync(
-    join(CAPTURES, "..", "..", "..", "99_HardwareTest", "Digitone_Sound_182x_2308.syx"),
-  ));
-  const summary = summariseCapture(bank);
+  const summary = summariseCapture(hardwareTest("Digitone_Sound_182x_2308.syx"));
   const sounds = summary.groups.find((g) => g.dumpType === 0x53);
   if (!sounds) throw new Error("no sound dumps in the DN1 bank capture");
 
