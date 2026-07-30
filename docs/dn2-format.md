@@ -719,7 +719,22 @@ pool**. So a track sound need never be there.
 The consequence for a restore is that **two captures are complete**: `0x50` carries every track
 sound whatever its origin, and the panel pool send carries every lock target.
 
-> [!warning] **A Digitone 1's sound pool has no known request**
+> [!success] **Superseded 2026-07-30: `0x6f` fetches the whole project, pool included**
+> The warning below is left for its reasoning but its conclusion is **wrong**. `0x6f` — elk-herd's
+> WholeProject request, never previously sent to a Digitone — returns a **stream**: 128 PatternKit,
+> **91 Sound, and ProjectSettings**, 220 messages in all.
+>
+> The 91 sounds are **byte-identical to a front-panel pool dump**, same object numbers, same gaps
+> at the two slots the user had deleted. So a DN1's pool *is* requestable, and the request returns
+> **more than the front-panel project dump does** — that gives 129 messages with no sounds at all.
+>
+> `0x6f` answers with `0x50`, not the `0x5f` the `+0x10` convention predicts, because it is a
+> **stream** rather than a single response — exactly as elk-herd's `StartDump` describes.
+>
+> The manual "dump the pool from the front panel" step is therefore **not required**, and any
+> design built around it (ROADMAP §4b, §4d) should be revisited.
+
+> [!warning] **A Digitone 1's sound pool has no known request** — SUPERSEDED, see above
 > `0x63` is not it, and a DN1 project dump carries no `0x53` at all. The pool is real — 128 slots
 > at `tailBase + 4`, and what every sound lock points at — but nothing we have tried reaches it.
 >
@@ -735,6 +750,41 @@ from the bytes.** Both are `0x53`, both carry an object number, both are 302 byt
 request's four kit sounds as pool slots 0–3 would overwrite sound-lock targets with whatever the
 tracks happened to be using — so `src/project/rebuild.ts` refuses to place DN1 sound records until
 told which they are.
+
+### The active-object band: `+8` — VERIFIED 2026-07-30
+
+**[verified]** on a Digitone 1. Four dump types nobody had identified turn out to be the **active**
+counterparts of the indexed ones, at exactly **+8**:
+
+| Indexed (a stored slot) | | Active (whatever the device has selected) | Payload |
+|---|---|---|
+| `0x50` PatternKit ← `0x60` | **+8** | **`0x58` ← `0x68`** | 20,992 |
+| `0x51` Pattern ← `0x61` | **+8** | **`0x59` ← `0x69`** | 18,432 |
+| `0x52` Kit ← `0x62` | **+8** | **`0x5a` ← `0x6a`** | 2,560 |
+| `0x53` Sound ← `0x63` | **+8** | **`0x5b` ← `0x6b`** | 302 |
+
+Every payload matches its indexed twin's size, and each was checked against the project: `0x59`,
+`0x5a` and `0x58` are byte-identical to pattern **C7**'s pattern half, kit half and whole record.
+
+Two properties worth keeping:
+
+- **The response's object number is not an echo.** We sent 0; the device answered **38** — telling
+  us *which* object it gave us. So **`0x6a` answers "what pattern is selected?"** live, on demand,
+  which previously could only be read from a saved project's cursor field (§5b).
+- **`0x6b`'s index is the track**: object 0 returned track 1's sound, object 1 returned track 2's,
+  both byte-identical to that kit's slots. `0x68`–`0x6a` ignore the index entirely.
+
+`0x5c` would be "active project settings" by the same rule, and `0x6c` is silent — consistent,
+since only one project is ever loaded, so `0x64` already *is* the active one.
+
+#### This retires the "`0x63` is misaimed" reading
+
+§5c above spends some length establishing that a DN1's `0x63` reaches kit sounds rather than the
+pool, framed as a quirk. **It is not a quirk.** `0x63` is the *active-kit sound* request doing
+exactly its job; the pool was never its target. The pool's path is `0x6f`.
+
+The observations in that section stand — the counts, the silence on occupied slots, the mismatched
+contents. Only the interpretation was wrong.
 
 #### The 128th pattern explains itself
 
