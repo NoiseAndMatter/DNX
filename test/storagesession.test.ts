@@ -87,7 +87,7 @@ test("a file arrives whole, in order, and the handle is released", async () => {
     CLOSE_OK,
   ]);
 
-  const file = await readStoredFile(2, { transport: io });
+  const file = await readStoredFile("/projects/PRESETS", { transport: io });
 
   assert.deepEqual([...file.bytes], [0x7b, 0x22, 0x61, 0x7d]);
   assert.equal(file.chunks, 3, "the metadata reply is a chunk that arrived, even carrying no data");
@@ -101,7 +101,7 @@ test("the end of a file is the device's flag, never a short chunk", async () => 
   // chunks and a short one. Stopping on a short read would have truncated the first file and
   // worked on the second - which is the worst possible way to be wrong.
   const io = scripted([OPEN_OK, chunk(1, [1, 2, 3], true), CLOSE_OK]);
-  const file = await readStoredFile(2, { transport: io });
+  const file = await readStoredFile("/projects/PRESETS", { transport: io });
 
   assert.deepEqual([...file.bytes], [1, 2, 3]);
   assert.equal(file.closed, true);
@@ -110,24 +110,25 @@ test("the end of a file is the device's flag, never a short chunk", async () => 
 // --- the promise this module exists to keep ------------------------------------------------------
 
 test("a read that fails still closes the handle", async () => {
-  // 0x54 froze the user's Digitone 1 twice and cost two power cycles. Whatever the cause turns out
-  // to be, an allocate that can skip its release is the one shape that cannot be safe.
+  // 0x54 froze the user's Digitone 1 three times. The cause is now thought to be something else
+  // entirely, and this still holds: an allocate that can skip its release is the one shape that
+  // cannot be safe, whatever else turns out to be true.
   const io = scripted([OPEN_OK, new Error("device went silent")]);
 
-  await assert.rejects(readStoredFile(2, { transport: io }), /device went silent/);
+  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /device went silent/);
   assert.deepEqual(io.sent, [StorageCode.Open, StorageCode.Read, StorageCode.Close]);
 });
 
 test("a chunk that fails its own checks still closes the handle", async () => {
   const io = scripted([OPEN_OK, chunk(7, [1, 2], false)]);
 
-  await assert.rejects(readStoredFile(2, { transport: io }), /expected chunk 1, the device sent 7/);
+  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /expected chunk 1, the device sent 7/);
   assert.equal(io.sent.at(-1), StorageCode.Close, "the last thing on the wire is the release");
 });
 
 test("a close that fails does not turn a good read into a bad one", async () => {
   const io = scripted([OPEN_OK, chunk(1, [9], true), new Error("close timed out")]);
-  const file = await readStoredFile(2, { transport: io });
+  const file = await readStoredFile("/projects/PRESETS", { transport: io });
 
   assert.deepEqual([...file.bytes], [9], "the bytes arrived and the read succeeded");
   assert.equal(file.closed, false, "and the caller is told the release was not acknowledged");
@@ -138,16 +139,27 @@ test("an open that fails still attempts a release", async () => {
   // that simply did not answer us, and that is exactly the leak this module exists to prevent.
   const io = scripted([new Error("no answer")]);
 
-  await assert.rejects(readStoredFile(2, { transport: io }), /no answer/);
+  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /no answer/);
   assert.deepEqual(io.sent, [StorageCode.Open, StorageCode.Close]);
 });
 
 test("the device's own refusal is what the caller is told", async () => {
-  // "invalid project id" is what taught us 0x54 takes a slot rather than a path. Replacing the
-  // device's wording with ours would have thrown that away.
+  // The device's wording is the best documentation this protocol has, and substituting ours would
+  // throw it away. It is also the thing most worth reading carefully: `invalid project id` was
+  // taken as "the argument should be an id rather than a path", when it meant "this path resolved
+  // to no project" - and acting on the misreading cost two power cycles.
   const io = scripted([OPEN_FAILED, CLOSE_OK]);
 
-  await assert.rejects(readStoredFile(999, { transport: io }), /Could not resolve/);
+  await assert.rejects(readStoredFile("/projects/NOPE", { transport: io }), /Could not resolve/);
+});
+
+test("an empty path is refused before it reaches the wire", async () => {
+  // Every body that froze a Digitone 1 was one with no NUL-terminated string in it, and an empty
+  // argument is the shortest way to write that by accident.
+  const io = scripted([]);
+
+  await assert.rejects(readStoredFile("", { transport: io }), /needs a path/);
+  assert.deepEqual(io.sent, [], "nothing was sent, so there is nothing to close");
 });
 
 // --- refusing to guess ---------------------------------------------------------------------------
@@ -157,7 +169,7 @@ test("a chunk belonging to another handle is refused, not spliced in", async () 
   foreign.set(u32(9), 1);
   const io = scripted([OPEN_OK, foreign]);
 
-  await assert.rejects(readStoredFile(2, { transport: io }), /handle 9, this read holds 1/);
+  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /handle 9, this read holds 1/);
   assert.equal(io.sent.at(-1), StorageCode.Close);
 });
 
@@ -177,7 +189,7 @@ test("a device that never says stop is refused rather than read forever", async 
   };
 
   await assert.rejects(
-    readStoredFile(2, { transport: io, maxChunks: 4 }),
+    readStoredFile("/projects/PRESETS", { transport: io, maxChunks: 4 }),
     /did not end after 4 chunks/,
   );
   assert.equal(io.sent.at(-1), StorageCode.Close);
@@ -193,5 +205,5 @@ test("a reply with the wrong code is refused rather than misparsed", async () =>
     },
   };
 
-  await assert.rejects(readStoredFile(2, { transport: io }), /expected 0xd4 in reply to 0x54, got 0xd3/);
+  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /expected 0xd4 in reply to 0x54, got 0xd3/);
 });

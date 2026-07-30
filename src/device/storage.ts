@@ -84,80 +84,96 @@ export function listRequest(msgId: number, path: string, page?: Page): Uint8Arra
 }
 
 /**
- * Open a project for reading, **by id rather than by path**.
+ * Open a stored file for reading, **by path**.
  *
- * The device said so itself. Sent a path, `0x54` answered **`invalid project id`** — not
- * `Invalid path`, which is what `0x53` says. It had parsed the message, recognised the code, and
- * objected to the *kind* of argument. A more useful error than most documentation.
+ * ```
+ * 0x54   path\0
+ * ```
  *
- * So the two halves of this API address differently: `0x53` browses a tree by path, `0x54` opens a
- * project by its slot — the `index` a `/projects` listing gives, 1-based, matching the numbers in
- * the user's own filenames (`002 MORNING_JAM.dnprj` is id 2).
+ * ## The three attempts, which only make sense together
  *
- * The width is inferred from the reply, `01 00 00 00 01 …`, which reads as status plus a u32.
+ * | Body | NUL-terminated | Device |
+ * |---|---|---|
+ * | `path\0` | **yes** | answered `invalid project id` |
+ * | `u32 id` | no | **froze** |
+ * | `u32 id, u32 2048, u8 1` | no | **froze** |
+ *
+ * Three attempts, and the freeze tracks **the missing terminator**, not the length or the content.
+ * That is what a string parse running off the end of a buffer looks like: the handler reads a
+ * NUL-terminated argument the way every other message in this API does, finds no NUL, and walks
+ * until something gives.
+ *
+ * ## And the error message was misread, which is how we got here
+ *
+ * `invalid project id` was taken as *"the argument should be an id, not a path"* — and it was
+ * written down as the device naming its own argument type, *"a more useful error than most
+ * documentation"*. **It says nothing of the kind.** It says the path resolved to no valid project,
+ * which is exactly right for the path we sent: the probe reused whatever was in the listing box,
+ * and that was `/projects` — a **directory**.
+ *
+ * So a graceful, accurate error was read as an invitation to change the argument type, and changing
+ * it cost two power cycles.
+ *
+ * > **An error names what failed, not what was wanted.** `0x53` says `Invalid path` when it cannot
+ * > *parse* a path and `0x54` says `invalid project id` when it cannot *resolve* one — two stages of
+ * > the same string argument, not two argument types.
+ *
+ * Still gated, because two hypotheses have now been wrong and this is the third.
  */
 export function openRequest(
   msgId: number,
-  projectId: number,
+  path: string,
   acknowledge?: typeof FREEZES,
-  body: OpenBody = "id+chunk",
 ): Uint8Array {
   if (acknowledge !== FREEZES) throw new ListingError(FREEZE_WARNING);
-  if (!Number.isInteger(projectId) || projectId < 0) {
-    throw new ListingError(`project id ${projectId} is not a slot number`);
-  }
-  if (body === "id") return encodeMessage(msgId, StorageCode.Open, u32Bytes(projectId));
-
-  const out = new Uint8Array(9);
-  out.set(u32Bytes(projectId), 0);
-  out.set(u32Bytes(DEFAULT_CHUNK_SIZE), 4);
-  out[8] = 1;
-  return encodeMessage(msgId, StorageCode.Open, out);
+  // Refused here rather than sent, because "no NUL" is the one property both freezes share and an
+  // empty argument is the shortest way to write it.
+  if (path.length === 0) throw new ListingError("0x54 needs a path — an empty one is what froze it");
+  return encodeMessage(msgId, StorageCode.Open, string0(path));
 }
 
 /**
- * Which guess at `0x54`'s argument list to send.
+ * The two bodies that froze a Digitone 1, kept so nobody rediscovers them.
  *
- * - `id` — four bytes, the projectId alone. **This is the shape that froze a Digitone 1.**
- * - `id+chunk` — `u32 id, u32 chunkSize, u8 1`, mirroring the reply. The default; see below.
- *
- * Selectable rather than hardcoded because these two are an **experiment**, and an experiment whose
- * arms cannot both be run tells you nothing about which arm mattered.
+ * **Not exported as something to send.** They exist to be named in the documentation and in the
+ * probe's dropdown as *"this is the one that froze it"*, which is worth more than deleting them —
+ * a deleted experiment gets re-run.
  */
-export type OpenBody = "id" | "id+chunk";
+export function frozenOpenBodies(projectId: number): { id: Uint8Array; idChunk: Uint8Array } {
+  const idChunk = new Uint8Array(9);
+  idChunk.set(u32Bytes(projectId), 0);
+  idChunk.set(u32Bytes(DEFAULT_CHUNK_SIZE), 4);
+  idChunk[8] = 1;
+  return { id: u32Bytes(projectId), idChunk };
+}
 
 /** Every open reply Transfer received answered 2,048, on three different files. */
 export const DEFAULT_CHUNK_SIZE = 2048;
 
 /**
- * **`0x54` froze a Digitone 1 twice, 2026-07-30.**
+ * **`0x54` froze a Digitone 1 three times, 2026-07-30.**
  *
  * A well-formed open with a valid project id — `2`, `MORNING_JAM`, straight out of a `/projects`
  * listing — and the device stopped responding entirely. The capture is **0 bytes**: not a slow
  * reply, not an error, nothing at all. Only a power cycle recovers it, and anything unsaved in the
  * active project goes with it.
  *
- * ## The first explanation, which was probably wrong
+ * ## Three explanations, in the order they were believed
  *
- * *"`0x54` allocates a handle and we never sent `0x56` to release it."* That is true, and it was
- * worth fixing — `storagesession.ts` now guarantees the close — but as an account of the freeze it
- * **does not fit the evidence**. A leaked handle does not kill a device on the first allocation,
- * and it certainly does not swallow the reply: we saw *no answer at all*, and Transfer's own open
- * answers in ten bytes every time.
+ * **1. A leaked handle.** *"`0x54` allocates and we never sent `0x56`."* True, and worth fixing —
+ * `storagesession.ts` now guarantees the close — but it never fit: a leak does not kill a device on
+ * the **first** allocation, and it does not swallow the reply. We saw no answer at all, while
+ * Transfer's open answers in ten bytes every time.
  *
- * ## The better one, from Transfer's replies — 2026-07-30
+ * **2. A short body.** The reply carries a chunk size of 2,048, so perhaps the request supplies
+ * one. Sent `u32 id, u32 2048, u8 1`. **It froze the device again** — so length is not it either.
  *
- * The reply is `u8 ok, u32 handle, u32 2048, u8 1`. That middle field is a **chunk size**: 2,048 on
- * all three opens in the capture, across a manifest, a sound and a project. An API that reports a
- * chunk size back is very likely one you *asked* for a chunk size.
+ * **3. The missing NUL** — the one the evidence actually supports. See `openRequest`: the only body
+ * the device ever answered was the NUL-terminated path, and both bodies that killed it were raw
+ * integers with no terminator.
  *
- * Which makes the shape of the failure fit: the device answered our **path** with `invalid project
- * id` — parsed, understood, argument rejected — and then answered our **four-byte** body with
- * silence and death. That is what reading past the end of a short message looks like. Our body was
- * probably five bytes short, not merely unaccompanied by a close.
- *
- * So `id+chunk` is the default, `id` is kept so the experiment can be run both ways, and this stays
- * gated either way, because both explanations are still hypotheses.
+ * Two wrong diagnoses cost two power cycles, and both were wrong the same way: **a hypothesis was
+ * recorded as a finding.** Number three is a hypothesis too.
  *
  * ## Why a hard gate rather than a warning
  *
@@ -171,11 +187,11 @@ export const DEFAULT_CHUNK_SIZE = 2048;
 export const FREEZES = Symbol("0x54 froze a Digitone 1 — see openRequest");
 
 const FREEZE_WARNING =
-  "0x54 (open) froze a Digitone 1 twice — recoverable only by a power cycle, which takes anything " +
-  "unsaved in the active project with it. Two explanations are live: a leaked handle (we never " +
-  "sent 0x56) and a short request body (the reply's chunk-size field suggests the request carries " +
-  "one). Go through readStoredFile in storagesession.ts, which guarantees the close, or pass the " +
-  "FREEZES token to say you have read this and accept a reboot.";
+  "0x54 (open) froze a Digitone 1 three times — recoverable only by a power cycle, which takes " +
+  "anything unsaved in the active project with it. Every body that froze it was a raw integer with " +
+  "no NUL terminator; the only body it ever answered was a NUL-terminated path. Send a path, go " +
+  "through readStoredFile in storagesession.ts, and pass the FREEZES token to say you have read " +
+  "this and accept a reboot.";
 
 /** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
 export function closeRequest(msgId: number, handle: number): Uint8Array {
@@ -202,8 +218,11 @@ export interface OpenResult {
  *
  * A failure is `00` followed by the device's own sentence — `Error: Could not resolve …` was the
  * one observed — so the message is handed back rather than replaced with ours. The device explains
- * itself better than a generic error does, which is how `invalid project id` taught us the argument
- * type in the first place.
+ * itself better than a generic error can.
+ *
+ * It also has to be **read** rather than interpreted. `invalid project id` was taken as the device
+ * naming its argument type; it was naming a resolution failure, and acting on the misreading froze
+ * the instrument twice. See `openRequest`.
  */
 export function parseOpen(body: Uint8Array): OpenResult {
   refuseFailure(body, "open");
@@ -311,8 +330,7 @@ const READ_HEADER = 22;
  * A `0` status byte, followed by the device saying why in Windows-1252.
  *
  * Shared by open and read because both answer this way, and the device's own wording is more
- * informative than anything this module could substitute — `invalid project id` is what told us
- * `0x54` takes a slot rather than a path.
+ * informative than anything this module could substitute.
  */
 function refuseFailure(body: Uint8Array, what: string): void {
   if (body.length === 0) throw new ListingError(`${what} reply is empty`);
