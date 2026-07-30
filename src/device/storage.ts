@@ -67,6 +67,57 @@ export function listRequest(msgId: number, path: string, start = 0): Uint8Array 
   return encodeMessage(msgId, StorageCode.List, body);
 }
 
+/**
+ * Open a file for reading.
+ *
+ * **A guess, but the best-evidenced one available.** `0x53` takes a bare NUL-terminated path and
+ * that is now proven on hardware, so the same encoding is the obvious shape for `0x54`. Nothing
+ * else about this message is known: Transfer's request was never visible, only its 10-byte reply.
+ *
+ * `0x53` refuses a file path — `/soundbanks/A/DIGIT-ONE` answers `Invalid path` — which is correct
+ * behaviour for a *directory* listing and is why files need their own message.
+ */
+export function openRequest(msgId: number, path: string): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Open, string0(path));
+}
+
+/** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
+export function closeRequest(msgId: number, handle: number): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Close, u32Bytes(handle));
+}
+
+export interface OpenResult {
+  /** The handle a read and a close would refer to. */
+  handle: number;
+  /**
+   * The remaining eight bytes, undecoded.
+   *
+   * The only sample is `01 00 00 00 01 00 00 08 00 01` — status, a handle of 1, then five bytes
+   * whose meaning is unestablished. `0x00000800` reads as 2,048 and could be a chunk size, but one
+   * sample cannot distinguish that from a coincidence, and a plausible wrong reading of a length
+   * field is how a file gets truncated.
+   */
+  rest: Uint8Array;
+}
+
+/**
+ * Decode an open reply.
+ *
+ * Deliberately shallow: it extracts the handle, which is the one field the sequence cannot proceed
+ * without, and hands the rest back unread. Everything else here is one observation deep.
+ */
+export function parseOpen(body: Uint8Array): OpenResult {
+  const text = new TextDecoder("windows-1252").decode(body).replace(/\0+$/, "");
+  if (text.includes("Invalid path")) throw new ListingError("Invalid path");
+  if (body.length < 5) throw new ListingError(`open reply is ${body.length} bytes, expected at least 5`);
+  if (body[0] !== 1) throw new ListingError(`open status byte is ${body[0]}, expected 1`);
+  return { handle: u32(body, 1), rest: body.subarray(5) };
+}
+
+function u32Bytes(value: number): Uint8Array {
+  return Uint8Array.of((value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff);
+}
+
 export class ListingError extends Error {}
 
 export type EntryKind = "directory" | "file";
@@ -130,21 +181,30 @@ export function parseListing(body: Uint8Array): Listing {
     const name = new TextDecoder("windows-1252").decode(body.subarray(at, end));
     at = end + 1;
 
-    // The two bytes after the name say what kind of entry it is. Only two kinds have been seen, so
-    // anything else is refused rather than assumed to be a file.
+    // Two bytes after the name, and **they are two independent fields** — which the first version
+    // of this parser missed, because the only two samples it had happened to make them look like
+    // one 16-bit tag.
+    //
+    // `/soundbanks` is what showed it: its entries are directories carrying `01 02`, so a parser
+    // that knew only `0101` and `0002` refused a perfectly good listing. It refused *loudly* and
+    // handed over the bytes, which is the one part of this that went right.
     if (at + 2 > body.length) throw new ListingError(`entry "${name}" is truncated`);
-    const kindMark = (body[at]! << 8) | body[at + 1]!;
+    const isDirectory = body[at] === 1;
+    const layout = body[at + 1]!;
     at += 2;
 
-    if (kindMark === DIRECTORY) {
-      if (at + 4 > body.length) throw new ListingError(`directory "${name}" is truncated`);
+    if (layout === SHORT) {
+      // Only a child count. Seen on the two roots, `projects` and `soundbanks`.
+      if (at + 4 > body.length) throw new ListingError(`entry "${name}" is truncated`);
       entries.push({ name, kind: "directory", index: i + first, children: u32(body, at) });
       at += 4;
-    } else if (kindMark === FILE) {
-      if (at + 12 > body.length) throw new ListingError(`file "${name}" is truncated`);
+    } else if (layout === LONG) {
+      // Index, size and two unidentified bytes. Used by files **and** by bank directories, whose
+      // "size" is a fixed 262,144 — an allocation, the way each project's is a fixed 4 MiB.
+      if (at + 12 > body.length) throw new ListingError(`entry "${name}" is truncated`);
       entries.push({
         name,
-        kind: "file",
+        kind: isDirectory ? "directory" : "file",
         index: u32(body, at),
         size: u32(body, at + 4),
         unknown: (body[at + 8]! << 8) | body[at + 9]!,
@@ -152,8 +212,8 @@ export function parseListing(body: Uint8Array): Listing {
       at += 12;
     } else {
       throw new ListingError(
-        `entry "${name}" has kind 0x${kindMark.toString(16).padStart(4, "0")}, which is neither ` +
-          `directory (0x${DIRECTORY.toString(16)}) nor file (0x${FILE.toString(16)})`,
+        `entry "${name}" declares layout 0x${layout.toString(16).padStart(2, "0")}, which is ` +
+          `neither short (0x${SHORT.toString(16)}) nor long (0x${LONG.toString(16)})`,
       );
     }
   }
@@ -164,9 +224,21 @@ export function parseListing(body: Uint8Array): Listing {
 /** `01` + first + next + count. */
 const HEADER = 13;
 
-/** The two bytes after a name. Directories carry a child count, files an index and a size. */
-const DIRECTORY = 0x0101;
-const FILE = 0x0002;
+/**
+ * The second byte after a name selects the trailer's **layout**, independently of the first, which
+ * says whether the entry is a directory.
+ *
+ * | | first | second | seen on |
+ * |---|---|---|---|
+ * | root directory | `01` | `01` short | `projects`, `soundbanks` |
+ * | bank directory | `01` | `02` long | `/soundbanks/A`…`H` |
+ * | file | `00` | `02` long | sounds, projects |
+ *
+ * Reading them as one 16-bit tag worked for exactly as long as only two of those three had been
+ * seen — which is a good argument for decoding fields as fields.
+ */
+const SHORT = 0x01;
+const LONG = 0x02;
 
 function u32(b: Uint8Array, at: number): number {
   return ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0;
