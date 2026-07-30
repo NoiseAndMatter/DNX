@@ -8,9 +8,10 @@
  * remember at every early return.
  *
  * The precedent is expensive. `0x54` was built open-only, deliberately, justified as caution —
- * *do not guess three messages at once*. It froze the user's Digitone 1 twice, each time costing a
- * power cycle and anything unsaved in the active project. Whether the missing close was the *cause*
- * is now doubtful (see `openRequest`), but the shape of the mistake is not:
+ * *do not guess three messages at once*. It froze the user's Digitone 1 three times, each costing a
+ * power cycle and anything unsaved in the active project. The missing close was almost certainly
+ * **not** the cause — see `openRequest`, where the evidence points at a missing NUL terminator —
+ * but the shape of the mistake stands on its own:
  *
  * > **An allocate with no release is not a safe subset of an allocate/use/release. It is the one
  * > combination that cannot be safe.**
@@ -26,9 +27,10 @@
  * across three files, with the declared length matching the payload every time and the end-of-file
  * flag firing exactly once per file. `docs/device-storage.md` §3a has the layout.
  *
- * **The requests are inferred**, and `0x54`'s argument list is the live question: the reply carries
- * a chunk size, which suggests the request does too, and the four-byte body we sent is what the
- * device died on. Both shapes are reachable through `openBody` so the experiment has two arms.
+ * **The requests are inferred**, and `0x54`'s argument is the live question. Three bodies have been
+ * sent to a Digitone 1: a NUL-terminated path, which it answered, and two raw integer forms, which
+ * killed it. This takes a **path**, on the strength of that being the only shape the device has
+ * ever tolerated — which is evidence, not proof, and the third hypothesis about this message.
  *
  * ## Stateless, like `api.ts`
  *
@@ -39,7 +41,6 @@
 import { type ApiFrame, RESPONSE_BIT } from "./api.js";
 import {
   type Chunk,
-  type OpenBody,
   ListingError,
   StorageCode,
   closeRequest,
@@ -66,8 +67,6 @@ export interface ReadStoredFileOptions {
   transport: ApiTransport;
   /** First message id; each request takes the next. Never 0 — see `api.ts`. */
   msgId?: number;
-  /** Which guess at `0x54`'s argument list to send. Defaults to the fuller one. */
-  openBody?: OpenBody;
   timeoutMs?: number;
   /**
    * Refuse to keep reading past this many chunks.
@@ -100,12 +99,11 @@ const DEFAULT_MAX_CHUNKS = 8_192;
  * pairing. Anywhere else it would be an assertion; here it is enforced by control flow.
  */
 export async function readStoredFile(
-  projectId: number,
+  path: string,
   options: ReadStoredFileOptions,
 ): Promise<StoredFile> {
   const {
     transport,
-    openBody = "id+chunk",
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxChunks = DEFAULT_MAX_CHUNKS,
     onProgress,
@@ -114,11 +112,14 @@ export async function readStoredFile(
   const id = (): number => nextId++;
 
   const openId = id();
+  // Built **before** the try, so a request this module refuses to construct cannot trigger the
+  // release of a handle that was never allocated. A close on nothing is harmless, but a cleanup
+  // that runs when no resource was taken is a lie the logs would repeat.
+  const open = openRequest(openId, path, FREEZES);
+
   let opened;
   try {
-    opened = parseOpen(expect(await transport.request(
-      openRequest(openId, projectId, FREEZES, openBody), openId, timeoutMs,
-    ), StorageCode.Open).body);
+    opened = parseOpen(expect(await transport.request(open, openId, timeoutMs), StorageCode.Open).body);
   } catch (error) {
     // **The open is the dangerous half, so it gets a release attempt even when it appears to have
     // failed.** A reply that timed out is not a reply that never happened: the handle may exist on

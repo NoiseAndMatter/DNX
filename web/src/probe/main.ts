@@ -43,7 +43,7 @@ import {
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
-import { DumpCapture, captureFileName } from "../../../src/device/capture.js";
+import { type ApiGroup, DumpCapture, captureFileName } from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
@@ -57,7 +57,7 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import { type OpenBody, StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -253,10 +253,10 @@ async function probe(): Promise<void> {
     // user nothing about whether it is working, stuck, or nearly done — and it is the *first*
     // request that fails when a port is closed, which a static message actively hides.
     status(`Asking ${output.name} what it is…`);
-    const device = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
+    const device = readDeviceResponse((await session.request(Code.Device, (id) => deviceRequest(issue(id)))).body);
 
     status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
-    const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
+    const version = readVersionResponse((await session.request(Code.Version, (id) => versionRequest(issue(id)))).body);
 
     // Converted, not copied: the Device response is in the API's product space and a dump request
     // needs the dump protocol's. Sending the API id produces a well-formed message addressed to a
@@ -294,8 +294,7 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("lsFrom").disabled = false;
     $<HTMLInputElement>("lsCount").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
-    $<HTMLInputElement>("fileId").disabled = false;
-    $<HTMLSelectElement>("fileBody").disabled = false;
+    $<HTMLInputElement>("filePath").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
 
     // **`DirList` is now always attempted, whatever the device advertises.**
@@ -316,7 +315,7 @@ async function probe(): Promise<void> {
     // be retired rather than kept out of habit.
     try {
       const root = readDirListResponse(
-        (await session.request(Code.DirList, (id) => dirListRequest(id, "/"))).body,
+        (await session.request(Code.DirList, (id) => dirListRequest(issue(id), "/"))).body,
       );
       listing(results, "/", root);
       card(results, "DirList answered — elk-herd's file API is implemented here", [
@@ -433,7 +432,7 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
     try {
       const frame = await session.request(
         Code.Query,
-        (id) => queryRequest(id, key),
+        (id) => queryRequest(issue(id), key),
         QUERY_TIMEOUT_MS,
       );
       rows.push([key, describeQueryValue(readQueryResponse(frame.body))]);
@@ -617,7 +616,7 @@ function renderCapture(): void {
   // The other protocol, kept visibly apart. Before this existed, API traffic went through the dump
   // parser and came out as "product 16 — unknown (0x04)" with every checksum BAD, which is a
   // convincing description of a broken device rather than of a working one speaking a second
-  // language. A Digitone II sends some the moment a port opens, so this is the *normal* case.
+  // language. Both machines produce some, so this is the *normal* case.
   if (summary.api.length > 0) {
     const total = summary.api.reduce((n, g) => n + g.count, 0);
     card(results, `API traffic — ${total} message${total === 1 ? "" : "s"}`, [
@@ -626,18 +625,58 @@ function renderCapture(): void {
           [
             `${hex(group.code)} ${group.name}`,
             `${group.count} × ${group.bytes.toLocaleString()} B` +
-              (group.replies === group.count ? "" : `, ${group.replies} answering a request`),
+              (group.replies === group.count ? "" : `, ${group.replies} answering a request`) +
+              (group.respIds.length > 0 ? ` — answers ${group.respIds.join(", ")}` : ""),
           ] as [string, string],
       ),
-      // Said every time, because the alternative is deducing it from a count that looks fine.
-      // Anything else on this port — Elektron Transfer above all — has its replies land here too,
-      // and nothing in the bytes distinguishes them from ours.
-      [
-        "Whose",
-        "Unknown. A capture cannot tell our replies from another application's on the same port.",
-      ],
+      ["Whose", whose(summary.api)],
     ]);
   }
+}
+
+/**
+ * Say whose requests this traffic answers, which the summariser deliberately will not.
+ *
+ * `capture.ts` reports the response ids and stops, because a capture is bytes off an input port and
+ * has no record of what was sent. **This page does have that record** — it allocated every id it
+ * ever sent — so the knowledge lives here, where it exists, rather than in a module that would have
+ * to be told.
+ *
+ * Worth the trouble because the ambiguity is not academic: a flood of Transfer's replies was once
+ * read as our answer and a wrong finding was recorded on it. "Answers an id we never sent" ends
+ * that argument in one line.
+ */
+function whose(groups: readonly ApiGroup[]): string {
+  const seen = groups.flatMap((g) => g.respIds);
+  if (seen.length === 0) return "Nothing here answers a request — these were volunteered.";
+
+  const ours = seen.filter((id) => issuedIds.has(id));
+  const theirs = seen.filter((id) => !issuedIds.has(id));
+
+  if (theirs.length === 0) return `Ours — every id (${ours.join(", ")}) is one this page sent.`;
+  if (ours.length === 0) {
+    return (
+      `NOT ours. ${theirs.join(", ")} ${theirs.length === 1 ? "is an id" : "are ids"} this page ` +
+      `never sent, so ${theirs.length === 1 ? "it answers" : "they answer"} another application — ` +
+      `Elektron Transfer, or an earlier session on this port. Do not read this as a reply to us.`
+    );
+  }
+  return `Mixed. Ours: ${ours.join(", ")}. Not ours: ${theirs.join(", ")}.`;
+}
+
+/**
+ * Every message id this page has put on the wire.
+ *
+ * Cheap to keep and the only thing that can settle "whose reply is this". Deliberately never
+ * cleared — a late answer to a request from ten minutes ago is still *ours*, and forgetting that is
+ * how a stale reply gets mistaken for someone else's traffic.
+ */
+const issuedIds = new Set<number>();
+
+/** Record an id as ours, and hand it straight back so a call site reads as one expression. */
+function issue(id: number): number {
+  issuedIds.add(id);
+  return id;
 }
 
 /** A rolling indicator, so "still going" is visible without reading numbers. */
@@ -1520,7 +1559,7 @@ async function linkIsAlive(output: MIDIOutput): Promise<boolean> {
     };
 
     try {
-      output.send([...deviceRequest(LINK_ID)]);
+      output.send([...deviceRequest(issue(LINK_ID))]);
     } catch {
       clearTimeout(timer);
       awaitingReply = undefined;
@@ -1593,7 +1632,7 @@ async function listPath(): Promise<void> {
   ];
   verdictCard("Listing…", log);
 
-  const listId = nextListId++;
+  const listId = issue(nextListId++);
   const reply = await new Promise<Uint8Array | undefined>((resolve) => {
     const timer = setTimeout(() => {
       awaitingReply = undefined;
@@ -1716,30 +1755,31 @@ async function readFile(): Promise<void> {
     return;
   }
 
-  const projectId = Number($<HTMLInputElement>("fileId").value) || 1;
-  const openBody = $<HTMLSelectElement>("fileBody").value as OpenBody;
+  const path = $<HTMLInputElement>("filePath").value;
   const log: [string, string][] = [
-    ["Project", `slot ${projectId}`],
-    ["Sending", `0x54 open (${openBody}) → 0x55 read × n → 0x56 close`],
+    ["File", path],
+    ["Sending", "0x54 open (path, NUL-terminated) → 0x55 read × n → 0x56 close"],
     ["Guaranteed", "the close is sent on every path, including a read that throws"],
+    // On the card, not only in a doc comment. Both times this froze the device, the reasoning
+    // behind the request body was somewhere nobody was reading at the moment they pressed.
+    ["Why a path", "the only body 0x54 has ever answered. Both raw-integer forms froze a DN1."],
   ];
   verdictCard("Reading…", log);
 
   const started = performance.now();
   try {
-    const file = await readStoredFile(projectId, {
+    const file = await readStoredFile(path, {
       transport: apiTransport(output),
-      openBody,
       onProgress: (chunks, bytes) => {
-        status(`Reading slot ${projectId}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
+        status(`Reading ${path}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
       },
     });
 
     const ms = Math.round(performance.now() - started);
     // Saved immediately and unconditionally. The bytes are the entire point of the exercise and
     // this control may not survive the next press on a Digitone 1.
-    save(file.bytes, `Project_${String(projectId).padStart(3, "0")}_${file.bytes.length}B.bin`);
-    verdictCard(`Slot ${projectId} — ${file.bytes.length.toLocaleString()} bytes`, [
+    save(file.bytes, `${path.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+/, "")}_${file.bytes.length}B.bin`);
+    verdictCard(`${path} — ${file.bytes.length.toLocaleString()} bytes`, [
       ...log,
       ["Chunks", `${file.chunks} (${ms} ms)`],
       ["Handle closed", file.closed ? "yes, acknowledged" : "NOT acknowledged — the read still succeeded"],
@@ -1749,7 +1789,7 @@ async function readFile(): Promise<void> {
       ["Metadata reply", file.metadata ? [...file.metadata].map(hex2).join(" ") : "none arrived"],
       ["Saved", "downloaded — check it before pressing this again"],
     ]);
-    status(`Read slot ${projectId}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
+    status(`Read ${path}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
   } catch (error) {
     // The link check is the difference between "the device refused" and "we never spoke", and it
     // matters more here than anywhere: a silence from this message previously meant a dead device.
