@@ -74,7 +74,22 @@ export interface ApiGroup {
    * version.
    */
   replies: number;
+  /**
+   * The distinct request ids these answered, so **whoever did the asking can check**.
+   *
+   * This module cannot tell our traffic from another application's, but the code that allocated the
+   * ids can, and it needs the ids to do it. Reported rather than resolved: the layering is the
+   * point — the summariser states a fact about the bytes and the caller supplies the knowledge it
+   * has and the bytes do not.
+   *
+   * Capped at `MAX_RESP_IDS`. A capture of Transfer's idle poll carries thousands of distinct ids
+   * and nobody reads the four-thousandth; the first few settle whose they are.
+   */
+  respIds: number[];
 }
+
+/** Enough to identify a source, few enough that a 5,973-message capture stays cheap. */
+export const MAX_RESP_IDS = 8;
 
 export interface CaptureSummary {
   messages: number;
@@ -188,10 +203,16 @@ export function summariseCapture(data: Uint8Array): CaptureSummary {
           count: 0,
           bytes: 0,
           replies: 0,
+          respIds: [],
         };
         group.count++;
         group.bytes += raw.length;
-        if (frame.respId !== undefined) group.replies++;
+        if (frame.respId !== undefined) {
+          group.replies++;
+          if (group.respIds.length < MAX_RESP_IDS && !group.respIds.includes(frame.respId)) {
+            group.respIds.push(frame.respId);
+          }
+        }
         api.set(frame.code, group);
       } catch {
         unparsed++;
