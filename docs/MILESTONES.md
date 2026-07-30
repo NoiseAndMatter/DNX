@@ -11,6 +11,7 @@ Times are local (Australia/Brisbane, UTC+10).
 
 | When | What | PR |
 |---|---|---|
+| 2026-07-30 14:40 | **The Digitone 1's request band mapped**, every entry link-checked: ten codes answer, three provably do not. And `supportedMessages` proved worthless in *both* directions. | #64 |
 | 2026-07-30 13:53 | **The Digitone's storage API found**, captured from Elektron Transfer itself: directory listings carrying names, **positions** and sizes, and whole files read by path. Overturns "no file API on a Digitone". See `device-storage.md` | #62 |
 | 2026-07-30 12:50 | **The active-object band identified** — `0x58`–`0x5b` are the `+8` twins of the indexed dumps, and `0x6a` answers "what pattern is selected?" live. | #62 |
 | 2026-07-30 12:41 | **`0x6f` returns a whole DN1 project including its sound pool** — 220 messages, removing the manual front-panel pool step. | #62 |

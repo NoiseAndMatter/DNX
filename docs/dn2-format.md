@@ -751,6 +751,46 @@ request's four kit sounds as pool slots 0–3 would overwrite sound-lock targets
 tracks happened to be using — so `src/project/rebuild.ts` refuses to place DN1 sound records until
 told which they are.
 
+### The Digitone 1's request band, mapped — VERIFIED 2026-07-30
+
+**[verified]**, every entry, with a **link check** between presses: a `Device` request that the
+machine must answer, so a silence is known to be the device's and not a blocked send. Without that
+control an earlier sweep produced results that had to be thrown away entirely.
+
+| Codes | Purpose |
+|---|---|
+| `0x60`–`0x64` | indexed objects in the loaded project — patternKit, pattern, kit, sound, settings |
+| `0x68`–`0x6b` | the **active** object, `+8` from its indexed twin |
+| `0x6f` | the whole project, streamed, sound pool included |
+| **`0x65` `0x66` `0x67`** | **verified silent** |
+
+Ten codes answer; three provably do not. `0x6c`–`0x6e` are untested with a proven link, and the
+`+8` model already predicts their silence, so they would confirm rather than inform.
+
+#### Presence in `supportedMessages` does not imply a request exists
+
+`0x55`, `0x56` and `0x57` are **advertised by the device** and none of them can be asked for. That
+list enumerates *responses*, and some responses are volunteered rather than answered — device→host
+messages with no request half.
+
+This is the mirror of the lesson already recorded above, and both are now proven:
+
+| | Holds? |
+|---|---|
+| Absence from `supportedMessages` means the message is refused | **no** — `0x6f` and the whole storage API |
+| Presence means a matching request exists | **no** — `0x55`–`0x57` |
+
+**The list is evidence of nothing in either direction.** Try the message.
+
+> [!warning] **Dump type `0x55` and API code `0x55` are different things**
+> The storage API (`docs/device-storage.md`) uses `0x54`/`0x55`/`0x56` for open/read/close in the
+> **API** space, header `0x10`. The dump protocol numbers independently, and its `0x55` is
+> something else entirely — an advertised response with no request.
+>
+> This family has caught us with exactly this shape before: the API reports products **20** and
+> **43**, the dump framing wants **`0x0D`** and **`0x15`**, and a request addressed in the wrong
+> space is silently ignored. Two protocols, overlapping numbers, on one wire.
+
 ### The active-object band: `+8` — VERIFIED 2026-07-30
 
 **[verified]** on a Digitone 1. Four dump types nobody had identified turn out to be the **active**
