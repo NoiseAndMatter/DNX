@@ -57,8 +57,9 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
-import { decodeMessage, isApiMessage } from "../../../src/device/api.js";
+import { type OpenBody, StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
+import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -293,6 +294,9 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("lsFrom").disabled = false;
     $<HTMLInputElement>("lsCount").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
+    $<HTMLInputElement>("fileId").disabled = false;
+    $<HTMLSelectElement>("fileBody").disabled = false;
+    $<HTMLButtonElement>("fileRead").disabled = false;
 
     // **`DirList` is now always attempted, whatever the device advertises.**
     //
@@ -743,9 +747,14 @@ $("save").addEventListener("click", () => {
     return;
   }
   const name = captureFileName(capture.summarise());
+  save(capture.bytes(), name);
+  status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
+});
+
+/** Hand bytes to the browser as a download. */
+function save(bytes: Uint8Array, name: string): void {
   // Copied into a fresh buffer: a Uint8Array over a SharedArrayBuffer is not a valid BlobPart,
   // and which kind you have depends on how the runtime allocated it.
-  const bytes = capture.bytes();
   const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -753,8 +762,7 @@ $("save").addEventListener("click", () => {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
-  status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
-});
+}
 
 
 // --- requesting --------------------------------------------------------------------------------
@@ -1585,6 +1593,7 @@ async function listPath(): Promise<void> {
   ];
   verdictCard("Listing…", log);
 
+  const listId = nextListId++;
   const reply = await new Promise<Uint8Array | undefined>((resolve) => {
     const timer = setTimeout(() => {
       awaitingReply = undefined;
@@ -1592,8 +1601,11 @@ async function listPath(): Promise<void> {
     }, LIST_TIMEOUT_MS);
 
     awaitingReply = (data) => {
-      // Only an API frame answering *this* code counts. Transfer polls the same port constantly,
-      // and accepting "the next message" is exactly how its traffic got reported as our answer.
+      // Only an API frame answering **this request** counts, and the message id is what decides
+      // that. Matching the response code alone is not enough: Elektron Transfer polls the same port
+      // constantly and lists directories of its own, so a `0xd3` arriving while we wait is as
+      // likely to be its answer as ours. Accepting "the next message" is exactly how its traffic
+      // got reported as our result once already.
       if (!isApiMessage(data)) return;
       let frame;
       try {
@@ -1601,7 +1613,7 @@ async function listPath(): Promise<void> {
       } catch {
         return;
       }
-      if (frame.code !== StorageCode.List + 0x80) return;
+      if (frame.respId !== listId || frame.code !== StorageCode.List + 0x80) return;
       clearTimeout(timer);
       awaitingReply = undefined;
       resolve(frame.body);
@@ -1609,7 +1621,7 @@ async function listPath(): Promise<void> {
 
     try {
       output.send([
-        ...listRequest(nextListId++, path, count > 0 ? { start: from, count } : undefined),
+        ...listRequest(listId, path, count > 0 ? { start: from, count } : undefined),
       ]);
     } catch (error) {
       clearTimeout(timer);
@@ -1668,23 +1680,147 @@ async function listPath(): Promise<void> {
   }
 }
 
+// --- reading a whole file off the +Drive ----------------------------------------------------------
+
 /**
- * **The Open control has been removed.**
+ * Open, read and close a stored file — the sequence, never a piece of it.
  *
- * `0x54` freezes a Digitone 1. Reproduced twice on 2026-07-30 with a well-formed request and a
- * valid project id straight out of a `/projects` listing: the device stops responding entirely,
- * the capture is **0 bytes**, and only a power cycle recovers it — taking anything unsaved in the
- * active project with it.
+ * **This is the control that froze a Digitone 1 twice**, and it is back on the page only because
+ * the shape that made it unsafe is gone: `storagesession.ts` owns the sequence and sends the close
+ * in a `finally`, so no path through this button can leak a handle. That is a real fix for a real
+ * defect, and it is **not** a claim that the freeze is solved — see `openRequest` for the other,
+ * likelier explanation, which is that our request body was five bytes short.
  *
- * The likely cause is that `0x54` allocates a handle and we never sent `0x56` to release it. This
- * page was built "open only", justified as caution — *do not guess three messages at once* — and
- * that was the wrong decomposition. **Open and close are the minimum safe unit**; read is the
- * optional part.
+ * So: the Digitone II first, a scratch project, and expect to power-cycle a Digitone 1.
  *
- * Removed rather than disabled: a greyed-out button is an invitation. The message itself is gated
- * in `storage.ts` behind a token nobody passes by accident, and `docs/device-probing.md` rule 0
- * carries what this cost.
+ * What it unlocks is the thing the expander actually needs. `0x6f` reads whatever project is
+ * *open*; this reads any project **by slot**, which is what "choose a source and a target from the
+ * device's list" requires.
  */
+$("fileRead").addEventListener("click", () => {
+  readFile().catch((error: unknown) => {
+    status(`Read failed: ${String(error)}`, "error");
+    verdictCard("Read failed", [["Error", String(error)]]);
+  });
+});
+
+async function readFile(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing collects the replies.", "warn");
+    return;
+  }
+
+  const projectId = Number($<HTMLInputElement>("fileId").value) || 1;
+  const openBody = $<HTMLSelectElement>("fileBody").value as OpenBody;
+  const log: [string, string][] = [
+    ["Project", `slot ${projectId}`],
+    ["Sending", `0x54 open (${openBody}) → 0x55 read × n → 0x56 close`],
+    ["Guaranteed", "the close is sent on every path, including a read that throws"],
+  ];
+  verdictCard("Reading…", log);
+
+  const started = performance.now();
+  try {
+    const file = await readStoredFile(projectId, {
+      transport: apiTransport(output),
+      openBody,
+      onProgress: (chunks, bytes) => {
+        status(`Reading slot ${projectId}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
+      },
+    });
+
+    const ms = Math.round(performance.now() - started);
+    // Saved immediately and unconditionally. The bytes are the entire point of the exercise and
+    // this control may not survive the next press on a Digitone 1.
+    save(file.bytes, `Project_${String(projectId).padStart(3, "0")}_${file.bytes.length}B.bin`);
+    verdictCard(`Slot ${projectId} — ${file.bytes.length.toLocaleString()} bytes`, [
+      ...log,
+      ["Chunks", `${file.chunks} (${ms} ms)`],
+      ["Handle closed", file.closed ? "yes, acknowledged" : "NOT acknowledged — the read still succeeded"],
+      ["First bytes", [...file.bytes.subarray(0, 16)].map(hex2).join(" ")],
+      // The one field that says what we have. A `.dnprj` opens `PK` and a raw image does not.
+      ["Looks like", looksLikeZip(file.bytes) ? "a project file (PK header)" : "not a ZIP — raw or something else"],
+      ["Metadata reply", file.metadata ? [...file.metadata].map(hex2).join(" ") : "none arrived"],
+      ["Saved", "downloaded — check it before pressing this again"],
+    ]);
+    status(`Read slot ${projectId}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
+  } catch (error) {
+    // The link check is the difference between "the device refused" and "we never spoke", and it
+    // matters more here than anywhere: a silence from this message previously meant a dead device.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? "The read failed, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
+      ...log,
+      ["Error", String(error)],
+      ["Link check", alive ? "PASSED — the device survived and refused" : "FAILED"],
+      [
+        "Means",
+        alive
+          ? "a genuine negative, worth recording — the request shape or the sequence is wrong."
+          : "the device may be frozen, as it was twice on 2026-07-30. Power-cycle it. Anything " +
+            "unsaved in the active project is gone.",
+      ],
+    ]);
+    status(alive ? "Read failed, link is fine." : "The device stopped answering — power-cycle it.", alive ? "warn" : "error");
+  }
+}
+
+function hex2(b: number): string {
+  return b.toString(16).padStart(2, "0");
+}
+
+/** A `.dnprj` and a `.dn2prj` are both ZIPs, so this says whether we got a project file at all. */
+function looksLikeZip(data: Uint8Array): boolean {
+  return data.length > 4 && data[0] === 0x50 && data[1] === 0x4b;
+}
+
+/**
+ * Web MIDI as an `ApiTransport`, **matching replies by message id**.
+ *
+ * The id check is the whole substance of this function. Elektron Transfer polls the same port
+ * continuously and a Digitone II volunteers API messages the moment a port opens, so matching on
+ * the response *code* alone is not enough — a `0xd3` arriving while we wait for one is as likely to
+ * be Transfer's as ours. That exact confusion has already produced a false finding.
+ */
+function apiTransport(output: MIDIOutput): ApiTransport {
+  return {
+    request(request: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          awaitingReply = undefined;
+          reject(new Error(`no reply within ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        awaitingReply = (data) => {
+          if (!isApiMessage(data)) return;
+          let frame;
+          try {
+            frame = decodeMessage(data);
+          } catch {
+            return;
+          }
+          if (frame.respId !== msgId) return;
+          clearTimeout(timer);
+          awaitingReply = undefined;
+          resolve(frame);
+        };
+
+        try {
+          output.send([...request]);
+        } catch (error) {
+          clearTimeout(timer);
+          awaitingReply = undefined;
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    },
+  };
+}
 
 /** Send something and wait for the API response paired with `code`, ignoring everyone else's. */
 function awaitApi(

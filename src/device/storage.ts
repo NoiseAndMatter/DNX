@@ -96,48 +96,86 @@ export function listRequest(msgId: number, path: string, page?: Page): Uint8Arra
  *
  * The width is inferred from the reply, `01 00 00 00 01 …`, which reads as status plus a u32.
  */
-export function openRequest(msgId: number, projectId: number, acknowledge?: typeof FREEZES): Uint8Array {
+export function openRequest(
+  msgId: number,
+  projectId: number,
+  acknowledge?: typeof FREEZES,
+  body: OpenBody = "id+chunk",
+): Uint8Array {
   if (acknowledge !== FREEZES) throw new ListingError(FREEZE_WARNING);
   if (!Number.isInteger(projectId) || projectId < 0) {
     throw new ListingError(`project id ${projectId} is not a slot number`);
   }
-  return encodeMessage(msgId, StorageCode.Open, u32Bytes(projectId));
+  if (body === "id") return encodeMessage(msgId, StorageCode.Open, u32Bytes(projectId));
+
+  const out = new Uint8Array(9);
+  out.set(u32Bytes(projectId), 0);
+  out.set(u32Bytes(DEFAULT_CHUNK_SIZE), 4);
+  out[8] = 1;
+  return encodeMessage(msgId, StorageCode.Open, out);
 }
 
 /**
- * **`0x54` freezes a Digitone 1. Reproduced twice, 2026-07-30.**
+ * Which guess at `0x54`'s argument list to send.
+ *
+ * - `id` — four bytes, the projectId alone. **This is the shape that froze a Digitone 1.**
+ * - `id+chunk` — `u32 id, u32 chunkSize, u8 1`, mirroring the reply. The default; see below.
+ *
+ * Selectable rather than hardcoded because these two are an **experiment**, and an experiment whose
+ * arms cannot both be run tells you nothing about which arm mattered.
+ */
+export type OpenBody = "id" | "id+chunk";
+
+/** Every open reply Transfer received answered 2,048, on three different files. */
+export const DEFAULT_CHUNK_SIZE = 2048;
+
+/**
+ * **`0x54` froze a Digitone 1 twice, 2026-07-30.**
  *
  * A well-formed open with a valid project id — `2`, `MORNING_JAM`, straight out of a `/projects`
- * listing — and the device stops responding entirely. The capture is **0 bytes**: not a slow
+ * listing — and the device stopped responding entirely. The capture is **0 bytes**: not a slow
  * reply, not an error, nothing at all. Only a power cycle recovers it, and anything unsaved in the
  * active project goes with it.
  *
- * ## The likely mechanism, and the design error behind it
+ * ## The first explanation, which was probably wrong
  *
- * `0x54` allocates a handle. **We never send `0x56` to release it.** This module was written
- * "open only", justified as caution — *do not guess three messages at once* — and that was the
- * wrong decomposition. An open with no close is not a safe subset; it is a resource leak against
- * firmware. Transfer always closes.
+ * *"`0x54` allocates a handle and we never sent `0x56` to release it."* That is true, and it was
+ * worth fixing — `storagesession.ts` now guarantees the close — but as an account of the freeze it
+ * **does not fit the evidence**. A leaked handle does not kill a device on the first allocation,
+ * and it certainly does not swallow the reply: we saw *no answer at all*, and Transfer's own open
+ * answers in ten bytes every time.
  *
- * **Open and close are the minimum safe unit.** Read is the optional part. Getting that backwards
- * is what froze a user's instrument.
+ * ## The better one, from Transfer's replies — 2026-07-30
  *
- * ## Why this is a hard gate rather than a warning
+ * The reply is `u8 ok, u32 handle, u32 2048, u8 1`. That middle field is a **chunk size**: 2,048 on
+ * all three opens in the capture, across a manifest, a sound and a project. An API that reports a
+ * chunk size back is very likely one you *asked* for a chunk size.
+ *
+ * Which makes the shape of the failure fit: the device answered our **path** with `invalid project
+ * id` — parsed, understood, argument rejected — and then answered our **four-byte** body with
+ * silence and death. That is what reading past the end of a short message looks like. Our body was
+ * probably five bytes short, not merely unaccompanied by a close.
+ *
+ * So `id+chunk` is the default, `id` is kept so the experiment can be run both ways, and this stays
+ * gated either way, because both explanations are still hypotheses.
+ *
+ * ## Why a hard gate rather than a warning
  *
  * `docs/device-probing.md` classified messages as read, write, delete or state-change. **Hanging
  * the instrument was not a category**, and a control that reliably requires a power cycle should
  * not be one press away from a page that also does harmless things.
  *
- * The token exists so that re-enabling this is a deliberate edit by someone who has read the
- * above, paired it with a close, and decided the experiment is worth a reboot.
+ * The token exists so that sending this is a deliberate act by someone who has read the above.
+ * `storagesession.ts` is the intended holder: it is the only caller that can promise the close.
  */
-export const FREEZES = Symbol("0x54 freezes a Digitone 1 — see openRequest");
+export const FREEZES = Symbol("0x54 froze a Digitone 1 — see openRequest");
 
 const FREEZE_WARNING =
-  "0x54 (open) freezes a Digitone 1 — reproduced twice, recoverable only by power cycle, and " +
-  "anything unsaved in the active project is lost with it. The likely cause is that we never send " +
-  "0x56 to close the handle. Pair it with a close before enabling this, and pass the FREEZES " +
-  "token to say you have.";
+  "0x54 (open) froze a Digitone 1 twice — recoverable only by a power cycle, which takes anything " +
+  "unsaved in the active project with it. Two explanations are live: a leaked handle (we never " +
+  "sent 0x56) and a short request body (the reply's chunk-size field suggests the request carries " +
+  "one). Go through readStoredFile in storagesession.ts, which guarantees the close, or pass the " +
+  "FREEZES token to say you have read this and accept a reboot.";
 
 /** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
 export function closeRequest(msgId: number, handle: number): Uint8Array {
@@ -145,31 +183,142 @@ export function closeRequest(msgId: number, handle: number): Uint8Array {
 }
 
 export interface OpenResult {
-  /** The handle a read and a close would refer to. */
+  /** The handle a read and a close refer to. Counts up from 1 per open. */
   handle: number;
   /**
-   * The remaining eight bytes, undecoded.
+   * Bytes the device will send per chunk. **2,048 in every sample.**
    *
-   * The only sample is `01 00 00 00 01 00 00 08 00 01` — status, a handle of 1, then five bytes
-   * whose meaning is unestablished. `0x00000800` reads as 2,048 and could be a chunk size, but one
-   * sample cannot distinguish that from a coincidence, and a plausible wrong reading of a length
-   * field is how a file gets truncated.
+   * Read as a chunk size because the read replies confirm it from the other side: every full chunk
+   * carries exactly this many bytes and the last carries fewer. Three opens, three files of very
+   * different sizes, same value — so it is a transfer parameter, not a property of the file.
    */
-  rest: Uint8Array;
+  chunkSize: number;
+  /** The trailing byte, `1` in every sample. Unidentified. */
+  flag: number;
 }
 
 /**
  * Decode an open reply.
  *
- * Deliberately shallow: it extracts the handle, which is the one field the sequence cannot proceed
- * without, and hands the rest back unread. Everything else here is one observation deep.
+ * A failure is `00` followed by the device's own sentence — `Error: Could not resolve …` was the
+ * one observed — so the message is handed back rather than replaced with ours. The device explains
+ * itself better than a generic error does, which is how `invalid project id` taught us the argument
+ * type in the first place.
  */
 export function parseOpen(body: Uint8Array): OpenResult {
-  const text = new TextDecoder("windows-1252").decode(body).replace(/\0+$/, "");
-  if (text.includes("Invalid path")) throw new ListingError("Invalid path");
-  if (body.length < 5) throw new ListingError(`open reply is ${body.length} bytes, expected at least 5`);
-  if (body[0] !== 1) throw new ListingError(`open status byte is ${body[0]}, expected 1`);
-  return { handle: u32(body, 1), rest: body.subarray(5) };
+  refuseFailure(body, "open");
+  if (body.length < 10) throw new ListingError(`open reply is ${body.length} bytes, expected 10`);
+  return { handle: u32(body, 1), chunkSize: u32(body, 5), flag: body[9]! };
+}
+
+/**
+ * Ask for the next chunk of an open file.
+ *
+ * ```
+ * 0x55   u32 handle
+ * ```
+ *
+ * **The request is inferred; the reply is not.** Reads are sequential and the device numbers the
+ * chunks itself — 1, 2, 3 … in `parseRead`'s `index`, verified across a 22-chunk project — so a
+ * handle is the only argument the sequence demonstrably needs. If the device wants the index too,
+ * this is where it goes, and the symptom will be an error rather than a wrong range: the reply
+ * states its own index and `readStoredFile` checks it.
+ */
+export function readRequest(msgId: number, handle: number): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Read, u32Bytes(handle));
+}
+
+/** One chunk of a file coming off the +Drive. */
+export interface Chunk {
+  handle: number;
+  /**
+   * The device's own chunk number, **1-based**.
+   *
+   * Meaningful only when `data` is non-empty. The first reply to every read sequence carries no
+   * data and puts something else entirely in this field — see `metadata`.
+   */
+  index: number;
+  /**
+   * **The end of the file, stated by the device.** The only reliable one.
+   *
+   * A short chunk is *not* a terminator: the manifest read came back in one chunk of 129 bytes with
+   * this set, and a 22-chunk project ran 21 full chunks and a short one. Stopping on a short read
+   * would have worked on the second and truncated the first.
+   */
+  last: boolean;
+  data: Uint8Array;
+  /**
+   * True for the leading zero-length reply that starts every read sequence.
+   *
+   * Three samples, and its `index` and checksum fields carry values that fit no pattern the data
+   * chunks follow — `0x4012c344` in both, constant across a manifest, a sound and a project, with
+   * a second word that varies per file. **Unidentified.** Reading it as a chunk index would produce
+   * confident nonsense, so it is flagged and skipped instead. `header` has the raw bytes for
+   * whoever solves it.
+   */
+  metadata: boolean;
+  /** Bytes 5–17 exactly as they arrived: index, an unidentified word, the flag, and a checksum. */
+  header: Uint8Array;
+}
+
+/**
+ * Decode a read reply.
+ *
+ * ```
+ *  0  u8   ok
+ *  1  u32  handle
+ *  5  u32  chunk index, 1-based
+ *  9  u32  unidentified — climbs to exactly 1000 on the last chunk
+ * 13  u8   1 on the final chunk
+ * 14  u32  unidentified — plausibly a checksum; 0xffffffff on the metadata reply
+ * 18  u32  data length
+ * 22  …    the data
+ * ```
+ *
+ * **[verified]** on all 27 read replies in Elektron Transfer's own capture: the declared length
+ * matches the payload every time, and the flag at 13 fires exactly once per file, on its last
+ * chunk. The two unidentified words are carried through rather than named.
+ */
+export function parseRead(body: Uint8Array): Chunk {
+  refuseFailure(body, "read");
+  if (body.length < READ_HEADER) {
+    throw new ListingError(`read reply is ${body.length} bytes, too short for a ${READ_HEADER}-byte header`);
+  }
+
+  const declared = u32(body, 18);
+  const data = body.subarray(READ_HEADER);
+  // Checked, because the length and the payload are two independent statements of the same fact,
+  // and a chunk that is quietly short is how a truncated project gets assembled with nobody the
+  // wiser until the device refuses it weeks later. `api.ts` checks the same thing for the same
+  // reason.
+  if (declared !== data.length) {
+    throw new ListingError(`chunk claims ${declared} bytes and carries ${data.length}`);
+  }
+
+  return {
+    handle: u32(body, 1),
+    index: u32(body, 5),
+    last: body[13] === 1,
+    data,
+    metadata: declared === 0,
+    header: body.subarray(5, READ_HEADER),
+  };
+}
+
+const READ_HEADER = 22;
+
+/**
+ * A `0` status byte, followed by the device saying why in Windows-1252.
+ *
+ * Shared by open and read because both answer this way, and the device's own wording is more
+ * informative than anything this module could substitute — `invalid project id` is what told us
+ * `0x54` takes a slot rather than a path.
+ */
+function refuseFailure(body: Uint8Array, what: string): void {
+  if (body.length === 0) throw new ListingError(`${what} reply is empty`);
+  if (body[0] === 1) return;
+  const text = new TextDecoder("windows-1252").decode(body.subarray(1)).replace(/\0+$/, "").trim();
+  throw new ListingError(text.length > 0 ? text : `${what} failed with status ${body[0]}`);
 }
 
 function u32Bytes(value: number): Uint8Array {
