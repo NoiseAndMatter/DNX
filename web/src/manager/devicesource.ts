@@ -30,7 +30,21 @@ import {
   readProjectFromDevice,
   writeChangedRecords,
 } from "../../../src/device/deviceproject.js";
-import { Code, deviceRequest, readDeviceResponse } from "../../../src/device/api.js";
+import {
+  type ApiFrame,
+  Code,
+  decodeMessage,
+  deviceRequest,
+  isApiMessage,
+  readDeviceResponse,
+} from "../../../src/device/api.js";
+import {
+  type DriveProject,
+  imageFrom,
+  listProjects,
+  readDriveProject,
+} from "../../../src/device/drive.js";
+import { type ApiTransport } from "../../../src/device/storagesession.js";
 import { DeviceSession } from "../../../src/device/session.js";
 import { dumpProductFor } from "../../../src/device/dumprequest.js";
 import { PRODUCT_NAMES } from "../../../src/sysex/devices.js";
@@ -186,6 +200,113 @@ export async function writeBack(
     bytes: outcome.bytes,
     untransmittable: outcome.untransmittable,
   };
+}
+
+// --- the +Drive: any project, not just the open one -----------------------------------------------
+
+/**
+ * Web MIDI as an `ApiTransport`, **matching replies by message id**.
+ *
+ * The id match is the substance. Elektron Transfer polls the same port continuously and both
+ * Digitones volunteer API messages when a port opens, so "the next message to arrive" is regularly
+ * somebody else's — a confusion that has already produced one false finding here.
+ *
+ * A fresh listener per request, removed on the way out. The probe keeps a single global slot and
+ * paid for it: two overlapping reads there stole each other's answers.
+ */
+function apiTransport(device: ConnectedDevice): ApiTransport {
+  return {
+    request(request: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
+      return new Promise((resolve, reject) => {
+        const done = (fn: () => void): void => {
+          clearTimeout(timer);
+          device.input.removeEventListener("midimessage", onMessage);
+          fn();
+        };
+        const timer = setTimeout(
+          () => done(() => reject(new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${timeoutMs}ms`))),
+          timeoutMs,
+        );
+        const onMessage = (event: MIDIMessageEvent): void => {
+          if (!event.data) return;
+          const data = new Uint8Array(event.data);
+          if (!isApiMessage(data)) return;
+          let frame: ApiFrame;
+          try {
+            frame = decodeMessage(data);
+          } catch {
+            return;
+          }
+          if (frame.respId !== msgId) return;
+          done(() => resolve(frame));
+        };
+
+        device.input.addEventListener("midimessage", onMessage);
+        try {
+          device.output.send([...request]);
+        } catch (error) {
+          done(() => reject(error instanceof Error ? error : new Error(String(error))));
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Message ids for +Drive work, in bands.
+ *
+ * A single read consumes one id per chunk — 1,358 for a DN1 project — and **`msgId` is a u16**, so
+ * a plain counter runs out. Bands start at 8,192 to stay clear of Transfer, which numbers from the
+ * low hundreds, and each call takes a fresh one.
+ */
+let driveBand = 0;
+function nextDriveId(): number {
+  return 8_192 + (driveBand++ % 6) * 8_192;
+}
+
+/** Every project stored on the device, by slot. Reads nothing but the directory. */
+export async function listDeviceProjects(device: ConnectedDevice): Promise<DriveProject[]> {
+  try {
+    return await listProjects(apiTransport(device), { msgId: nextDriveId() });
+  } catch (error) {
+    throw new DeviceSourceError(`Could not list the +Drive: ${String(error)}`);
+  }
+}
+
+export interface DriveProjectHandle {
+  image: Uint8Array;
+  project: DriveProject;
+  /** The payload bytes exactly as the device sent them, so the project can be saved as a file. */
+  bytes: Uint8Array;
+}
+
+/**
+ * Open any project on the +Drive by slot, without disturbing the one the musician has loaded.
+ *
+ * **This is a different thing from `readProject` above**, and the difference is worth stating.
+ * That one asks the dump protocol for the *active* project record by record, and fills the ~0.49%
+ * that never comes over the wire from a donor file. This reads the **stored file** — every byte,
+ * any slot, no donor.
+ *
+ * Verified byte-for-byte against Elektron's own export of the same project. See `drive.ts`.
+ */
+export async function openDeviceProject(
+  device: ConnectedDevice,
+  project: DriveProject,
+  onProgress: (chunks: number, bytes: number) => void,
+): Promise<DriveProjectHandle> {
+  const read = await readDriveProject(apiTransport(device), project.index, {
+    msgId: nextDriveId(),
+    onProgress,
+  });
+
+  // The device holds a handle for the duration and releases it on every path. Saying so when the
+  // release went unacknowledged is the difference between a warning and a mystery next session.
+  if (!read.closed) {
+    console.warn(`the +Drive did not acknowledge closing ${project.name}; the read itself succeeded`);
+  }
+
+  return { image: imageFrom(read.payload), project, bytes: read.bytes };
 }
 
 function bestPair(

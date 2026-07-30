@@ -23,6 +23,7 @@
  */
 
 import { deviceFor, type Device } from "../../../src/librarian/device.js";
+import { type DriveProject } from "../../../src/device/drive.js";
 import { planRearrange, applyRearrange } from "../../../src/librarian/rearrange.js";
 import {
   NAME_SIZE,
@@ -54,6 +55,8 @@ import {
   type DeviceProjectHandle,
   DeviceSourceError,
   connectDevice,
+  listDeviceProjects,
+  openDeviceProject,
   readProject,
   writeBack,
 } from "./devicesource.js";
@@ -749,6 +752,119 @@ function wireOperations(): void {
   $("writedevice").addEventListener("click", () => {
     void writeToDevice();
   });
+
+  $("browsedrive").addEventListener("click", () => {
+    void browseDrive();
+  });
+
+  $("opendrive").addEventListener("click", () => {
+    void openFromDrive();
+  });
+}
+
+// --- the +Drive ------------------------------------------------------------------------------
+
+/**
+ * The connection held between listing the +Drive and opening something off it.
+ *
+ * Kept rather than reconnected, because the slot numbers in the picker belong to **that** device.
+ * Reconnecting between the two steps could hand them to a different instrument, which would open
+ * the wrong project with total confidence.
+ */
+let drive: { connected: ConnectedDevice; projects: DriveProject[] } | undefined;
+
+/** List what is stored on the instrument. Reads the directory and nothing else. */
+async function browseDrive(): Promise<void> {
+  status("Looking for an instrument…");
+  try {
+    const connected = drive?.connected ?? (await connectDevice());
+    status(`Listing the +Drive on ${connected.name}…`);
+    const projects = await listDeviceProjects(connected);
+    drive = { connected, projects };
+
+    const select = $<HTMLSelectElement>("driveprojects");
+    select.replaceChildren(
+      ...projects.map((p) => {
+        const option = document.createElement("option");
+        option.value = String(p.index);
+        // Slot number first: it is what addresses the project, and what the device's own screen
+        // shows. A name alone is ambiguous — a +Drive can hold two projects called NEW PROJECT.
+        option.textContent = `${p.index}. ${p.name}`;
+        return option;
+      }),
+    );
+    select.hidden = false;
+    $("opendrive").hidden = false;
+    $<HTMLButtonElement>("opendrive").disabled = projects.length === 0;
+
+    status(
+      `${connected.name}: ${projects.length} project${projects.length === 1 ? "" : "s"} on the ` +
+        `+Drive. Pick one and press Open slot — the project loaded on the instrument is untouched.`,
+      "ok",
+    );
+  } catch (error) {
+    drive?.connected.close();
+    drive = undefined;
+    status(
+      error instanceof DeviceSourceError ? error.message : `Could not browse: ${String(error)}`,
+      "error",
+    );
+  }
+}
+
+/**
+ * Open the selected slot.
+ *
+ * **Read-only, and the page says so rather than merely meaning it.** A write goes to the device's
+ * *active* project, so edits made to slot 47 would land in slot 3 — silently, because a write to an
+ * occupied slot is not acknowledged. `deviceHandle` is cleared and **Write to device** hidden for
+ * exactly that reason. Export produces a real project file.
+ */
+async function openFromDrive(): Promise<void> {
+  if (!drive) return;
+  const index = Number($<HTMLSelectElement>("driveprojects").value);
+  const project = drive.projects.find((p) => p.index === index);
+  if (!project) {
+    status("That slot is no longer in the listing. Browse again.", "warn");
+    return;
+  }
+
+  try {
+    status(`Reading ${project.name} from slot ${project.index}…`);
+    const opened = await openDeviceProject(drive.connected, project, (chunks, bytes) => {
+      if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
+    });
+
+    const device = deviceFor(opened.image);
+    state.device = device;
+    state.session = new Session(opened.image);
+    state.selection = [];
+    state.bank = 0;
+    state.trackFor = undefined;
+    // No write handle: this is not the project the instrument has open, so there is nothing here
+    // that could be written back safely.
+    deviceHandle = undefined;
+
+    $("device").hidden = false;
+    $("device").textContent = `${device.name} (+Drive slot ${project.index})`;
+    $("projname").textContent = device.projectName(opened.image);
+    $<HTMLButtonElement>("export").disabled = false;
+    $("reopen").hidden = false;
+    $("writedevice").hidden = true;
+    render();
+
+    status(
+      `${project.name} open from slot ${project.index} — ${opened.bytes.length.toLocaleString()} ` +
+        `bytes, the complete stored project with no donor. Read-only: export to a file, because a ` +
+        `write would go to whichever project the instrument currently has loaded.`,
+      "ok",
+    );
+  } catch (error) {
+    status(
+      error instanceof DeviceSourceError ? error.message : `Could not open the slot: ${String(error)}`,
+      "error",
+    );
+  }
 }
 
 // --- open and export ----------------------------------------------------------------------
