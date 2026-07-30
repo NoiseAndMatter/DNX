@@ -2,10 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodeMessage } from "../src/device/api.js";
 import {
+  FREEZES,
   ListingError,
   StorageCode,
+  copyRequest,
+  deleteRequest,
   listRequest,
+  moveRequest,
+  openRequest,
+  parseClose,
   parseListing,
+  writeChunkRequest,
+  writeCloseRequest,
+  writeOpenRequest,
 } from "../src/device/storage.js";
 
 /** Bytes exactly as a Digitone 1 sent them, transcribed from the Transfer capture. */
@@ -48,10 +57,12 @@ test("a file entry carries its position and size, which is the whole point", () 
       kind: "file",
       index: 28,
       size: 302,
-      unknown: 0x7e,
-      // Kept whole as well as decoded. On a `/projects` listing these four bytes are **not** the
-      // same for every entry and nothing explains why yet, so they are carried rather than
-      // summarised — a field we cannot name is the only place an answer can still be hiding.
+      // 0x7e is the full permission mask and `01 01` says the slot holds something. Identified
+      // 2026-07-30 when the user mentioned write protection: exactly the two protected projects
+      // out of 128 carry 0x12 instead, and an entire factory soundbank carries it on all 256.
+      permissions: 0x7e,
+      occupied: true,
+      writable: true,
       trailer: Uint8Array.of(0x00, 0x7e, 0x01, 0x01),
     },
   ]);
@@ -84,7 +95,12 @@ test("a directory can use the long trailer, which is what /soundbanks does", () 
     kind: "directory",
     index: 0,
     size: 262_144,
-    unknown: 0x12,
+    permissions: 0x12,
+    // `01 00` is neither of the two pairs seen on a project listing. Occupancy is read as the exact
+    // pair `01 01`, so this is not occupied — and a directory's occupancy is not a thing we have
+    // any evidence about either way.
+    occupied: false,
+    writable: false,
     trailer: Uint8Array.of(0x00, 0x12, 0x01, 0x00),
   });
   assert.equal(listing.entries[1]!.name, "B");
@@ -156,4 +172,73 @@ test("start and count travel together, because a start alone asks for nothing", 
 
 test("a path outside Windows-1252 is refused before it reaches the wire", () => {
   assert.throws(() => listRequest(1, "proj\u{1F600}cts"), /not encodable/);
+});
+
+// --- Transfer's own requests, byte for byte -------------------------------------------------------
+//
+// Everything below is a **literal transcription of what Elektron Transfer put on the wire**,
+// captured over USB on 2026-07-30. These are the highest-value fixtures in this project: the
+// requests were guessed at for three days from replies alone, and the guesses froze the instrument
+// three times. Pinning them to the exact bytes is what stops that being re-derived.
+
+test("open-for-read matches Transfer's request exactly", () => {
+  // 2f 70 72 6f 6a 65 63 74 73 2f 37 00  00 00 08 00  01
+  // /projects/7\0                         2048         ?
+  const sent = decodeMessage(openRequest(1, "/projects/7", FREEZES)).body;
+  assert.deepEqual(
+    [...sent],
+    [0x2f, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x37, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01],
+  );
+});
+
+test("open-for-write puts the length before the path", () => {
+  // 00 00 46 90  2f 70 72 6f 6a 65 63 74 73 2f 35 36 00
+  // 18,064       /projects/56\0
+  //
+  // Length first is not where anyone would put it, and no trailing slash — unlike the mutations.
+  const sent = decodeMessage(writeOpenRequest(1, "/projects/56", 18_064)).body;
+  assert.deepEqual(
+    [...sent],
+    [0x00, 0x00, 0x46, 0x90, 0x2f, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x2f, 0x35, 0x36, 0x00],
+  );
+});
+
+test("a write chunk carries handle, offset, checksum and total length before the data", () => {
+  // 00 00 00 05  00 00 00 00  cb 49 92 19  00 00 01 0d  <269 bytes>
+  const data = new Uint8Array(269).fill(0xac);
+  const sent = decodeMessage(writeChunkRequest(1, 5, 0, 0xcb499219, 269, data)).body;
+
+  assert.equal(sent.length, 16 + 269, "16-byte header, then the data");
+  assert.deepEqual([...sent.subarray(0, 16)], [0, 0, 0, 5, 0, 0, 0, 0, 0xcb, 0x49, 0x92, 0x19, 0, 0, 0x01, 0x0d]);
+});
+
+test("closing a writer commits", () => {
+  assert.deepEqual([...decodeMessage(writeCloseRequest(1, 5)).body], [0, 0, 0, 5, 0, 0, 0, 1]);
+});
+
+test("move and copy send two paths, each with a trailing slash", () => {
+  // 2f 70 72 6f 6a 65 63 74 73 2f 35 35 2f 00  2f 70 72 6f 6a 65 63 74 73 2f 35 36 2f 00
+  // /projects/55/\0                             /projects/56/\0
+  const expected = [...Buffer.from("/projects/55/\0/projects/56/\0", "latin1")];
+
+  assert.deepEqual([...decodeMessage(moveRequest(1, "/projects/55", "/projects/56")).body], expected);
+  assert.deepEqual([...decodeMessage(copyRequest(1, "/projects/55", "/projects/56")).body], expected);
+});
+
+test("a caller who forgets the trailing slash still sends a valid mutation", () => {
+  // Every other path in this API is written without one, so a caller correct everywhere else will
+  // be wrong here — and the failure, `Could not resolve path`, looks exactly like naming a file
+  // that is not there.
+  const with_ = decodeMessage(deleteRequest(1, "/soundbanks/C/30/")).body;
+  const without = decodeMessage(deleteRequest(1, "/soundbanks/C/30")).body;
+  assert.deepEqual([...without], [...with_]);
+  assert.deepEqual([...without], [...Buffer.from("/soundbanks/C/30/\0", "latin1")]);
+});
+
+test("a close reply states the file's length", () => {
+  // 01 00 00 00 03 00 00 00 81 — handle 3, 129 bytes. That is how Transfer learns a size without
+  // reading the file.
+  const result = parseClose(Uint8Array.of(0x01, 0, 0, 0, 0x03, 0, 0, 0, 0x81));
+  assert.equal(result.handle, 3);
+  assert.equal(result.length, 129);
 });
