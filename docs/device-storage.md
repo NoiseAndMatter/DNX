@@ -185,11 +185,66 @@ positive — see `KNOWN-ISSUES.md`.
 
 ---
 
+## 5a. The request side — SOLVED for listing, 2026-07-30
+
+**[verified] on hardware.** The requests were reconstructed from response shapes alone and then
+confirmed one field at a time. `/` returned `projects` and `soundbanks` on the first attempt.
+
+### `0x53` — list a directory
+
+```
+0x53   path\0   [u32 start]   [u32 count]
+```
+
+- **Paths are absolute and use `/`** — `/`, `/projects`, `/soundbanks`, `/soundbanks/A`. A bare
+  `projects` or `soundbanks` is refused.
+- **Directory-only.** `/soundbanks/A/DIGIT-ONE` and `/soundbanks/A/SIMPLE LEAD JM` both answer
+  `Invalid path`. There is no stat; a file has no listing.
+- **A bare path returns the whole directory** — 128 projects, 256 sounds, one response.
+- **`start` alone returns nothing.** Sent a start of 28 with no count, the device answered
+  `first 28, next 28, count 0` — on two different paths. It honoured the cursor and returned the
+  zero entries we asked for, which is how the second field was found.
+
+`listRequest` takes them as one `Page`, never separately, so a request for nothing cannot be
+written by accident.
+
+### `0x54` — open a project **by id, not by path**
+
+The device named the argument type itself. Sent a path, it answered **`invalid project id`** —
+not `Invalid path`, which is what `0x53` says. It had parsed the message, recognised the code, and
+objected to the *kind* of argument.
+
+```
+0x54   u32 projectId
+```
+
+The id is the `index` from a `/projects` listing: **1-based**, and the same numbering as the
+author's own filenames — `002 MORNING_JAM.dnprj` is id 2.
+
+So the two halves of this API address differently. **`0x53` browses a tree by path; `0x54` opens a
+project by slot.** Worth knowing before assuming one convention covers both.
+
+### What the listing shows
+
+| Path | Entries | Notes |
+|---|---|---|
+| `/` | 2 | `projects` (128 children), `soundbanks` (8) |
+| `/projects` | 128 | names, 1-based ids, **4,194,304 B each** |
+| `/soundbanks` | 8 | `A`–`H`, **262,144 B each** |
+| `/soundbanks/A` | 256 | sound names, ids, **302 B each** |
+
+**Those sizes are allocations, not contents.** A DN1 image is 2,781,700 bytes and a `.dnprj` is
+~25 KB compressed, yet every project reads 4 MiB; 256 sounds of 302 bytes is 77,312, yet every bank
+reads 256 KiB. Nothing should compute free space from them.
+
+Names decode as Windows-1252 and the corpus proves it matters — `WÖÖPZ ZB`, `PLUCKY EÅ`.
+
 ## 6. What is still unknown
 
-- **The request side.** Every code above is inferred from its response. The path argument's
-  encoding, and how an index is addressed, are unobserved. A MIDI spy between Transfer and the
-  device (loopMIDI, MIDI-OX) would capture them; Web MIDI cannot.
+- ~~The request side.~~ **SOLVED for `0x53` and `0x54`** — see §5a. Reconstructed from responses
+  and confirmed on hardware. `0x55` (read) and `0x56` (close) are still unattempted, deliberately:
+  they wait until an open has returned a handle whose width we have seen, because guessing three
+  messages at once produces a failure that cannot be attributed to any of them.
 - **Writing.** `0x5a` acknowledges a mutation but we never saw what was asked. Upload was not
   tested.
 - **Whether the Digitone II speaks the same API.** Everything here is from a Digitone 1.
