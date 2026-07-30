@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The device probe: the smallest thing that needs hardware.
  *
  * Ask a connected Elektron what it is, what firmware it runs, which messages it supports, and
@@ -11,11 +11,11 @@
  * ## It has already earned itself, on its first run
  *
  * Three questions went in. Two came back as expected: the firmware **build string** the
- * storage-version question had waited on since `dn2-format.md` Â§8a, and a **product id of 43**,
+ * storage-version question had waited on since `dn2-format.md` §8a, and a **product id of 43**,
  * matching what `src/sysex/devices.ts` had recorded.
  *
- * The third came back **the opposite of what we had assumed.** ROADMAP Â§3d's plan rested on
- * reading whole projects off the +Drive over SysEx, which elk-herd does on a Digitakt II â€” and a
+ * The third came back **the opposite of what we had assumed.** ROADMAP §3d's plan rested on
+ * reading whole projects off the +Drive over SysEx, which elk-herd does on a Digitakt II — and a
  * Digitone II advertises **none** of the nine file-API codes. `DirList` timed out because the
  * device does not implement it. Had the transfer layer been built first, that is where it would
  * have surfaced.
@@ -57,11 +57,7 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import {
-  StorageCode,
-  listRequest,
-  parseListing,
-} from "../../../src/device/storage.js";
+import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
 import { decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
@@ -107,7 +103,7 @@ let lastProductId: number | undefined;
  *
  * Sending to a port opens it, and opening it fires `statechange`, which re-renders the lists.
  * Without this the auto-guess ran again on every probe and snapped the selects back to whichever
- * device it liked best â€” reported by the user while probing a Digitone and a Digitone II side by
+ * device it liked best — reported by the user while probing a Digitone and a Digitone II side by
  * side, which is exactly when it is most annoying and least obvious.
  */
 const chosen: { input?: string; output?: string } = {};
@@ -116,7 +112,7 @@ const chosen: { input?: string; output?: string } = {};
  * Ports are listed in pairs, and the pairing is a guess **only until the user disagrees**.
  *
  * A device is an input and an output that happen to have similar names, and nothing in WebMIDI
- * says which belong together â€” an interface with four ports gives no hint at all. So the guess is
+ * says which belong together — an interface with four ports gives no hint at all. So the guess is
  * by name, and a choice, once made, outranks it for as long as that port exists.
  */
 function renderPorts(): void {
@@ -177,7 +173,7 @@ function renderPorts(): void {
  *
  * Crude on purpose, and only used to add a hint to a failure that has already happened. Firefox
  * implements Web MIDI but gates SysEx behind a separate site-permission add-on and drops it
- * **silently** when that is missing â€” ports open, `send()` does not throw, nothing comes back.
+ * **silently** when that is missing — ports open, `send()` does not throw, nothing comes back.
  * Indistinguishable from a dead device, and it cost an hour before Chrome was tried with nothing
  * else changed.
  */
@@ -206,21 +202,21 @@ async function probe(): Promise<void> {
 
   const results = $("results");
   results.innerHTML = "";
-  status(`Opening ${output.name}â€¦`);
+  status(`Opening ${output.name}…`);
 
   // **Open both ports explicitly.**
   //
-  // `addEventListener("midimessage", â€¦)` does *not* open an input. Only assigning
+  // `addEventListener("midimessage", …)` does *not* open an input. Only assigning
   // `onmidimessage` opens one implicitly, and the spec is explicit about that asymmetry. Without
-  // this, a closed port silently delivers nothing and every request times out â€” indistinguishable
+  // this, a closed port silently delivers nothing and every request times out — indistinguishable
   // from a device that is not listening, which is exactly how it was misread the first time.
   //
   // It worked at all only because the ports happened to already be open; anything that takes them
-  // and gives them back â€” Elektron Transfer, Overbridge, a DAW â€” leaves them closed.
+  // and gives them back — Elektron Transfer, Overbridge, a DAW — leaves them closed.
   //
-  // Bounded, because `open()` is a promise that can simply never settle â€” a port another
+  // Bounded, because `open()` is a promise that can simply never settle — a port another
   // application is holding does not reject, it waits. Without the race the page sits on
-  // "Openingâ€¦" indefinitely with no way to tell that from a slow device.
+  // "Opening…" indefinitely with no way to tell that from a slow device.
   try {
     await Promise.race([
       Promise.all([input.open(), output.open()]),
@@ -232,8 +228,8 @@ async function probe(): Promise<void> {
     status(`Could not open the port: ${error}. Something else may be holding it.`, "error");
     card(results, "Could not open the port", [
       ["Error", String(error)],
-      ["Input", `${input.name} â€” ${input.connection}`],
-      ["Output", `${output.name} â€” ${output.connection}`],
+      ["Input", `${input.name} — ${input.connection}`],
+      ["Output", `${output.name} — ${output.connection}`],
       ["Usually", "another application has the port: Elektron Transfer, Overbridge, or a DAW"],
     ]);
     return;
@@ -252,13 +248,13 @@ async function probe(): Promise<void> {
   input.addEventListener("midimessage", onMessage);
 
   try {
-    // Narrated step by step. A single "Probingâ€¦" that sits there for half a minute tells the
-    // user nothing about whether it is working, stuck, or nearly done â€” and it is the *first*
+    // Narrated step by step. A single "Probing…" that sits there for half a minute tells the
+    // user nothing about whether it is working, stuck, or nearly done — and it is the *first*
     // request that fails when a port is closed, which a static message actively hides.
-    status(`Asking ${output.name} what it isâ€¦`);
+    status(`Asking ${output.name} what it is…`);
     const device = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
 
-    status(`${device.deviceName} answered. Asking for its firmwareâ€¦`, "ok");
+    status(`${device.deviceName} answered. Asking for its firmware…`, "ok");
     const version = readVersionResponse((await session.request(Code.Version, versionRequest)).body);
 
     // Converted, not copied: the Device response is in the API's product space and a dump request
@@ -291,7 +287,7 @@ async function probe(): Promise<void> {
     fillProbeCodes(device.supportedMessages);
 
     // Enabled regardless of what the device advertises. `supportedMessages` lists *responses*, and
-    // this API's codes are not in it on either machine â€” which is exactly the reasoning that made
+    // this API's codes are not in it on either machine — which is exactly the reasoning that made
     // us conclude for two days that the file API did not exist.
     $<HTMLInputElement>("lsPath").disabled = false;
     $<HTMLInputElement>("lsFrom").disabled = false;
@@ -304,9 +300,9 @@ async function probe(): Promise<void> {
     // implement". That guard was wrong twice over, and the shape is worth more than the incident:
     //
     // 1. `supportedMessages` enumerates **responses**, so absence is not a refusal. Neither
-    //    Digitone advertises `0x60`â€“`0x6f` and both honour them; the whole storage API lives at
-    //    `0x53`â€“`0x5a`, which neither advertises either.
-    // 2. It was **self-sealing**. The guard existed *because* `DirList` timed out â€” and that
+    //    Digitone advertises `0x60`–`0x6f` and both honour them; the whole storage API lives at
+    //    `0x53`–`0x5a`, which neither advertises either.
+    // 2. It was **self-sealing**. The guard existed *because* `DirList` timed out — and that
     //    timeout may have been our own send blocked by another application holding the output
     //    port, which `output.send()` does not report. A possibly-false negative became code that
     //    guaranteed it could never be retested.
@@ -319,21 +315,21 @@ async function probe(): Promise<void> {
         (await session.request(Code.DirList, (id) => dirListRequest(id, "/"))).body,
       );
       listing(results, "/", root);
-      card(results, "DirList answered â€” elk-herd's file API is implemented here", [
-        ["Advertised", caps.driveFiles ? "yes" : "no â€” and it worked anyway"],
+      card(results, "DirList answered — elk-herd's file API is implemented here", [
+        ["Advertised", caps.driveFiles ? "yes" : "no — and it worked anyway"],
         ["Means", "the Digitakt file API applies to this machine; prefer it to the reconstructed 0x53"],
       ]);
       status(`${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`, "ok");
     } catch {
       const alive = await linkIsAlive(output);
       card(results, alive ? "DirList: no answer, link verified" : "DirList: nothing reached the device", [
-        ["Advertised", caps.driveFiles ? "yes" : `no â€” missing ${caps.missingForDriveFiles.map(hex).join(" ")}`],
-        ["Link check", alive ? "PASSED â€” Device answered afterwards" : "FAILED"],
+        ["Advertised", caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`],
+        ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
         [
           "Means",
           alive
             ? "a genuine negative: this device does not implement 0x10. Its storage API is at " +
-              "0x53â€“0x5a instead â€” see docs/device-storage.md."
+              "0x53–0x5a instead — see docs/device-storage.md."
             : LINK_DEAD,
         ],
       ]);
@@ -353,23 +349,23 @@ async function probe(): Promise<void> {
   } catch (error) {
     status(String(error), "error");
     // The counter is the whole diagnosis. Nothing arriving and the wrong thing arriving look
-    // identical from the outside â€” one is a dead port, the other is a live port carrying someone
-    // else's traffic â€” and guessing between them cost a session.
+    // identical from the outside — one is a dead port, the other is a live port carrying someone
+    // else's traffic — and guessing between them cost a session.
     card(results, "Probe failed", [
       ["Error", String(error)],
       ["MIDI messages received", String(received)],
       [
         "Which means",
         received === 0
-          ? "nothing arrived at all â€” wrong input port, a port something else is holding, or an interface that drops SysEx"
-          : "the port is live and carrying traffic, but none of it was an Elektron API reply â€” most likely the wrong pair, with this input belonging to another device",
+          ? "nothing arrived at all — wrong input port, a port something else is holding, or an interface that drops SysEx"
+          : "the port is live and carrying traffic, but none of it was an Elektron API reply — most likely the wrong pair, with this input belonging to another device",
       ],
       ["Ports", `${input.name} / ${output.name}, connection ${input.connection}`],
       ...(received === 0 && !isChromium()
         ? ([
             [
               "Browser",
-              "not Chromium â€” Firefox implements Web MIDI but gates SysEx behind a separate " +
+              "not Chromium — Firefox implements Web MIDI but gates SysEx behind a separate " +
                 "site-permission add-on, and filters it silently when that is missing. Confirmed: " +
                 "a probe that failed here succeeded in Chrome with nothing else changed. Try " +
                 "Chrome or Edge before looking further.",
@@ -419,7 +415,7 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
   let consecutiveSilences = 0;
 
   for (const key of QUERY_KEYS) {
-    // Insurance, not a fix for an observed problem â€” and worth saying so, because the comment
+    // Insurance, not a fix for an observed problem — and worth saying so, because the comment
     // here first claimed otherwise. A slow sweep looked like the device ignoring unknown keys; it
     // was actually a browser silently dropping SysEx. On a working connection a Digitone II
     // answers **every** key at once, `none` included, exactly as assumed. This stays because a
@@ -448,7 +444,7 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
   const stopped = rows.some(([, v]) => v === "not asked");
   card(
     into,
-    `Query â€” ${answered} of ${QUERY_KEYS.length} key(s) answered` +
+    `Query — ${answered} of ${QUERY_KEYS.length} key(s) answered` +
       (stopped ? `, stopped after ${GIVE_UP_AFTER} silent in a row` : ""),
     rows,
   );
@@ -470,7 +466,7 @@ const GIVE_UP_AFTER = 3;
  * Every advertised message, named.
  *
  * The unknown ones are shown rather than filtered out. A Digitone II advertises `0x03`, `0x04`,
- * `0x06` and `0x07`, which appear in no source we have â€” and a list that quietly dropped them
+ * `0x06` and `0x07`, which appear in no source we have — and a list that quietly dropped them
  * would hide the most interesting thing on the page.
  */
 function messageCard(into: HTMLElement, codes: readonly number[]): void {
@@ -559,7 +555,7 @@ void connect();
  * Capture whatever the device chooses to send.
  *
  * **Sends nothing.** The Digitone dumps from its own front panel, so this half of the transport
- * can be proven with the safety question entirely absent â€” which is why it is built before
+ * can be proven with the safety question entirely absent — which is why it is built before
  * anything that transmits. The bytes are saved verbatim as a `.syx`, which is the same form as
  * the corpus captures, so every existing tool works on the result the moment it lands.
  */
@@ -575,29 +571,29 @@ function renderCapture(): void {
     ["Bytes", summary.bytes.toLocaleString()],
     ["Messages", String(summary.messages)],
   ];
-  if (summary.foreign > 0) rows.push(["Not Elektron", `${summary.foreign} â€” ignored`]);
+  if (summary.foreign > 0) rows.push(["Not Elektron", `${summary.foreign} — ignored`]);
   if (summary.unparsed > 0) rows.push(["Unreadable", String(summary.unparsed)]);
   // A transfer stopped mid-message is normal, and saying so beats a summary that quietly
   // describes a truncated capture as a complete one.
   if (summary.trailingBytes > 0) {
-    rows.push(["Incomplete tail", `${summary.trailingBytes} bytes â€” a message was cut short`]);
+    rows.push(["Incomplete tail", `${summary.trailingBytes} bytes — a message was cut short`]);
   }
-  card(results, listening ? "Listeningâ€¦" : "Capture", rows);
+  card(results, listening ? "Listening…" : "Capture", rows);
 
   for (const group of summary.groups) {
     const objects =
       group.objects.length === 0
-        ? "â€”"
+        ? "—"
         : group.objects.length <= 12
           ? group.objects.join(", ")
-          : `${group.objects.length} objects, ${group.objects[0]}â€¦${group.objects[group.objects.length - 1]}`;
-    card(results, `${group.product} â€” ${group.name} (${hex(group.dumpType)})`, [
+          : `${group.objects.length} objects, ${group.objects[0]}…${group.objects[group.objects.length - 1]}`;
+    card(results, `${group.product} — ${group.name} (${hex(group.dumpType)})`, [
       ["Messages", String(group.count)],
       ["Bytes", group.bytes.toLocaleString()],
       ["Object numbers", objects],
       // Said plainly, because "128 objects" against 182 messages reads as lost data. It is not:
       // the field is one 7-bit byte, and the device reports 0 once it runs out.
-      // Observed, then both causes named â€” because the bytes genuinely cannot tell them apart.
+      // Observed, then both causes named — because the bytes genuinely cannot tell them apart.
       // This used to assert saturation, and said so on a capture of 129 patternKits where the
       // extra one was our own verification re-read. A confident wrong explanation is worse than
       // an honest ambiguous one.
@@ -605,8 +601,8 @@ function renderCapture(): void {
         ? ([[
             "Note",
             `${group.count} messages, ${group.objects.length} distinct numbers. Either the object ` +
-              `number saturated â€” it is a 7-bit field, so a bank of more than 128 reports 0 for ` +
-              `the rest and only send order identifies those â€” or some objects simply arrived ` +
+              `number saturated — it is a 7-bit field, so a bank of more than 128 reports 0 for ` +
+              `the rest and only send order identifies those — or some objects simply arrived ` +
               `twice, which is what a re-read or a verification does. Nothing is lost either way.`,
           ]] as [string, string][])
         : []),
@@ -634,7 +630,7 @@ function stopListening(): void {
   status(
     capture.isEmpty
       ? "Nothing arrived. Trigger the dump from the device: SETTINGS > SYSEX DUMP > SYSEX SEND."
-      : `Stopped. ${capture.byteLength.toLocaleString()} bytes captured â€” press Save capture.`,
+      : `Stopped. ${capture.byteLength.toLocaleString()} bytes captured — press Save capture.`,
     capture.isEmpty ? "warn" : "ok",
   );
 }
@@ -683,7 +679,7 @@ async function startListening(): Promise<void> {
     // message and the message count rises, so *something moving* is visible without having to
     // compare two numbers a minute apart.
     status(
-      `${SPINNER[ticks++ % SPINNER.length]}  receiving â€” ` +
+      `${SPINNER[ticks++ % SPINNER.length]}  receiving — ` +
         `${capture.byteLength.toLocaleString()} bytes, ${capture.summarise().messages} message(s)`,
     );
   };
@@ -695,7 +691,7 @@ async function startListening(): Promise<void> {
     const idle = Math.round((Date.now() - lastAt) / 1000);
     if (idle >= 2) {
       status(
-        `${SPINNER[ticks++ % SPINNER.length]}  waiting â€” ${capture.byteLength.toLocaleString()} ` +
+        `${SPINNER[ticks++ % SPINNER.length]}  waiting — ${capture.byteLength.toLocaleString()} ` +
           `bytes so far, nothing for ${idle}s`,
         idle >= 20 ? "warn" : "info",
       );
@@ -732,7 +728,7 @@ $("save").addEventListener("click", () => {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
-  status(`Saved ${name} â€” ${capture.byteLength.toLocaleString()} bytes.`, "ok");
+  status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
 });
 
 
@@ -742,7 +738,7 @@ $("save").addEventListener("click", () => {
  * Ask the device to send something.
  *
  * **The only thing on this page that transmits.** It goes out over the *dump* framing rather than
- * the API's, and the reply is an ordinary dump â€” so it lands in the capture through the same
+ * the API's, and the reply is an ordinary dump — so it lands in the capture through the same
  * listener the front-panel sends use, and needs no correlation logic of its own.
  *
  * Requires Listen to be running, deliberately: a request whose answer nobody is collecting is a
@@ -768,7 +764,7 @@ $("request").addEventListener("click", () => {
     return;
   }
   if (!listening) {
-    status("Press Listen first â€” otherwise nothing will be collecting the reply.", "warn");
+    status("Press Listen first — otherwise nothing will be collecting the reply.", "warn");
     return;
   }
 
@@ -777,7 +773,7 @@ $("request").addEventListener("click", () => {
   const product = lastProductId;
   if (product === undefined) {
     status(
-      `No dump-protocol product id for this device â€” probe it first, and if it has been probed, ` +
+      `No dump-protocol product id for this device — probe it first, and if it has been probed, ` +
         `it is a product this build does not know how to address.`,
       "warn",
     );
@@ -787,7 +783,7 @@ $("request").addEventListener("click", () => {
   try {
     output.send([...dumpRequest(product, { code: option.code, objNr })]);
     status(
-      `Asked for ${option.label.toLowerCase()}${option.indexed ? ` ${objNr}` : ""} â€” ` +
+      `Asked for ${option.label.toLowerCase()}${option.indexed ? ` ${objNr}` : ""} — ` +
         `expecting roughly ${option.approximateBytes(product).toLocaleString()} bytes back.`,
     );
   } catch (error) {
@@ -808,7 +804,7 @@ fillRequestOptions();
  * button, and a report at the end. The bytes go into the same capture the front-panel listener
  * fills, so **Save capture** writes a `.syx` every existing tool already reads.
  *
- * Requires Listen, like Request does â€” the listener is what feeds both the capture and the reader,
+ * Requires Listen, like Request does — the listener is what feeds both the capture and the reader,
  * and a read with nothing collecting is a transfer for no reason.
  */
 let reading: DumpReader | undefined;
@@ -816,7 +812,7 @@ let reading: DumpReader | undefined;
 $("readProject").addEventListener("click", () => {
   if (reading) {
     reading.stop();
-    status("Stopping after the object in flightâ€¦", "warn");
+    status("Stopping after the object in flight…", "warn");
     return;
   }
   void readProject();
@@ -830,7 +826,7 @@ async function readProject(): Promise<void> {
     return;
   }
   if (!listening) {
-    status("Press Listen first â€” otherwise nothing will be collecting the answers.", "warn");
+    status("Press Listen first — otherwise nothing will be collecting the answers.", "warn");
     return;
   }
   const productId = lastProductId;
@@ -850,7 +846,7 @@ async function readProject(): Promise<void> {
   const megabytes = (planBytes(plan) / 1_000_000).toFixed(1);
   if (
     !confirm(
-      `Ask for all ${plan.length} objects â€” roughly ${megabytes} MB.\n\n` +
+      `Ask for all ${plan.length} objects — roughly ${megabytes} MB.\n\n` +
         `Nothing is written to the device; every request carries an empty body.\n\n` +
         `Make sure SETTINGS > SYSEX DUMP is set to USB rather than USB+MIDI: DIN MIDI ` +
         `throttles the transfer to about 3 kB/s, which would take over an hour.`,
@@ -875,14 +871,14 @@ async function readProject(): Promise<void> {
       // by an order of magnitude and a hard-coded estimate would be wrong on one of them.
       const left = done === 0 ? 0 : Math.round((seconds / done) * (total - done));
       progress.innerHTML =
-        `<h2>Reading â€” ${done} of ${total}</h2>` +
+        `<h2>Reading — ${done} of ${total}</h2>` +
         `<div class="row"><span class="k">Now</span><span class="v">` +
-        `${escapeHtml(result.step.label)} â€” ${escapeHtml(result.status)}</span></div>` +
+        `${escapeHtml(result.step.label)} — ${escapeHtml(result.status)}</span></div>` +
         `<div class="row"><span class="k">Received</span><span class="v">` +
         `${capture.byteLength.toLocaleString()} bytes</span></div>` +
         `<div class="row"><span class="k">About</span><span class="v">${left}s to go</span></div>`;
       status(
-        `${SPINNER[done % SPINNER.length]}  reading ${done}/${total} â€” ${result.step.label}`,
+        `${SPINNER[done % SPINNER.length]}  reading ${done}/${total} — ${result.step.label}`,
         result.status === "ok" ? "info" : "warn",
       );
     },
@@ -921,7 +917,7 @@ async function readProject(): Promise<void> {
  * What the run found.
  *
  * Silences, late answers and mismatches are reported as counts with what each one means, because
- * every one of them is a question about the device rather than a failure of ours â€” and the first
+ * every one of them is a question about the device rather than a failure of ours — and the first
  * run of this is the experiment that answers two of them.
  */
 function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): void {
@@ -932,7 +928,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
       "Took",
       `${(elapsedMs / 1000).toFixed(1)}s` +
         (report.bytesPerSecond > 0
-          ? ` â€” ${(report.bytesPerSecond / 1000).toFixed(0)} kB/s`
+          ? ` — ${(report.bytesPerSecond / 1000).toFixed(0)} kB/s`
           : ""),
     ],
   ];
@@ -944,7 +940,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
   if (report.skipped > 0) {
     rows.push([
       "Not asked for",
-      `${report.skipped} â€” the device went quiet on ${report.gaveUpOn
+      `${report.skipped} — the device went quiet on ${report.gaveUpOn
         .map((g) => hex(g.code))
         .join(", ")} after ${report.gaveUpOn[0]?.after ?? 0} in a row, so the rest was skipped. ` +
         `On a Digitone 1 that is expected for sounds: it answers 0x63 for its four kit tracks ` +
@@ -956,21 +952,21 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
     const first = report.results.find((r) => r.status === "silent");
     rows.push([
       "No answer",
-      `${report.silent} object(s), first at ${first?.step.label ?? "?"} â€” either the device sends ` +
+      `${report.silent} object(s), first at ${first?.step.label ?? "?"} — either the device sends ` +
         `nothing for that slot, or the transport is too slow for the wait`,
     ]);
   }
   if (report.late > 0) {
     rows.push([
       "Answered late",
-      `${report.late} â€” the wait is too short for this transport. If SYSEX DUMP is set to ` +
-        `USB+MIDI, switch it to USB: DIN throttles this to about 3 kB/s (manual Â§13.4.2).`,
+      `${report.late} — the wait is too short for this transport. If SYSEX DUMP is set to ` +
+        `USB+MIDI, switch it to USB: DIN throttles this to about 3 kB/s (manual §13.4.2).`,
     ]);
   }
   if (report.objNrMismatches > 0) {
     rows.push([
       "Object number differed",
-      `${report.objNrMismatches} â€” the device does not echo the requested index, so a rebuild ` +
+      `${report.objNrMismatches} — the device does not echo the requested index, so a rebuild ` +
         `must go by send order rather than by the number in the message`,
     ]);
   }
@@ -980,7 +976,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
     );
     rows.push([
       "Unexpected size",
-      `${report.sizeMismatches} â€” e.g. ${odd?.step.label}: ${odd?.payloadBytes} bytes, expected ` +
+      `${report.sizeMismatches} — e.g. ${odd?.step.label}: ${odd?.payloadBytes} bytes, expected ` +
         `${odd?.step.payloadBytes}`,
     ]);
   }
@@ -991,7 +987,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
     const retry = stepsToRetry(report);
     rows.push([
       "Bad checksums",
-      `${report.badChecksums} â€” corrupt in transit, not a format problem. Read again and these ` +
+      `${report.badChecksums} — corrupt in transit, not a format problem. Read again and these ` +
         `will almost certainly be clean: ${retry
           .slice(0, 6)
           .map((s) => s.label)
@@ -1010,7 +1006,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
  * The only control on this page that changes the instrument.
  *
  * It performs a **null round trip**: a record from the current capture is sent back to the slot it
- * came from â€” identical bytes to the same place â€” and then requested again and compared. If the
+ * came from — identical bytes to the same place — and then requested again and compared. If the
  * write path works, nothing changed; if it is broken, nothing changed either; and if the bytes land
  * somewhere else, the read-back shows it while the original is still in the capture.
  *
@@ -1030,7 +1026,7 @@ $("writeBack").addEventListener("click", () => {
       ["Error", String(error)],
       [
         "Meaning",
-        "the message was not sent, or the port rejected it. Nothing was written â€” but check the " +
+        "the message was not sent, or the port rejected it. Nothing was written — but check the " +
           "device, because 'we threw before sending' and 'the send threw partway' look the same " +
           "from here.",
       ],
@@ -1043,7 +1039,7 @@ async function writeBack(): Promise<void> {
   const output = access.outputs.get($<HTMLSelectElement>("output").value);
   const productId = lastProductId;
   if (!output || productId === undefined) {
-    status("Probe the device first â€” a write has to be addressed to a known product.", "warn");
+    status("Probe the device first — a write has to be addressed to a known product.", "warn");
     return;
   }
   if (!listening) {
@@ -1056,7 +1052,7 @@ async function writeBack(): Promise<void> {
   const candidate = messages.find((m) => m.dumpType === 0x50 && m.productId === productId);
   if (!candidate) {
     status(
-      "No PatternKit in the capture from this device. Read one first â€” Write back only ever " +
+      "No PatternKit in the capture from this device. Read one first — Write back only ever " +
         "returns a record to where it came from.",
       "warn",
     );
@@ -1068,7 +1064,7 @@ async function writeBack(): Promise<void> {
     !confirm(
       `Write pattern ${slot} back to slot ${slot} on the device.\n\n` +
         `This OVERWRITES that slot. The bytes are identical to what the device just sent, so ` +
-        `nothing should change â€” but this is a real write and there is no undo.\n\n` +
+        `nothing should change — but this is a real write and there is no undo.\n\n` +
         `Load a scratch project first. Continue?`,
     )
   ) {
@@ -1084,7 +1080,7 @@ async function writeBack(): Promise<void> {
     verdictCard("Write refused before anything was sent", [
       ["Slot", slot],
       ["Reason", String(error)],
-      ["Device", "untouched â€” the message was never built, let alone sent"],
+      ["Device", "untouched — the message was never built, let alone sent"],
     ]);
     status(`Refused: ${String(error)}`, "error");
     return;
@@ -1100,10 +1096,10 @@ async function writeBack(): Promise<void> {
     log.push([what, detail]);
     verdictCard("Write in progress", log);
   };
-  trace("Sending", `0x50 to slot ${slot}â€¦`);
+  trace("Sending", `0x50 to slot ${slot}…`);
 
   try {
-    status(`Writing ${slot}â€¦`, "warn");
+    status(`Writing ${slot}…`, "warn");
     output.send([...message]);
   } catch (error) {
     trace("Send failed", String(error));
@@ -1111,15 +1107,15 @@ async function writeBack(): Promise<void> {
     return;
   }
 
-  // Read it back â€” but not immediately. A request sent behind 114 KB of SysEx is dropped by a
+  // Read it back — but not immediately. A request sent behind 114 KB of SysEx is dropped by a
   // device still ingesting it, which on hardware looked like a write that worked and a page that
   // hung. elk-herd has always paced its sends this way; see `settleMsAfter`.
   const settle = settleMsAfter(message.length, productId);
-  trace("Settling", `${settle}ms before asking â€” the device is still taking it in`);
+  trace("Settling", `${settle}ms before asking — the device is still taking it in`);
   await new Promise((resolve) => setTimeout(resolve, settle));
 
   trace("Sent", "asking for it back to see what actually landed");
-  status(`Written. Asking for ${slot} backâ€¦`);
+  status(`Written. Asking for ${slot} back…`);
   const readBack = await new Promise<Uint8Array | undefined>((resolve) => {
     const timer = setTimeout(() => {
       awaitingReply = undefined;
@@ -1151,18 +1147,18 @@ async function writeBack(): Promise<void> {
 
   if (!readBack) {
     log.push(["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`]);
-    verdictCard("Write NOT verified â€” yet", [
+    verdictCard("Write NOT verified — yet", [
       ...log,
       [
         "Means",
         "unverified is not the same as failed. The write may well have landed; the reply may " +
-          "simply be slower than the wait. Still listening â€” if it arrives this card updates.",
+          "simply be slower than the wait. Still listening — if it arrives this card updates.",
       ],
     ]);
     status("Written; the read-back has not arrived yet. Still listening.", "warn");
 
     // **Keep waiting after giving up.** A reply that missed the timeout used to arrive, trigger a
-    // capture redraw, and wipe the verdict â€” which is how a slow but successful write came to look
+    // capture redraw, and wipe the verdict — which is how a slow but successful write came to look
     // like a control that does nothing. A late answer is an answer, so it upgrades the card.
     awaitingReply = (data) => {
       let reply;
@@ -1180,7 +1176,7 @@ async function writeBack(): Promise<void> {
         ["Result", late.ok ? "the device returned exactly what was sent" : late.reason ?? "differs"],
         ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
       ]);
-      status(late.ok ? `${slot} verified â€” the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+      status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
     };
     return;
   }
@@ -1194,11 +1190,11 @@ async function writeBack(): Promise<void> {
       "Means",
       verdict.ok
         ? "writing works on this device, at this record size, to this slot"
-        : "the bytes did not land as sent â€” write nothing else until this is understood",
+        : "the bytes did not land as sent — write nothing else until this is understood",
     ],
   ]);
   status(
-    verdict.ok ? `${slot} written and verified â€” writing works.` : `${slot} did NOT verify.`,
+    verdict.ok ? `${slot} written and verified — writing works.` : `${slot} did NOT verify.`,
     verdict.ok ? "ok" : "error",
   );
 }
@@ -1210,12 +1206,12 @@ async function writeBack(): Promise<void> {
  *
  * The null round trip proved the path with bytes that were already there. This one moves a pattern
  * into a slot it was not in, which is the operation the manager will eventually perform over MIDI
- * â€” and it is the experiment that answers the two things `docs/device-probing.md` still lists as
+ * — and it is the experiment that answers the two things `docs/device-probing.md` still lists as
  * unknown: whether a write reaches the +Drive or only the active copy in RAM, and what happens to
  * a slot that already holds work.
  *
  * The destination defaults to `H16` because the last slot of the last bank is the least likely to
- * hold anything, and the control refuses a non-blank destination unless the user says otherwise â€”
+ * hold anything, and the control refuses a non-blank destination unless the user says otherwise —
  * judged against the **captured blank**, which is itself a device artefact rather than our idea of
  * what empty looks like.
  */
@@ -1270,22 +1266,22 @@ async function writeToChosenSlot(): Promise<void> {
     return;
   }
   if (destination === sourceObj) {
-    status("That is the slot it came from â€” use Write back for the null round trip.", "warn");
+    status("That is the slot it came from — use Write back for the null round trip.", "warn");
     return;
   }
 
   // Is there something in the way? Judged against the device's own blank, not ours.
   const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
   const existing = messages.find((m) => m.dumpType === 0x50 && m.objNr === destination);
-  let occupancy = "not in the capture â€” unknown, so assume it holds something";
+  let occupancy = "not in the capture — unknown, so assume it holds something";
   if (existing) {
     const blank = blankPatternKit(device, destination);
     const verdict = looksBlank(
       existing.payload, blank, device.slotIndexOffset, device.layout.patternSize + 8, 16,
     );
     occupancy = verdict.blank
-      ? "empty â€” matches the device's own blank exactly"
-      : `HOLDS WORK â€” ${verdict.differingBytes.toLocaleString()} bytes differ from a blank`;
+      ? "empty — matches the device's own blank exactly"
+      : `HOLDS WORK — ${verdict.differingBytes.toLocaleString()} bytes differ from a blank`;
   }
 
   const from = patternName(sourceObj);
@@ -1325,7 +1321,7 @@ async function writeToChosenSlot(): Promise<void> {
     return;
   }
 
-  trace("Sending", `${message.length.toLocaleString()} bytes to ${to}â€¦`);
+  trace("Sending", `${message.length.toLocaleString()} bytes to ${to}…`);
   try {
     output.send([...message]);
   } catch (error) {
@@ -1335,16 +1331,16 @@ async function writeToChosenSlot(): Promise<void> {
   }
 
   // **Let the device finish taking it in before asking it anything.** A request sent immediately
-  // behind 114 KB of SysEx is dropped by a device still ingesting â€” the write lands and the reply
+  // behind 114 KB of SysEx is dropped by a device still ingesting — the write lands and the reply
   // never comes, which is exactly how this looked on hardware.
   const settle = settleMsAfter(message.length, productId);
-  trace("Settling", `${settle}ms before asking â€” the device is still taking it in`);
+  trace("Settling", `${settle}ms before asking — the device is still taking it in`);
   await new Promise((resolve) => setTimeout(resolve, settle));
 
   trace("Sent", `asking for ${to} back`);
   const readBack = await awaitPatternKit(output, productId, destination);
   if (!readBack) {
-    verdictCard("Write NOT verified â€” yet", [
+    verdictCard("Write NOT verified — yet", [
       ...log,
       ["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
       ["Means", "unverified is not failed. Read the project again and compare."],
@@ -1360,7 +1356,7 @@ async function writeToChosenSlot(): Promise<void> {
 
   // **Three outcomes, not two.** A device that overwrote and a device that refused both answer the
   // request and both stay silent about the write itself, so "did not match what we sent" is not a
-  // diagnosis. Held against what the slot contained *before*, the answer is unambiguous â€” and on a
+  // diagnosis. Held against what the slot contained *before*, the answer is unambiguous — and on a
   // refusal it also says the original is intact, which is the thing the user needs to know.
   const wasThere = existing && verifyWrite(existing.payload, readBack).ok;
   const outcome = verdict.ok
@@ -1371,9 +1367,9 @@ async function writeToChosenSlot(): Promise<void> {
 
   const title =
     outcome === "overwritten"
-      ? `Write VERIFIED â€” ${from} is now in ${to}`
+      ? `Write VERIFIED — ${from} is now in ${to}`
       : outcome === "refused"
-        ? `Device REFUSED the write â€” ${to} is unchanged`
+        ? `Device REFUSED the write — ${to} is unchanged`
         : "Write did NOT match, and neither does the original";
 
   verdictCard(title, [
@@ -1384,7 +1380,7 @@ async function writeToChosenSlot(): Promise<void> {
       outcome === "overwritten"
         ? "the device returned exactly what was sent"
         : outcome === "refused"
-          ? `${to} still holds exactly what it held before â€” the device declined the write, ` +
+          ? `${to} still holds exactly what it held before — the device declined the write, ` +
             `silently, and nothing was lost`
           : `matches neither what was sent nor what was there: ${verdict.reason ?? "differs"}`,
     ],
@@ -1392,7 +1388,7 @@ async function writeToChosenSlot(): Promise<void> {
       "Next",
       outcome === "overwritten"
         ? "SAVE PROJECT on the device to keep this. A write lands in the active project, not the " +
-          "+Drive â€” it survives a power cycle but is lost the moment another project is loaded. " +
+          "+Drive — it survives a power cycle but is lost the moment another project is loaded. " +
           "Which also means: to undo it, load another project without saving."
         : outcome === "refused"
           ? "Nothing to undo. The device protects occupied slots, which is worth knowing before " +
@@ -1405,7 +1401,7 @@ async function writeToChosenSlot(): Promise<void> {
     outcome === "overwritten"
       ? `${from} written to ${to} and verified.`
       : outcome === "refused"
-        ? `${to} was not overwritten â€” the device refused.`
+        ? `${to} was not overwritten — the device refused.`
         : `${to} holds something unexpected.`,
     outcome === "overwritten" ? "ok" : outcome === "refused" ? "warn" : "error",
   );
@@ -1450,12 +1446,12 @@ function awaitPatternKit(
  * Ask the device something it must answer, and report whether it did.
  *
  * **`output.send()` does not throw when another application holds the port.** It returns normally
- * and the bytes go nowhere â€” so a silence means either *the device did not answer* or *we never
+ * and the bytes go nowhere — so a silence means either *the device did not answer* or *we never
  * spoke*, and this page has had no way to tell those apart. It has been resolving that ambiguity
  * by assumption for three days.
  *
  * The cost is on the record. `DirList` timing out was one of the two pillars holding up the
- * conclusion *"the +Drive file API does not exist on a Digitone"* â€” and if Transfer was running at
+ * conclusion *"the +Drive file API does not exist on a Digitone"* — and if Transfer was running at
  * the time, that request may never have left the machine. The API turned out to exist. Later, a
  * run of unknown-code "silences" was recorded while Transfer held the port, and every one of them
  * is void for the same reason.
@@ -1507,7 +1503,7 @@ const LINK_TIMEOUT_MS = 1500;
 /** Shown when the control fails, because the cause is almost always the same one. */
 const LINK_DEAD =
   "the device did not answer a message it always answers, so nothing we send is reaching it. " +
-  "Another application â€” Elektron Transfer, Overbridge, a DAW â€” is most likely holding the output " +
+  "Another application — Elektron Transfer, Overbridge, a DAW — is most likely holding the output " +
   "port. Close it and try again. Until this passes, a silence proves nothing.";
 
 // --- listing the +Drive --------------------------------------------------------------------------
@@ -1515,14 +1511,14 @@ const LINK_DEAD =
 /**
  * Ask the device what is on its +Drive.
  *
- * The first use of the storage API â€” see `docs/device-storage.md`. **The responses were decoded
+ * The first use of the storage API — see `docs/device-storage.md`. **The responses were decoded
  * from Elektron Transfer's own traffic; the request is a reconstruction**, because Web MIDI let us
  * watch the device's half of that conversation and never Transfer's.
  *
  * Being wrong is cheap: it is a read, and the device answers a bad path with **`Invalid path`** in
  * as many words. So this is the rare case where guessing is the right move rather than a shortcut.
  *
- * Unlike the dump protocol, a listing states each entry's **position** in a 32-bit field â€” which is
+ * Unlike the dump protocol, a listing states each entry's **position** in a 32-bit field — which is
  * the thing the 7-bit object number cannot do, and the reason a project browser is possible at all.
  */
 $("lsSend").addEventListener("click", () => {
@@ -1540,12 +1536,12 @@ async function listPath(): Promise<void> {
     return;
   }
   if (!listening) {
-    status("Press Listen first â€” otherwise nothing collects the reply.", "warn");
+    status("Press Listen first — otherwise nothing collects the reply.", "warn");
     return;
   }
 
   const path = $<HTMLInputElement>("lsPath").value;
-  // The cursor half of the request has never been exercised. Transfer uses it â€” a 43-byte reply in
+  // The cursor half of the request has never been exercised. Transfer uses it — a 43-byte reply in
   // its capture reads `first 28, next 29, count 1`, which is a **page of one**, not the file stat
   // this page first took it for. If a non-zero start comes back echoed as `first`, the argument
   // encoding is confirmed past the bare path, which is what makes guessing `0x54` reasonable.
@@ -1554,7 +1550,7 @@ async function listPath(): Promise<void> {
   // came back echoing 28 and `count` came back 0. So the two travel together or not at all.
   const count = Number($<HTMLInputElement>("lsCount").value) || 0;
   const log: [string, string][] = [
-    ["Path", path || "(empty â€” the root)"],
+    ["Path", path || "(empty — the root)"],
     [
       "Sending",
       `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string` +
@@ -1562,7 +1558,7 @@ async function listPath(): Promise<void> {
     ],
     ["Note", "a wrong path is answered 'Invalid path'"],
   ];
-  verdictCard("Listingâ€¦", log);
+  verdictCard("Listing…", log);
 
   const reply = await new Promise<Uint8Array | undefined>((resolve) => {
     const timer = setTimeout(() => {
@@ -1602,10 +1598,10 @@ async function listPath(): Promise<void> {
     // The control that separates "it did not answer" from "we never spoke". Without it, both look
     // the same and the temptation is to record the more interesting one.
     const alive = await linkIsAlive(output);
-    verdictCard(alive ? "No listing â€” but the device is answering" : "Nothing is reaching the device", [
+    verdictCard(alive ? "No listing — but the device is answering" : "Nothing is reaching the device", [
       ...log,
       ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED â€” Device answered, so the silence is real" : "FAILED"],
+      ["Link check", alive ? "PASSED — Device answered, so the silence is real" : "FAILED"],
       [
         "Means",
         alive
@@ -1632,22 +1628,21 @@ async function listPath(): Promise<void> {
           `${e.children !== undefined ? `  ${e.children} items` : ""}`,
       ]);
     }
-    if (listing.entries.length > 40) rows.push(["â€¦", `${listing.entries.length - 40} more`]);
+    if (listing.entries.length > 40) rows.push(["…", `${listing.entries.length - 40} more`]);
 
-    verdictCard(`${path || "/"} â€” ${listing.entries.length} entries`, rows);
+    verdictCard(`${path || "/"} — ${listing.entries.length} entries`, rows);
     status(`${path || "/"}: ${listing.entries.length} entries. The storage API works.`, "ok");
   } catch (error) {
     verdictCard("The device answered, but the listing did not decode", [
       ...log,
       ["Error", String(error)],
       ["Bytes", [...reply.subarray(0, 32)].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
-      ["Means", String(error).includes("Invalid path") ? "the path was wrong â€” the request shape is right, which is the bigger news" : "the response format differs from what was decoded"],
+      ["Means", String(error).includes("Invalid path") ? "the path was wrong — the request shape is right, which is the bigger news" : "the response format differs from what was decoded"],
     ]);
     status(String(error), "warn");
   }
 }
 
-/**
 /**
  * **The Open control has been removed.**
  *
@@ -1662,10 +1657,9 @@ async function listPath(): Promise<void> {
  * optional part.
  *
  * Removed rather than disabled: a greyed-out button is an invitation. The message itself is gated
- * in `storage.ts` behind a token nobody passes by accident, and `docs/device-probing.md` carries
- * the rule this cost us.
+ * in `storage.ts` behind a token nobody passes by accident, and `docs/device-probing.md` rule 0
+ * carries what this cost.
  */
-
 
 /** Send something and wait for the API response paired with `code`, ignoring everyone else's. */
 function awaitApi(
@@ -1714,12 +1708,12 @@ const LIST_TIMEOUT_MS = 4000;
  * Ask the device about a dump type nobody has identified, one at a time.
  *
  * The question behind it: **Transfer writes projects into chosen slots on a Digitone, so some
- * mechanism exists.** It is probably not the SysEx file API â€” project storage on both machines is
+ * mechanism exists.** It is probably not the SysEx file API — project storage on both machines is
  * a flat indexed list rather than a filesystem, which is exactly the shape the *dump* protocol
  * already addresses. Nine or ten dump types are unidentified, and that is where a project object
  * would sit.
  *
- * Everything sent here is a `0x6n` request with an empty body â€” same shape and same argument as
+ * Everything sent here is a `0x6n` request with an empty body — same shape and same argument as
  * the five already proven. That argument is inference rather than certainty, so the discipline is
  * the safeguard: **a scratch project, one code per press, a look at the device in between.** There
  * is no sweep-all button, deliberately.
@@ -1729,8 +1723,8 @@ function fillProbeCodes(advertised: readonly number[]): void {
   select.innerHTML = codesUnderTest(advertised)
     .map((c) => {
       const label = c.known
-        ? `${hex(c.code)} â†’ ${hex(c.response)}  ${c.known} (control)`
-        : `${hex(c.code)} â†’ ${hex(c.response)}  unknown${c.advertised ? ", advertised" : ""}`;
+        ? `${hex(c.code)} → ${hex(c.response)}  ${c.known} (control)`
+        : `${hex(c.code)} → ${hex(c.response)}  unknown${c.advertised ? ", advertised" : ""}`;
       return `<option value="${c.code}">${escapeHtml(label)}</option>`;
     })
     .join("");
@@ -1755,7 +1749,7 @@ async function tryUnknownCode(): Promise<void> {
     return;
   }
   if (!listening) {
-    status("Press Listen first â€” otherwise nothing collects the reply.", "warn");
+    status("Press Listen first — otherwise nothing collects the reply.", "warn");
     return;
   }
 
@@ -1767,7 +1761,7 @@ async function tryUnknownCode(): Promise<void> {
     !info.known &&
     !confirm(
       `Send ${hex(code)}, an unidentified request, object ${objNr}.\n\n` +
-        `It carries an empty body, like every request already proven on both machines â€” so by ` +
+        `It carries an empty body, like every request already proven on both machines — so by ` +
         `that convention it asks rather than stores. That is an inference, not a certainty.\n\n` +
         `Load a scratch project first, and check the device after this returns.\n\nContinue?`,
     )
@@ -1778,7 +1772,7 @@ async function tryUnknownCode(): Promise<void> {
   const log: [string, string][] = [
     ["Sent", `${hex(code)} object ${objNr}, empty body`],
     ["Expecting", `${hex(code - 0x10)} by the +0x10 convention, if it answers at all`],
-    ["Known as", info.known ?? "nothing â€” no source names this code"],
+    ["Known as", info.known ?? "nothing — no source names this code"],
   ];
   verdictCard("Trying a code", log);
 
@@ -1818,19 +1812,19 @@ async function tryUnknownCode(): Promise<void> {
     // as "not implemented" while Elektron Transfer held the output port, so those requests may
     // never have been sent at all. The control makes a negative worth something.
     const alive = await linkIsAlive(output);
-    verdictCard(alive ? `${hex(code)} â€” no answer (link verified)` : `${hex(code)} â€” NOTHING WAS SENT`, [
+    verdictCard(alive ? `${hex(code)} — no answer (link verified)` : `${hex(code)} — NOTHING WAS SENT`, [
       ...log,
       ["Result", `nothing within ${UNKNOWN_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED â€” Device answered afterwards" : "FAILED"],
+      ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
       [
         "Means",
         alive
           ? "the link is proven, so this is a real negative: the code is not implemented, or it " +
             "wants an argument we did not send. Worth recording."
-          : `${LINK_DEAD} **This result is void** â€” do not record it.`,
+          : `${LINK_DEAD} **This result is void** — do not record it.`,
       ],
     ]);
-    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void â€” nothing reached the device.`, alive ? "warn" : "error");
+    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void — nothing reached the device.`, alive ? "warn" : "error");
     return;
   }
 
@@ -1847,11 +1841,11 @@ async function tryUnknownCode(): Promise<void> {
     ...log,
     [
       "Answered",
-      `${hex(described.dumpType)}${described.asExpected ? " â€” as the convention predicts" : " â€” NOT the predicted code"}`,
+      `${hex(described.dumpType)}${described.asExpected ? " — as the convention predicts" : " — NOT the predicted code"}`,
     ],
     ["Object", String(described.objNr)],
     ["Payload", `${described.payloadBytes.toLocaleString()} bytes`],
-    ["Resembles", described.resembles ?? "no record size we know â€” this is something new"],
+    ["Resembles", described.resembles ?? "no record size we know — this is something new"],
     ["Checksum", described.checksumOk ? "good" : "BAD"],
     ["Next", "Save the capture and check the device screen before trying another code."],
   ]);
@@ -1867,7 +1861,7 @@ const UNKNOWN_TIMEOUT_MS = 8000;
 /**
  * Record sizes we can name, so an unfamiliar payload is measured rather than guessed at.
  *
- * Every record identified so far was recognised by its size first â€” 99,840 as pattern + kit, 359 as
+ * Every record identified so far was recognised by its size first — 99,840 as pattern + kit, 359 as
  * a DN2 sound, 512 as DN2 settings. A payload matching none of these is the interesting case.
  */
 const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
@@ -1885,7 +1879,7 @@ const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
  * The verdict, put somewhere the capture renderer cannot reach.
  *
  * **Third attempt, and the first structural one.** The first version appended to `#results` and was
- * cleared by the next incoming message. The second guarded that with a `writing` flag â€” which
+ * cleared by the next incoming message. The second guarded that with a `writing` flag — which
  * still lost, because the flag is only true *during* the write and any message arriving afterwards
  * redraws the area: a reply that beat the timeout, a late one that missed it, anything at all.
  *
