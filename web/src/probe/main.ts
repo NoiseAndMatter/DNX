@@ -1413,6 +1413,72 @@ function awaitPatternKit(
   });
 }
 
+// --- proving the link before believing a silence ---------------------------------------------------
+
+/**
+ * Ask the device something it must answer, and report whether it did.
+ *
+ * **`output.send()` does not throw when another application holds the port.** It returns normally
+ * and the bytes go nowhere — so a silence means either *the device did not answer* or *we never
+ * spoke*, and this page has had no way to tell those apart. It has been resolving that ambiguity
+ * by assumption for three days.
+ *
+ * The cost is on the record. `DirList` timing out was one of the two pillars holding up the
+ * conclusion *"the +Drive file API does not exist on a Digitone"* — and if Transfer was running at
+ * the time, that request may never have left the machine. The API turned out to exist. Later, a
+ * run of unknown-code "silences" was recorded while Transfer held the port, and every one of them
+ * is void for the same reason.
+ *
+ * elk-herd has had a `LoopbackProbe` in `SysEx/Client.elm` all along. It was read on day one and
+ * filed as housekeeping.
+ *
+ * `Device` is the control because every Elektron answers it, it takes no arguments, and it is
+ * already the first thing the probe sends. **A tool that cannot tell whether it spoke has no
+ * business drawing conclusions from silence.**
+ */
+async function linkIsAlive(output: MIDIOutput): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(false);
+    }, LINK_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      if (!isApiMessage(data)) return;
+      let frame;
+      try {
+        frame = decodeMessage(data);
+      } catch {
+        return;
+      }
+      // Transfer polls `Device` too, so a bare code match would pass on its traffic. Ours is the
+      // one answering the id we just sent.
+      if (frame.code !== Code.Device + 0x80 || frame.respId !== LINK_ID) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(true);
+    };
+
+    try {
+      output.send([...deviceRequest(LINK_ID)]);
+    } catch {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(false);
+    }
+  });
+}
+
+/** Fixed and high, so a reply can be matched to it and it cannot collide with Transfer's low ids. */
+const LINK_ID = 40_000;
+const LINK_TIMEOUT_MS = 1500;
+
+/** Shown when the control fails, because the cause is almost always the same one. */
+const LINK_DEAD =
+  "the device did not answer a message it always answers, so nothing we send is reaching it. " +
+  "Another application — Elektron Transfer, Overbridge, a DAW — is most likely holding the output " +
+  "port. Close it and try again. Until this passes, a silence proves nothing.";
+
 // --- listing the +Drive --------------------------------------------------------------------------
 
 /**
@@ -1488,16 +1554,22 @@ async function listPath(): Promise<void> {
   });
 
   if (!reply) {
-    verdictCard("No listing came back", [
+    // The control that separates "it did not answer" from "we never spoke". Without it, both look
+    // the same and the temptation is to record the more interesting one.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? "No listing — but the device is answering" : "Nothing is reaching the device", [
       ...log,
       ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
+      ["Link check", alive ? "PASSED — Device answered, so the silence is real" : "FAILED"],
       [
         "Means",
-        "the request shape is wrong, this device does not implement it, or another application " +
-          "(Transfer) is holding the output port so nothing was sent at all",
+        alive
+          ? "this device does not implement the listing, or the request shape is wrong. A genuine " +
+            "negative, worth recording."
+          : LINK_DEAD,
       ],
     ]);
-    status("No listing.", "warn");
+    status(alive ? "No listing, and the link is fine." : "Nothing is reaching the device.", alive ? "warn" : "error");
     return;
   }
 
@@ -1641,19 +1713,23 @@ async function tryUnknownCode(): Promise<void> {
   });
 
   if (!reply) {
-    verdictCard(`${hex(code)} — no answer`, [
+    // **This is the check whose absence voided a whole afternoon.** A run of silences was recorded
+    // as "not implemented" while Elektron Transfer held the output port, so those requests may
+    // never have been sent at all. The control makes a negative worth something.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? `${hex(code)} — no answer (link verified)` : `${hex(code)} — NOTHING WAS SENT`, [
       ...log,
       ["Result", `nothing within ${UNKNOWN_TIMEOUT_MS}ms`],
+      ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
       [
         "Means",
-        info.known
-          ? "a code we KNOW works stayed silent, so the transport is the problem rather than the " +
-            "code. Nothing else is worth trying until a control answers."
-          : "not implemented, or it wants something we did not send. Try the next one, and run a " +
-            "known code occasionally as a control.",
+        alive
+          ? "the link is proven, so this is a real negative: the code is not implemented, or it " +
+            "wants an argument we did not send. Worth recording."
+          : `${LINK_DEAD} **This result is void** — do not record it.`,
       ],
     ]);
-    status(`${hex(code)}: silence.`, info.known ? "error" : "warn");
+    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void — nothing reached the device.`, alive ? "warn" : "error");
     return;
   }
 
