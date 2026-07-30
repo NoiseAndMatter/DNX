@@ -123,6 +123,13 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="probeObj">obj</label>
   <input id="probeObj" type="number" min="0" max="127" value="0" size="3" disabled>
   <button class="btn" id="probeSend" disabled>Try code</button>
+  <!--
+    Read-only, and the friendliest failure on the device: a wrong path is answered `Invalid path`
+    in as many words, so guessing costs a round trip.
+  -->
+  <label class="lbl" for="lsPath">path</label>
+  <input id="lsPath" type="text" value="projects" size="12" disabled>
+  <button class="btn" id="lsSend" disabled>List</button>
 </header>
 
 <main>

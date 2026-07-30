@@ -57,6 +57,8 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
+import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import { decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -283,6 +285,12 @@ async function probe(): Promise<void> {
     // The unnamed part of that list is where a project object would be, so the codes to try are
     // built from what this device actually advertises rather than from a fixed list.
     fillProbeCodes(device.supportedMessages);
+
+    // Enabled regardless of what the device advertises. `supportedMessages` lists *responses*, and
+    // this API's codes are not in it on either machine — which is exactly the reasoning that made
+    // us conclude for two days that the file API did not exist.
+    $<HTMLInputElement>("lsPath").disabled = false;
+    $<HTMLButtonElement>("lsSend").disabled = false;
 
     // Do not send a message the device says it does not implement. The first probe did, and
     // spent two seconds timing out on a `DirList` that was never coming — which reads like a
@@ -1404,6 +1412,128 @@ function awaitPatternKit(
     }
   });
 }
+
+// --- listing the +Drive --------------------------------------------------------------------------
+
+/**
+ * Ask the device what is on its +Drive.
+ *
+ * The first use of the storage API — see `docs/device-storage.md`. **The responses were decoded
+ * from Elektron Transfer's own traffic; the request is a reconstruction**, because Web MIDI let us
+ * watch the device's half of that conversation and never Transfer's.
+ *
+ * Being wrong is cheap: it is a read, and the device answers a bad path with **`Invalid path`** in
+ * as many words. So this is the rare case where guessing is the right move rather than a shortcut.
+ *
+ * Unlike the dump protocol, a listing states each entry's **position** in a 32-bit field — which is
+ * the thing the 7-bit object number cannot do, and the reason a project browser is possible at all.
+ */
+$("lsSend").addEventListener("click", () => {
+  listPath().catch((error: unknown) => {
+    status(`Listing failed: ${String(error)}`, "error");
+    verdictCard("Listing failed", [["Error", String(error)]]);
+  });
+});
+
+async function listPath(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing collects the reply.", "warn");
+    return;
+  }
+
+  const path = $<HTMLInputElement>("lsPath").value;
+  const log: [string, string][] = [
+    ["Path", path || "(empty — the root)"],
+    ["Sending", `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string`],
+    ["Note", "the request shape is inferred; a wrong guess is answered 'Invalid path'"],
+  ];
+  verdictCard("Listing…", log);
+
+  const reply = await new Promise<Uint8Array | undefined>((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(undefined);
+    }, LIST_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      // Only an API frame answering *this* code counts. Transfer polls the same port constantly,
+      // and accepting "the next message" is exactly how its traffic got reported as our answer.
+      if (!isApiMessage(data)) return;
+      let frame;
+      try {
+        frame = decodeMessage(data);
+      } catch {
+        return;
+      }
+      if (frame.code !== StorageCode.List + 0x80) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(frame.body);
+    };
+
+    try {
+      output.send([...listRequest(nextListId++, path)]);
+    } catch (error) {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      log.push(["Send failed", String(error)]);
+      resolve(undefined);
+    }
+  });
+
+  if (!reply) {
+    verdictCard("No listing came back", [
+      ...log,
+      ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
+      [
+        "Means",
+        "the request shape is wrong, this device does not implement it, or another application " +
+          "(Transfer) is holding the output port so nothing was sent at all",
+      ],
+    ]);
+    status("No listing.", "warn");
+    return;
+  }
+
+  try {
+    const listing = parseListing(reply);
+    const rows: [string, string][] = [
+      ...log,
+      ["Entries", `${listing.entries.length}, starting at ${listing.first}`],
+      ["Next cursor", String(listing.next)],
+    ];
+    for (const e of listing.entries.slice(0, 40)) {
+      rows.push([
+        `${String(e.index).padStart(4)}  ${e.kind === "directory" ? "dir " : "file"}`,
+        `${e.name}${e.size !== undefined ? `  ${e.size.toLocaleString()} B` : ""}` +
+          `${e.children !== undefined ? `  ${e.children} items` : ""}`,
+      ]);
+    }
+    if (listing.entries.length > 40) rows.push(["…", `${listing.entries.length - 40} more`]);
+
+    verdictCard(`${path || "/"} — ${listing.entries.length} entries`, rows);
+    status(`${path || "/"}: ${listing.entries.length} entries. The storage API works.`, "ok");
+  } catch (error) {
+    verdictCard("The device answered, but the listing did not decode", [
+      ...log,
+      ["Error", String(error)],
+      ["Bytes", [...reply.subarray(0, 32)].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
+      ["Means", String(error).includes("Invalid path") ? "the path was wrong — the request shape is right, which is the bigger news" : "the response format differs from what was decoded"],
+    ]);
+    status(String(error), "warn");
+  }
+}
+
+/** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
+let nextListId = 30_000;
+
+const LIST_TIMEOUT_MS = 4000;
 
 // --- trying an unidentified request code ---------------------------------------------------------
 
