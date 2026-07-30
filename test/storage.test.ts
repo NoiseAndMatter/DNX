@@ -43,7 +43,17 @@ test("a file entry carries its position and size, which is the whole point", () 
   const listing = parseListing(ONE_SOUND);
 
   assert.deepEqual(listing.entries, [
-    { name: "HH TICK_PITX_AR", kind: "file", index: 28, size: 302, unknown: 0x7e },
+    {
+      name: "HH TICK_PITX_AR",
+      kind: "file",
+      index: 28,
+      size: 302,
+      unknown: 0x7e,
+      // Kept whole as well as decoded. On a `/projects` listing these four bytes are **not** the
+      // same for every entry and nothing explains why yet, so they are carried rather than
+      // summarised — a field we cannot name is the only place an answer can still be hiding.
+      trailer: Uint8Array.of(0x00, 0x7e, 0x01, 0x01),
+    },
   ]);
   assert.equal(listing.entries[0]!.size, 302, "a DN1 sound record — how the format was recognised");
   assert.equal(listing.first, 28, "the page starts where it says it does");
@@ -75,6 +85,7 @@ test("a directory can use the long trailer, which is what /soundbanks does", () 
     index: 0,
     size: 262_144,
     unknown: 0x12,
+    trailer: Uint8Array.of(0x00, 0x12, 0x01, 0x00),
   });
   assert.equal(listing.entries[1]!.name, "B");
   assert.equal(listing.entries[1]!.index, 1);
