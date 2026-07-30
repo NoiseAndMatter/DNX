@@ -231,20 +231,37 @@ export function parseOpen(body: Uint8Array): OpenResult {
 }
 
 /**
- * Ask for the next chunk of an open file.
+ * Ask for a range of an open file.
  *
  * ```
- * 0x55   u32 handle
+ * 0x55   u32 handle   u32 length   u32 start
  * ```
  *
- * **The request is inferred; the reply is not.** Reads are sequential and the device numbers the
- * chunks itself — 1, 2, 3 … in `parseRead`'s `index`, verified across a 22-chunk project — so a
- * handle is the only argument the sequence demonstrably needs. If the device wants the index too,
- * this is where it goes, and the symptom will be an error rather than a wrong range: the reply
- * states its own index and `readStoredFile` checks it.
+ * **Length before start**, which is not the order anyone says it in. That is elk-herd's `FileRead`
+ * argument order for the Digitakt (`api.ts`'s `fileReadRequest` writes the same three fields the
+ * same way), and this family has repaid following elk-herd every time.
+ *
+ * ## Why not just the handle
+ *
+ * Because that was tried, on hardware, and the device answered **4,963 consecutive zero-length
+ * chunks** without ever setting the end-of-file flag. It had opened the file and was waiting to be
+ * told what to read.
+ *
+ * That also re-reads the 22-byte reply that opens Transfer's every read sequence. It was recorded
+ * here as an unidentified *metadata* message; it is much more likely **an ordinary chunk of length
+ * zero** — the answer to a request for nothing, exactly like the 4,963 we drew. Transfer's first
+ * read asks for no bytes, and its second asks for real ones.
+ *
+ * Taken in the readable order and swapped on the way out, so a caller cannot get it silently
+ * backwards — the mistake would otherwise read a valid but wrong range, which is the kind of error
+ * that surfaces weeks later as a project the device refuses.
  */
-export function readRequest(msgId: number, handle: number): Uint8Array {
-  return encodeMessage(msgId, StorageCode.Read, u32Bytes(handle));
+export function readRequest(msgId: number, handle: number, start: number, length: number): Uint8Array {
+  const body = new Uint8Array(12);
+  body.set(u32Bytes(handle), 0);
+  body.set(u32Bytes(length), 4);
+  body.set(u32Bytes(start), 8);
+  return encodeMessage(msgId, StorageCode.Read, body);
 }
 
 /** One chunk of a file coming off the +Drive. */
