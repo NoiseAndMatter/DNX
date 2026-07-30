@@ -158,11 +158,13 @@ export async function readStoredFile(
       }
 
       const readId = id();
-      // **Sequence numbers, not byte ranges.** Starting at 1 and counting data-bearing chunks, so
-      // an empty reply cannot shift the numbering — the device answers `Invalid sequence number`
-      // to anything else, which is how the field was identified in the first place.
+      // **Sequence numbers start at 0**, which Transfer's own requests settled: it asks for 0, gets
+      // the 22-byte empty reply, then asks for 1 and gets data. That empty reply was recorded here
+      // as an unidentified "metadata" message for half a day; it is simply the answer to sequence
+      // zero, and asking for zero is how you get it.
+      const sequence = chunks === 0 ? 0 : parts.length + 1;
       const chunk = parseRead(expect(await transport.request(
-        readRequest(readId, opened.handle, parts.length + 1), readId, timeoutMs,
+        readRequest(readId, opened.handle, sequence), readId, timeoutMs,
       ), StorageCode.Read).body);
 
       check(chunk, opened.handle, parts.length + 1);

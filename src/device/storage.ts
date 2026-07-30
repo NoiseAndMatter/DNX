@@ -7,18 +7,24 @@
  *
  * ## What is known, and what is a guess
  *
- * **The responses are [verified]**, decoded from a capture of Elektron's own Transfer application
- * talking to a Digitone 1. Every field in `parseListing` was read off real bytes.
+ * **Both halves are now [verified].** The responses were decoded first, from a capture of Elektron's
+ * own Transfer application talking to a Digitone 1 over MIDI. The **requests** were read off a
+ * **USB capture** on 2026-07-30 — Wireshark and USBPcap, below the MIDI layer, where Transfer's
+ * side of the conversation is visible for the first time.
  *
- * **The requests are inferred.** Web MIDI let us listen on the input while Transfer held the ports,
- * so we saw the device's half of every exchange and never Transfer's. What goes *out* is a
- * reconstruction from two things: the response's shape, and the fact that this API's other
- * messages — `Device`, `Version`, `DirList` — take their arguments as a NUL-terminated
- * Windows-1252 string with no framing (`api.ts`'s `string0`).
+ * That matters more than it sounds. Everything here up to that point had been reconstructed from
+ * replies, and the reconstruction was wrong about `0x54` three times — each wrong version froze the
+ * instrument — and wrong about `0x55` twice. The capture settled every one of them in a minute.
  *
- * That guess is cheap to be wrong about. **The device answers a bad path with `Invalid path`**, in
- * as many words, which is about as forgiving as a failure mode gets — and it is a *read*, so being
- * wrong costs a round trip and nothing else.
+ * What the requests turned out to be is recorded on each function, with the bytes.
+ *
+ * ## What is still guessed
+ *
+ * - **The write checksum's algorithm** (`writeChunkRequest`). The field is identified; the function
+ *   that produces it is not.
+ * - **`0x54`'s trailing byte** — Transfer sends `01`, and the same read without it returned a very
+ *   different file.
+ * - **Which bit of the permission mask is which** (`Entry.permissions`).
  *
  * ## Why this matters more than the dump protocol
  *
@@ -36,10 +42,22 @@ export const StorageCode = {
   List: 0x53,
   /** Open a file for reading. */
   Open: 0x54,
-  /** Read a chunk. */
+  /** Read a chunk by sequence number. */
   Read: 0x55,
-  /** Close. */
+  /** Close a reader. Its reply carries the file's total length. */
   Close: 0x56,
+  /** Open a file for **writing**, declaring the total length up front. */
+  WriteOpen: 0x57,
+  /** Write a chunk. */
+  Write: 0x58,
+  /** Close a writer — this is the commit. */
+  WriteClose: 0x59,
+  /** **Move.** Source and destination paths, both with a trailing slash. */
+  Move: 0x5a,
+  /** **Copy.** Same arguments as a move. */
+  Copy: 0x5b,
+  /** **Delete.** One path, trailing slash. */
+  Delete: 0x5c,
 } as const;
 
 export type StorageCode = (typeof StorageCode)[keyof typeof StorageCode];
@@ -139,11 +157,34 @@ export function openRequest(
   // Safe to append: the path's NUL is already on the wire, so this cannot recreate the unterminated
   // body that froze the device three times. Inferred, like everything else about this request.
   const name = string0(path);
-  const body = new Uint8Array(name.length + 4);
+  const body = new Uint8Array(name.length + 5);
   body.set(name, 0);
   body.set(u32Bytes(chunkSize), name.length);
+  // The trailing byte, **now seen in Transfer's own request** rather than inferred from a reply:
+  //
+  //     2f 70 72 6f 6a 65 63 74 73 2f 37 00   00 00 08 00   01
+  //     /projects/7\0                          2048          ?
+  //
+  // What it selects is unestablished, and there is a live suspicion it matters a great deal: with
+  // this byte, Transfer's read of `/projects/7` was **21,522 bytes**; without it, our read of
+  // `/projects/1` was **2,781,743** — the raw image rather than the stored `.dnprj` payload. Same
+  // message, two very different files.
+  //
+  // Sent as Transfer sends it, because matching a working client exactly is free and guessing is
+  // what this file is a monument to. `RAW_IMAGE` is here for whoever tests the other value.
+  body[name.length + 4] = STORED_FORM;
   return encodeMessage(msgId, StorageCode.Open, body);
 }
+
+/**
+ * The trailing byte of an open-for-read.
+ *
+ * `STORED_FORM` is what Elektron Transfer sends. `RAW_IMAGE` is a guess at the other value, and the
+ * name records a **hypothesis**, not a finding: our reads omitted the byte entirely and returned the
+ * uncompressed image, which is not the same as having sent a zero.
+ */
+export const STORED_FORM = 0x01;
+export const RAW_IMAGE = 0x00;
 
 /**
  * The two bodies that froze a Digitone 1, kept so nobody rediscovers them.
@@ -206,9 +247,179 @@ const FREEZE_WARNING =
   "through readStoredFile in storagesession.ts, and pass the FREEZES token to say you have read " +
   "this and accept a reboot.";
 
-/** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
+/**
+ * Close a reader.
+ *
+ * `0x56  u32 handle` — **[verified]** against Transfer's own request. Its reply carries the file's
+ * **total length**, which is how Transfer learns a size without reading the file: `parseClose`.
+ */
 export function closeRequest(msgId: number, handle: number): Uint8Array {
   return encodeMessage(msgId, StorageCode.Close, u32Bytes(handle));
+}
+
+/** What a close reply says. */
+export interface CloseResult {
+  handle: number;
+  /** The file's total length in bytes — 129 for a sound's `.metadata`, 269 for a sound. */
+  length: number;
+}
+
+export function parseClose(body: Uint8Array): CloseResult {
+  refuseFailure(body, "close");
+  if (body.length < 9) throw new ListingError(`close reply is ${body.length} bytes, expected 9`);
+  return { handle: u32(body, 1), length: u32(body, 5) };
+}
+
+// --- writing ------------------------------------------------------------------------------------
+//
+// **[verified]** from Elektron Transfer's own requests, captured over USB on 2026-07-30. Every
+// field below was read off the wire rather than inferred from a reply, which makes this the first
+// part of the storage API that was not guessed at.
+//
+// The write mirrors the read exactly: open, chunk, close. The close is the commit.
+
+/**
+ * Open a file for writing, **declaring its total length up front**.
+ *
+ * ```
+ * 0x57   u32 totalLength   path\0
+ * ```
+ *
+ * The length comes first, which is not where anyone would put it, and is the sort of detail that
+ * would have cost an afternoon to guess. Transfer's upload of an 18,064-byte project:
+ *
+ * ```
+ * 00 00 46 90  2f 70 72 6f 6a 65 63 74 73 2f 35 36 00
+ * 18,064       /projects/56\0
+ * ```
+ *
+ * **No trailing slash**, unlike the mutations. The reply is `01` and a handle.
+ *
+ * > **This overwrites.** The device refuses when the destination is write-protected — that is what
+ * > `Slot 29 already taken` is — but an ordinary occupied slot is fair game, and for most people
+ * > the +Drive is the only copy of that work. Check `Entry.writable` *and* `Entry.occupied` first.
+ */
+export function writeOpenRequest(msgId: number, path: string, totalLength: number): Uint8Array {
+  if (path.length === 0) throw new ListingError("0x57 needs a path");
+  const name = string0(path);
+  const body = new Uint8Array(4 + name.length);
+  body.set(u32Bytes(totalLength), 0);
+  body.set(name, 4);
+  return encodeMessage(msgId, StorageCode.WriteOpen, body);
+}
+
+/**
+ * Write one chunk.
+ *
+ * ```
+ * 0x58   u32 handle   u32 offset   u32 checksum   u32 totalLength   data
+ * ```
+ *
+ * **The checksum is a real obstacle, not a formality.** Its algorithm is unknown, and it is the
+ * same field the *read* reply carries at offset 14 — the sound Transfer uploaded to
+ * `/soundbanks/C/29` declared `cb 49 92 19`, and reading that same sound back reported `cb 49 92 19`
+ * in the read reply. Two sides of one value, which identifies the field and not the function.
+ *
+ * So a first write can be proved without solving it: **read a file, keep the checksum the device
+ * reported, write the identical bytes back with it.** If that is accepted, the field is a content
+ * checksum and the algorithm can be fitted afterwards from pairs we already hold. If it is refused,
+ * it is something else and we have learned that cheaply.
+ */
+export function writeChunkRequest(
+  msgId: number,
+  handle: number,
+  offset: number,
+  checksum: number,
+  totalLength: number,
+  data: Uint8Array,
+): Uint8Array {
+  const body = new Uint8Array(16 + data.length);
+  body.set(u32Bytes(handle), 0);
+  body.set(u32Bytes(offset), 4);
+  body.set(u32Bytes(checksum), 8);
+  body.set(u32Bytes(totalLength), 12);
+  body.set(data, 16);
+  return encodeMessage(msgId, StorageCode.Write, body);
+}
+
+/**
+ * Close a writer. **This is the commit** — nothing lands until it is sent.
+ *
+ * ```
+ * 0x59   u32 handle   u32 1
+ * ```
+ *
+ * The trailing word was `1` in both captured uploads. Whether it is a commit flag, and whether `0`
+ * would abandon the write instead, is unestablished — which would be worth knowing, because an
+ * abort is exactly what a failed transfer should send.
+ */
+export function writeCloseRequest(msgId: number, handle: number, commit = 1): Uint8Array {
+  const body = new Uint8Array(8);
+  body.set(u32Bytes(handle), 0);
+  body.set(u32Bytes(commit), 4);
+  return encodeMessage(msgId, StorageCode.WriteClose, body);
+}
+
+// --- moving, copying, deleting -------------------------------------------------------------------
+
+/**
+ * Move, copy and delete — **[verified]**, and confirmed by the user against what they actually did.
+ *
+ * ```
+ * 0x5a   src\0  dst\0        move
+ * 0x5b   src\0  dst\0        copy
+ * 0x5c   path\0              delete
+ * ```
+ *
+ * All three answer a single `01`.
+ *
+ * The attribution is not read off the bytes — a move and a copy look identical on the wire — but
+ * off two independent sequences that each only make sense one way. Projects: `0x5b` 55→56 then
+ * `0x5c` 56, which is a copy and then cleaning the copy up; then `0x5a` 55→56 and immediately
+ * 56→55, which is a move tested there and back. Sounds: the same shape on `/soundbanks/C/29` and
+ * `/30`. The user then confirmed the order.
+ *
+ * **The paths carry a trailing slash** — `/projects/55/`, not `/projects/55` — which the read and
+ * write opens do not. Two conventions in one API, and the sort of thing that answers `Could not
+ * resolve path` for reasons nobody can see.
+ */
+export function moveRequest(msgId: number, from: string, to: string): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Move, twoPaths(from, to));
+}
+
+export function copyRequest(msgId: number, from: string, to: string): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Copy, twoPaths(from, to));
+}
+
+/**
+ * Delete one file.
+ *
+ * **Nothing here can undo this.** The +Drive is the only copy of most of what is on it, and there
+ * is no trash. Read the entry first and check `writable`; the device will refuse a protected file,
+ * and will not refuse anything else.
+ */
+export function deleteRequest(msgId: number, path: string): Uint8Array {
+  return encodeMessage(msgId, StorageCode.Delete, string0(slashed(path)));
+}
+
+function twoPaths(from: string, to: string): Uint8Array {
+  const a = string0(slashed(from));
+  const b = string0(slashed(to));
+  const body = new Uint8Array(a.length + b.length);
+  body.set(a, 0);
+  body.set(b, a.length);
+  return body;
+}
+
+/**
+ * Add the trailing slash a mutation wants, if the caller has not.
+ *
+ * Forgiving on purpose: every other path in this API is written without one, so a caller that gets
+ * it right everywhere else will get it wrong here, and the failure — `Could not resolve path` — is
+ * indistinguishable from naming a file that is not there.
+ */
+function slashed(path: string): string {
+  return path.endsWith("/") ? path : `${path}/`;
 }
 
 export interface OpenResult {
@@ -393,13 +604,24 @@ export interface Entry {
   /** Children, for a directory. */
   children?: number;
   /**
-   * Two bytes whose meaning is unestablished — `0x0012` and `0x007e` on two sounds.
+   * The permission mask — **identified 2026-07-30**, and it is not what this said before.
    *
-   * **Hypothesis: the sound's tag bitmask**, which `src/project/tags.ts` already models. Carried
-   * through rather than interpreted, because a plausible wrong reading of a field is worse than an
-   * honest unknown one.
+   * ```
+   * 0x7e = 0111 1110   full
+   * 0x12 = 0001 0010   write-protected: bits 2, 3, 5 and 6 gone, 1 and 4 kept
+   * ```
+   *
+   * A capability set rather than a flag, which is why it never looked like a single bit.
+   *
+   * > **This field was recorded as "probably the sound's tag bitmask" and that was wrong.** It had
+   * > two samples — `0x0012` on `DIGIT-ONE` and `0x007e` on `HH TICK_PITX_AR` — and a hypothesis
+   * > that fit both. They are a factory sound and a user sound: protection, not tags.
+   *
+   * Proved on a `/projects` listing: **exactly two of 128 entries** carry `0x12`, and they are
+   * exactly the two the device reports as write-protected. An entire factory soundbank reads `0x12`
+   * on all 256.
    */
-  unknown?: number;
+  permissions?: number;
   /**
    * The whole trailer after the name, exactly as it arrived, for entries that have one.
    *
@@ -414,6 +636,23 @@ export interface Entry {
    * so an experiment can settle it: list, change the project on the device, list again, diff.
    */
   trailer?: Uint8Array;
+  /**
+   * False when the slot holds nothing.
+   *
+   * The last two trailer bytes are `01 01` on a slot with something in it and `00 00` on an empty
+   * one — 53 occupied, 73 empty and 2 protected across one 128-slot listing, which adds up.
+   *
+   * An empty slot still has a name field; it is blank. Reading occupancy from the name would work
+   * until somebody saved a project with no name.
+   */
+  occupied?: boolean;
+  /**
+   * False when the device will refuse to write here.
+   *
+   * Worth surfacing rather than discovering: Elektron Transfer reports `Slot 29 already taken` only
+   * *after* a failed transfer, and the listing knew all along.
+   */
+  writable?: boolean;
 }
 
 export interface Listing {
@@ -477,13 +716,18 @@ export function parseListing(body: Uint8Array): Listing {
       // Index, size and two unidentified bytes. Used by files **and** by bank directories, whose
       // "size" is a fixed 262,144 — an allocation, the way each project's is a fixed 4 MiB.
       if (at + 12 > body.length) throw new ListingError(`entry "${name}" is truncated`);
+      const permissions = (body[at + 8]! << 8) | body[at + 9]!;
       entries.push({
         name,
         kind: isDirectory ? "directory" : "file",
         index: u32(body, at),
         size: u32(body, at + 4),
-        unknown: (body[at + 8]! << 8) | body[at + 9]!,
-        // Everything after index and size, undecoded. See `Entry.trailer`.
+        permissions,
+        // `01 01` occupied, `00 00` empty. Compared as a pair rather than a byte, because two
+        // samples of one byte is how the permission field got read as a tag mask.
+        occupied: body[at + 10] === 1 && body[at + 11] === 1,
+        writable: (permissions & WRITABLE_BITS) === WRITABLE_BITS,
+        // Kept whole as well as decoded — the mask's individual bits are still unassigned.
         trailer: body.slice(at + 8, at + 12),
       });
       at += 12;
@@ -497,6 +741,15 @@ export function parseListing(body: Uint8Array): Listing {
 
   return { entries, first, next, complete: next <= first + entries.length && entries.length < 256 };
 }
+
+/**
+ * The bits a writable entry has and a protected one does not.
+ *
+ * `0x7e` full, `0x12` protected — so `0x6c` is what protection removes. Compared as a whole rather
+ * than by a single bit, because which bit means what is still unassigned and picking one would be
+ * the tag-mask mistake again.
+ */
+const WRITABLE_BITS = 0x7e & ~0x12;
 
 /** `01` + first + next + count. */
 const HEADER = 13;

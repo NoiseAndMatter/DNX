@@ -4,7 +4,7 @@
 
 Established 2026-07-30 by capturing Elektron's own **Transfer** application talking to a Digitone 1
 while `/probe` listened on the same MIDI input. Everything here is **[verified]** from that
-capture, decoded offline; the request side is **inferred**, and this document says which is which.
+capture; the **requests** were later read off a USB capture (§7), so both halves are now verified.
 
 ---
 
@@ -72,17 +72,30 @@ Captured response codes, with the request each implies by the API's `+0x80` conv
 | `0xd4` | **`0x54`** | File open — body 10 bytes |
 | `0xd5` | **`0x55`** | File read — returns content in chunks |
 | `0xd6` | **`0x56`** | File close — body 9 bytes |
-| `0xda` | **`0x5a`** | A mutating operation; acknowledged with a single `01` |
-| `0xdb` | **`0x5b`** | Another mutation, same single `01` |
-| `0xdc` | **`0x5c`** | A third mutation, same single `01` |
+| `0xd7` | **`0x57`** | Open for **writing** — declares the total length up front |
+| `0xd8` | **`0x58`** | Write a chunk |
+| `0xd9` | **`0x59`** | Close a writer — **this is the commit** |
+| `0xda` | **`0x5a`** | **Move** — source and destination paths |
+| `0xdb` | **`0x5b`** | **Copy** — same arguments |
+| `0xdc` | **`0x5c`** | **Delete** — one path |
 
 > [!note] These are **API** messages — header `0x10`, `F0 00 20 3C 10 00 …` — not the dump
 > protocol. They appear in no public source, elk-herd included, which implements the same ideas at
 > `0x10`/`0x30`/`0x31`/`0x32` for the Digitakt.
 
-**Only responses were observed.** Web MIDI let us listen on the input while Transfer held the ports,
-so we saw the device's half of every exchange and none of Transfer's. Request *arguments* — the
-path strings, the indices — are therefore **not** established.
+> [!success] **Both halves are now verified — 2026-07-30, from a USB capture**
+> This section said *"only responses were observed"* for three days, and everything built on it was
+> a reconstruction from replies. The reconstruction was **wrong about `0x54` three times** — each
+> version froze the instrument — and **wrong about `0x55` twice**.
+>
+> Wireshark with **USBPcap** captures below the MIDI layer, where Transfer's own requests are
+> visible. One project download, one upload, and a handful of moves, copies and deletes settled
+> every open question in about a minute. §7 has the requests, byte for byte.
+>
+> The lesson is not subtle: **we spent three days inferring what one capture stated.** The reason it
+> was not done sooner is that the native routes had not been exhausted, and doing it first would
+> have been reaching for a tool before asking the instrument — `device-probing.md` rule 0a-prime.
+> Both halves of that are true, and the order still mattered.
 
 ---
 
@@ -138,10 +151,10 @@ user pointed out must exist.
 
 ### Unidentified
 
-- **The u16be before `01 01` in a file entry.** Constant width, varies per sound: `0x0012` for
-  `DIGIT-ONE`, `0x007e` for `HH TICK_PITX_AR`. **Hypothesis: the sound's tag bitmask**, which
-  `src/project/tags.ts` already models for DN1 sounds. Testable — tag a sound on the device and
-  re-list.
+- ~~**The u16be before `01 01` is probably the sound's tag bitmask.**~~ **Wrong — it is a permission
+  mask, and the two bytes after it are occupancy. See §8.** The hypothesis had two samples,
+  `0x0012` on `DIGIT-ONE` and `0x007e` on `HH TICK_PITX_AR`, and fit both. They are a factory sound
+  and a user sound.
 
   > [!question] **And on a `/projects` listing it may answer a different question entirely.**
   > It varies there too — `PRESETS` reads `0012 0101`, `MORNING_JAM` and `AMBZ` read `007e 0101` —
@@ -538,3 +551,127 @@ that one code covers mutation is built on a sample of one.
   asked, and which code is which operation is unknown. Upload was not tested.
 - **Whether the Digitone II speaks the same API.** Everything here is from a Digitone 1.
 - The three unidentified fields in §2.
+
+---
+
+## 7. The requests, from Elektron Transfer's own traffic — **[verified]** 2026-07-30
+
+Captured with Wireshark + USBPcap while Transfer downloaded a project, uploaded one, deleted it, and
+moved, copied and deleted sounds. Decoded with `npm run usbcap`.
+
+### Reading
+
+```
+0x54   path\0   u32 chunkSize   u8 ?          open   → u8 ok, u32 handle, u32 chunkSize, u8 flag
+0x55   u32 handle   u32 sequence               read   → chunk; sequence starts at 0
+0x56   u32 handle                              close  → u8 ok, u32 handle, u32 totalLength
+```
+
+**Sequence numbers start at 0.** Transfer asks for 0, receives the 22-byte zero-length reply, then
+asks for 1 and gets data. That reply was recorded here as an unidentified *metadata* message for
+half a day; it is simply the answer to sequence zero.
+
+**The close reply carries the file's total length** — 129 bytes for a sound's `.metadata`, 269 for a
+sound, 21,522 for a project. That is how Transfer knows a size without reading the file.
+
+> [!question] **`0x54`'s trailing byte is unexplained and may matter a great deal.**
+> Transfer sends `01`. Our reads omitted the byte entirely.
+>
+> | | trailing byte | `/projects/…` returned |
+> |---|---|---|
+> | Transfer | `01` | **21,522 bytes** — the stored `.dnprj` payload |
+> | ours | *absent* | **2,781,743 bytes** — the raw uncompressed image |
+>
+> Different projects, so not conclusive; but the same message returning the compressed file and the
+> raw image is exactly what a format selector would look like. Worth one experiment.
+>
+> For DNX the **raw** form is the better one — byte-identical to the decoded image, no LZ4 step.
+
+### Writing
+
+```
+0x57   u32 totalLength   path\0                        open   → u8 ok, u32 handle
+0x58   u32 handle  u32 offset  u32 checksum  u32 totalLength  data
+0x59   u32 handle  u32 1                                close  → the commit
+```
+
+Length **before** the path, which is not where anyone would put it. No trailing slash.
+
+Arithmetic checks out both times: `0x57` declared `0x4690` = 18,064 and the `0x58` body was 18,080 =
+16-byte header + 18,064; the sound declared 269 and carried 285.
+
+> [!warning] **The checksum's algorithm is unknown, and it is the last thing standing between us
+> and writing.**
+> It is the **same field the read reply carries at offset 14**: the sound uploaded to
+> `/soundbanks/C/29` declared `cb 49 92 19`, and reading that sound back reported `cb 49 92 19`.
+> Two sides of one value — which identifies the field and not the function.
+>
+> **A first write can be proved without solving it**: read a file, keep the checksum the device
+> reported, and write the identical bytes back with it. Accepted means it is a content checksum and
+> the algorithm can be fitted from pairs we already hold; refused means it is something else, learnt
+> cheaply.
+
+### Moving, copying, deleting
+
+```
+0x5a   src\0  dst\0        move
+0x5b   src\0  dst\0        copy
+0x5c   path\0              delete
+```
+
+All three answer a single `01`. **The paths carry a trailing slash** — `/projects/55/` — which the
+read and write opens do not. Two conventions in one API.
+
+Move and copy are identical on the wire; the attribution comes from two independent sequences that
+each only make sense one way, and the user confirmed the operations they performed:
+
+- **Projects** — `0x5b` 55→56, then `0x5c` 56. A copy, then cleaning the copy up.
+- **Projects** — `0x5a` 55→56, then immediately 56→55. A move, tested there and back.
+- **Sounds** — the same shape on `/soundbanks/C/29` and `/30`.
+
+### `.metadata` exists for sounds and not for projects
+
+`0x54` on `/soundbanks/C/28/.metadata` **opens**, and its close reports 129 bytes.
+`/projects/7/.metadata` answers `Error: Could not resolve path`. Transfer probes for it either way.
+
+Unread so far. 129 bytes beside a 269-byte sound is a large proportion, and whatever is in it is
+something Transfer wants before it touches the file.
+
+---
+
+## 8. The listing trailer, decoded — **[verified]** 2026-07-30
+
+Four bytes per entry, carried but unexplained since the first capture. The user mentioning that
+**projects and sounds can be write-protected** identified all four in one step.
+
+| Trailer | Count in one `/projects` listing | Meaning |
+|---|---|---|
+| `00 7e 00 00` | 73 | **empty slot** — every one has a blank name |
+| `00 7e 01 01` | 53 | occupied, writable |
+| `00 12 01 01` | 2 | occupied, **write-protected** |
+
+53 + 2 + 73 = 128. And the two `0x12` entries are **exactly** the two the device reports as
+protected. A factory soundbank reads `00 12 01 01` on all 256.
+
+So the last pair is **occupancy** and the `u16` is a **permission mask**:
+
+```
+0x7e = 0111 1110    full
+0x12 = 0001 0010    protected — bits 2, 3, 5, 6 removed; 1 and 4 kept
+```
+
+A capability set, not a flag, which is why it never looked like a single bit. Which bit means what
+is still unassigned.
+
+> [!caution] **This overturns a recorded hypothesis, and the way it was wrong is the point.**
+> The field was documented as *"probably the sound's tag bitmask, which `src/project/tags.ts`
+> already models"*. It had **two samples** — `0x0012` on `DIGIT-ONE` and `0x007e` on
+> `HH TICK_PITX_AR` — and a theory that fit both. They are a factory sound and a user sound.
+>
+> Two samples and a plausible story is not evidence. It is the same shape as the open reply's
+> "constant 2,048" (three samples) and `0x03`'s "constant 4 bytes" (1,991 samples, all taken while
+> nothing was changing).
+
+**Consequence worth having:** a project or sound can now be reported as protected **before** a write
+is attempted. Transfer only says `Slot 29 already taken` after the transfer fails; the listing knew
+all along.

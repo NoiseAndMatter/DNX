@@ -195,7 +195,7 @@ test("one empty chunk is normal and does not end the read", async () => {
   assert.deepEqual([...file.bytes], [1, 2]);
 });
 
-test("the read request carries a sequence number, not a byte range", async () => {
+test("the read request carries a sequence number, starting at zero", async () => {
   // Handle alone is what produced the 4,963 empty chunks. The arguments are handle, length, start
   // - elk-herd's FileRead order, which puts length before the thing everyone says first.
   const io = scripted([OPEN_OK, chunk(1, [1, 2, 3], true), CLOSE_OK]);
@@ -212,7 +212,7 @@ test("the read request carries a sequence number, not a byte range", async () =>
   const read = requests[1]!;
   assert.equal(read.length, 8, "handle and sequence number, nothing else");
   assert.deepEqual([...read.subarray(0, 4)], [0, 0, 0, 1], "the handle the open returned");
-  assert.deepEqual([...read.subarray(4, 8)], [0, 0, 0, 1], "sequence numbers start at 1");
+  assert.deepEqual([...read.subarray(4, 8)], [0, 0, 0, 0], "the first read asks for sequence 0");
 });
 
 test("a device that never says stop is refused rather than read forever", async () => {
