@@ -57,7 +57,7 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import { type Entry, StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -1692,22 +1692,33 @@ async function listPath(): Promise<void> {
 
   try {
     const listing = parseListing(reply);
+    const changed = diffAgainstPrevious(path, listing.entries);
     const rows: [string, string][] = [
       ...log,
       ["Entries", `${listing.entries.length}, starting at ${listing.first}`],
       ["Next cursor", String(listing.next)],
     ];
+    if (changed) rows.push(["Changed since last list", changed]);
+
     for (const e of listing.entries.slice(0, 40)) {
       rows.push([
         `${String(e.index).padStart(4)}  ${e.kind === "directory" ? "dir " : "file"}`,
         `${e.name}${e.size !== undefined ? `  ${e.size.toLocaleString()} B` : ""}` +
-          `${e.children !== undefined ? `  ${e.children} items` : ""}`,
+          `${e.children !== undefined ? `  ${e.children} items` : ""}` +
+          // Shown, because this is where the answer to "which project is loaded?" may be hiding.
+          // These bytes are **not constant across projects**, and nothing yet explains why.
+          `${e.trailer ? `  [${[...e.trailer].map(hex2).join(" ")}]` : ""}`,
       ]);
     }
     if (listing.entries.length > 40) rows.push(["…", `${listing.entries.length - 40} more`]);
 
     verdictCard(`${path || "/"} — ${listing.entries.length} entries`, rows);
-    status(`${path || "/"}: ${listing.entries.length} entries. The storage API works.`, "ok");
+    status(
+      changed
+        ? `${path || "/"}: ${changed}`
+        : `${path || "/"}: ${listing.entries.length} entries. The storage API works.`,
+      "ok",
+    );
   } catch (error) {
     verdictCard("The device answered, but the listing did not decode", [
       ...log,
@@ -1718,6 +1729,52 @@ async function listPath(): Promise<void> {
     status(String(error), "warn");
   }
 }
+
+/**
+ * Compare this listing against the last one of the same path, and say what moved.
+ *
+ * ## The experiment this exists for
+ *
+ * **Which project is currently loaded on the device?** The name lives at image offset 8, in the
+ * header — the one region no dump carries — so the dump protocol cannot answer it. But a
+ * `/projects` listing carries four bytes per entry that we cannot explain and that are **not the
+ * same for every project**: `PRESETS` reads `0012 0101` where `MORNING_JAM` and `AMBZ` read
+ * `007e 0101`.
+ *
+ * If one of those tracks the loaded project, the answer is free — and the way to find out is not to
+ * reason about it. **List, change the project on the device, list again, and read the diff.** The
+ * device answers the question itself, which is the method that has worked every time on this
+ * protocol and reasoning is the method that has not.
+ *
+ * Kept per path, so listing `/soundbanks` in between does not destroy the comparison.
+ */
+function diffAgainstPrevious(path: string, entries: readonly Entry[]): string | undefined {
+  const key = path || "/";
+  const now = new Map(entries.map((e) => [e.index, e]));
+  const before = previousListings.get(key);
+  previousListings.set(key, now);
+  if (!before) return undefined;
+
+  const moved: string[] = [];
+  for (const [index, entry] of now) {
+    const was = before.get(index);
+    if (!was) {
+      moved.push(`${index} ${entry.name} appeared`);
+      continue;
+    }
+    if (was.name !== entry.name) moved.push(`${index} renamed ${was.name} → ${entry.name}`);
+    const from = was.trailer ? [...was.trailer].map(hex2).join(" ") : "—";
+    const to = entry.trailer ? [...entry.trailer].map(hex2).join(" ") : "—";
+    if (from !== to) moved.push(`${index} ${entry.name}: ${from} → ${to}`);
+  }
+  for (const index of before.keys()) if (!now.has(index)) moved.push(`${index} disappeared`);
+
+  if (moved.length === 0) return "nothing — every entry is byte-identical to the last listing";
+  return moved.join(" · ");
+}
+
+/** The last listing seen for each path, so two lists can be compared without saving a capture. */
+const previousListings = new Map<string, Map<number, Entry>>();
 
 // --- reading a whole file off the +Drive ----------------------------------------------------------
 

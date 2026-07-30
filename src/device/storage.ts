@@ -400,6 +400,20 @@ export interface Entry {
    * honest unknown one.
    */
   unknown?: number;
+  /**
+   * The whole trailer after the name, exactly as it arrived, for entries that have one.
+   *
+   * **Kept because a field we cannot name is the only place an answer can still be hiding.** On a
+   * `/projects` listing these bytes are not constant — `PRESETS` reads `0012 0101` where
+   * `MORNING_JAM` and `AMBZ` read `007e 0101` — and *something* distinguishes projects from one
+   * another there. One candidate is the question worth the most right now: **which project is
+   * currently loaded.**
+   *
+   * The tag-bitmask reading came from *sound* listings and was never tested on projects. Rather
+   * than extend a guess across a boundary it was never checked at, the bytes are handed over whole
+   * so an experiment can settle it: list, change the project on the device, list again, diff.
+   */
+  trailer?: Uint8Array;
 }
 
 export interface Listing {
@@ -469,6 +483,8 @@ export function parseListing(body: Uint8Array): Listing {
         index: u32(body, at),
         size: u32(body, at + 4),
         unknown: (body[at + 8]! << 8) | body[at + 9]!,
+        // Everything after index and size, undecoded. See `Entry.trailer`.
+        trailer: body.slice(at + 8, at + 12),
       });
       at += 12;
     } else {
