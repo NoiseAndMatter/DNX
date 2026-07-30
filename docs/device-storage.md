@@ -59,7 +59,9 @@ Captured response codes, with the request each implies by the API's `+0x80` conv
 | `0xd4` | **`0x54`** | File open — body 10 bytes |
 | `0xd5` | **`0x55`** | File read — returns content in chunks |
 | `0xd6` | **`0x56`** | File close — body 9 bytes |
-| `0xda` | **`0x5a`** | A mutating operation; acknowledged with a single `01`. Seen after a **move** and a **delete** |
+| `0xda` | **`0x5a`** | A mutating operation; acknowledged with a single `01` |
+| `0xdb` | **`0x5b`** | Another mutation, same single `01` |
+| `0xdc` | **`0x5c`** | A third mutation, same single `01` |
 
 > [!note] These are **API** messages — header `0x10`, `F0 00 20 3C 10 00 …` — not the dump
 > protocol. They appear in no public source, elk-herd included, which implements the same ideas at
@@ -251,13 +253,42 @@ reads 256 KiB. Nothing should compute free space from them.
 
 Names decode as Windows-1252 and the corpus proves it matters — `WÖÖPZ ZB`, `PLUCKY EÅ`.
 
+## 5b. Mutation is **three** codes, not one — found 2026-07-30
+
+Re-decoding `product16_Project_395msg_1353.syx` once the capture summariser understood API framing
+turned up two codes that had been sitting in the file unread. That capture is a deliberate
+experiment — the user drove Transfer through **move, copy and delete, on both a sound and a
+project**, while `/probe` listened.
+
+| Reply | Times | Body |
+|---|---|---|
+| `0xda` | 4 | `01` |
+| `0xdb` | 2 | `01` |
+| `0xdc` | 2 | `01` |
+
+Eight mutations, three codes, every one acknowledged by a single `01` and **every one immediately
+followed by a `0xd3` re-list** of the directory it touched — Transfer refreshing its view, which is
+also how each ack was located.
+
+**Which code is which operation is not established.** Three codes and three operation *kinds* is
+suggestive and nothing more: the counts are 4/2/2 rather than the 2/2/2 that reading would predict,
+so at least one operation is either two messages or was performed twice. Only Transfer's request
+half would settle it, and we never see that half.
+
+What it does settle is that **`0x5a` is not "the write message"**. Anything built on the assumption
+that one code covers mutation is built on a sample of one.
+
+> These are all **replies**, so nothing here says what the requests carry. Guessing the arguments
+> for a message that moves or deletes a project on someone's +Drive is not in the same risk class as
+> guessing a listing's — see `device-probing.md` rule 0.
+
 ## 6. What is still unknown
 
 - ~~The request side.~~ **SOLVED for `0x53` and `0x54`** — see §5a. Reconstructed from responses
   and confirmed on hardware. `0x55` (read) and `0x56` (close) are still unattempted, deliberately:
   they wait until an open has returned a handle whose width we have seen, because guessing three
   messages at once produces a failure that cannot be attributed to any of them.
-- **Writing.** `0x5a` acknowledges a mutation but we never saw what was asked. Upload was not
-  tested.
+- **Writing.** `0x5a`, `0x5b` and `0x5c` acknowledge mutations (§5b) but we never saw what was
+  asked, and which code is which operation is unknown. Upload was not tested.
 - **Whether the Digitone II speaks the same API.** Everything here is from a Digitone 1.
 - The three unidentified fields in §2.
