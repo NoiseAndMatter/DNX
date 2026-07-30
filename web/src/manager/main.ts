@@ -24,6 +24,7 @@
 
 import { deviceFor, type Device } from "../../../src/librarian/device.js";
 import { type DriveProject } from "../../../src/device/drive.js";
+import { ProductId } from "../../../src/sysex/devices.js";
 import { planRearrange, applyRearrange } from "../../../src/librarian/rearrange.js";
 import {
   NAME_SIZE,
@@ -939,6 +940,27 @@ async function loadFromDevice(): Promise<void> {
       "No template available, and a device read needs one for the parts no dump carries — the " +
         "header, the song table and the slot array. Open a project file first, or run the local " +
         "server so it can serve EMPTY.dn2prj.",
+      "error",
+    );
+    return;
+  }
+
+  // **Checked before the read, not after it.** The served template is a Digitone II blank, so
+  // connecting a Digitone 1 and pressing this used to spend a minute reading 257 records and then
+  // fail on the donor — the one arrangement where a check costs nothing and its absence costs
+  // everything.
+  //
+  // And for a Digitone 1 the answer is not a better donor. **Browse +Drive needs none at all**: it
+  // reads the complete stored project, any slot, verified byte-for-byte against Elektron's own
+  // export. So this points there rather than apologising.
+  const donorKind = deviceFor(template.image).kind;
+  const connectedKind = connected.productId === ProductId.DN1 ? "dn1" : "dn2";
+  if (donorKind !== connectedKind) {
+    connected.close();
+    status(
+      `${connected.name} is a ${connectedKind.toUpperCase()} and the only donor available is a ` +
+        `${donorKind.toUpperCase()} project, which cannot fill in for it. Use Browse +Drive ` +
+        `instead — it reads the whole stored project and needs no donor at all.`,
       "error",
     );
     return;
