@@ -40,9 +40,11 @@ Two defects turned that into a wrong finding.
    traffic. It reported `0x65 ANSWERED with 0x0f, 2 bytes, checksum BAD`. There is no dump type
    `0x0f`, two bytes is no record, and a bad checksum means it was never a dump message: **it was
    one of Transfer's API messages**, misread.
-2. **The capture summariser is a dump parser** and mangles API messages. Fed `F0 00 20 3C 10 00 …`
-   it reads byte 4 as a product and byte 6 as a dump type, so it reports **"product 16"** with
-   invented dump types and every checksum bad.
+2. ~~**The capture summariser is a dump parser** and mangles API messages.~~ **FIXED 2026-07-30.**
+   Fed `F0 00 20 3C 10 00 …` it read byte 4 as a product and byte 6 as a dump type, so it reported
+   **"product 16"** with invented dump types and every checksum bad. `summariseCapture` now checks
+   `isApiMessage` **before** the dump parser sees anything and counts API traffic in its own
+   `summary.api`, named by code — `directory listing reply` rather than an invented dump type.
 
 **What that cost.** `0x65`'s result is void, and so are the "silences" from `0x66` and `0x67` —
 with Transfer holding the output port, our sends may never have reached the device at all. A long
@@ -54,12 +56,27 @@ it answered something we never sent.
 
 - **Try code must verify the reply is a dump message from the expected product** before calling it
   an answer, and say plainly when what arrived was neither.
-- **The summariser should recognise API framing** (`00 20 3C 10 00`) and decode it as such, or at
-  minimum refuse to describe it as a dump.
+- ~~**The summariser should recognise API framing**~~ **DONE.** See above.
 - **Port exclusivity should be surfaced.** Transfer will not start while the page listens; once it
   is running the page can listen but probably cannot send. The page has no idea, and reports
   silence.
 - **Card text is not selectable while listening**, so a result cannot be copied without stopping.
+
+**And the summariser fix uncovered what it was hiding.** On a Digitone II, a fresh **Listen** — a
+port opened and nothing sent — captured 11 messages, 155 bytes, reported as `Unreadable 10` plus
+one group `product 16 — unknown (0x04)`. All eleven are API messages.
+
+`0x04` is worth spelling out, because it is a lesson in what an invented field looks like. Byte 6
+of a dump is its type; in an API message byte 6 is the **first 8-in-7 high-bits byte**, and `0x04`
+is bit 2 — set because payload byte 4 is the code and the code had its response bit set. So the
+"dump type" was a faithful reading of a byte that means something else entirely, which is exactly
+why it looked plausible for so long.
+
+Whether the device volunteers those or they are buffered replies to something sent earlier in the
+session is **not established** — it needs a fresh power cycle to separate. Either way the operating
+consequence holds: **a capture is never empty of other traffic, and the first message to arrive is
+not necessarily an answer.** Code that treats "the next message" as its reply is wrong on both
+machines, not merely when Transfer happens to be running.
 
 ## Listening is quadratic — OPEN 2026-07-30
 

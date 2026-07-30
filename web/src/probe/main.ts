@@ -609,6 +609,31 @@ function renderCapture(): void {
       ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
     ]);
   }
+
+  // The other protocol, kept visibly apart. Before this existed, API traffic went through the dump
+  // parser and came out as "product 16 — unknown (0x04)" with every checksum BAD, which is a
+  // convincing description of a broken device rather than of a working one speaking a second
+  // language. A Digitone II sends some the moment a port opens, so this is the *normal* case.
+  if (summary.api.length > 0) {
+    const total = summary.api.reduce((n, g) => n + g.count, 0);
+    card(results, `API traffic — ${total} message${total === 1 ? "" : "s"}`, [
+      ...summary.api.map(
+        (group) =>
+          [
+            `${hex(group.code)} ${group.name}`,
+            `${group.count} × ${group.bytes.toLocaleString()} B` +
+              (group.replies === group.count ? "" : `, ${group.replies} answering a request`),
+          ] as [string, string],
+      ),
+      // Said every time, because the alternative is deducing it from a count that looks fine.
+      // Anything else on this port — Elektron Transfer above all — has its replies land here too,
+      // and nothing in the bytes distinguishes them from ours.
+      [
+        "Whose",
+        "Unknown. A capture cannot tell our replies from another application's on the same port.",
+      ],
+    ]);
+  }
 }
 
 /** A rolling indicator, so "still going" is visible without reading numbers. */
