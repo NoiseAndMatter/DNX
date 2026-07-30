@@ -202,15 +202,19 @@ export interface OpenResult {
   /** The handle a read and a close refer to. Counts up from 1 per open. */
   handle: number;
   /**
-   * Bytes the device will send per chunk. **2,048 in every sample.**
+   * The five bytes after the handle, **undecoded on purpose**.
    *
-   * Read as a chunk size because the read replies confirm it from the other side: every full chunk
-   * carries exactly this many bytes and the last carries fewer. Three opens, three files of very
-   * different sizes, same value — so it is a transfer parameter, not a property of the file.
+   * This was named `chunkSize` and it was wrong. Three of Transfer's opens reported `2048` with a
+   * trailing `1`, and every full chunk in those reads carried exactly 2,048 bytes — which looked
+   * conclusive. Then our own open of `/projects/1` reported **16**, with a trailing `0`.
+   *
+   * A field that reads 2,048 on three samples and 16 on the fourth is not a chunk size we
+   * understand, and nothing needs it: reads are addressed by **sequence number**, not by length.
+   * So it is carried through for whoever solves it rather than given a name that would be believed.
+   *
+   * > Three samples agreeing is what a wrong reading looks like from the inside.
    */
-  chunkSize: number;
-  /** The trailing byte, `1` in every sample. Unidentified. */
-  flag: number;
+  rest: Uint8Array;
 }
 
 /**
@@ -227,40 +231,42 @@ export interface OpenResult {
 export function parseOpen(body: Uint8Array): OpenResult {
   refuseFailure(body, "open");
   if (body.length < 10) throw new ListingError(`open reply is ${body.length} bytes, expected 10`);
-  return { handle: u32(body, 1), chunkSize: u32(body, 5), flag: body[9]! };
+  return { handle: u32(body, 1), rest: body.subarray(5) };
 }
 
 /**
- * Ask for a range of an open file.
+ * Ask for the next chunk of an open file, **by sequence number**.
  *
  * ```
- * 0x55   u32 handle   u32 length   u32 start
+ * 0x55   u32 handle   u32 sequence
  * ```
  *
- * **Length before start**, which is not the order anyone says it in. That is elk-herd's `FileRead`
- * argument order for the Digitakt (`api.ts`'s `fileReadRequest` writes the same three fields the
- * same way), and this family has repaid following elk-herd every time.
+ * ## The device named this field itself
  *
- * ## Why not just the handle
+ * Two wrong shapes, each answered informatively rather than fatally:
  *
- * Because that was tried, on hardware, and the device answered **4,963 consecutive zero-length
- * chunks** without ever setting the end-of-file flag. It had opened the file and was waiting to be
- * told what to read.
+ * | Sent | Device |
+ * |---|---|
+ * | `u32 handle` alone | 4,963 consecutive **zero-length chunks**, end flag never set |
+ * | `u32 handle, u32 length, u32 start` (elk-herd's order) | **`Invalid sequence number`** |
  *
- * That also re-reads the 22-byte reply that opens Transfer's every read sequence. It was recorded
- * here as an unidentified *metadata* message; it is much more likely **an ordinary chunk of length
- * zero** — the answer to a request for nothing, exactly like the 4,963 we drew. Transfer's first
- * read asks for no bytes, and its second asks for real ones.
+ * The second is the one that solved it. We sent `handle=2, 16, 0`; the device read our *second*
+ * field as a sequence number, found 16 where it wanted 1, and said so in as many words. So this is
+ * **not** a byte-range API like elk-herd's `FileRead` — it is a numbered-chunk API, and the number
+ * is the `sequence` the reply has been echoing all along as 1, 2, 3 … 22.
  *
- * Taken in the readable order and swapped on the way out, so a caller cannot get it silently
- * backwards — the mistake would otherwise read a valid but wrong range, which is the kind of error
- * that surfaces weeks later as a project the device refuses.
+ * **Sequence numbers start at 1**, matching the first data-bearing reply in Transfer's capture.
+ *
+ * ## Why a wrong guess here is cheap
+ *
+ * The device validates this strictly and answers with a sentence. Three different refusals —
+ * `invalid project id`, `project id out of range`, `Invalid sequence number` — have each named
+ * their field precisely. **The dangerous part of this API was `0x54`'s framing, not its arguments.**
  */
-export function readRequest(msgId: number, handle: number, start: number, length: number): Uint8Array {
-  const body = new Uint8Array(12);
+export function readRequest(msgId: number, handle: number, sequence: number): Uint8Array {
+  const body = new Uint8Array(8);
   body.set(u32Bytes(handle), 0);
-  body.set(u32Bytes(length), 4);
-  body.set(u32Bytes(start), 8);
+  body.set(u32Bytes(sequence), 4);
   return encodeMessage(msgId, StorageCode.Read, body);
 }
 
