@@ -675,3 +675,55 @@ is still unassigned.
 **Consequence worth having:** a project or sound can now be reported as protected **before** a write
 is attempted. Transfer only says `Slot 29 already taken` after the transfer fails; the listing knew
 all along.
+
+---
+
+## 9. Writing, proved on hardware — 2026-07-30
+
+**A sound was written to `/soundbanks/H/256` and appears on the instrument.** Read
+`/soundbanks/A/1` (345 bytes), write those bytes back with the checksum the device reported:
+`0x57` → `0x58` → `0x59`, all three acknowledged.
+
+Confirmed twice over — by eye on the device, and by the protocol itself: a fresh listing then
+reported H256 **occupied**, named `DIGIT-ONE`. The write guard refusing a second write to that slot
+*is* the proof it landed.
+
+**Sounds and projects share one container.** The sound read 345 bytes where the listing calls it
+302; the difference is 43 — the same 31-byte header and 12-byte trailer that wrap a project payload.
+
+### The checksum is enforced — and it is the last obstacle
+
+The same write with **one bit flipped** in the checksum:
+
+```
+Invalid package checksum; corrupt transfer
+```
+
+Refused at `0x58`, so no `0x59` was sent, nothing was committed, and nothing appeared on the
+instrument. That is the answer the experiment existed for:
+
+- **Writing back what we read: available now.** The device supplies the checksum for its own bytes.
+- **Writing anything new: blocked** until the algorithm is known. Which is what the expander needs
+  in order to write an expanded project into a chosen slot.
+
+### What the algorithm is not
+
+Against **17** (data, checksum) pairs — fifteen 2,048-byte read chunks plus Transfer's two complete
+uploads, 269 and 18,064 bytes:
+
+- CRC-32 in six forms (IEEE, no xor-out, init 0, BZIP2, MPEG-2, POSIX), CRC-32C, Adler-32, a byte
+  sum, positional XOR, FNV-1a — **none match**
+- chained (each chunk seeding the next), cumulative, and byte-swapped variants — **none match**
+- **it is not stored in the file.** The payload footer carries its own check field —
+  `2d7aed58` for the sound whose transfer checksum is `cb499219` — and they are different values
+
+So it is computed over the content by something custom.
+
+### Next move on it
+
+**CRC recovery.** A CRC is affine over GF(2), so polynomial, initial value and final XOR can be
+solved for from a handful of known pairs rather than guessed. We hold 17, with the data for every
+one, and it needs no hardware.
+
+If that fails, the fallback is more pairs with **controlled inputs** — capturing Transfer uploading
+files whose bytes we choose, where a checksum's structure is far easier to see.
