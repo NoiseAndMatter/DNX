@@ -163,8 +163,16 @@ All 27 read replies in the capture, across a manifest, a sound and a project.
 |---|---|---|
 | `0` | u8 | `1` on success; `0` then the device's own sentence on failure |
 | `1` | u32be | **handle** — counts up from 1 per open |
-| `5` | u32be | **chunk size, 2,048** — identical on all three opens |
-| `9` | u8 | `1`, unidentified |
+| `5` | u32be | **unidentified** — `2048` on Transfer's three opens, **`16`** on ours |
+| `9` | u8 | `1` on Transfer's, `0` on ours. Unidentified |
+
+> [!warning] **`5` was recorded as a chunk size and that was wrong.**
+> Three of Transfer's opens reported `2048`, and every full chunk in those reads carried exactly
+> 2,048 bytes. Conclusive-looking. Then our own open of `/projects/1` reported **16**.
+>
+> Nothing needs it — reads are addressed by sequence number, not by length — so it is carried
+> through undecoded rather than given a name that would be believed. **Three samples agreeing is
+> what a wrong reading looks like from the inside.**
 
 A failure reads `00 "Error: Could not resolve …"`. The device explains itself, which is how
 `invalid project id` taught us `0x54` takes a slot rather than a path.
@@ -310,22 +318,37 @@ So the request takes a **full path to a file** — `/projects/PRESETS`, not `/pr
 > `storagesession.ts` guarantees the close regardless, and the message stays gated behind a token.
 > **Two hypotheses have already been wrong; this is the third.**
 
-### `0x55` — the read needs a **range**, not just a handle
+### `0x55` — the read is addressed by **sequence number**
 
 ```
-0x55   u32 handle   u32 length   u32 start
+0x55   u32 handle   u32 sequence        (sequence starts at 1)
 ```
 
-Length before start, which is elk-herd's `FileRead` argument order for the Digitakt.
+**The device named the field.** Two wrong shapes, each answered informatively:
 
-**Established by getting it wrong on hardware.** Sending only the handle opened the file fine and
-then drew **4,963 consecutive zero-length chunks**, the end-of-file flag never set. The device had
-opened the file and was waiting to be told what to read.
+| Sent | Device |
+|---|---|
+| `u32 handle` alone | 4,963 consecutive **zero-length chunks**, end flag never set |
+| `u32 handle, u32 length, u32 start` — elk-herd's `FileRead` order | **`Invalid sequence number`** |
 
-That also re-reads §3a's "leading reply carries no data". It was recorded as an unidentified
-*metadata* message; it is far more likely **an ordinary chunk of length zero** — the answer to a
-request for nothing, exactly like the 4,963 we drew. Transfer's first read asks for no bytes and
-its second asks for real ones.
+We sent `handle=2, 16, 0`; it read the second field as a sequence number, found 16 where it wanted
+1, and said so. So this is **not** a byte-range API. It is a numbered-chunk API, and the number is
+the one the reply has been echoing all along as 1, 2, 3 … 22.
+
+**This is where following elk-herd stopped paying.** `FileRead` on a Digitakt takes fd, length and
+start; the Digitone's `0x55` takes a handle and a chunk number. The reference held for the framing,
+the `+0x80` convention and the argument encoding, and diverged on the one thing we assumed from it.
+
+`0x56` refusing with **`Reader did not complete`** names the abstraction: the device holds a
+*Reader* and tracks how far through it is.
+
+### Three refusals, three named fields
+
+`invalid project id` · `project id out of range` · `Invalid sequence number`
+
+Every one names its field precisely, and none of them harmed the device. **The dangerous part of
+this API was `0x54`'s framing, never its arguments** — a NUL-terminated body has always been
+answered, and a raw integer body has always been fatal.
 
 > [!note] **The guard was set at "impossible" rather than "implausible".**
 > The loop's only stop condition was 8,192 chunks, so a request we had wrong cost five thousand
