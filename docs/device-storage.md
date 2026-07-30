@@ -19,8 +19,23 @@ The evidence had been:
 2. `DirList` (`0x10`) timed out.
 
 Both observations were true. **The conclusion did not follow.** The file API exists on a Digitone
-at *different codes* — `0x53`–`0x5a` in the **API** space — so `0x10` timing out means only that
-`0x10` is not implemented, which is exactly what it says.
+at *different codes* — `0x53`–`0x5a` in the **API** space.
+
+> [!warning] **And the second pillar is no better than the first — corrected 2026-07-30**
+> This section first said *"`0x10` timing out means only that `0x10` is not implemented, which is
+> exactly what it says."* **It does not say that.** It says nothing came back, and we cannot show
+> anything went out.
+>
+> `output.send()` does not throw when another application holds the port — it returns normally and
+> the bytes go nowhere. If Transfer was running when we probed, **`DirList` may never have left the
+> machine.**
+>
+> So `0x10` is **untested, not absent**, and it should be retried with Transfer definitely closed
+> and a link check first. If it answers, elk-herd's implementation may apply directly, which is a
+> far better starting point than reverse-engineering `0x53` from responses.
+>
+> The pattern is the point: the first pillar was corrected, and then the same overconfidence was
+> rebuilt on the second within the hour.
 
 The first observation was worthless on its own and this project had already proved it: neither
 Digitone advertises `0x60`–`0x6f` either, and both honour them. That lesson was written down in
