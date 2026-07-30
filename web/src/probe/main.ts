@@ -297,6 +297,7 @@ async function probe(): Promise<void> {
     // us conclude for two days that the file API did not exist.
     $<HTMLInputElement>("lsPath").disabled = false;
     $<HTMLInputElement>("lsFrom").disabled = false;
+    $<HTMLInputElement>("lsCount").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
     $<HTMLButtonElement>("lsOpen").disabled = false;
 
@@ -1552,14 +1553,17 @@ async function listPath(): Promise<void> {
   // this page first took it for. If a non-zero start comes back echoed as `first`, the argument
   // encoding is confirmed past the bare path, which is what makes guessing `0x54` reasonable.
   const from = Number($<HTMLInputElement>("lsFrom").value) || 0;
+  // **A start without a count asks for nothing**, which the device demonstrated twice: `first`
+  // came back echoing 28 and `count` came back 0. So the two travel together or not at all.
+  const count = Number($<HTMLInputElement>("lsCount").value) || 0;
   const log: [string, string][] = [
     ["Path", path || "(empty — the root)"],
     [
       "Sending",
       `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string` +
-        (from > 0 ? `, then a u32 cursor of ${from}` : ""),
+        (count > 0 ? `, then u32 start ${from} and u32 count ${count}` : " (whole listing)"),
     ],
-    ["Note", "the request shape is inferred; a wrong guess is answered 'Invalid path'"],
+    ["Note", "a wrong path is answered 'Invalid path'"],
   ];
   verdictCard("Listing…", log);
 
@@ -1586,7 +1590,9 @@ async function listPath(): Promise<void> {
     };
 
     try {
-      output.send([...listRequest(nextListId++, path, from)]);
+      output.send([
+        ...listRequest(nextListId++, path, count > 0 ? { start: from, count } : undefined),
+      ]);
     } catch (error) {
       clearTimeout(timer);
       awaitingReply = undefined;
@@ -1674,16 +1680,18 @@ async function openFile(): Promise<void> {
     return;
   }
 
-  const path = $<HTMLInputElement>("lsPath").value;
+  // The slot number from a `/projects` listing — 1-based, and the same numbering as the user's own
+  // filenames. Taken from the "from" box, since a path is exactly what this message rejects.
+  const projectId = Number($<HTMLInputElement>("lsFrom").value) || 0;
   const log: [string, string][] = [
-    ["Path", path],
-    ["Sending", `API 0x${StorageCode.Open.toString(16)}, path as a NUL-terminated string`],
-    ["Note", "0x53 refuses a file path, so this is the read half — and it is a guess"],
+    ["Project id", `${projectId} — the index a /projects listing gives`],
+    ["Sending", `API 0x${StorageCode.Open.toString(16)}, a u32 project id`],
+    ["Note", "sent a path, the device answered 'invalid project id' — so it wants a slot number"],
   ];
   verdictCard("Opening…", log);
 
   const reply = await awaitApi(output, StorageCode.Open, () =>
-    output.send([...openRequest(nextListId++, path)]),
+    output.send([...openRequest(nextListId++, projectId)]),
   );
 
   if (!reply) {
@@ -1710,7 +1718,7 @@ async function openFile(): Promise<void> {
       ["Rest, undecoded", [...opened.rest].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
       ["Next", "read and close can now be built against a handle we have actually seen"],
     ]);
-    status(`Opened ${path} — handle ${opened.handle}. The read half works.`, "ok");
+    status(`Opened project ${projectId} — handle ${opened.handle}. The read half works.`, "ok");
   } catch (error) {
     verdictCard("The device answered, but not with an open", [
       ...log,

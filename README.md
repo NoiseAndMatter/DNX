@@ -43,7 +43,7 @@ speculative or unknown.
 | Track move/copy/swap/clear inside a pattern | done, DN2 only, **hardware-validated** |
 | Pattern rename | done, both devices — batch schemes to come |
 | WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
-| WebMIDI — +Drive file access | **it exists after all** — at API codes `0x53`–`0x5a`, not elk-herd's. Decoded, not yet implemented: `docs/device-storage.md` |
+| WebMIDI — +Drive file access | **it exists, and we can talk to it** — listing works on hardware; `docs/device-storage.md` |
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
 | WebMIDI — reading a whole project by request | done, **hardware-validated on DN2** — 257/257, byte-identical to a device dump |
 | Rebuild a project file from a capture | done — 99.5% from the wire, the rest from a donor |

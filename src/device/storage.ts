@@ -47,38 +47,60 @@ export type StorageCode = (typeof StorageCode)[keyof typeof StorageCode];
 /** The two roots a Digitone 1 reported. */
 export const ROOTS = ["projects", "soundbanks"] as const;
 
-/**
- * Ask for a directory listing.
- *
- * `start` is the index to resume from — a listing is paginated and its response carries the cursor
- * for the next page. Sent only when non-zero, because the simplest shape is the likeliest to be
- * right and an unrecognised trailing field is a good way to get `Invalid path` for a valid path.
- */
-export function listRequest(msgId: number, path: string, start = 0): Uint8Array {
-  const name = string0(path);
-  if (start === 0) return encodeMessage(msgId, StorageCode.List, name);
+/** A window into a directory. Both halves are required — see `listRequest`. */
+export interface Page {
+  start: number;
+  count: number;
+}
 
-  const body = new Uint8Array(name.length + 4);
+/**
+ * Ask for a directory listing, optionally one page of it.
+ *
+ * ```
+ * 0x53   path\0   [u32 start]   [u32 count]
+ * ```
+ *
+ * **Established on hardware, one field at a time.** A bare path returns everything — 128 projects,
+ * 256 sounds. Adding a `u32` came back with `first` echoing the value we sent, which proved the
+ * argument encoding; but `count` came back **0**, on two different paths. We had asked for zero
+ * entries and the device obliged.
+ *
+ * Transfer's own traffic says the same from the other side: a 43-byte reply reading
+ * `first 28, next 29, count 1` is one entry starting at 28 — a page, which this page's earlier
+ * reading mistook for a file stat.
+ *
+ * **`start` and `count` are taken together, never separately.** A start without a count is a
+ * request for nothing, and an API that lets you write that by accident is one you will.
+ */
+export function listRequest(msgId: number, path: string, page?: Page): Uint8Array {
+  const name = string0(path);
+  if (!page) return encodeMessage(msgId, StorageCode.List, name);
+
+  const body = new Uint8Array(name.length + 8);
   body.set(name, 0);
-  body[name.length] = (start >>> 24) & 0xff;
-  body[name.length + 1] = (start >>> 16) & 0xff;
-  body[name.length + 2] = (start >>> 8) & 0xff;
-  body[name.length + 3] = start & 0xff;
+  body.set(u32Bytes(page.start), name.length);
+  body.set(u32Bytes(page.count), name.length + 4);
   return encodeMessage(msgId, StorageCode.List, body);
 }
 
 /**
- * Open a file for reading.
+ * Open a project for reading, **by id rather than by path**.
  *
- * **A guess, but the best-evidenced one available.** `0x53` takes a bare NUL-terminated path and
- * that is now proven on hardware, so the same encoding is the obvious shape for `0x54`. Nothing
- * else about this message is known: Transfer's request was never visible, only its 10-byte reply.
+ * The device said so itself. Sent a path, `0x54` answered **`invalid project id`** — not
+ * `Invalid path`, which is what `0x53` says. It had parsed the message, recognised the code, and
+ * objected to the *kind* of argument. A more useful error than most documentation.
  *
- * `0x53` refuses a file path — `/soundbanks/A/DIGIT-ONE` answers `Invalid path` — which is correct
- * behaviour for a *directory* listing and is why files need their own message.
+ * So the two halves of this API address differently: `0x53` browses a tree by path, `0x54` opens a
+ * project by its slot — the `index` a `/projects` listing gives, 1-based, matching the numbers in
+ * the user's own filenames (`002 MORNING_JAM.dnprj` is id 2).
+ *
+ * The width is inferred from the reply, `01 00 00 00 01 …`, which reads as status plus a u32.
  */
-export function openRequest(msgId: number, path: string): Uint8Array {
-  return encodeMessage(msgId, StorageCode.Open, string0(path));
+export function openRequest(msgId: number, projectId: number): Uint8Array {
+  if (!Number.isInteger(projectId) || projectId < 0) {
+    throw new ListingError(`project id ${projectId} is not a slot number`);
+  }
+  return encodeMessage(msgId, StorageCode.Open, u32Bytes(projectId));
 }
 
 /** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
