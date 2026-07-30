@@ -127,6 +127,18 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <input id="probeObj" type="number" min="0" max="127" value="0" size="3" disabled>
   <button class="btn" id="probeSend" disabled>Try code</button>
   <!--
+    `Try code` builds `0x6n` *dump* requests only, so the API's own information codes were
+    unreachable — `0x03` above all, the one Elektron Transfer polls continuously and nobody has
+    explained. We nearly built a content-fingerprinting workaround while it sat unsent.
+
+    `Query` (`0x09`) is not here: the Probe button already sweeps it, with better-researched keys.
+
+    Read-only by construction: the list is fixed. The API's other nibbles write, delete and open
+    handles, and one of those froze a Digitone 1 three times.
+  -->
+  <select id="askCode" disabled title="An API information code"></select>
+  <button class="btn" id="askSend" disabled>Ask</button>
+  <!--
     Read-only, and the friendliest failure on the device: a wrong path is answered `Invalid path`
     in as many words, so guessing costs a round trip.
   -->
