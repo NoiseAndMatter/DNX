@@ -86,6 +86,14 @@ export interface StoredFile {
   metadata?: Uint8Array;
   /** Whether the close was acknowledged. **False is a warning, not a failure of the read.** */
   closed: boolean;
+  /**
+   * The checksum the device reported for this file's content, when it arrived in one chunk.
+   *
+   * `undefined` for a multi-chunk read, because a per-chunk checksum is not a whole-file one and
+   * pretending otherwise would hand a write the wrong number. The algorithm is unknown, so this is
+   * the only way to write a file back: **let the device supply the value for its own bytes.**
+   */
+  checksum?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -142,6 +150,7 @@ export async function readStoredFile(
   }
 
   const parts: Uint8Array[] = [];
+  const checksums: number[] = [];
   let total = 0;
   let chunks = 0;
   let empties = 0;
@@ -190,6 +199,7 @@ export async function readStoredFile(
       } else {
         empties = 0;
         parts.push(chunk.data);
+        checksums.push(chunk.checksum);
         total += chunk.data.length;
       }
       onProgress?.(chunks, total);
@@ -202,7 +212,10 @@ export async function readStoredFile(
     closed = await closeQuietly(transport, id(), opened.handle, timeoutMs);
   }
 
-  return { bytes: join(parts, total), chunks, metadata, closed };
+  // Only when the whole file came in one chunk. Two chunks means two checksums and no statement
+  // about the whole, and a caller writing that back would send a number for a third of the file.
+  const single = parts.length === 1 ? checksums[0] : undefined;
+  return { bytes: join(parts, total), chunks, metadata, closed, checksum: single };
 }
 
 /** A device with nobody else attached hands out handle 1 first. */

@@ -162,6 +162,24 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="filePath">file</label>
   <input id="filePath" type="text" value="/projects/1" size="20" disabled title="The index from a /projects listing, not the project name: /projects/1">
   <button class="btn danger" id="fileRead" disabled title="Open, read and close a file on the +Drive. This froze a Digitone 1 three times.">Read file</button>
+  <!--
+    The first write to a Digitone's +Drive. It reads `file` and writes those exact bytes to `to`,
+    using the checksum the device itself reported on the read — so the one field whose algorithm we
+    cannot reproduce is supplied by the device.
+
+    `corrupt` is the experiment worth having: flip a bit in that checksum and see whether the write
+    is refused. Refused means the field is validated and we need the algorithm. Accepted means it
+    is decorative, and writing arbitrary content is unblocked.
+
+    **Empty slots only, refused not warned.** The listing says which slots are empty; there are 73
+    on this instrument, so there is no reason for the first write ever attempted to be able to
+    overwrite anything.
+  -->
+  <label class="lbl" for="writeTarget">to</label>
+  <input id="writeTarget" type="text" value="/soundbanks/H/256" size="18" disabled title="Destination — must be an empty slot">
+  <label class="lbl" for="corruptSum">corrupt</label>
+  <input id="corruptSum" type="checkbox" disabled title="Flip a bit in the checksum, to find out whether it is enforced">
+  <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read → write</button>
 </header>
 
 <main>
