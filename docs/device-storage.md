@@ -265,17 +265,29 @@ confirmed one field at a time. `/` returned `projects` and `soundbanks` on the f
 `listRequest` takes them as one `Page`, never separately, so a request for nothing cannot be
 written by accident.
 
-### `0x54` — open a file **by path** — three attempts, two of them fatal
+### `0x54` — open a file **by path, ending in the index** — SOLVED 2026-07-30
 
 ```
-0x54   path\0
+0x54   /projects/<index>\0
 ```
+
+**The last segment is the index, not the name.** `/projects/1` opens; `/projects/PRESETS` answers
+`invalid project id`, and so does `/projects/NOPE` — *byte for byte the same error*, which is the
+tell: two different names failing identically means the name was never being looked at.
 
 | Body sent | NUL-terminated | Device |
 |---|---|---|
-| `path\0` | **yes** | answered `invalid project id` |
+| `/projects/1\0` | yes | **opened, handle returned** |
+| `/projects/PRESETS\0` | yes | `invalid project id` |
+| `/projects/NOPE\0` | yes | `invalid project id` |
 | `u32 id` | no | **froze** |
 | `u32 id, u32 2048, u8 1` | no | **froze** |
+
+The index is the one a `/projects` listing gives, 1-based — `PRESETS` is 1, `MORNING_JAM` is 2.
+
+Transfer's own capture also produced `Error: Could not resolve path` from `0x54`, which is the
+*other* failure: an id that resolves, a path that does not. Two distinct errors from one message,
+which is what said the argument had more structure than a bare id.
 
 **The freeze tracks the missing terminator, not the length or the content.** That is what a string
 parse running off the end of a buffer looks like: the handler reads a NUL-terminated argument the
@@ -298,15 +310,38 @@ So the request takes a **full path to a file** — `/projects/PRESETS`, not `/pr
 > `storagesession.ts` guarantees the close regardless, and the message stays gated behind a token.
 > **Two hypotheses have already been wrong; this is the third.**
 
+### `0x55` — the read needs a **range**, not just a handle
+
+```
+0x55   u32 handle   u32 length   u32 start
+```
+
+Length before start, which is elk-herd's `FileRead` argument order for the Digitakt.
+
+**Established by getting it wrong on hardware.** Sending only the handle opened the file fine and
+then drew **4,963 consecutive zero-length chunks**, the end-of-file flag never set. The device had
+opened the file and was waiting to be told what to read.
+
+That also re-reads §3a's "leading reply carries no data". It was recorded as an unidentified
+*metadata* message; it is far more likely **an ordinary chunk of length zero** — the answer to a
+request for nothing, exactly like the 4,963 we drew. Transfer's first read asks for no bytes and
+its second asks for real ones.
+
+> [!note] **The guard was set at "impossible" rather than "implausible".**
+> The loop's only stop condition was 8,192 chunks, so a request we had wrong cost five thousand
+> round trips instead of an error. It now refuses after **three consecutive empty chunks** —
+> Transfer's sequences begin with exactly one, so one is normal and three is a conversation going
+> nowhere. The far guard stays as a backstop.
+
 #### And the error message was misread — which is what cost the two power cycles
 
 `invalid project id` was recorded as the device *naming its own argument type*: "not `Invalid
 path`, which is what `0x53` says — it objected to the **kind** of argument", written down as *"a
 more useful error than most documentation"*.
 
-**It says nothing of the kind.** It says the path resolved to no valid project — which was exactly
-true, because the probe reused whatever sat in the listing box, and that was `/projects`: a
-**directory**.
+**It says nothing of the kind.** It says the argument named no valid project id — which was exactly
+true, three times running, of `/projects`, of `/projects/NOPE` and of `/projects/PRESETS` alike. The
+message was accurate and unchanging while three different readings of it were tried.
 
 > **An error names what failed, not what was wanted.** `0x53` says `Invalid path` when it cannot
 > *parse* a path; `0x54` says `invalid project id` when it cannot *resolve* one. Two stages of the

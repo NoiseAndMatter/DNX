@@ -1754,22 +1754,33 @@ async function readFile(): Promise<void> {
     status("Press Listen first — otherwise nothing collects the replies.", "warn");
     return;
   }
+  // **One at a time.** Two presses produced two sessions numbering their messages from 1, on a
+  // transport with a single reply slot, so each stole the other's answers — three opens all
+  // answering message 1, and a "whose traffic is this" verdict that contradicted itself. A
+  // sequence that owns a device handle is not something to have two of.
+  if (readingFile) {
+    status("A read is already running. Wait for it to close its handle.", "warn");
+    return;
+  }
 
   const path = $<HTMLInputElement>("filePath").value;
   const log: [string, string][] = [
     ["File", path],
     ["Sending", "0x54 open (path, NUL-terminated) → 0x55 read × n → 0x56 close"],
     ["Guaranteed", "the close is sent on every path, including a read that throws"],
-    // On the card, not only in a doc comment. Both times this froze the device, the reasoning
-    // behind the request body was somewhere nobody was reading at the moment they pressed.
-    ["Why a path", "the only body 0x54 has ever answered. Both raw-integer forms froze a DN1."],
+    ["Path form", "/projects/<index> — the index from a listing, not the project's name"],
   ];
   verdictCard("Reading…", log);
 
+  readingFile = true;
+  $<HTMLButtonElement>("fileRead").disabled = true;
   const started = performance.now();
   try {
     const file = await readStoredFile(path, {
       transport: apiTransport(output),
+      // A band of its own, never from 1. Ids that restart per session collide with the previous
+      // session's — and with Transfer's, which numbers from the low hundreds.
+      msgId: readIdBase(),
       onProgress: (chunks, bytes) => {
         status(`Reading ${path}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
       },
@@ -1807,7 +1818,38 @@ async function readFile(): Promise<void> {
       ],
     ]);
     status(alive ? "Read failed, link is fine." : "The device stopped answering — power-cycle it.", alive ? "warn" : "error");
+  } finally {
+    // Whatever happened, the handle is released by now and the next press is safe. Moving to the
+    // next band is what stops this run's ids coming round again on the following one.
+    readBand++;
+    readingFile = false;
+    $<HTMLButtonElement>("fileRead").disabled = false;
   }
+}
+
+/** True while a read owns a device handle. See the guard in `readFile`. */
+let readingFile = false;
+
+/**
+ * Which block of message ids the next read gets.
+ *
+ * A read can consume thousands of ids — one per chunk — and **`msgId` is a u16**, so a counter that
+ * simply advanced would run out of range in three presses and `encodeMessage` would start throwing.
+ * So the space is divided into bands wide enough for a whole read, and this cycles through them.
+ *
+ * Cycling is not the same as reusing: by the time a band comes round again, several complete reads
+ * have finished and closed. What it rules out is the collision we actually saw — two sessions both
+ * numbering from 1, each answering the other's requests.
+ *
+ * The bands start at 8,192 to stay clear of Elektron Transfer, which numbers from the low hundreds.
+ */
+let readBand = 0;
+const READ_ID_BASE = 8_192;
+const READ_ID_SPAN = 8_192;
+const READ_ID_BANDS = 6; // 8,192 … 49,152, all inside a u16
+
+function readIdBase(): number {
+  return READ_ID_BASE + (readBand % READ_ID_BANDS) * READ_ID_SPAN;
 }
 
 function hex2(b: number): string {

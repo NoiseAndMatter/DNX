@@ -139,11 +139,13 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
     NUL terminator. The only body it has ever answered is a NUL-terminated path, which is what this
     now sends — the third hypothesis about this message, and still a hypothesis.
 
-    Takes a full path to a file: `/projects/PRESETS`, not `/projects`. A directory is what earned
-    the `invalid project id` reply we misread as "the argument should be an id".
+    The last segment is the **index**, not the name: `/projects/1`, not `/projects/PRESETS`. That
+    is what `invalid project id` had been saying all along — the device could not turn `PRESETS`
+    into an id — and it was read first as "the argument should be an id" and then as "the path is
+    wrong". It was neither: the path form was wrong in one segment.
   -->
   <label class="lbl" for="filePath">file</label>
-  <input id="filePath" type="text" value="/projects/PRESETS" size="20" disabled title="A full path to a stored file, from a /projects listing. A directory will be refused.">
+  <input id="filePath" type="text" value="/projects/1" size="20" disabled title="The index from a /projects listing, not the project name: /projects/1">
   <button class="btn danger" id="fileRead" disabled title="Open, read and close a file on the +Drive. This froze a Digitone 1 three times.">Read file</button>
 </header>
 
