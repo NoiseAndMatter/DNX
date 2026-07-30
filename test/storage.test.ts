@@ -54,6 +54,40 @@ test("the paging cursor is carried through", () => {
   assert.equal(listing.next, 29, "a following request resumes here");
 });
 
+/** `/soundbanks` on a Digitone 1 — directories that use the *long* trailer. */
+const BANKS = bytes(`
+  01 00 00 00 00 00 00 00 02 00 00 00 02
+  41 00  01 02  00 00 00 00  00 04 00 00  00 12 01 00
+  42 00  01 02  00 00 00 01  00 04 00 00  00 12 01 00
+`);
+
+test("a directory can use the long trailer, which is what /soundbanks does", () => {
+  // The first parser read the two bytes after a name as one 16-bit tag, which held while only
+  // `0101` and `0002` had been seen. `/soundbanks` carries `0102` — a directory with a file-shaped
+  // trailer — and the parser refused a perfectly good listing. It refused *loudly* and handed over
+  // the bytes, which is the part that went right.
+  const listing = parseListing(BANKS);
+
+  assert.equal(listing.entries.length, 2);
+  assert.deepEqual(listing.entries[0], {
+    name: "A",
+    kind: "directory",
+    index: 0,
+    size: 262_144,
+    unknown: 0x12,
+  });
+  assert.equal(listing.entries[1]!.name, "B");
+  assert.equal(listing.entries[1]!.index, 1);
+});
+
+test("a bank's size is an allocation, not its contents", () => {
+  // 262,144 is a fixed 256 KiB per bank, the way each project gets a fixed 4 MiB — 256 sounds of
+  // 302 bytes is only 77,312. Nobody should compute free space from these.
+  const bank = parseListing(BANKS).entries[0]!;
+  assert.equal(bank.size, 262_144);
+  assert.ok(bank.size! > 256 * 302, "the allocation exceeds what the bank can hold");
+});
+
 test("the device's own error message is reported rather than a parse failure", () => {
   // It says so in as many words, which is about as forgiving as a wrong guess can be — and this is
   // how a caller learns the *path* was wrong rather than our decoding.
@@ -61,11 +95,14 @@ test("the device's own error message is reported rather than a parse failure", (
   assert.throws(() => parseListing(invalid), (e: unknown) => e instanceof ListingError && /Invalid path/.test(String(e)));
 });
 
-test("an unrecognised entry kind is refused, not assumed to be a file", () => {
+test("an unrecognised trailer layout is refused, not decoded on a guess", () => {
   // A directory browser is what a project gets opened from. An entry decoded wrongly is a project
   // opened from the wrong slot, which is the class of mistake this codebase keeps paying for.
+  //
+  // Note this refuses on the **layout** byte only. Whether the entry calls itself a directory is
+  // now irrelevant to how it is read, which is what the `/soundbanks` surprise taught.
   const odd = bytes("01 00 00 00 00 00 00 00 01 00 00 00 01 41 00 09 09 00 00 00 01");
-  assert.throws(() => parseListing(odd), /neither directory .* nor file/);
+  assert.throws(() => parseListing(odd), /neither short .* nor long/);
 });
 
 test("a truncated listing is refused", () => {

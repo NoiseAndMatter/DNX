@@ -128,8 +128,11 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
     in as many words, so guessing costs a round trip.
   -->
   <label class="lbl" for="lsPath">path</label>
-  <input id="lsPath" type="text" value="projects" size="12" disabled>
+  <input id="lsPath" type="text" value="/" size="12" disabled>
+  <label class="lbl" for="lsFrom">from</label>
+  <input id="lsFrom" type="number" min="0" value="0" size="3" disabled title="Page cursor. 0 asks for the whole listing.">
   <button class="btn" id="lsSend" disabled>List</button>
+  <button class="btn" id="lsOpen" disabled title="Open a file by path — 0x54, still inferred">Open file</button>
 </header>
 
 <main>
