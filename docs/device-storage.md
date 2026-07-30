@@ -164,6 +164,41 @@ The stream was checked for cycling before any of this was believed: 8,192 chunks
 exactly once and never recurring. The repeated 16-byte values are constant runs in the data, not a
 loop.
 
+### And it is uncompressed — **[verified]** byte for byte
+
+A `.dnprj` stores its image **LZ4-compressed**: `001 PRESETS.dnprj` holds a 77,832-byte payload
+that expands to 2,781,700. **The +Drive sends those 2,781,700 bytes as they are**, wrapped in the
+same 31-byte header and 12-byte trailer:
+
+```
+31-byte header  +  2,781,700-byte image  +  12-byte trailer  =  2,781,743
+```
+
+The header states the length itself at offset 25 (`00 2a 72 04` = 2,781,700) and the image begins
+at 31, where `BEEFBACE` sits. So `decodeProjectImage` must **not** be pointed at a +Drive read — it
+reads that magic as an LZ4 block length and refuses, claiming a 3.2 GB block. `drive.ts`'s
+`imageFrom` tells the two apart by the payload's own declared length rather than by where the bytes
+came from.
+
+> [!success] **The strongest check this project has.**
+> The corpus holds `001 PRESETS.dnprj` — the same project the device served as slot 1. Elektron's
+> export, LZ4-compressed in a ZIP and decoded by our codec, against 1,358 SysEx chunks reassembled
+> by a protocol we reverse-engineered from response bytes.
+>
+> **2,781,700 bytes, zero differences.** Two entirely independent paths off one instrument agreeing
+> exactly, which puts the transport, the sequencing, the chunk assembly and the payload framing all
+> beyond doubt together. Pinned in `test/drive.test.ts`.
+
+### What the +Drive does not send: `manifest.json`
+
+Reconstructed rather than invented — `drive.ts`'s `manifestFor`. `FormatVersion` is `"1.0"` in every
+corpus manifest; `ProductType` is `["24","30"]` on a DN1 and empty on a DN2; `Payload` is the
+project's name, which is also the ZIP entry name; `FirmwareVersion` comes from the device's own
+`Version` reply rather than a guess.
+
+With it, a project read off the +Drive can be written back out as a real `.dnprj`, and "downloaded
+from the device" and "opened from a file" become the same `Project` to everything above.
+
 **So Transfer pulls the actual project file off the +Drive**, and a project read this way would be
 complete — no 257 requests, and none of the 0.49% a dump-based rebuild has to borrow from a donor
 (§3c-vi).

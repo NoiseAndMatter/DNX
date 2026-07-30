@@ -11,6 +11,7 @@ Times are local (Australia/Brisbane, UTC+10).
 
 | When | What | PR |
 |---|---|---|
+| 2026-07-30 19:10 | **Any stored project reads off the +Drive, byte-for-byte.** `/projects/<index>` opened, read and closed; the image is **identical to Elektron's own export of the same project** — 2,781,700 bytes, zero differences. No donor, no 257 requests, and the open project untouched. The manager can browse the device's project list. | #76 |
 | 2026-07-30 16:07 | **`0x6f` reads a whole project off a Digitone II too** — 248 messages, 14,658,351 bytes, one request in place of 257. Both families now. | #70 |
 | 2026-07-30 15:12 | **We talked to the +Drive.** A request reconstructed from captured *responses alone* worked first try — `/` returned `projects` and `soundbanks`, then `/projects` listed all 128 by name and slot, and `/soundbanks/A` all 256 sounds. | #66 |
 | 2026-07-30 14:40 | **The Digitone 1's request band mapped**, every entry link-checked: ten codes answer, three provably do not. And `supportedMessages` proved worthless in *both* directions. | #64 |
