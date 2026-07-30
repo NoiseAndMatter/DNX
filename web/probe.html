@@ -135,10 +135,22 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <input id="lsCount" type="number" min="0" value="0" size="3" disabled title="0 asks for the whole listing. A start without a count asks for nothing.">
   <button class="btn" id="lsSend" disabled>List</button>
   <!--
-    Removed, not disabled. `0x54` freezes a Digitone 1 — reproduced twice, recoverable only by a
-    power cycle, taking any unsaved work with it. A disabled button is an invitation; the message
-    stays gated in `storage.ts` behind a token nobody passes by accident.
+    `0x54` froze a Digitone 1 twice, so this is back only as a whole sequence: open, read, close,
+    with the close guaranteed on every path by `storagesession.ts`. It is still the most dangerous
+    control on this page. Try the Digitone II first — it has never been frozen — and expect to
+    power-cycle a Digitone 1.
+
+    `body` picks which guess at 0x54's argument list to send. `id+chunk` mirrors the reply the
+    device gave Elektron Transfer; `id` is the four-byte version that froze the machine, kept so
+    the two can be told apart rather than assumed.
   -->
+  <label class="lbl" for="fileId">project</label>
+  <input id="fileId" type="number" min="1" max="128" value="1" size="3" disabled title="A slot id from a /projects listing. 1-based.">
+  <select id="fileBody" disabled title="Which guess at 0x54's arguments to send">
+    <option value="id+chunk">id+chunk</option>
+    <option value="id">id only (froze a DN1)</option>
+  </select>
+  <button class="btn danger" id="fileRead" disabled title="Open, read and close a project on the +Drive. This froze a Digitone 1 twice.">Read file</button>
 </header>
 
 <main>
