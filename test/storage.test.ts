@@ -125,14 +125,22 @@ test("a list request is an API message carrying a NUL-terminated path", () => {
   assert.deepEqual([...frame.body], [...Uint8Array.from([...Buffer.from("projects", "latin1"), 0])]);
 });
 
-test("a paged request appends the cursor, and an unpaged one does not", () => {
-  // The simplest shape is the likeliest to be right, and an unrecognised trailing field is a good
-  // way to be told `Invalid path` for a path that was perfectly valid.
-  assert.equal(decodeMessage(listRequest(1, "projects")).body.length, 9);
-  assert.equal(decodeMessage(listRequest(1, "projects", 129)).body.length, 13);
+test("a page appends start AND count; an unpaged request appends neither", () => {
+  // Established on hardware one field at a time. A bare path returns everything. Adding a start
+  // alone came back `first 28, count 0` — twice, on two paths — because that asks for nothing.
+  assert.equal(decodeMessage(listRequest(1, "projects")).body.length, 9, "path only");
 
-  const paged = decodeMessage(listRequest(1, "projects", 129)).body;
-  assert.deepEqual([...paged.subarray(9)], [0, 0, 0, 129]);
+  const paged = decodeMessage(listRequest(1, "projects", { start: 28, count: 1 })).body;
+  assert.equal(paged.length, 17, "path + two u32");
+  assert.deepEqual([...paged.subarray(9)], [0, 0, 0, 28, 0, 0, 0, 1]);
+});
+
+test("start and count travel together, because a start alone asks for nothing", () => {
+  // The type is the guard: there is no way to express a start without a count, so the request the
+  // device answers with an empty page cannot be written by accident.
+  const page: Parameters<typeof listRequest>[2] = { start: 28, count: 1 };
+  assert.equal(page.start, 28);
+  assert.equal(page.count, 1);
 });
 
 test("a path outside Windows-1252 is refused before it reaches the wire", () => {
