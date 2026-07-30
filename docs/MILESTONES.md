@@ -11,6 +11,11 @@ Times are local (Australia/Brisbane, UTC+10).
 
 | When | What | PR |
 |---|---|---|
+| 2026-07-30 13:53 | **The Digitone's storage API found**, captured from Elektron Transfer itself: directory listings carrying names, **positions** and sizes, and whole files read by path. Overturns "no file API on a Digitone". See `device-storage.md` | #62 |
+| 2026-07-30 12:50 | **The active-object band identified** — `0x58`–`0x5b` are the `+8` twins of the indexed dumps, and `0x6a` answers "what pattern is selected?" live. | #62 |
+| 2026-07-30 12:41 | **`0x6f` returns a whole DN1 project including its sound pool** — 220 messages, removing the manual front-panel pool step. | #62 |
+| 2026-07-30 11:40 | **A pool dump's object number is the slot, not a send counter** — proved by deleting two sounds and finding exactly those two numbers missing. | #62 |
+| 2026-07-30 09:38 | Tracks laid out like patterns, two rows of eight; this log started. | #59 |
 | 2026-07-30 09:21 | **The manager reads and writes a live Digitone II.** Hardware-verified end to end: open a device, move patterns, write back, no file anywhere in the loop. Files remain a first-class source. | #58 |
 | 2026-07-30 00:59 | **Writing to an occupied slot overwrites silently** — no prompt, no refusal, no acknowledgement. `A1` → `A14`, verified byte for byte. | #57 |
 | 2026-07-30 00:14 | **A write lands in the active project, not the +Drive.** Survives a power cycle, lost on loading another project. SAVE PROJECT is the commit — and the undo. | #55 |

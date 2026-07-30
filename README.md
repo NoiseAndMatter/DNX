@@ -43,7 +43,7 @@ speculative or unknown.
 | Track move/copy/swap/clear inside a pattern | done, DN2 only, **hardware-validated** |
 | Pattern rename | done, both devices — batch schemes to come |
 | WebMIDI — SysEx API and device probe | done, **confirmed on a Digitone 1 and a Digitone II** |
-| WebMIDI — +Drive file access | **not possible on either Digitone** — neither implements it |
+| WebMIDI — +Drive file access | **it exists after all** — at API codes `0x53`–`0x5a`, not elk-herd's. Decoded, not yet implemented: `docs/device-storage.md` |
 | WebMIDI — reading a device by request | **works on both devices** — pattern, kit, sound, settings |
 | WebMIDI — reading a whole project by request | done, **hardware-validated on DN2** — 257/257, byte-identical to a device dump |
 | Rebuild a project file from a capture | done — 99.5% from the wire, the rest from a donor |
@@ -54,8 +54,9 @@ speculative or unknown.
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/MILESTONES.md` records when things
-actually landed. `docs/KNOWN-ISSUES.md` tracks defects, gaps and the traps that have already cost
-time.
+actually landed. `docs/device-storage.md` documents the Digitone's +Drive API — directory listings
+with names and positions, and whole files read by path — decoded from Elektron Transfer's own
+traffic. `docs/KNOWN-ISSUES.md` tracks defects, gaps and the traps that have already cost time.
 
 ## Usage
 
