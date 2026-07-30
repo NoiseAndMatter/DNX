@@ -50,6 +50,7 @@ speculative or unknown.
 | WebMIDI — writing to a device | **works, verified on a Digitone II** — null round trip read back byte-identical |
 | WebMIDI — copy a pattern into another slot on the device | **works, verified on a Digitone II** — one byte differs, and it is the slot index |
 | Manager reads and writes a **live device** | done, **hardware-verified on a Digitone II** — no file in the loop |
+| Expand from one live device onto another | planner done, **two-device UI next** — see ROADMAP §4b-i |
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/MILESTONES.md` records when things
