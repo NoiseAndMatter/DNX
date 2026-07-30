@@ -292,25 +292,50 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("lsPath").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
 
-    // Do not send a message the device says it does not implement. The first probe did, and
-    // spent two seconds timing out on a `DirList` that was never coming — which reads like a
-    // fault in us rather than a correct answer from the device.
-    if (caps.driveFiles) {
+    // **`DirList` is now always attempted, whatever the device advertises.**
+    //
+    // It was gated on `caps.driveFiles`, under "do not send a message the device says it does not
+    // implement". That guard was wrong twice over, and the shape is worth more than the incident:
+    //
+    // 1. `supportedMessages` enumerates **responses**, so absence is not a refusal. Neither
+    //    Digitone advertises `0x60`–`0x6f` and both honour them; the whole storage API lives at
+    //    `0x53`–`0x5a`, which neither advertises either.
+    // 2. It was **self-sealing**. The guard existed *because* `DirList` timed out — and that
+    //    timeout may have been our own send blocked by another application holding the output
+    //    port, which `output.send()` does not report. A possibly-false negative became code that
+    //    guaranteed it could never be retested.
+    //
+    // What was genuinely missing when the guard was written was any way to tell "no answer" from
+    // "never sent". That now exists, so a silence here finally means something and the caution can
+    // be retired rather than kept out of habit.
+    try {
       const root = readDirListResponse(
         (await session.request(Code.DirList, (id) => dirListRequest(id, "/"))).body,
       );
       listing(results, "/", root);
+      card(results, "DirList answered — elk-herd's file API is implemented here", [
+        ["Advertised", caps.driveFiles ? "yes" : "no — and it worked anyway"],
+        ["Means", "the Digitakt file API applies to this machine; prefer it to the reconstructed 0x53"],
+      ]);
       status(`${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`, "ok");
-    } else {
-      card(results, "No +Drive file API on this device", [
-        ["Missing", caps.missingForDriveFiles.map(hex).join(" ")],
-        ["Means", "whole projects cannot be read off the +Drive by path"],
-        ["Instead", `${caps.dumps.length} dump type(s) are advertised — data moves as dumps`],
+    } catch {
+      const alive = await linkIsAlive(output);
+      card(results, alive ? "DirList: no answer, link verified" : "DirList: nothing reached the device", [
+        ["Advertised", caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`],
+        ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
+        [
+          "Means",
+          alive
+            ? "a genuine negative: this device does not implement 0x10. Its storage API is at " +
+              "0x53–0x5a instead — see docs/device-storage.md."
+            : LINK_DEAD,
+        ],
       ]);
       status(
-        `${device.deviceName} ${version.version}: no +Drive file API. Not a failure — the device ` +
-          `says it does not implement it, so nothing was sent.`,
-        "warn",
+        alive
+          ? `${device.deviceName}: no DirList, link verified. Storage lives at 0x53.`
+          : `${device.deviceName}: nothing is reaching the device.`,
+        alive ? "warn" : "error",
       );
     }
 
