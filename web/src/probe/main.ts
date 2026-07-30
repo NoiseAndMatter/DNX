@@ -58,6 +58,12 @@ import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
 import { type Entry, StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import {
+  INFORMATION_CODES,
+  describeApiReply,
+  hex as apiBytes,
+  informationRequest,
+} from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -294,6 +300,18 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("lsFrom").disabled = false;
     $<HTMLInputElement>("lsCount").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
+    // Populated from the module's own list, so the page cannot offer a code it refuses to send.
+    const askCode = $<HTMLSelectElement>("askCode");
+    if (askCode.options.length === 0) {
+      for (const c of INFORMATION_CODES) {
+        const option = document.createElement("option");
+        option.value = String(c.code);
+        option.textContent = `0x${c.code.toString(16).padStart(2, "0")} ${c.name}`;
+        askCode.append(option);
+      }
+    }
+    askCode.disabled = false;
+    $<HTMLButtonElement>("askSend").disabled = false;
     $<HTMLInputElement>("filePath").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
 
@@ -1775,6 +1793,105 @@ function diffAgainstPrevious(path: string, entries: readonly Entry[]): string | 
 
 /** The last listing seen for each path, so two lists can be compared without saving a capture. */
 const previousListings = new Map<string, Map<number, Entry>>();
+
+// --- asking the device about itself ---------------------------------------------------------------
+
+/**
+ * Send one API information code and show what came back, **diffed against the last answer**.
+ *
+ * The diff is the point. `0x03` answered Elektron Transfer with the same four bytes 1,991 times —
+ * but every one of those samples was taken while Transfer sat idle, so a value that tracks the
+ * loaded project would have looked exactly that constant. Ask, load another project, ask again.
+ *
+ * Built after nearly reaching for a workaround instead: `Try code` sends `0x6n` dump requests only,
+ * so the two codes most likely to answer *"which project is loaded?"* were unreachable while we
+ * considered fingerprinting project content to infer it. **Native first** —
+ * `docs/device-probing.md` rule 0a-prime.
+ */
+$("askSend").addEventListener("click", () => {
+  askDevice().catch((error: unknown) => {
+    status(`Ask failed: ${String(error)}`, "error");
+    verdictCard("Ask failed", [["Error", String(error)]]);
+  });
+});
+
+async function askDevice(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing collects the reply.", "warn");
+    return;
+  }
+
+  const code = Number($<HTMLSelectElement>("askCode").value);
+  const key = "";
+  const known = INFORMATION_CODES.find((c) => c.code === code);
+  const msgId = issue(nextListId++);
+  const log: [string, string][] = [
+    ["Asking", `API 0x${hex2(code)} ${known?.name ?? "?"}${known?.takesKey ? ` "${key}"` : ""}`],
+    ["Known", known?.note ?? "—"],
+  ];
+
+  let frame: ApiFrame;
+  try {
+    frame = await apiTransport(output).request(
+      informationRequest(msgId, code, key),
+      msgId,
+      LIST_TIMEOUT_MS,
+    );
+  } catch (error) {
+    // A silence is evidence only when we know we spoke. Two conclusions in this project were built
+    // on silences that may never have left the machine.
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? `0x${hex2(code)} — no answer, link proven` : "Nothing is reaching the device", [
+      ...log,
+      ["Result", String(error)],
+      ["Link check", alive ? "PASSED — the silence is the device's" : "FAILED"],
+      [
+        "Means",
+        alive
+          ? "a genuine negative worth recording: this device does not implement that code."
+          : LINK_DEAD,
+      ],
+    ]);
+    status(
+      alive ? `0x${hex2(code)} did not answer, and the link is fine.` : "Nothing is reaching the device.",
+      alive ? "warn" : "error",
+    );
+    return;
+  }
+
+  const body = apiBytes(frame.body);
+  const previous = previousAnswers.get(code);
+  previousAnswers.set(code, body);
+
+  verdictCard(`0x${hex2(code)} answered 0x${hex2(frame.code)}`, [
+    ...log,
+    ["Reply", describeApiReply(frame)],
+    ["Bytes", body],
+    [
+      "Since last ask",
+      previous === undefined
+        ? "first time — ask again after changing something on the device"
+        : previous === body
+          ? "IDENTICAL — whatever changed on the device is not in this answer"
+          : `CHANGED — was ${previous}`,
+    ],
+  ]);
+  status(
+    previous !== undefined && previous !== body
+      ? `0x${hex2(code)} CHANGED since the last ask.`
+      : `0x${hex2(code)} answered ${frame.body.length} bytes.`,
+    "ok",
+  );
+}
+
+/** The last answer seen for each code, so two asks can be compared without saving a capture. */
+const previousAnswers = new Map<number, string>();
 
 // --- reading a whole file off the +Drive ----------------------------------------------------------
 
