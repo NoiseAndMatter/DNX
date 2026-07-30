@@ -57,7 +57,13 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import { StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import {
+  StorageCode,
+  listRequest,
+  openRequest,
+  parseListing,
+  parseOpen,
+} from "../../../src/device/storage.js";
 import { decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
@@ -290,7 +296,9 @@ async function probe(): Promise<void> {
     // this API's codes are not in it on either machine — which is exactly the reasoning that made
     // us conclude for two days that the file API did not exist.
     $<HTMLInputElement>("lsPath").disabled = false;
+    $<HTMLInputElement>("lsFrom").disabled = false;
     $<HTMLButtonElement>("lsSend").disabled = false;
+    $<HTMLButtonElement>("lsOpen").disabled = false;
 
     // **`DirList` is now always attempted, whatever the device advertises.**
     //
@@ -1539,9 +1547,18 @@ async function listPath(): Promise<void> {
   }
 
   const path = $<HTMLInputElement>("lsPath").value;
+  // The cursor half of the request has never been exercised. Transfer uses it — a 43-byte reply in
+  // its capture reads `first 28, next 29, count 1`, which is a **page of one**, not the file stat
+  // this page first took it for. If a non-zero start comes back echoed as `first`, the argument
+  // encoding is confirmed past the bare path, which is what makes guessing `0x54` reasonable.
+  const from = Number($<HTMLInputElement>("lsFrom").value) || 0;
   const log: [string, string][] = [
     ["Path", path || "(empty — the root)"],
-    ["Sending", `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string`],
+    [
+      "Sending",
+      `API 0x${StorageCode.List.toString(16)}, path as a NUL-terminated string` +
+        (from > 0 ? `, then a u32 cursor of ${from}` : ""),
+    ],
     ["Note", "the request shape is inferred; a wrong guess is answered 'Invalid path'"],
   ];
   verdictCard("Listing…", log);
@@ -1569,7 +1586,7 @@ async function listPath(): Promise<void> {
     };
 
     try {
-      output.send([...listRequest(nextListId++, path)]);
+      output.send([...listRequest(nextListId++, path, from)]);
     } catch (error) {
       clearTimeout(timer);
       awaitingReply = undefined;
@@ -1625,6 +1642,119 @@ async function listPath(): Promise<void> {
     ]);
     status(String(error), "warn");
   }
+}
+
+/**
+ * Open a file by path, and report the handle.
+ *
+ * **`0x53` is directory-only** — proven twice on hardware, `/soundbanks/A/DIGIT-ONE` and
+ * `/soundbanks/A/SIMPLE LEAD JM` both answered `Invalid path`. Files need `0x54`, and this is the
+ * first attempt at it.
+ *
+ * The request is a guess with one piece of real support: `0x53` takes a bare NUL-terminated path,
+ * proven, so the same encoding is the obvious shape here. Transfer's own request was never visible
+ * — only its 10-byte reply — so nothing else about the message is known.
+ *
+ * **Deliberately open-only.** Read and close are not attempted until an open succeeds and hands
+ * back a handle whose width we can see. Guessing three messages at once means a failure that
+ * cannot be attributed to any of them.
+ */
+$("lsOpen").addEventListener("click", () => {
+  openFile().catch((error: unknown) => {
+    status(`Open failed: ${String(error)}`, "error");
+    verdictCard("Open failed", [["Error", String(error)]]);
+  });
+});
+
+async function openFile(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output || !listening) {
+    status("Probe and Listen first.", "warn");
+    return;
+  }
+
+  const path = $<HTMLInputElement>("lsPath").value;
+  const log: [string, string][] = [
+    ["Path", path],
+    ["Sending", `API 0x${StorageCode.Open.toString(16)}, path as a NUL-terminated string`],
+    ["Note", "0x53 refuses a file path, so this is the read half — and it is a guess"],
+  ];
+  verdictCard("Opening…", log);
+
+  const reply = await awaitApi(output, StorageCode.Open, () =>
+    output.send([...openRequest(nextListId++, path)]),
+  );
+
+  if (!reply) {
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? "No reply to open — link verified" : "Nothing reached the device", [
+      ...log,
+      ["Link check", alive ? "PASSED" : "FAILED"],
+      [
+        "Means",
+        alive
+          ? "0x54 is not open-by-path, or it wants an argument beyond the path. A real negative."
+          : LINK_DEAD,
+      ],
+    ]);
+    status(alive ? "No reply to open." : "Nothing reached the device.", alive ? "warn" : "error");
+    return;
+  }
+
+  try {
+    const opened = parseOpen(reply);
+    verdictCard("File OPENED", [
+      ...log,
+      ["Handle", String(opened.handle)],
+      ["Rest, undecoded", [...opened.rest].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
+      ["Next", "read and close can now be built against a handle we have actually seen"],
+    ]);
+    status(`Opened ${path} — handle ${opened.handle}. The read half works.`, "ok");
+  } catch (error) {
+    verdictCard("The device answered, but not with an open", [
+      ...log,
+      ["Error", String(error)],
+      ["Bytes", [...reply.subarray(0, 24)].map((b) => b.toString(16).padStart(2, "0")).join(" ")],
+    ]);
+    status(String(error), "warn");
+  }
+}
+
+/** Send something and wait for the API response paired with `code`, ignoring everyone else's. */
+function awaitApi(
+  _output: MIDIOutput,
+  code: number,
+  send: () => void,
+): Promise<Uint8Array | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      awaitingReply = undefined;
+      resolve(undefined);
+    }, LIST_TIMEOUT_MS);
+
+    awaitingReply = (data) => {
+      if (!isApiMessage(data)) return;
+      let frame;
+      try {
+        frame = decodeMessage(data);
+      } catch {
+        return;
+      }
+      if (frame.code !== code + 0x80) return;
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(frame.body);
+    };
+
+    try {
+      send();
+    } catch {
+      clearTimeout(timer);
+      awaitingReply = undefined;
+      resolve(undefined);
+    }
+  });
 }
 
 /** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
