@@ -58,6 +58,29 @@ no way to find out by sending them that is also a way to find out safely.
 
 ## The regime
 
+### 0a-prime. Native first, then alternatives
+
+**A core principle for this project, stated 2026-07-30.**
+
+Before building anything that infers, fingerprints, derives or works around, **exhaust what the
+instrument can be asked directly** — its own SysEx instructions and its API.
+
+The evidence for it is the whole of this document. Every real advance came from asking the device
+and reading the answer: the storage API, the `+0x80` convention, `0x54` taking a path whose last
+segment is an index, `0x55` taking a sequence number. Every expensive detour came from reasoning at
+it instead. The device names its own fields — `invalid project id`, `project id out of range`,
+`Invalid sequence number`, `Reader did not complete`, `Error: Could not resolve path` — and it is
+cheaper to ask than to model.
+
+A workaround is usually also **wrong in a way the native answer is not**. Fingerprinting project
+content to identify the loaded slot was proposed here and dropped for exactly that reason: it would
+have broken the moment a project had unsaved edits, while the device knows the answer exactly.
+
+**How to apply.** When tempted to build an inference, first list the messages that have **never been
+sent**, and send them. Absence from `supportedMessages` is not a reason to skip one (rule 3).
+A previous negative is not a reason to skip a retest (rule 0b). Only when the native route is
+genuinely exhausted, say so out loud, and *then* propose the alternative as an alternative.
+
 ### 0. A message that allocates something must be paired with the release
 
 **Added 2026-07-30, after freezing a user's Digitone 1 twice.**
