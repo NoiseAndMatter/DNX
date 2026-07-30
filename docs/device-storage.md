@@ -149,6 +149,21 @@ The sequence around a project download was `0xd4` → `0xd5` (repeatedly) → `0
 The chunks carry **`manifest.json`** — byte for byte the same manifest `src/project/projectfile.ts`
 parses out of a `.dnprj`. Another read returned `0097`, the DN1 format version.
 
+**What a project read actually returns is not a `.dnprj`** — verified 2026-07-30 by reading 131,072
+bytes of `/projects/1` ourselves. There is no `PK` header. The stream opens:
+
+```
+ac 11 d3 03 02 00 05 00 09 30 30 39 37 ...        "0097", then "PRESETS"
+```
+
+Transfer's project read opens with the same `ac 11`, so it is reading the same thing: the project's
+**stored payload**, not the ZIP wrapper a `.dnprj` file puts around it. That is the more useful
+form — the unzip step disappears.
+
+The stream was checked for cycling before any of this was believed: 8,192 chunks, chunk 0 occurring
+exactly once and never recurring. The repeated 16-byte values are constant runs in the data, not a
+loop.
+
 **So Transfer pulls the actual project file off the +Drive**, and a project read this way would be
 complete — no 257 requests, and none of the 0.49% a dump-based rebuild has to borrow from a donor
 (§3c-vi).
@@ -163,16 +178,22 @@ All 27 read replies in the capture, across a manifest, a sound and a project.
 |---|---|---|
 | `0` | u8 | `1` on success; `0` then the device's own sentence on failure |
 | `1` | u32be | **handle** — counts up from 1 per open |
-| `5` | u32be | **unidentified** — `2048` on Transfer's three opens, **`16`** on ours |
+| `5` | u32be | **chunk size the reader will use** — `2048` for Transfer, `16` for us |
 | `9` | u8 | `1` on Transfer's, `0` on ours. Unidentified |
 
-> [!warning] **`5` was recorded as a chunk size and that was wrong.**
-> Three of Transfer's opens reported `2048`, and every full chunk in those reads carried exactly
-> 2,048 bytes. Conclusive-looking. Then our own open of `/projects/1` reported **16**.
+> [!note] **It is a chunk size the opener *asks for*, not one the device announces.**
+> This field went through two wrong readings in an hour. First it was recorded as a constant 2,048
+> — three of Transfer's opens agreed, and every full chunk in those reads carried exactly 2,048
+> bytes. Then our own open of `/projects/1` answered **16**, which sank that, and it was demoted to
+> "unidentified, carried through".
 >
-> Nothing needs it — reads are addressed by sequence number, not by length — so it is carried
-> through undecoded rather than given a name that would be believed. **Three samples agreeing is
-> what a wrong reading looks like from the inside.**
+> Both readings missed the same thing: **the reply echoes an argument.** Transfer asks for 2,048;
+> we asked for nothing and got a 16-byte default. Confirmed by what followed — 8,192 chunks of
+> **exactly 16 bytes each**, 131,072 bytes, and no end in sight. A 45 KB project at 16 bytes a
+> chunk is 2,900 messages; at 2,048 it is 23.
+>
+> So `0x54` takes a `u32` chunk size after the path. Safe to append: the path's NUL is already
+> there, so it cannot recreate the unterminated body that froze the device three times.
 
 A failure reads `00 "Error: Could not resolve …"`. The device explains itself, which is how
 `invalid project id` taught us `0x54` takes a slot rather than a path.
@@ -276,7 +297,7 @@ written by accident.
 ### `0x54` — open a file **by path, ending in the index** — SOLVED 2026-07-30
 
 ```
-0x54   /projects/<index>\0
+0x54   /projects/<index>\0   u32 chunkSize
 ```
 
 **The last segment is the index, not the name.** `/projects/1` opens; `/projects/PRESETS` answers

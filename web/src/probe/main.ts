@@ -1872,6 +1872,10 @@ function looksLikeZip(data: Uint8Array): boolean {
 function apiTransport(output: MIDIOutput): ApiTransport {
   return {
     request(request: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
+      // Recorded before the send, so a reply cannot arrive before its id is known to be ours.
+      // Omitting this is why a capture of 6,404 of our own reads was labelled `Not ours: 8192,
+      // 8193, …` — the verdict was confidently wrong about traffic we had just generated.
+      issue(msgId);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           awaitingReply = undefined;
