@@ -153,6 +153,61 @@ parses out of a `.dnprj`. Another read returned `0097`, the DN1 format version.
 complete — no 257 requests, and none of the 0.49% a dump-based rebuild has to borrow from a donor
 (§3c-vi).
 
+## 3a. The read protocol, decoded — **[verified]** 2026-07-30
+
+All 27 read replies in the capture, across a manifest, a sound and a project.
+
+### Open reply, `0xd4` — 10 bytes
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `0` | u8 | `1` on success; `0` then the device's own sentence on failure |
+| `1` | u32be | **handle** — counts up from 1 per open |
+| `5` | u32be | **chunk size, 2,048** — identical on all three opens |
+| `9` | u8 | `1`, unidentified |
+
+A failure reads `00 "Error: Could not resolve …"`. The device explains itself, which is how
+`invalid project id` taught us `0x54` takes a slot rather than a path.
+
+### Read reply, `0xd5`
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `0` | u8 | `1` on success |
+| `1` | u32be | handle |
+| `5` | u32be | **chunk index, 1-based** |
+| `9` | u32be | unidentified — climbs to exactly `1000` on the last chunk |
+| `13` | u8 | **`1` on the final chunk** |
+| `14` | u32be | unidentified — plausibly a checksum; `ffffffff` on the leading reply |
+| `18` | u32be | **data length** |
+| `22` | — | the data |
+
+**The declared length matched the payload on 27 of 27 replies**, and the flag at 13 fired exactly
+once per file — on chunk 1 of 1 for the manifest, and on chunk 22 of 22 for the project.
+
+> [!important] **The end of a file is the flag, never a short chunk.**
+> The manifest arrived as a *single* 129-byte chunk with the flag set; the project ran 21 full
+> 2,048-byte chunks and one short one. A reader that stopped on a short chunk would have truncated
+> the first file and worked perfectly on the second — which is the worst way to be wrong.
+
+### The leading reply carries no data
+
+Every read sequence opens with a 22-byte reply whose declared length is **0**. Its index field
+reads `0x4012c344` — constant across all three files — followed by a word that varies per file, and
+its checksum field is `ffffffff`.
+
+**Unidentified.** Reading that constant as a chunk index would produce confident nonsense, so
+`parseRead` flags it (`metadata: true`) and `readStoredFile` skips it while keeping the bytes for
+whoever solves it. Whether it is a stat, a header, or an artefact of Transfer sending something we
+have not reconstructed is unknown.
+
+### What is still guessed
+
+`0x55`'s request. Reads are sequential and the device numbers the chunks itself, so a handle is the
+only argument the sequence demonstrably needs — but if the device wants the index too, this is
+where it goes. The failure mode is safe: the reply states its own index and `readStoredFile`
+refuses one that is out of order rather than assembling it.
+
 ---
 
 ## 4. Transfer's idle poll — **[verified]**
@@ -210,17 +265,28 @@ confirmed one field at a time. `/` returned `projects` and `soundbanks` on the f
 `listRequest` takes them as one `Page`, never separately, so a request for nothing cannot be
 written by accident.
 
-> [!danger] **`0x54` freezes a Digitone 1 — do not send it**
+> [!danger] **`0x54` froze a Digitone 1 twice — treat it as the most dangerous message we send**
 > Reproduced twice on 2026-07-30 with a well-formed request and a valid project id from a
 > `/projects` listing. The device stops responding entirely: **capture 0 bytes**, no error, no
 > reply. Only a power cycle recovers it, and anything unsaved in the active project goes with it.
 >
-> **The likely cause is ours**: `0x54` allocates a handle and we never sent `0x56` to close it.
-> This was built "open only" as a supposed precaution, which is the opposite of one — see
-> `device-probing.md` rule 0.
+> **Two explanations are live, and the first one is probably wrong.**
 >
-> The message is gated behind a token in `storage.ts` and the control has been removed from the
-> probe. Pair it with a close before re-enabling, and expect to reboot the device.
+> 1. *A leaked handle* — `0x54` allocates and we never sent `0x56`. True, and worth fixing, but it
+>    does not fit: a leak does not kill a device on the **first** allocation, and it does not
+>    swallow the reply. We saw no answer at all, and Transfer's open answers in ten bytes every
+>    time.
+> 2. *A short request body* — the reply carries a **chunk size** (§3a), which strongly suggests the
+>    request supplies one. The device answered our **path** with `invalid project id` (parsed,
+>    understood, argument rejected) and answered our **four-byte** body with silence and death.
+>    That is what reading past the end of a short message looks like.
+>
+> `storagesession.ts` now owns the sequence and sends the close in a `finally` on every path, so
+> hypothesis 1 is closed off regardless. `id+chunk` is the default request body and `id` is kept
+> selectable, so the two arms can be told apart rather than assumed. Both remain gated behind the
+> token in `storage.ts`.
+>
+> **Test on a Digitone II first** — it has never been frozen — and expect to reboot a Digitone 1.
 
 ### `0x54` — open a project **by id, not by path**
 
