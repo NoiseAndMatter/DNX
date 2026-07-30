@@ -129,6 +129,19 @@ user pointed out must exist.
   `DIGIT-ONE`, `0x007e` for `HH TICK_PITX_AR`. **Hypothesis: the sound's tag bitmask**, which
   `src/project/tags.ts` already models for DN1 sounds. Testable — tag a sound on the device and
   re-list.
+
+  > [!question] **And on a `/projects` listing it may answer a different question entirely.**
+  > It varies there too — `PRESETS` reads `0012 0101`, `MORNING_JAM` and `AMBZ` read `007e 0101` —
+  > and the tag-bitmask reading came from *sound* listings and was never tested on projects.
+  >
+  > The question worth the most right now is **which project is currently loaded**, and the dump
+  > protocol cannot answer it: the project name lives at image offset 8, in the header, which is
+  > exactly the region no dump carries.
+  >
+  > **The experiment is free.** List `/projects`, change the project on the device, list again. The
+  > probe keeps the previous listing per path and reports the diff, so the device answers rather
+  > than us reasoning — which is the method that has worked on this protocol every time reasoning
+  > has not. `Entry.trailer` carries all four bytes for exactly this.
 - **The trailing `01 01`**, constant on every entry seen. A version or terminator.
 - The leading pair (`01 01` for directories, `00 02` for files) is read as a kind marker, but only
   two kinds have been observed.
