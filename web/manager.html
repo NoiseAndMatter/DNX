@@ -16,6 +16,17 @@
  * synth would be costume rather than design.
  */
 :root {
+  /*
+   * Tells the browser this page is dark, so **the parts it paints itself** come out dark too: the
+   * dropdown list a `<select>` opens, scrollbars, the text caret, focus rings. Without it those
+   * are rendered light over a dark page, which is how the +Drive picker ended up light grey on
+   * white — a fault no amount of styling the closed control would have fixed, because the open
+   * list is not ours to style.
+   *
+   * `dark` rather than `light dark`: every colour below is a fixed hex and this page does not
+   * follow the system, so claiming otherwise would be a lie the UA acts on.
+   */
+  color-scheme: dark;
   --bg: #16191b;
   --panel: #1e2325;
   --panel-2: #252b2e;
@@ -39,6 +50,33 @@ body {
   display: flex; flex-direction: column;
 }
 button, input, select { font: inherit; color: inherit; }
+
+/*
+ * A control that inherits its colour must be given a background too.
+ *
+ * The rule above sets `color: inherit` — light grey, from the dark page — and leaves the
+ * background at the UA default, which is white. That is unreadable, and it was invisible for as
+ * long as every `<select>` on the page happened to sit inside something that painted behind it.
+ * Adding the +Drive picker to the top bar exposed it, and `#scope` had the same fault all along.
+ *
+ * Inheriting half a colour pair is the bug. Both halves are set here, on the element, so the next
+ * control added anywhere on the page is legible without anyone remembering this.
+ */
+select {
+  background: #1b2123;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: .22rem .4rem;
+  max-width: 18rem;
+}
+select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+select:disabled { opacity: .45; }
+/*
+ * The dropdown list itself is painted by the OS, not by the page, and on Windows it takes the
+ * UA's white unless the options say otherwise. Styling only the closed control leaves the open
+ * list unreadable — which is the half the user is actually reading when it matters.
+ */
+select option { background: #1b2123; color: var(--fg); }
 
 /*
  * `hidden` works by a UA rule of `display: none`, which *any* author rule setting `display`
