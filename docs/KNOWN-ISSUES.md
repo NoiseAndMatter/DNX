@@ -5,6 +5,49 @@ converter.
 
 ---
 
+## The probe misread another application's traffic as an answer — OPEN 2026-07-30
+
+**Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.
+Two defects turned that into a wrong finding.
+
+1. **Try code accepts *any* incoming message as its reply.** Deliberate — so an unexpected response
+   code could not be missed — but on a shared port it cannot tell an answer from someone else's
+   traffic. It reported `0x65 ANSWERED with 0x0f, 2 bytes, checksum BAD`. There is no dump type
+   `0x0f`, two bytes is no record, and a bad checksum means it was never a dump message: **it was
+   one of Transfer's API messages**, misread.
+2. **The capture summariser is a dump parser** and mangles API messages. Fed `F0 00 20 3C 10 00 …`
+   it reads byte 4 as a product and byte 6 as a dump type, so it reports **"product 16"** with
+   invented dump types and every checksum bad.
+
+**What that cost.** `0x65`'s result is void, and so are the "silences" from `0x66` and `0x67` —
+with Transfer holding the output port, our sends may never have reached the device at all. A long
+line of reasoning was built on it, including a claim that we had put the instrument into a
+streaming mode. We had not: the flood was Transfer, and **every message carried a `respId`** saying
+it answered something we never sent.
+
+**Fixes needed:**
+
+- **Try code must verify the reply is a dump message from the expected product** before calling it
+  an answer, and say plainly when what arrived was neither.
+- **The summariser should recognise API framing** (`00 20 3C 10 00`) and decode it as such, or at
+  minimum refuse to describe it as a dump.
+- **Port exclusivity should be surfaced.** Transfer will not start while the page listens; once it
+  is running the page can listen but probably cannot send. The page has no idea, and reports
+  silence.
+- **Card text is not selectable while listening**, so a result cannot be copied without stopping.
+
+## Listening is quadratic — OPEN 2026-07-30
+
+`renderCapture()` runs on **every** incoming message and calls `summarise()`, which re-parses the
+whole capture from the start; the status line calls `summarise()` a second time. At the
+5,973-message capture that is tens of millions of message-parses, and the page becomes unusable.
+
+Nothing is lost — `capture.add()` runs before any rendering — but the tab crawls exactly when a
+large transfer is arriving, which is the case the listener exists for.
+
+**Fix:** summarise incrementally as messages arrive, and throttle rendering to a few times a second
+rather than once per message.
+
 ## A write worked and the read-back vanished — FIXED 2026-07-30
 
 A 114 KB pattern was written to an occupied slot and **landed correctly** — confirmed on the device

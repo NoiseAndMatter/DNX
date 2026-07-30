@@ -51,6 +51,20 @@
  * makes it acceptable: a scratch project, **one code per run**, and a look at the device in
  * between. There is deliberately no "sweep all" here, for exactly that reason.
  *
+ * ### Two ways that argument is weaker than it first appeared — 2026-07-30
+ *
+ * 1. **An empty body does not rule out deletion.** `delete object N` needs a code and an index and
+ *    nothing else — structurally identical to a read request. Elektron's Transfer deletes sounds
+ *    and projects, so destructive no-body commands demonstrably exist on this protocol. The
+ *    empty-body argument only ever excluded writes that *carry data*.
+ * 2. **Nor does it rule out changing the instrument's state.** A code could put a device into a
+ *    mode. That is neither a read nor a write and had no place in the safety model at all.
+ *
+ * And the risk surface is **device memory, not the loaded project**: a command may address a sound
+ * in the +Drive library or a project that is not open. "Load a scratch project" is therefore *not*
+ * sufficient isolation — there is no scratch +Drive, and nothing here can verify afterwards that
+ * unloaded data survived.
+ *
  * The one thing enforced rather than trusted: **this will only ever build `0x60`–`0x6f`.** A
  * `0x5n` is a *write*, and the difference between asking a device a question and telling it to
  * store something is one bit in one byte.
