@@ -15,6 +15,7 @@
     "track": "tsx src/cli/track.ts",
     "rename": "tsx src/cli/rename.ts",
     "rebuild": "tsx src/cli/rebuild.ts",
+    "usbcap": "tsx src/cli/usbcap.ts",
     "extract-blank": "tsx src/cli/extractblank.ts",
     "hwtest": "tsx src/cli/hardwaretest.ts",
     "trackhwtest": "tsx src/cli/trackhwtest.ts",
