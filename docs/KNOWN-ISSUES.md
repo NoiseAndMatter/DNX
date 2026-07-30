@@ -16,7 +16,13 @@ What it cost:
 
 - **`DirList` timing out** was one of two pillars under *"the +Drive file API does not exist on a
   Digitone"*. The API exists. If Transfer was running at the time, that request may never have been
-  sent — so `0x10` is **untested**, not absent.
+  sent — so `0x10` was **untested**, not absent.
+
+  **Retested 2026-07-30 with a proven link: genuinely absent.** No reply in 4 seconds, and the
+  device answered `Device` immediately afterwards. So the original conclusion about `0x10` was
+  *correct* — and had been held for three days on evidence that could not support it. **Being right
+  by accident feels identical from the inside to being right on purpose**, which is the whole
+  argument for the link check rather than an argument against it.
 - **A run of unknown-code silences** (`0x65`, `0x66`, `0x67`, `0x6c`–`0x6e`) was recorded as "not
   implemented" while Transfer held the port. Every one is void.
 
