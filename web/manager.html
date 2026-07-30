@@ -262,6 +262,18 @@ label.file input { display: none; }
     everything else on this page — session, undo, the grid, Export — works on it unchanged.
   -->
   <button class="btn" id="opendevice">Open device…</button>
+  <!--
+    A different thing from "Open device", and the difference matters. That one reads the project
+    the musician has loaded, record by record, and fills the ~0.49% no dump carries from a donor
+    file. This reads any *stored* project off the +Drive by slot: every byte, no donor, and
+    whatever is open on the instrument is left alone.
+
+    Read-only on purpose. A write goes to the device's *active* project, so writing edits made to
+    slot 47 would land them in slot 3. Export to a file instead.
+  -->
+  <button class="btn" id="browsedrive">Browse +Drive…</button>
+  <select id="driveprojects" hidden title="Projects stored on the device, by slot"></select>
+  <button class="btn" id="opendrive" hidden disabled>Open slot</button>
   <button class="btn" id="undo" disabled>Undo</button>
   <button class="btn" id="redo" disabled>Redo</button>
   <button class="btn primary" id="export" disabled>Export…</button>
