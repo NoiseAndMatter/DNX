@@ -92,6 +92,15 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_CHUNKS = 8_192;
 
 /**
+ * Consecutive empty chunks before this gives up.
+ *
+ * Transfer's sequences open with exactly one, so one is normal and three is a conversation going
+ * nowhere. The far guard at 8,192 stays as a backstop, but it is the wrong instrument for this:
+ * a mistaken request should cost an error, not five thousand round trips.
+ */
+const MAX_EMPTY_CHUNKS = 3;
+
+/**
  * Read one stored file end to end, and close the handle whatever happens.
  *
  * The `FREEZES` token is passed from here because this is the only place that can honestly pass
@@ -135,6 +144,7 @@ export async function readStoredFile(
   const parts: Uint8Array[] = [];
   let total = 0;
   let chunks = 0;
+  let empties = 0;
   let metadata: Uint8Array | undefined;
   let closed = false;
 
@@ -149,14 +159,31 @@ export async function readStoredFile(
 
       const readId = id();
       const chunk = parseRead(expect(await transport.request(
-        readRequest(readId, opened.handle), readId, timeoutMs,
+        readRequest(readId, opened.handle, total, opened.chunkSize), readId, timeoutMs,
       ), StorageCode.Read).body);
 
       check(chunk, opened.handle, parts.length + 1);
       chunks++;
 
-      if (chunk.metadata) metadata ??= chunk.header;
-      else {
+      if (chunk.metadata) {
+        metadata ??= chunk.header;
+        // **Stop asking when the answers stop containing anything.** Sending only a handle drew
+        // 4,963 consecutive zero-length chunks on hardware and the end flag never came — the device
+        // had opened the file and was waiting to be told what to read. The old guard was 8,192,
+        // which is a number chosen for "impossible" rather than "implausible", so a request we had
+        // wrong became five thousand round trips instead of an error.
+        //
+        // Three, because Transfer's own sequences begin with exactly one empty reply. One is
+        // normal, two is odd, three is a conversation that is not going anywhere.
+        if (++empties >= MAX_EMPTY_CHUNKS) {
+          throw new ListingError(
+            `${empties} chunks in a row carried no data — the device is answering but sending ` +
+              `nothing, which is what an incomplete read request looks like. Handle ` +
+              `${opened.handle}, ${total} bytes so far.`,
+          );
+        }
+      } else {
+        empties = 0;
         parts.push(chunk.data);
         total += chunk.data.length;
       }
