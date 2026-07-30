@@ -114,6 +114,15 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="writeTo">to</label>
   <input id="writeTo" type="text" value="H16" size="4" disabled title="Destination slot, e.g. H16">
   <button class="btn danger" id="writeSlot" disabled title="Copy a captured pattern into another slot on the device">Write to slot</button>
+  <!--
+    One unidentified request per press, deliberately. There is no sweep-all: `device-probing.md`
+    rule 4 is one message per run on something expendable, and the whole value of this control is
+    knowing which code produced what.
+  -->
+  <select id="probeCode" disabled title="An unidentified request code"></select>
+  <label class="lbl" for="probeObj">obj</label>
+  <input id="probeObj" type="number" min="0" max="127" value="0" size="3" disabled>
+  <button class="btn" id="probeSend" disabled>Try code</button>
 </header>
 
 <main>
