@@ -58,7 +58,37 @@ no way to find out by sending them that is also a way to find out safely.
 
 ## The regime
 
-### 0. Prove the link before believing a silence
+### 0. A message that allocates something must be paired with the release
+
+**Added 2026-07-30, after freezing a user's Digitone 1 twice.**
+
+`0x54` opens a project and hands back a handle. We sent it and never sent `0x56` to close it. The
+device stopped responding entirely — **capture 0 bytes**, no error, no reply — recoverable only by
+a power cycle, which takes anything unsaved in the active project with it.
+
+The reasoning that led there was *"do not guess three messages at once, so implement open only"*.
+That sounds like caution and is the opposite: **an open with no close is a resource leak against
+firmware.** Open and close are the **minimum safe unit**; read is the optional part. Elektron's own
+Transfer always closes.
+
+So the taxonomy in this document was missing a category:
+
+| Class | Effect |
+|---|---|
+| read | none |
+| write | overwrites data |
+| delete | destroys data |
+| state change | puts the device in a mode |
+| **allocate** | **can hang the instrument** |
+
+The last is not obviously destructive, which is exactly why it got past every guard here — the
+message carried no data, changed nothing, and asked a perfectly reasonable question.
+
+**How to apply.** Before sending anything that returns a handle, an id, a session or a lock: know
+the message that releases it, and send that release in a `finally`. If you cannot, do not send the
+first one. `openRequest` is now gated behind a token that says as much.
+
+### 0a. Prove the link before believing a silence
 
 **Added 2026-07-30, after three days of not doing it.**
 

@@ -96,12 +96,48 @@ export function listRequest(msgId: number, path: string, page?: Page): Uint8Arra
  *
  * The width is inferred from the reply, `01 00 00 00 01 …`, which reads as status plus a u32.
  */
-export function openRequest(msgId: number, projectId: number): Uint8Array {
+export function openRequest(msgId: number, projectId: number, acknowledge?: typeof FREEZES): Uint8Array {
+  if (acknowledge !== FREEZES) throw new ListingError(FREEZE_WARNING);
   if (!Number.isInteger(projectId) || projectId < 0) {
     throw new ListingError(`project id ${projectId} is not a slot number`);
   }
   return encodeMessage(msgId, StorageCode.Open, u32Bytes(projectId));
 }
+
+/**
+ * **`0x54` freezes a Digitone 1. Reproduced twice, 2026-07-30.**
+ *
+ * A well-formed open with a valid project id — `2`, `MORNING_JAM`, straight out of a `/projects`
+ * listing — and the device stops responding entirely. The capture is **0 bytes**: not a slow
+ * reply, not an error, nothing at all. Only a power cycle recovers it, and anything unsaved in the
+ * active project goes with it.
+ *
+ * ## The likely mechanism, and the design error behind it
+ *
+ * `0x54` allocates a handle. **We never send `0x56` to release it.** This module was written
+ * "open only", justified as caution — *do not guess three messages at once* — and that was the
+ * wrong decomposition. An open with no close is not a safe subset; it is a resource leak against
+ * firmware. Transfer always closes.
+ *
+ * **Open and close are the minimum safe unit.** Read is the optional part. Getting that backwards
+ * is what froze a user's instrument.
+ *
+ * ## Why this is a hard gate rather than a warning
+ *
+ * `docs/device-probing.md` classified messages as read, write, delete or state-change. **Hanging
+ * the instrument was not a category**, and a control that reliably requires a power cycle should
+ * not be one press away from a page that also does harmless things.
+ *
+ * The token exists so that re-enabling this is a deliberate edit by someone who has read the
+ * above, paired it with a close, and decided the experiment is worth a reboot.
+ */
+export const FREEZES = Symbol("0x54 freezes a Digitone 1 — see openRequest");
+
+const FREEZE_WARNING =
+  "0x54 (open) freezes a Digitone 1 — reproduced twice, recoverable only by power cycle, and " +
+  "anything unsaved in the active project is lost with it. The likely cause is that we never send " +
+  "0x56 to close the handle. Pair it with a close before enabling this, and pass the FREEZES " +
+  "token to say you have.";
 
 /** Close a handle. The reply was 9 bytes; the request shape is inferred from the handle's width. */
 export function closeRequest(msgId: number, handle: number): Uint8Array {

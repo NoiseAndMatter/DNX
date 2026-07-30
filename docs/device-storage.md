@@ -208,6 +208,18 @@ confirmed one field at a time. `/` returned `projects` and `soundbanks` on the f
 `listRequest` takes them as one `Page`, never separately, so a request for nothing cannot be
 written by accident.
 
+> [!danger] **`0x54` freezes a Digitone 1 — do not send it**
+> Reproduced twice on 2026-07-30 with a well-formed request and a valid project id from a
+> `/projects` listing. The device stops responding entirely: **capture 0 bytes**, no error, no
+> reply. Only a power cycle recovers it, and anything unsaved in the active project goes with it.
+>
+> **The likely cause is ours**: `0x54` allocates a handle and we never sent `0x56` to close it.
+> This was built "open only" as a supposed precaution, which is the opposite of one — see
+> `device-probing.md` rule 0.
+>
+> The message is gated behind a token in `storage.ts` and the control has been removed from the
+> probe. Pair it with a close before re-enabling, and expect to reboot the device.
+
 ### `0x54` — open a project **by id, not by path**
 
 The device named the argument type itself. Sent a path, it answered **`invalid project id`** —

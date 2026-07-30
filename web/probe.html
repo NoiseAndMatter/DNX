@@ -134,7 +134,11 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="lsCount">count</label>
   <input id="lsCount" type="number" min="0" value="0" size="3" disabled title="0 asks for the whole listing. A start without a count asks for nothing.">
   <button class="btn" id="lsSend" disabled>List</button>
-  <button class="btn" id="lsOpen" disabled title="Open a project by its slot id — takes the number in the 'from' box">Open project</button>
+  <!--
+    Removed, not disabled. `0x54` freezes a Digitone 1 — reproduced twice, recoverable only by a
+    power cycle, taking any unsaved work with it. A disabled button is an invitation; the message
+    stays gated in `storage.ts` behind a token nobody passes by accident.
+  -->
 </header>
 
 <main>
