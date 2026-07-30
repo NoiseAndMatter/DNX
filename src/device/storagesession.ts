@@ -158,8 +158,11 @@ export async function readStoredFile(
       }
 
       const readId = id();
+      // **Sequence numbers, not byte ranges.** Starting at 1 and counting data-bearing chunks, so
+      // an empty reply cannot shift the numbering — the device answers `Invalid sequence number`
+      // to anything else, which is how the field was identified in the first place.
       const chunk = parseRead(expect(await transport.request(
-        readRequest(readId, opened.handle, total, opened.chunkSize), readId, timeoutMs,
+        readRequest(readId, opened.handle, parts.length + 1), readId, timeoutMs,
       ), StorageCode.Read).body);
 
       check(chunk, opened.handle, parts.length + 1);
