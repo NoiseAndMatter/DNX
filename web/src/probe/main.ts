@@ -65,6 +65,7 @@ import {
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
+import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
@@ -313,6 +314,9 @@ async function probe(): Promise<void> {
     askCode.disabled = false;
     $<HTMLButtonElement>("askSend").disabled = false;
     $<HTMLInputElement>("filePath").disabled = false;
+    $<HTMLInputElement>("writeTarget").disabled = false;
+    $<HTMLInputElement>("corruptSum").disabled = false;
+    $<HTMLButtonElement>("fileWrite").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
 
     // **`DirList` is now always attempted, whatever the device advertises.**
@@ -2024,6 +2028,130 @@ const READ_ID_BANDS = 6; // 8,192 … 49,152, all inside a u16
 
 function readIdBase(): number {
   return READ_ID_BASE + (readBand % READ_ID_BANDS) * READ_ID_SPAN;
+}
+
+/**
+ * **The first write to a Digitone's +Drive**, and the experiment that unblocks the rest.
+ *
+ * Reads `file`, then writes those exact bytes to `to` with the checksum the device reported on the
+ * read — so the one field whose algorithm we cannot reproduce comes from the device itself.
+ *
+ * With **corrupt** ticked it flips a bit in that checksum. Refused means the field is validated and
+ * we need the algorithm; accepted means it is decorative and arbitrary content can be written. That
+ * question is worth more than this write is.
+ *
+ * The destination is looked up in a real listing and **refused unless empty**. Not warned about:
+ * for most people the +Drive is the only copy of that work.
+ */
+$("fileWrite").addEventListener("click", () => {
+  readThenWrite().catch((error: unknown) => {
+    status(`Write failed: ${String(error)}`, "error");
+    verdictCard("Write failed", [["Error", String(error)]]);
+  });
+});
+
+async function readThenWrite(): Promise<void> {
+  if (!access) return;
+  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return;
+  }
+  if (!listening) {
+    status("Press Listen first — otherwise nothing collects the replies.", "warn");
+    return;
+  }
+  if (readingFile) {
+    status("A read is already running. Wait for it to close its handle.", "warn");
+    return;
+  }
+
+  const source = $<HTMLInputElement>("filePath").value;
+  const target = $<HTMLInputElement>("writeTarget").value;
+  const corrupt = $<HTMLInputElement>("corruptSum").checked;
+  const log: [string, string][] = [
+    ["Reading", source],
+    ["Writing to", target],
+    ["Checksum", corrupt ? "DELIBERATELY WRONG — testing whether it is enforced" : "the device's own, from the read"],
+    ["Guard", "the destination must be empty in a fresh listing, or nothing is sent"],
+  ];
+  verdictCard("Writing…", log);
+
+  readingFile = true;
+  $<HTMLButtonElement>("fileWrite").disabled = true;
+  try {
+    // The destination's own directory, listed now rather than trusted from earlier. A listing from
+    // ten minutes ago is not evidence about what is in a slot at the moment of writing.
+    const slash = target.lastIndexOf("/");
+    const directory = target.slice(0, slash);
+    const index = Number(target.slice(slash + 1));
+    const listing = await listProjectsAt(output, directory);
+    const entry = listing.find((e) => e.index === index);
+    if (!entry) {
+      throw new Error(`${target} is not in ${directory} — that listing has ${listing.length} entries`);
+    }
+
+    const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIdBase() });
+    readBand++;
+    const chunk = file.checksum;
+    if (chunk === undefined) throw new Error("the read gave no checksum, so there is nothing to write with");
+
+    const checksum = corrupt ? (chunk ^ 1) >>> 0 : chunk;
+    const result = await writeStoredFile(target, file.bytes, checksum, {
+      transport: apiTransport(output),
+      target: entry,
+      msgId: readIdBase(),
+      onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
+    });
+
+    verdictCard(`${target} — ${result.committed ? "COMMITTED" : "not committed"}`, [
+      ...log,
+      ["Read", `${file.bytes.length.toLocaleString()} bytes, checksum ${hex8(chunk)}`],
+      ["Sent", `${result.written.toLocaleString()} bytes in ${result.chunks} chunk(s), checksum ${hex8(checksum)}`],
+      ["Committed", result.committed ? "yes — 0x59 acknowledged" : "NO"],
+      [
+        "Means",
+        corrupt
+          ? "the device ACCEPTED a wrong checksum, so the field is not validated and arbitrary " +
+            "content can be written. Check the slot on the instrument before believing it."
+          : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
+            "not the same as bytes on the +Drive.",
+      ],
+    ]);
+    status(`${target} written and committed. Verify it on the instrument.`, "ok");
+  } catch (error) {
+    const alive = await linkIsAlive(output);
+    verdictCard(alive ? "Refused, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
+      ...log,
+      ["Error", String(error)],
+      ["Link check", alive ? "PASSED" : "FAILED"],
+      [
+        "Means",
+        corrupt && alive
+          ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
+            "wanted and the reason to try it."
+          : alive
+            ? "a genuine refusal. The device's own wording is the best documentation this protocol has."
+            : "power-cycle it.",
+      ],
+    ]);
+    status(alive ? `Refused: ${String(error)}` : "The device stopped answering.", alive ? "warn" : "error");
+  } finally {
+    readBand++;
+    readingFile = false;
+    $<HTMLButtonElement>("fileWrite").disabled = false;
+  }
+}
+
+/** List one directory and hand back its entries, for checking a destination is empty. */
+async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]> {
+  const id = issue(nextListId++);
+  const reply = await apiTransport(output).request(listRequest(id, path), id, LIST_TIMEOUT_MS);
+  return parseListing(reply.body).entries;
+}
+
+function hex8(v: number): string {
+  return v.toString(16).padStart(8, "0");
 }
 
 function hex2(b: number): string {
