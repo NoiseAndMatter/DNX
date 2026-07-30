@@ -173,6 +173,49 @@ test("a chunk belonging to another handle is refused, not spliced in", async () 
   assert.equal(io.sent.at(-1), StorageCode.Close);
 });
 
+test("a device that answers but sends nothing is refused after three empty chunks", async () => {
+  // On hardware this drew **4,963 consecutive zero-length chunks** before the far guard tripped.
+  // The device had opened the file and was waiting to be told what to read, and the read request
+  // was not telling it. A guard set at "impossible" instead of "implausible" turned a request we
+  // had wrong into five thousand round trips.
+  const io = scripted([OPEN_OK, METADATA, METADATA, METADATA, CLOSE_OK]);
+
+  await assert.rejects(
+    readStoredFile("/projects/1", { transport: io }),
+    /3 chunks in a row carried no data/,
+  );
+  assert.equal(io.sent.at(-1), StorageCode.Close, "and the handle is still released");
+});
+
+test("one empty chunk is normal and does not end the read", async () => {
+  // Transfer's own sequences open with exactly one. Refusing on the first would break every read.
+  const io = scripted([OPEN_OK, METADATA, chunk(1, [1, 2], true), CLOSE_OK]);
+  const file = await readStoredFile("/projects/1", { transport: io });
+
+  assert.deepEqual([...file.bytes], [1, 2]);
+});
+
+test("the read request carries the range, not just the handle", async () => {
+  // Handle alone is what produced the 4,963 empty chunks. The arguments are handle, length, start
+  // - elk-herd's FileRead order, which puts length before the thing everyone says first.
+  const io = scripted([OPEN_OK, chunk(1, [1, 2, 3], true), CLOSE_OK]);
+  const requests: Uint8Array[] = [];
+  const spy: ApiTransport = {
+    request(request, msgId, timeoutMs) {
+      requests.push(decodeMessage(request).body);
+      return io.request(request, msgId, timeoutMs);
+    },
+  };
+
+  await readStoredFile("/projects/1", { transport: spy });
+
+  const read = requests[1]!;
+  assert.equal(read.length, 12, "handle, length and start");
+  assert.deepEqual([...read.subarray(0, 4)], [0, 0, 0, 1], "the handle the open returned");
+  assert.deepEqual([...read.subarray(4, 8)], [0, 0, 0x08, 0], "the chunk size the open reported");
+  assert.deepEqual([...read.subarray(8, 12)], [0, 0, 0, 0], "starting at the beginning");
+});
+
 test("a device that never says stop is refused rather than read forever", async () => {
   // Without this the failure is a hang, which reads as a broken port rather than as a protocol
   // misunderstanding - and the flag being wrong is a live possibility, not a hypothetical.
