@@ -159,7 +159,9 @@ test("patterns and tracks are laid out on the same grid", () => {
   // Asserted as an *absence*: the track grid must not restate the column count, because two
   // numbers that have to agree are two numbers that can disagree. If a future layout genuinely
   // needs them to differ, rewrite this test with the reason rather than deleting it.
-  const markup = readFileSync(resolve(HERE, "../web/manager.html"), "utf8");
+  // The stylesheet is shared by every page now, so this reads the file rather than one page's
+  // inline block — which is also why it is worth asserting: a layout every tool inherits.
+  const markup = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
 
   const base = /\.grid\s*\{[^}]*grid-template-columns:\s*repeat\((\d+)/.exec(markup);
   assert.ok(base, ".grid no longer sets grid-template-columns");
@@ -174,7 +176,7 @@ test("patterns and tracks are laid out on the same grid", () => {
   }
 });
 
-test("every drop action has a colour in the manager's stylesheet", () => {
+test("every drop action has a colour in the shared stylesheet", () => {
   // `dropHint` puts the action's own name on the cell as a class, so its hue comes from a rule
   // named after it. A fourth action would typecheck, name itself correctly, draw its label — and
   // be styled like nothing at all, silently, because a missing CSS rule is not an error.
@@ -188,8 +190,7 @@ test("every drop action has a colour in the manager's stylesheet", () => {
   const actions = [...union[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
   assert.ok(actions.length >= 3, `found ${actions.length} drop actions, expected at least 3`);
 
-  const markup = readFileSync(resolve(HERE, "../web/manager.html"), "utf8");
-  const css = markup.slice(markup.indexOf("<style"), markup.indexOf("</style>"));
+  const css = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
 
   const unstyled = actions.filter(
     (action) => !new RegExp(`\\.slot\\.target\\.${action}\\b`).test(css),

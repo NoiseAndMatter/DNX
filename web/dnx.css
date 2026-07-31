@@ -1,0 +1,368 @@
+/*
+ * The DNX visual language, shared by every page.
+ *
+ * Extracted from the manager, which is where it was designed — after Overbridge's layer panel, and
+ * refined against hardware use. It lived inline in `manager.html`, so the expander grew its own
+ * lighter, rounder look and the two tools stopped feeling like one application.
+ *
+ * **Reuse this rather than styling a new page.** A tool that invents its own slot cell invents its
+ * own answer to "is this occupied", and the grid is the one control every tool here shares.
+ *
+ * Only genuinely page-specific rules belong in a page's own <style> — a layout unique to that page,
+ * never a colour, a control or a cell.
+ */
+
+/*
+ * Visual language borrowed from Elektron's Overbridge editor, which the user already reads
+ * fluently: near-black ground, panels a shade lighter with a hairline border, section titles
+ * small and letter-spaced, and colour used to say *what kind of thing this is* rather than for
+ * decoration. Teal is the sequencer, amber the kit, salmon destructive.
+ *
+ * Deliberately not copied: knobs and bracketed value fields. Those exist to edit continuous
+ * synth parameters. A librarian moves discrete things between slots, and dressing that as a
+ * synth would be costume rather than design.
+ */
+:root {
+  /*
+   * Tells the browser this page is dark, so **the parts it paints itself** come out dark too: the
+   * dropdown list a `<select>` opens, scrollbars, the text caret, focus rings. Without it those
+   * are rendered light over a dark page, which is how the +Drive picker ended up light grey on
+   * white — a fault no amount of styling the closed control would have fixed, because the open
+   * list is not ours to style.
+   *
+   * `dark` rather than `light dark`: every colour below is a fixed hex and this page does not
+   * follow the system, so claiming otherwise would be a lie the UA acts on.
+   */
+  color-scheme: dark;
+  --bg: #16191b;
+  --panel: #1e2325;
+  --panel-2: #252b2e;
+  --line: #313a3d;
+  --line-soft: #272f31;
+  --fg: #dfe6e7;
+  --muted: #78878b;
+  --dim: #556366;
+  --teal: #79b8ac;
+  --teal-dim: #2f4a47;
+  --amber: #c8a06a;
+  --salmon: #cf6f62;
+  --steel: #6f95b5;
+  --focus: #8fd4c6;
+}
+* { box-sizing: border-box; }
+/*
+ * Two page shapes, and a page says which it is.
+ *
+ * `body.app` fills the viewport and never scrolls as a whole — the manager, where the grid and the
+ * side panel scroll independently and the top bar stays put. `body.page` flows top to bottom like a
+ * document and scrolls normally.
+ *
+ * **This distinction was missing and it cost a whole layout.** The expander was given the app
+ * shell's `main` — a two-column grid sized to the viewport — while its own markup used `<header>`
+ * and `<aside>`, which this file has never styled. It had no layout to lose, so it came apart at
+ * the first resize. Anything reused has to say what it assumes.
+ */
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+}
+html:has(body.app), body.app { height: 100%; }
+body.app { display: flex; flex-direction: column; }
+body.page { padding-bottom: 4rem; }
+button, input, select { font: inherit; color: inherit; }
+
+/*
+ * A control that inherits its colour must be given a background too.
+ *
+ * The rule above sets `color: inherit` — light grey, from the dark page — and leaves the
+ * background at the UA default, which is white. That is unreadable, and it was invisible for as
+ * long as every `<select>` on the page happened to sit inside something that painted behind it.
+ * Adding the +Drive picker to the top bar exposed it, and `#scope` had the same fault all along.
+ *
+ * Inheriting half a colour pair is the bug. Both halves are set here, on the element, so the next
+ * control added anywhere on the page is legible without anyone remembering this.
+ */
+select {
+  background: #1b2123;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: .22rem .4rem;
+  max-width: 18rem;
+}
+select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+select:disabled { opacity: .45; }
+/*
+ * The dropdown list itself is painted by the OS, not by the page, and on Windows it takes the
+ * UA's white unless the options say otherwise. Styling only the closed control leaves the open
+ * list unreadable — which is the half the user is actually reading when it matters.
+ */
+select option { background: #1b2123; color: var(--fg); }
+
+/*
+ * `hidden` works by a UA rule of `display: none`, which *any* author rule setting `display`
+ * beats. Half this file sets `display` on a class that is also used with `hidden` — .tabs,
+ * .grid, .legend — so those elements rendered whether hidden or not: bank tabs above an empty
+ * page, and the pattern grid still on screen underneath the track grid. Restoring the UA
+ * behaviour once is the fix; `!important` is what that takes, and it is what normalize.css
+ * does for the same reason.
+ */
+[hidden] { display: none !important; }
+
+/* ---- top bar ------------------------------------------------------------------------ */
+.topbar {
+  display: flex; align-items: center; gap: 1rem; padding: .55rem .9rem;
+  background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: baseline; gap: .45rem; font-weight: 700; letter-spacing: -.01em; }
+.brand .d { color: var(--teal); }
+.brand .sub { color: var(--muted); font-weight: 500; }
+.device {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  border: 1px solid var(--teal-dim); color: var(--teal);
+  padding: .12rem .45rem; border-radius: 3px;
+}
+.projname { color: var(--fg); font-weight: 600; }
+.spacer { flex: 1; }
+
+/* ---- generic panel ------------------------------------------------------------------ */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.panel > h2 {
+  margin: 0; padding: .45rem .7rem; font-size: .67rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .11em; color: var(--dim);
+  border-bottom: 1px solid var(--line-soft);
+  display: flex; align-items: center; gap: .5rem;
+}
+.panel > h2 .btn.ghost {
+  margin-left: auto; background: none; border-color: var(--line-soft);
+  font-size: .64rem; letter-spacing: .07em; text-transform: uppercase;
+  padding: .18rem .5rem; color: var(--muted);
+}
+.panel > .body { padding: .7rem; }
+
+/* ---- tab strip, the Overbridge TRK bar ---------------------------------------------- */
+.tabs { display: flex; gap: 2px; padding: .5rem .9rem 0; background: #1a1f21; }
+.tab {
+  background: #1e2426; border: 1px solid var(--line); border-bottom: none;
+  border-radius: 3px 3px 0 0; padding: .35rem .95rem; cursor: pointer;
+  color: var(--muted); font-size: .78rem; letter-spacing: .04em;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { background: var(--panel-2); color: #fff; border-color: var(--line); }
+.tab .n { color: var(--dim); font-size: .68rem; margin-left: .4rem; }
+.tab[aria-selected="true"] .n { color: var(--teal); }
+
+/* ---- layout ------------------------------------------------------------------------- */
+body.app > main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: .7rem;
+  padding: .7rem .9rem 0; min-height: 0; }
+/* A flowing page keeps one column and a comfortable measure at any width. */
+body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 auto; }
+.side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
+
+/* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
+.grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+.slot {
+  position: relative; text-align: left; cursor: pointer; min-height: 4.1rem;
+  background: #1b2123; border: 1px solid var(--line-soft); border-radius: 3px;
+  padding: .32rem .4rem; display: flex; flex-direction: column; gap: .1rem;
+  transition: border-color .08s, background .08s;
+}
+.slot:hover { border-color: var(--dim); }
+/*
+ * The cell is the target; its labels are decoration. Without this, moving the cursor from the
+ * cell onto one of its own spans fires `dragleave` on the cell and then `dragenter` again, so
+ * the drop decoration flickers off and on while the pointer is standing still inside it. The
+ * outline was subtle enough to get away with it; a word across the middle is not.
+ */
+.slot > span { pointer-events: none; }
+.slot .id { font-size: .66rem; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+.slot .nm {
+  font-size: .74rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-family: ui-monospace, Consolas, monospace;
+}
+.slot .tc { margin-top: auto; font-size: .64rem; color: var(--dim); }
+.slot.occupied { background: #1d2726; border-color: var(--teal-dim); }
+.slot.occupied .id { color: var(--teal); }
+.slot.occupied .nm { color: var(--fg); }
+.slot.occupied .tc { color: var(--teal); opacity: .8; }
+.slot.unsupported { border-style: dashed; border-color: var(--amber); }
+.slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
+
+/*
+ * ---- the track grid ------------------------------------------------------------------
+ *
+ * **No column override.** Tracks inherit the pattern grid's eight across, so 16 tracks land as
+ * two rows of eight — the same shape as a bank of 16 patterns, and the same shape as the
+ * device's own two rows of trig keys.
+ *
+ * It used to be four across, on the reasoning that names needed the room. That was the wrong
+ * trade: the user reported it as harder to drag around, and dragging is what this grid is for.
+ * Two grids with the same geometry also means a drag looks the same wherever it happens, which
+ * matters more than a few characters of preset name.
+ *
+ * Inheriting rather than restating `repeat(8, 1fr)` is deliberate — two numbers that must agree
+ * are two numbers that can disagree.
+ */
+.slot .mc { font-size: .62rem; color: var(--dim); letter-spacing: .04em; }
+.slot.midi { border-color: var(--amber); }
+.slot.midi .id, .slot.midi .mc { color: var(--amber); }
+/* The pattern whose tracks are shown below, so the two sections are visibly connected. */
+.slot.opened { box-shadow: inset 0 -3px 0 var(--teal); }
+
+/*
+ * A stacked sub-section: patterns, then that pattern's tracks, then its trigs later. The rule
+ * above it and the generous gap are the separation — without them the second grid reads as
+ * more of the first, which is exactly how it looked when the two overlapped by accident.
+ */
+.sub { margin-top: 1.4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.sub h3 {
+  margin: 0 0 .6rem; font-size: .67rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .11em; color: var(--teal); display: flex; align-items: center; gap: .5rem;
+}
+.sub h3 .btn.ghost {
+  margin-left: auto; background: none; border-color: var(--line-soft); color: var(--muted);
+  font-size: .64rem; padding: .1rem .45rem; line-height: 1.2;
+}
+
+/*
+ * ---- drag and drop -------------------------------------------------------------------
+ *
+ * The destination says which of the three actions is about to happen, in two ways at once: a
+ * hue, and the word itself across the middle of the cell. One amber outline for all three was
+ * the first cut, and it told the user only *that* something would happen — the status bar had
+ * the *what*, at the other end of the page from where they were looking.
+ *
+ * Three hues far enough apart to read at a glance and without relying on colour alone, since
+ * the word is there too: blue moves, green copies, amber exchanges.
+ *
+ * Deliberately not a variation on the selection outline. Selection is a thin 2px ring; a drop
+ * target is a thick ring, a saturated wash and a label — nobody has to work out which is which.
+ * And there is no fourth state for a refusal: the browser's own "no" cursor already says it.
+ */
+.slot.dragging { opacity: .4; }
+
+.slot.target {
+  outline: 3px solid var(--drop); outline-offset: -3px;
+  background: var(--drop-bg);
+  transition: none;   /* the modifier can change mid-drag; a fade would lag behind the truth */
+}
+.slot.target.move { --drop: var(--steel);  --drop-bg: #1e2a33; }
+.slot.target.copy { --drop: var(--teal);   --drop-bg: #1c2e2b; }
+.slot.target.swap { --drop: var(--amber);  --drop-bg: #302719; }
+
+/*
+ * The label is drawn from the attribute rather than injected as a child: a re-render rebuilds
+ * every cell, and a stray <span> would outlive the drag that put it there.
+ */
+.slot.target::after {
+  content: attr(data-action);
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; font-weight: 700; letter-spacing: .16em;
+  color: var(--drop);
+  background: rgba(10, 13, 14, .72);   /* a scrim, so the word is legible over a full cell */
+  pointer-events: none;                /* or the cell stops receiving its own dragover */
+}
+kbd {
+  font: inherit; font-size: .92em; background: #2a3133; border: 1px solid var(--line);
+  border-radius: 2px; padding: 0 .25rem;
+}
+
+/* ---- scope selector ----------------------------------------------------------------- */
+.lbl { display: block; font-size: .66rem; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--dim); margin-bottom: .3rem; }
+#scope { width: 100%; background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 3px; padding: .34rem .4rem; font-size: .76rem; }
+#scope:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ---- operation bar ------------------------------------------------------------------ */
+.ops { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.btn {
+  background: #232a2c; border: 1px solid var(--line); border-radius: 3px;
+  padding: .34rem .7rem; cursor: pointer; color: var(--fg); letter-spacing: .02em;
+}
+.btn:hover:not(:disabled) { border-color: var(--teal); color: #fff; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn.danger:hover:not(:disabled) { border-color: var(--salmon); color: var(--salmon); }
+.btn.primary { background: var(--teal-dim); border-color: var(--teal); color: #eafffb; }
+.hint { color: var(--dim); font-size: .72rem; }
+
+/* ---- history ------------------------------------------------------------------------ */
+.hist { list-style: none; margin: 0; padding: 0; font-size: .75rem; }
+.hist li { padding: .22rem .1rem; color: var(--muted); border-bottom: 1px solid var(--line-soft); }
+.hist li:first-child { color: var(--fg); }
+.hist .b { color: var(--dim); float: right; font-size: .68rem; }
+
+/* ---- status ------------------------------------------------------------------------- */
+.status {
+  padding: .45rem .9rem; border-top: 1px solid var(--line); background: #1a1f21;
+  font-size: .76rem; color: var(--muted); min-height: 2rem;
+}
+.status.error { color: var(--salmon); }
+.status.warn { color: var(--amber); }
+.status.ok { color: var(--teal); }
+.dropzone { padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
+.dropzone strong { color: var(--fg); }
+label.file { display: inline-block; cursor: pointer; }
+label.file input { display: none; }
+.legend { display: flex; gap: .9rem; font-size: .68rem; color: var(--dim); margin-top: .55rem; }
+.legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px;
+  margin-right: .25rem; vertical-align: -1px; }
+
+/* ---- a section of a flowing page ------------------------------------------------------ */
+.section { margin: 0 0 1.1rem; }
+.section > h2 {
+  margin: 0 0 .45rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--teal); font-weight: 600;
+}
+.section > .sub { margin: -.2rem 0 .5rem; color: var(--muted); font-size: .76rem; }
+
+/*
+ * A strip of controls that wraps rather than overflowing.
+ *
+ * Every bar on every page: the input row, the options, the output row. `flex-wrap` is the whole
+ * point — a fixed row is what makes a layout fall apart at a width nobody tested.
+ */
+.bar {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  padding: .55rem .7rem; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 4px;
+}
+.bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 .25rem; }
+
+/* A file input dressed as a button, since the native control cannot be styled. */
+.filebtn { position: relative; overflow: hidden; display: inline-flex; }
+.filebtn input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+
+/* ---- the expansion report ------------------------------------------------------------
+ *
+ * The sounds-on-tracks table and the sounds staying locked. **The most important data any of these
+ * tools shows**: it is the answer to "what will this actually do to my project", and the user
+ * singled it out as the clearest thing the old UI had.
+ *
+ * Here rather than on a page because it is data, not decoration — a second tool reporting an
+ * expansion should look identical, and the manager will want it the day it can expand.
+ */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .5rem;
+  margin: 0 0 .7rem; }
+.stats > div { background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  padding: .5rem .65rem; }
+.stats strong { display: block; font-size: 1.35rem; line-height: 1.1; color: var(--fg); }
+.stats span { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .07em; }
+
+table { border-collapse: collapse; width: 100%; font-size: .78rem; }
+th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--line-soft); }
+th { color: var(--muted); font-weight: 600; font-size: .66rem; text-transform: uppercase;
+  letter-spacing: .07em; }
+td.track { font-weight: 700; color: var(--teal); }
+td.num { text-align: right; }
+td.from, td.patterns { color: var(--muted); font-size: .74rem; }
+
+h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  font-weight: 600; margin: 1rem 0 .35rem; }
+
+/* Two columns where there is room: a long list of names reads badly as one tall column. */
+ul.overflow { columns: 2; column-gap: 1.4rem; margin: .3rem 0; padding-left: 1.1rem; font-size: .78rem; }
+@media (max-width: 46rem) { ul.overflow { columns: 1; } }
+
+.good { color: var(--teal); }
+.muted { color: var(--muted); }
