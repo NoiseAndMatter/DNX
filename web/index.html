@@ -44,6 +44,9 @@
   button:disabled { opacity:.45; cursor:not-allowed; }
   #status { margin-top:1rem; font-size:.85rem; color:var(--muted); }
   #status.error { color:var(--bad); }
+  /* A refusal from the device path, shown where the plan would have been rather than only in the
+     status line — the plan area is where the reader is looking when it fails. */
+  .bad { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -83,6 +86,26 @@ Everything runs in this page — no upload, no server.</p>
 
 <h2>Export</h2>
 <button id="export" disabled>Convert and download .dn2prj</button>
+
+<!--
+  Writing straight to the instrument, no file in the loop.
+
+  The destination is the project the Digitone II currently has LOADED, read back over the dump
+  protocol so the diff baseline is the live state rather than the last save. Only the pattern slots
+  that actually change are sent.
+
+  Nothing lands until SAVE PROJECT on the device: a write goes to the active project and survives a
+  power cycle, but loading another project discards it. That is the undo.
+-->
+<h2>Or write it to the instrument</h2>
+<div class="card">
+  <button id="connect">Connect a Digitone II…</button>
+  <div class="info" id="deviceInfo">Its <strong>currently loaded</strong> project is the destination. Nothing is written until you press Write, and nothing is permanent until you press SAVE PROJECT on the device.</div>
+  <button id="planDevice" disabled>Read the loaded project and plan</button>
+  <div class="info" id="devicePlan"></div>
+  <button id="writeDevice" disabled>Write to the device</button>
+</div>
+
 <div id="status"></div>
 
 <script type="module" src="./dist/web/src/app.js"></script>
