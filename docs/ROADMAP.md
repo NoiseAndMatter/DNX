@@ -1731,6 +1731,47 @@ work with no unknowns.
 
 ---
 
+## 5. A device analytics view — IDEA, 2026-07-31
+
+**Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
+merge, and worth capturing so it does not get half-built as a side effect of something else.
+
+The idea: a view showing what is actually on and happening to your instruments.
+
+- **Per device**, keyed by something stable — serial number, or the 4-byte identity `0x03` returns
+  (`device-storage.md` §4), which is device-scoped and constant across project loads. That question
+  is already answered for the DN1 and one click away for the DN2.
+- **What is on it**: projects used and free, pool occupancy per project, sounds per bank, how much
+  of the +Drive is write-protected. Every one of those is a `0x53` listing away — `Entry.occupied`
+  and `Entry.writable` already decode it.
+- **What has been done to it**: expansions run, patterns moved, merges applied, sounds appended.
+
+### The part that needs designing rather than building
+
+**Persistence.** Everything DNX does today is stateless and in-browser — no upload, no server, and
+that is a feature people can verify by reading the page. History means storing something, and where
+it is stored decides what the tool *is*:
+
+- `localStorage` / IndexedDB — survives a reload, invisible to anyone else, lost on a browser
+  reset, and per-browser rather than per-person.
+- A file the user saves and reloads — explicit, portable, and one more thing to remember.
+- The local server (`npm run web`) writing beside the corpus — natural for this author, useless for
+  anyone running the page as static files.
+
+The honest default is probably **the second**, with the first as a convenience, because it keeps the
+"nothing leaves this page" property that the rest of the tool has.
+
+### Why it is worth having
+
+The statistics are not decoration. *Which projects have free pool slots* decides where a merge can
+land. *Which sounds are duplicated across banks* is exactly the question the pool merge answers one
+project at a time. *What was expanded when* is what makes a hardware test reproducible — the thing
+`MILESTONES.md` does by hand for the project and nothing does for the instrument.
+
+**Blocked on nothing.** It reads what the storage API already gives us. It waits because it is a
+feature, not a discovery, and the two open discoveries — the write checksum and which project is
+loaded — are worth more first.
+
 ## Deferred, with reasons
 
 **Rearrange mode** — letting the user re-lay-out tracks by tag rather than preserving the
