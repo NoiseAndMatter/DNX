@@ -62,15 +62,15 @@ import {
   writeBack,
 } from "../devicesource.js";
 import {
-  type Drag,
-  type DropHint,
   type Level,
-  type Modifiers,
   actionFor,
   dropHint,
   patternForOperation,
   refuseDrop,
 } from "./dragrules.js";
+// Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
+// the cells. Two functions of that name in one file would be a coin toss every time it is read.
+import { GridDrag, escapeHtml, renderGrid as renderSlots } from "../grid.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -202,37 +202,33 @@ function renderTrackGrid(): void {
   }
 
   section.hidden = false;
-  const grid = $("trackGrid");
-  grid.innerHTML = "";
-
-  for (const track of summariseTracks(session.image, trackFor)) {
-    const cell = document.createElement("button");
-    cell.className = "slot";
-    if (!track.empty) cell.classList.add("occupied");
-    if (track.midi) cell.classList.add("midi");
-    cell.setAttribute(
-      "aria-selected",
-      String(inTracks() && state.selection.includes(track.index)),
-    );
-
-    // "empty" would be a lie about a track carrying a preset and no notes — which is exactly
-    // what a `--scope preset` copy produces, and it made a working copy look like a no-op.
-    // The bottom line describes the *sequence*; the preset is the two lines above it.
-    const detail = track.trigCount
-      ? `${track.trigCount} trigs${track.lockCount ? ` · ${track.lockCount} locks` : ""}`
-      : track.presetName
-        ? "no trigs"
-        : "empty";
-
-    cell.innerHTML =
-      `<span class="id">${track.label}</span>` +
-      `<span class="nm">${escapeHtml(track.presetName || "—")}</span>` +
-      `<span class="mc">${escapeHtml(track.midi ? "MIDI" : (track.machine ?? "?"))}</span>` +
-      `<span class="tc">${detail}</span>`;
-
-    wireSlot(cell, "track", track.index);
-    grid.append(cell);
-  }
+  renderSlots(
+    $("trackGrid"),
+    summariseTracks(session.image, trackFor).map((track) => ({
+      index: track.index,
+      id: track.label,
+      name: track.presetName || "—",
+      machine: track.midi ? "MIDI" : (track.machine ?? "?"),
+      // "empty" would be a lie about a track carrying a preset and no notes — which is exactly
+      // what a `--scope preset` copy produces, and it made a working copy look like a no-op.
+      // The bottom line describes the *sequence*; the preset is the two lines above it.
+      detail: track.trigCount
+        ? `${track.trigCount} trigs${track.lockCount ? ` · ${track.lockCount} locks` : ""}`
+        : track.presetName
+          ? "no trigs"
+          : "empty",
+      occupied: !track.empty,
+      supported: true,
+      ...(track.midi ? { classes: ["midi"] } : {}),
+    })),
+    {
+      selected: inTracks() ? state.selection : [],
+      onClick: (index, event) => {
+        onSlotClick("track", index, event);
+      },
+      drag: { controller: drag, grid: "track" },
+    },
+  );
 
   $("trackTitle").textContent = `${patternName(trackFor)} — tracks 1–${DN2_TRACK_COUNT}`;
 }
@@ -250,37 +246,34 @@ function renderGrid(): void {
   const from = state.bank * 16;
   const to = Math.min(from + 16, device.patternCount);
 
+  const slots = [];
   for (let index = from; index < to; index++) {
     const summary = device.summarise(session.image, index);
-    const cell = document.createElement("button");
-    cell.className = "slot";
-    if (!summary.supported) cell.classList.add("unsupported");
-    else if (summary.occupied) cell.classList.add("occupied");
-    if (index === state.trackFor) cell.classList.add("opened");
-    cell.setAttribute("aria-selected", String(!inTracks() && state.selection.includes(index)));
-
-    const name = summary.supported ? summary.name || "—" : `v${summary.version}`;
-    const detail = summary.supported
-      ? summary.occupied
-        ? `${summary.trigCount} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
-        : "empty"
-      : "unreadable version";
-
-    cell.innerHTML =
-      `<span class="id">${patternName(index)}</span>` +
-      `<span class="nm">${escapeHtml(name)}</span>` +
-      `<span class="tc">${detail}</span>`;
-
-    wireSlot(cell, "pattern", index);
-    grid.append(cell);
+    slots.push({
+      index,
+      id: patternName(index),
+      name: summary.supported ? summary.name || "—" : `v${summary.version}`,
+      detail: summary.supported
+        ? summary.occupied
+          ? `${summary.trigCount} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
+          : "empty"
+        : "unreadable version",
+      occupied: summary.occupied === true,
+      supported: summary.supported,
+    });
   }
+
+  renderSlots(grid, slots, {
+    selected: inTracks() ? [] : state.selection,
+    ...(state.trackFor === undefined ? {} : { opened: state.trackFor }),
+    onClick: (index, event) => {
+      onSlotClick("pattern", index, event);
+    },
+    drag: { controller: drag, grid: "pattern" },
+  });
 
   $("bankTitle").textContent = `Bank ${BANKS[state.bank]} — patterns ${from + 1}–${to}`;
   renderTrackGrid();
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function renderSelection(): void {
@@ -395,55 +388,18 @@ function onSlotClick(level: Level, index: number, event: MouseEvent): void {
 
 // --- drag and drop --------------------------------------------------------------------------
 
-/** The drag in flight. Kept here rather than in `dataTransfer`, which cannot be read on hover. */
-let dragging: Drag | undefined;
-
 /**
- * The cell the cursor is currently over, and what it is.
+ * Drag and drop, through the shared controller.
  *
- * Needed because **a modifier can change without the mouse moving.** `dragover` only fires while
- * the pointer travels, so holding still and pressing Shift would leave the cell saying MOVE while
- * the drop would copy — the one state this feature exists to make impossible. The key handlers
- * below repaint this cell instead.
+ * The plumbing — start, hover, refuse, drop, repaint — lives in `grid.ts` so the expander gets the
+ * same gestures. **What a drop means stays here**: inside one project it is a shuffle, and
+ * `dragrules.ts` decides which. Those rules are hardware-verified and are not moving.
  */
-let hovering: { cell: HTMLElement; level: Level; index: number } | undefined;
-
-/** Modifiers as of the last event of any kind, so a repaint can use them without an event. */
-let modifiers: Modifiers = { shiftKey: false, ctrlKey: false, metaKey: false };
-
-/** Strip the drop decoration from a cell. */
-function clearTarget(cell: HTMLElement): void {
-  cell.classList.remove("target", "move", "copy", "swap");
-  cell.removeAttribute("data-action");
-}
-
-/** Decorate the hovered cell, or clear it when the drop would be refused. */
-function paintTarget(cell: HTMLElement, hint: DropHint | undefined): void {
-  clearTarget(cell);
-  if (!hint) return;
-  cell.classList.add("target", hint.action);
-  // The label is drawn by CSS from the attribute rather than injected as a child, so it cannot
-  // disturb the cell's own content or survive a re-render that rebuilds the grid.
-  cell.setAttribute("data-action", hint.label);
-}
-
-/** Repaint whatever is under the cursor after a modifier changed. */
-function repaintHovered(): void {
-  if (!hovering || !dragging) return;
-  paintTarget(hovering.cell, dropHint(dragging, hovering.level, hovering.index, modifiers));
-}
-
-/** Click, drag and drop for one cell. Both grids go through it, so neither can drift. */
-function wireSlot(cell: HTMLElement, level: Level, index: number): void {
-  cell.addEventListener("click", (event) => {
-    onSlotClick(level, index, event);
-  });
-
-  cell.draggable = true;
-
-  cell.addEventListener("dragstart", (event) => {
+const drag = new GridDrag({
+  onDragStart(grid, index) {
     // Dragging one of several selected slots drags the whole selection; dragging anything else
     // drags just that one, and takes the selection with it so the two never disagree.
+    const level = grid as Level;
     const inSelection = state.level === level && state.selection.includes(index);
     if (!inSelection) {
       state.level = level;
@@ -451,70 +407,36 @@ function wireSlot(cell: HTMLElement, level: Level, index: number): void {
       state.anchor = index;
       render();
     }
-    dragging = { level, indices: [...state.selection] };
-    cell.classList.add("dragging");
-    event.dataTransfer?.setData("text/plain", state.selection.map((i) => nameAt(level, i)).join(" "));
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "all";
-  });
+    return [...state.selection];
+  },
 
-  cell.addEventListener("dragend", () => {
-    dragging = undefined;
-    hovering = undefined;
-    for (const el of document.querySelectorAll<HTMLElement>(".slot.dragging, .slot.target")) {
-      el.classList.remove("dragging");
-      clearTarget(el);
-    }
-    status("");
-  });
-
-  cell.addEventListener("dragover", (event) => {
-    modifiers = event;
-    const hint = dropHint(dragging, level, index, event);
-
-    // A refused drop is simply not accepted, which leaves the browser's own "no" cursor in
-    // place — the clearest possible signal, and one we do not have to draw.
-    if (!hint) {
-      clearTarget(cell);
-      return;
-    }
-
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hint.action === "copy" ? "copy" : "move";
-    }
-    hovering = { cell, level, index };
-    paintTarget(cell, hint);
-    status(
-      `${hint.action} ${dragging!.indices.map((i) => nameAt(level, i)).join(" ")} → ${nameAt(level, index)}` +
+  hintFor(from, grid, index, modifiers) {
+    const level = grid as Level;
+    const hint = dropHint({ level: from.grid as Level, indices: from.indices }, level, index, modifiers);
+    if (!hint) return undefined;
+    return {
+      action: hint.action,
+      label: hint.label,
+      status:
+        `${hint.action} ${from.indices.map((i) => nameAt(from.grid as Level, i)).join(" ")} → ${nameAt(level, index)}` +
         (level === "track" ? scopeSuffix() : "") +
         `  ·  shift = copy, ctrl = swap`,
-    );
-  });
+    };
+  },
 
-  cell.addEventListener("dragleave", () => {
-    if (hovering?.cell === cell) hovering = undefined;
-    clearTarget(cell);
-  });
-
-  cell.addEventListener("drop", (event) => {
-    const action = actionFor(event);
-    const refused = refuseDrop(dragging, level, index, action);
-    hovering = undefined;
-    clearTarget(cell);
+  onDrop(from, grid, index, modifiers) {
+    const level = grid as Level;
+    const action = actionFor(modifiers);
+    const refused = refuseDrop({ level: from.grid as Level, indices: from.indices }, level, index, action);
     if (refused !== undefined) {
-      // Only worth saying when something was actually being dragged; otherwise this is a stray
-      // drop from outside the page and silence is the right response.
-      if (dragging) status(`Not done — ${refused}.`, "warn");
+      status(`Not done — ${refused}.`, "warn");
       return;
     }
-    event.preventDefault();
 
-    const { indices } = dragging!;
+    const { indices } = from;
     const names = indices.map((i) => nameAt(level, i)).join(" ");
-    dragging = undefined;
-
-    // The level is passed explicitly: what was dragged decides what happens, never what
-    // happens to be on screen.
+    // The level is passed explicitly: what was dragged decides what happens, never what happens to
+    // be on screen.
     const suffix = level === "track" ? scopeSuffix() : "";
     const to = nameAt(level, index);
     if (action === "swap") {
@@ -524,8 +446,12 @@ function wireSlot(cell: HTMLElement, level: Level, index: number): void {
     } else {
       run(`move ${names} to ${to}${suffix}`, moveMany(indices, index), level);
     }
-  });
-}
+  },
+
+  onStatus: (message) => {
+    status(message);
+  },
+});
 
 // --- operations ---------------------------------------------------------------------------
 
@@ -1107,9 +1033,8 @@ wireFileInput("file2", true);
 // cell saying MOVE while the drop copies — the exact confusion the labels exist to prevent.
 for (const type of ["keydown", "keyup"] as const) {
   document.addEventListener(type, (event) => {
-    if (!dragging) return;
-    modifiers = event;
-    repaintHovered();
+    if (!drag.dragging) return;
+    drag.repaintHovered(event);
   });
 }
 
