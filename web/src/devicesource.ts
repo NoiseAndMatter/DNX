@@ -29,7 +29,7 @@ import {
   deliver,
   readProjectFromDevice,
   writeChangedRecords,
-} from "../../../src/device/deviceproject.js";
+} from "../../src/device/deviceproject.js";
 import {
   type ApiFrame,
   Code,
@@ -37,18 +37,18 @@ import {
   deviceRequest,
   isApiMessage,
   readDeviceResponse,
-} from "../../../src/device/api.js";
+} from "../../src/device/api.js";
 import {
   type DriveProject,
   imageFrom,
   listProjects,
   readDriveProject,
-} from "../../../src/device/drive.js";
-import { type ApiTransport } from "../../../src/device/storagesession.js";
-import { DeviceSession } from "../../../src/device/session.js";
-import { dumpProductFor } from "../../../src/device/dumprequest.js";
-import { PRODUCT_NAMES } from "../../../src/sysex/devices.js";
-import { layoutFor } from "../../../src/project/dn2image.js";
+} from "../../src/device/drive.js";
+import { type ApiTransport } from "../../src/device/storagesession.js";
+import { DeviceSession } from "../../src/device/session.js";
+import { dumpProductFor } from "../../src/device/dumprequest.js";
+import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
+import { layoutFor } from "../../src/project/dn2image.js";
 
 export class DeviceSourceError extends Error {}
 
