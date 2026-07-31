@@ -108,6 +108,13 @@ interface Destination {
    * behaved almost like the manager's would be worse than none.
    */
   previous?: Uint8Array;
+  /**
+   * Source patterns merged into this destination so far, in the order they landed.
+   *
+   * The expansion report is about **what is in this project**, not what the source could offer, so
+   * it needs to know what actually went in — and nothing else records that.
+   */
+  merged: number[];
 }
 
 let destination: Destination | undefined;
@@ -132,7 +139,6 @@ function stampedName(base: string): string {
 function replan(): void {
   if (!state.source) return;
   state.plan = planExpansion(state.source.image, options());
-  $("plan").innerHTML = renderPlan(state.plan);
   // The device path needs a source too, and a project can be loaded either side of connecting.
   $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
@@ -141,9 +147,56 @@ function replan(): void {
     if (!state.plan.livePatterns.includes(selection[i]!)) selection.splice(i, 1);
   }
   renderSource();
+  // Rendered after the pruning above, so the report never describes a selection that has just
+  // stopped being live.
+  renderReport();
   // The options changed what would be written, so any plan already on screen is now describing
   // something else. Recomputed locally — nothing is sent.
   replanForDevice();
+}
+
+/**
+ * The sounds-on-tracks report, for **what is actually going into the destination**.
+ *
+ * It used to render the whole-project plan unconditionally, so merging four patterns produced a
+ * breakdown of all 128 — describing sounds that were never going anywhere near the destination.
+ *
+ * Now it follows the mode:
+ *
+ * - **whole project** — every live pattern, which is what that mode writes
+ * - **selected patterns** — the patterns already merged in, plus the ones about to be, because
+ *   between choosing and applying the interesting question is what the project is *becoming*
+ *
+ * The scope is a real planning input, not a filter over the output: expansion decides which sounds
+ * get a track and which stay locked across everything in scope, so a report for four patterns has
+ * to be planned for four patterns or it describes a layout the merge will not produce.
+ */
+function renderReport(): void {
+  const image = state.source?.image;
+  if (!image) return;
+
+  const heading = $("reportScope");
+  if (!merging()) {
+    $("plan").innerHTML = renderPlan(state.plan ?? planExpansion(image, options()));
+    heading.textContent = "— the whole project";
+    return;
+  }
+
+  const scope = [...new Set([...(destination?.merged ?? []), ...selection])].sort((a, b) => a - b);
+  if (scope.length === 0) {
+    $("plan").innerHTML =
+      `<p class="hint">Select patterns and drag them onto the destination — this will show how ` +
+      `their sounds are laid out.</p>`;
+    heading.textContent = "";
+    return;
+  }
+
+  $("plan").innerHTML = renderPlan(planExpansion(image, { ...options(), patterns: scope }));
+  const inPlace = destination?.merged.length ?? 0;
+  heading.textContent =
+    inPlace === scope.length
+      ? `— ${scope.length} pattern(s) merged: ${scope.map(patternName).join(" ")}`
+      : `— ${scope.map(patternName).join(" ")} (${scope.length - inPlace} not applied yet)`;
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -173,7 +226,7 @@ async function loadTemplate(file: File): Promise<void> {
 function useTemplate(template: LoadedProject, asDestination: boolean): void {
   state.template = template;
   if (asDestination) {
-    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName });
+    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [] });
   }
 }
 
@@ -281,7 +334,7 @@ async function fillFromBlank(): Promise<void> {
   const blank = picked ?? (await loadEmbeddedBlank());
   if (!picked) state.template = blank;
 
-  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName });
+  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName, merged: [] });
   status(`Destination: a blank project from ${blank.fileName}. Merge into it, then export.`);
 }
 
@@ -355,7 +408,7 @@ async function readDestination(): Promise<void> {
     if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
   });
 
-  setDestination({ image, origin: "device", label: connected.name, handle });
+  setDestination({ image, origin: "device", label: connected.name, handle, merged: [] });
   status(
     handle.problems.length > 0
       ? `Read with problems: ${handle.problems.join("; ")}. Read again before writing.`
@@ -400,13 +453,19 @@ function replanForDevice(): void {
  */
 function applyToDestination(): void {
   if (!destination || !device.image) return;
-  destination = { ...destination, previous: destination.image, image: device.image };
+  destination = {
+    ...destination,
+    previous: destination.image,
+    image: device.image,
+    merged: merging() ? [...destination.merged, ...selection] : [...(state.plan?.livePatterns ?? [])],
+  };
   const more = destination.origin === "device" ? "Write it back, or merge more first." : "Merge more, or export.";
   // The plan described a change *from* the old destination. Now that it is the destination, the
   // same plan is a no-op — so it is recomputed rather than left saying something untrue.
   renderDestination();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
   status(`Applied. ${more}`);
 }
 
@@ -416,6 +475,7 @@ function undoApply(): void {
   renderDestination();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
   status("Undone — back to the destination as it was before the last apply.");
 }
 
@@ -609,6 +669,7 @@ const drag = new GridDrag({
       selection.length = 0;
       selection.push(index);
       renderSource();
+      renderReport();
     }
     return [...selection];
   },
@@ -711,6 +772,7 @@ function renderSource(): void {
         selection.push(...next.selection);
         anchor = next.anchor;
         renderSource();
+        renderReport();
         replanForDevice();
       },
       drag: { controller: drag, grid: "source" },
@@ -791,4 +853,5 @@ function syncMode(): void {
   renderSource();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
 }

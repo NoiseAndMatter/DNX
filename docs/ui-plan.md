@@ -350,6 +350,25 @@ library is not in the project file and its format is unknown, so it needs SysEx 
 3. **Publish target** — the CI config targets GitLab Pages while the repository is on GitHub. Not
    a question so much as a twenty-minute fix nobody has done.
 
+## The expansion report follows the mode — 2026-07-31
+
+**Reported by the user:** the *Sounds on tracks* breakdown showed the whole project even with
+selected patterns ticked. It should show the expansion of the patterns already dragged into the
+DN2; only whole-project mode should break down the whole project.
+
+It was not only a display bug. The report rendered `planExpansion(source)` unconditionally, and
+`planPatternMerge` converted with a whole-project plan too — so the panel was accurate about a
+conversion nobody had asked for, and the merge allocated tracks against 128 patterns' worth of
+competition. Both now scope the plan to the patterns in play; see `docs/expansion-design.md`.
+
+What the panel shows, by mode:
+
+- **whole project** — every live pattern, with the heading saying so.
+- **selected patterns** — the merged patterns plus the current selection, so the panel answers
+  *what is this project becoming* while you are choosing rather than going blank until you apply.
+  The heading names the patterns and how many are not applied yet.
+- **nothing chosen yet** — a hint to drag, rather than a stale breakdown.
+
 ## Sequencing
 
 1. ~~**The spine.**~~ **Done, CLI only** (`npm run rearrange`). Device-agnostic librarian, pattern

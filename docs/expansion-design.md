@@ -383,6 +383,26 @@ degrades gracefully rather than dropping music.
 Lossiness reporting is a first-class output. The tool must say what stayed behind and why,
 never silently drop trigs.
 
+## Scope: which patterns a plan is for
+
+`planExpansion(image, { patterns })` plans for a subset of the source project. Omitted, it plans
+for all 128, which is what whole-project conversion wants.
+
+**This is a planning input, not a filter over the result.** Expansion decides which sounds get a
+track and which stay sound-locked, and it decides that across everything in scope. A plan made for
+the whole project can hand track 9 to a sound used only in pattern 99, while a sound in the four
+patterns you actually asked for overflows and stays locked — so a report or a merge built by
+subsetting a whole-project plan describes a layout that is not the one it will produce.
+
+Two callers depend on it:
+
+- `planPatternMerge` plans for the patterns being merged, unless given an explicit plan. Merging
+  four patterns should lay out four patterns' worth of sounds, not compete with 124 that are
+  staying behind.
+- The expander's **Sounds on tracks** report plans for what is in the destination: every live
+  pattern in whole-project mode, and the patterns already merged plus the ones selected in
+  selected-patterns mode.
+
 ## Open questions
 
 - **Voice budget.** The DN1 has 8 voices and the DN2 has 16, so there is headroom, but

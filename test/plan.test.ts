@@ -232,3 +232,61 @@ test("compact mode promotes at least as much as the global map", { skip }, () =>
     );
   }
 });
+
+/**
+ * A plan can be scoped to a subset of patterns.
+ *
+ * This is the input the expander's report and the pattern merge both need. It is a **planning**
+ * input, not a filter over the result: tracks are allocated across everything in scope, so a plan
+ * made for the whole project can hand a track to a sound used only in pattern 99 while a sound in
+ * the four patterns you actually asked for overflows and stays locked.
+ */
+test("a scoped plan considers only the patterns it was given", { skip }, () => {
+  for (const { name, image } of all) {
+    const whole = planExpansion(image);
+    if (whole.livePatterns.length < 2) continue;
+
+    const one = whole.livePatterns[0]!;
+    const scoped = planExpansion(image, { patterns: [one] });
+
+    assert.deepEqual(scoped.livePatterns, [one], `${name}: scope leaked other patterns`);
+    for (const a of scoped.assignments) {
+      assert.ok(
+        a.usage.patterns.includes(one),
+        `${name}: T${a.dn2Track} holds ${a.usage.name}, which pattern ${one} never uses`,
+      );
+    }
+    // Everything in scope is still accounted for: promoted to a track or reported as overflow.
+    for (const u of scoped.overflow) {
+      assert.ok(u.patterns.includes(one), `${name}: overflow lists a sound outside the scope`);
+    }
+    assert.ok(
+      scoped.assignments.length + scoped.overflow.length <= whole.assignments.length + whole.overflow.length,
+      `${name}: scoping to one pattern found more sounds than the whole project has`,
+    );
+  }
+});
+
+test("scoping changes the layout when the project needs more tracks than it has", { skip }, () => {
+  // The point of the feature. If no project in the corpus overflows there is nothing to prove
+  // here, so this asserts it found a case rather than passing on an empty search.
+  let proved = false;
+  for (const { image } of all) {
+    const whole = planExpansion(image);
+    if (whole.overflow.length === 0 || whole.livePatterns.length < 2) continue;
+    for (const p of whole.livePatterns) {
+      const scoped = planExpansion(image, { patterns: [p] });
+      const wholeTracks = new Map(whole.assignments.map((a) => [a.usage.name, a.dn2Track]));
+      const moved = scoped.assignments.some((a) => wholeTracks.get(a.usage.name) !== a.dn2Track);
+      const promoted = scoped.assignments.some((a) =>
+        whole.overflow.some((o) => o.name === a.usage.name && o.poolSlot === a.usage.poolSlot),
+      );
+      if (moved || promoted) {
+        proved = true;
+        break;
+      }
+    }
+    if (proved) break;
+  }
+  assert.ok(proved, "no project in the corpus overflows, so the scoped plan could not be shown to differ");
+});

@@ -32,6 +32,7 @@
 import { type ConversionReport } from "./convert.js";
 import { convertProject } from "./convert.js";
 import { type ExpansionPlan } from "./types.js";
+import { planExpansion } from "./plan.js";
 import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
 import { PATTERN, TRACK, TRACK_COUNT } from "../project/dn2pattern.js";
 import { DN2_POOL_OFFSET, POOL_SOUND_COUNT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
@@ -140,9 +141,12 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     );
   }
 
-  const { image: converted, report } = convertProject(source, destination, {
-    ...(options.plan === undefined ? {} : { plan: options.plan }),
-  });
+  // **Planned for the patterns being merged, not for the project they came from.** Expansion
+  // decides which sounds get a track and which stay locked across everything in scope, so a
+  // whole-project plan can hand track 9 to a sound used only in pattern 99 while a sound in these
+  // four overflows. The caller may still supply its own plan; this is the default.
+  const plan = options.plan ?? planExpansion(source, { patterns: [...patterns].sort((a, b) => a - b) });
+  const { image: converted, report } = convertProject(source, destination, { plan });
 
   const image = Uint8Array.from(destination);
   const landingSlots = patterns.map((_, i) => landing + i);

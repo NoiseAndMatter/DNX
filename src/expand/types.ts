@@ -73,6 +73,19 @@ export type MixedPolicy = "percussive-first" | "melodic-first" | "none";
 
 export interface PlanOptions {
   /**
+   * Which source patterns the plan is for. Defaults to all 128.
+   *
+   * **This is not a display filter.** Expansion decides which sounds get a track and which stay
+   * locked, and it decides that across everything in scope — so a plan made for 128 patterns can
+   * give track 9 to a sound used only in pattern 99 while a sound in the four you actually wanted
+   * overflows and stays behind.
+   *
+   * A merge of four patterns must therefore be planned for those four. `collectSoundUsage` has
+   * always accepted a subset; `planExpansion` simply never passed one.
+   */
+  patterns?: readonly number[];
+
+  /**
    * Order in which DN1 synth tracks have their locked sounds considered, most important
    * first. Only affects tie-breaking and which sounds lose out on overflow.
    */
