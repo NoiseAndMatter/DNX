@@ -106,6 +106,15 @@ export interface ConvertWarning {
   kind: "parameter" | "condition" | "sound" | "capacity";
   /** Pattern index, when the warning is pattern-scoped. */
   pattern?: number;
+  /**
+   * Source pool slot, when the warning is about a sound in the project's pool.
+   *
+   * Scoped the same way `pattern` is, and for the same reason: a caller that converts the whole
+   * project to take four patterns out of it has to tell the notes about those four from the
+   * hundreds about everything staying behind. The slot is in the message text as well, but no
+   * consumer should have to parse prose to filter.
+   */
+  poolSlot?: number;
   track?: number;
   step?: number;
   message: string;
@@ -708,7 +717,7 @@ function writeSoundPool(
     out.set(sound, base + slot * DN2_SOUND_SIZE);
     report.soundsConverted++;
     for (const w of warnings) {
-      report.warnings.push({ kind: "sound", message: `pool slot ${slot}: ${describeSoundWarning(w)}` });
+      report.warnings.push({ kind: "sound", poolSlot: slot, message: `pool slot ${slot}: ${describeSoundWarning(w)}` });
     }
   }
 }

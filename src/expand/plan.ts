@@ -46,7 +46,10 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     // layout decision, not a capacity one.
     useEmptySourceTracks = options.compactPerPattern ?? false,
   } = options;
-  const { usage, livePatterns, usedMidiTracks } = collectSoundUsage(image);
+  const { usage, livePatterns, usedMidiTracks } =
+    options.patterns === undefined
+      ? collectSoundUsage(image)
+      : collectSoundUsage(image, options.patterns);
 
   const unusedSourceTracks = useEmptySourceTracks ? findUnusedSynthTracks(image) : [];
   const destinations =

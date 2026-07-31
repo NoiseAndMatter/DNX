@@ -34,7 +34,13 @@ import {
   writeBack,
 } from "./devicesource.js";
 import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
-import { MergeRefused, describeMerge, planPatternMerge, type MergePlan } from "../../src/expand/merge.js";
+import {
+  MergeRefused,
+  describeMerge,
+  planPatternMerge,
+  type MergeNote,
+  type MergePlan,
+} from "../../src/expand/merge.js";
 import { patternName } from "../../src/sheet/naming.js";
 import {
   GridDrag,
@@ -87,6 +93,17 @@ interface DeviceState {
 
 const device: DeviceState = {};
 
+/**
+ * What a plan says about itself: the lines that matter, and the conversion notes if it has any.
+ *
+ * The two are separate all the way to the DOM. Merged into one list they were indistinguishable,
+ * and the four lines somebody needs lost to the thousand they do not.
+ */
+interface Described {
+  lines: string[];
+  notes?: MergeNote[];
+}
+
 interface Destination {
   /** The project as it stands, including every merge applied so far. */
   image: Uint8Array;
@@ -108,6 +125,13 @@ interface Destination {
    * behaved almost like the manager's would be worse than none.
    */
   previous?: Uint8Array;
+  /**
+   * Source patterns merged into this destination so far, in the order they landed.
+   *
+   * The expansion report is about **what is in this project**, not what the source could offer, so
+   * it needs to know what actually went in — and nothing else records that.
+   */
+  merged: number[];
 }
 
 let destination: Destination | undefined;
@@ -132,7 +156,6 @@ function stampedName(base: string): string {
 function replan(): void {
   if (!state.source) return;
   state.plan = planExpansion(state.source.image, options());
-  $("plan").innerHTML = renderPlan(state.plan);
   // The device path needs a source too, and a project can be loaded either side of connecting.
   $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
@@ -141,9 +164,69 @@ function replan(): void {
     if (!state.plan.livePatterns.includes(selection[i]!)) selection.splice(i, 1);
   }
   renderSource();
+  // Rendered after the pruning above, so the report never describes a selection that has just
+  // stopped being live.
+  renderReport();
   // The options changed what would be written, so any plan already on screen is now describing
   // something else. Recomputed locally — nothing is sent.
   replanForDevice();
+}
+
+/**
+ * An expansion plan for these patterns and the options currently ticked.
+ *
+ * One helper, because the report and the merge must not disagree: a panel describing one layout
+ * beside a button that produces another is worse than no panel.
+ */
+function planFor(patterns: readonly number[]): ExpansionPlan {
+  return planExpansion(state.source!.image, {
+    ...options(),
+    patterns: [...patterns].sort((a, b) => a - b),
+  });
+}
+
+/**
+ * The sounds-on-tracks report, for **what is actually going into the destination**.
+ *
+ * It used to render the whole-project plan unconditionally, so merging four patterns produced a
+ * breakdown of all 128 — describing sounds that were never going anywhere near the destination.
+ *
+ * Now it follows the mode:
+ *
+ * - **whole project** — every live pattern, which is what that mode writes
+ * - **selected patterns** — the patterns already merged in, plus the ones about to be, because
+ *   between choosing and applying the interesting question is what the project is *becoming*
+ *
+ * The scope is a real planning input, not a filter over the output: expansion decides which sounds
+ * get a track and which stay locked across everything in scope, so a report for four patterns has
+ * to be planned for four patterns or it describes a layout the merge will not produce.
+ */
+function renderReport(): void {
+  const image = state.source?.image;
+  if (!image) return;
+
+  const heading = $("reportScope");
+  if (!merging()) {
+    $("plan").innerHTML = renderPlan(state.plan ?? planExpansion(image, options()));
+    heading.textContent = "— the whole project";
+    return;
+  }
+
+  const scope = [...new Set([...(destination?.merged ?? []), ...selection])].sort((a, b) => a - b);
+  if (scope.length === 0) {
+    $("plan").innerHTML =
+      `<p class="hint">Select patterns and drag them onto the destination — this will show how ` +
+      `their sounds are laid out.</p>`;
+    heading.textContent = "";
+    return;
+  }
+
+  $("plan").innerHTML = renderPlan(planFor(scope));
+  const inPlace = destination?.merged.length ?? 0;
+  heading.textContent =
+    inPlace === scope.length
+      ? `— ${scope.length} pattern(s) merged: ${scope.map(patternName).join(" ")}`
+      : `— ${scope.map(patternName).join(" ")} (${scope.length - inPlace} not applied yet)`;
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -173,7 +256,7 @@ async function loadTemplate(file: File): Promise<void> {
 function useTemplate(template: LoadedProject, asDestination: boolean): void {
   state.template = template;
   if (asDestination) {
-    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName });
+    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [] });
   }
 }
 
@@ -281,7 +364,7 @@ async function fillFromBlank(): Promise<void> {
   const blank = picked ?? (await loadEmbeddedBlank());
   if (!picked) state.template = blank;
 
-  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName });
+  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName, merged: [] });
   status(`Destination: a blank project from ${blank.fileName}. Merge into it, then export.`);
 }
 
@@ -355,7 +438,7 @@ async function readDestination(): Promise<void> {
     if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
   });
 
-  setDestination({ image, origin: "device", label: connected.name, handle });
+  setDestination({ image, origin: "device", label: connected.name, handle, merged: [] });
   status(
     handle.problems.length > 0
       ? `Read with problems: ${handle.problems.join("; ")}. Read again before writing.`
@@ -373,9 +456,9 @@ async function readDestination(): Promise<void> {
 function replanForDevice(): void {
   if (!destination || !state.source) return;
 
-  let lines: string[];
+  let described: Described;
   try {
-    lines = merging() ? planMerge(destination.image) : planWhole(destination.image);
+    described = merging() ? planMerge(destination.image) : planWhole(destination.image);
   } catch (error) {
     // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
     // where the plan would have been, and the apply button has to go with it.
@@ -387,8 +470,29 @@ function replanForDevice(): void {
     return;
   }
 
-  $("devicePlan").innerHTML = `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
+  $("devicePlan").innerHTML =
+    `<ul>${described.lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` + renderNotes(described.notes);
   $<HTMLButtonElement>("applyMerge").disabled = device.image === undefined;
+}
+
+/**
+ * Conversion notes, **folded away**.
+ *
+ * These used to be printed straight into this strip — over a thousand `<li>`s of "inferred at
+ * DN1+173 -> DN2+229", which grew the sticky bar past the height of the page and drew the rest of
+ * the tool underneath it. They are diagnostics about the field mapping, worth having and worth
+ * nobody's whole screen, so they live behind a disclosure with their counts folded in.
+ */
+function renderNotes(notes: readonly MergeNote[] | undefined): string {
+  if (!notes || notes.length === 0) return "";
+  const total = notes.reduce((n, note) => n + note.count, 0);
+  const items = notes
+    .map((n) => `<li>${escapeHtml(n.message)}${n.count > 1 ? ` <b>× ${n.count}</b>` : ""}</li>`)
+    .join("");
+  return (
+    `<details class="notes"><summary>${total} conversion note(s), ` +
+    `${notes.length} distinct</summary><ul>${items}</ul></details>`
+  );
 }
 
 /**
@@ -400,13 +504,19 @@ function replanForDevice(): void {
  */
 function applyToDestination(): void {
   if (!destination || !device.image) return;
-  destination = { ...destination, previous: destination.image, image: device.image };
+  destination = {
+    ...destination,
+    previous: destination.image,
+    image: device.image,
+    merged: merging() ? [...destination.merged, ...selection] : [...(state.plan?.livePatterns ?? [])],
+  };
   const more = destination.origin === "device" ? "Write it back, or merge more first." : "Merge more, or export.";
   // The plan described a change *from* the old destination. Now that it is the destination, the
   // same plan is a no-op — so it is recomputed rather than left saying something untrue.
   renderDestination();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
   status(`Applied. ${more}`);
 }
 
@@ -416,6 +526,7 @@ function undoApply(): void {
   renderDestination();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
   status("Undone — back to the destination as it was before the last apply.");
 }
 
@@ -511,8 +622,8 @@ async function connect(): Promise<void> {
  * The destination is still read and used as the template — expansion is a transplant, and a field
  * nobody writes inherits the destination's value.
  */
-function planWhole(destination: Uint8Array): string[] {
-  if (!state.source) return [];
+function planWhole(destination: Uint8Array): Described {
+  if (!state.source) return { lines: [] };
   const plan = planDeviceExpand({
     source: state.source.image,
     destination,
@@ -525,7 +636,7 @@ function planWhole(destination: Uint8Array): string[] {
       ? "The device already holds this conversion — nothing to write."
       : `${plan.changedSlots.length} pattern slot(s) would change, about ${Math.round(plan.estimatedBytes / 1024)} kB.`,
   );
-  return describeDeviceExpand(plan);
+  return { lines: describeDeviceExpand(plan) };
 }
 
 /**
@@ -536,8 +647,8 @@ function planWhole(destination: Uint8Array): string[] {
  * answer. `planPatternMerge` is asked twice in that case — once to find out, once with the answer —
  * which costs milliseconds and keeps the consent explicit.
  */
-function planMerge(destination: Uint8Array): string[] {
-  if (!state.source) return [];
+function planMerge(destination: Uint8Array): Described {
+  if (!state.source) return { lines: [] };
   if (selection.length === 0) throw new DeviceSourceError("no patterns selected");
 
   const base = {
@@ -545,7 +656,10 @@ function planMerge(destination: Uint8Array): string[] {
     patterns: selection,
     destination,
     landing,
-    ...(state.plan === undefined ? {} : { plan: state.plan }),
+    // Scoped to the selection, **not** `state.plan`. That one is the whole-project plan, and
+    // handing it over made the merge allocate tracks against 128 patterns of competition — the
+    // layout it produced was not the one the panel above described, and not the one asked for.
+    plan: planFor(selection),
   };
 
   let plan: MergePlan;
@@ -562,7 +676,7 @@ function planMerge(destination: Uint8Array): string[] {
 Go ahead anyway?`)) {
       device.image = undefined;
       status("Not planned.");
-      return [error.message, "Not planned."];
+      return { lines: [error.message, "Not planned."] };
     }
     plan = planPatternMerge({
       ...base,
@@ -573,7 +687,7 @@ Go ahead anyway?`)) {
 
   device.image = plan.image;
   status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
-  return describeMerge(plan);
+  return { lines: describeMerge(plan), notes: plan.notes };
 }
 
 // --- the two grids ------------------------------------------------------------------------------
@@ -609,6 +723,7 @@ const drag = new GridDrag({
       selection.length = 0;
       selection.push(index);
       renderSource();
+      renderReport();
     }
     return [...selection];
   },
@@ -711,6 +826,7 @@ function renderSource(): void {
         selection.push(...next.selection);
         anchor = next.anchor;
         renderSource();
+        renderReport();
         replanForDevice();
       },
       drag: { controller: drag, grid: "source" },
@@ -791,4 +907,5 @@ function syncMode(): void {
   renderSource();
   renderDestinationGrid();
   replanForDevice();
+  renderReport();
 }
