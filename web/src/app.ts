@@ -19,6 +19,10 @@ import {
   type LoadedProject,
 } from "./project.js";
 import { renderPlan, renderSummary } from "./render.js";
+import { $, escapeHtml, statusBar } from "./dom.js";
+
+// The expander's stylesheet uses a bare `#status.error` rather than `.status.error`.
+const status = statusBar("status", "");
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -76,18 +80,6 @@ interface DeviceState {
 }
 
 const device: DeviceState = {};
-
-const $ = <T extends HTMLElement>(id: string): T => {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`missing element #${id}`);
-  return element as T;
-};
-
-const status = (message: string, kind: "info" | "error" = "info"): void => {
-  const bar = $("status");
-  bar.textContent = message;
-  bar.className = kind;
-};
 
 function options() {
   return {
@@ -538,6 +530,3 @@ async function writeToDevice(): Promise<void> {
   }
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-}
