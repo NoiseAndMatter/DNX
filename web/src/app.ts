@@ -18,7 +18,7 @@ import {
   openProject,
   type LoadedProject,
 } from "./project.js";
-import { renderPlan, renderSummary } from "./render.js";
+import { renderPlan } from "./render.js";
 import { $, escapeHtml, statusBar } from "./dom.js";
 
 // The expander's stylesheet uses a bare `#status.error` rather than `.status.error`.
@@ -33,8 +33,19 @@ import {
 } from "./devicesource.js";
 import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
 import { MergeRefused, describeMerge, planPatternMerge, type MergePlan } from "../../src/expand/merge.js";
-import { patternIndex, patternName } from "../../src/sheet/naming.js";
-import { DN2_DEVICE } from "../../src/librarian/device.js";
+import { patternName } from "../../src/sheet/naming.js";
+import {
+  GridDrag,
+  bankSlots,
+  nextSelection,
+  renderBanks,
+  renderGrid as renderSlots,
+} from "./grid.js";
+import { DN1_DEVICE, DN2_DEVICE } from "../../src/librarian/device.js";
+
+/** Both families hold 128 patterns; the constants are named so the grids read as intended. */
+const DN1_PATTERN_COUNT = 128;
+const DN2_PATTERN_COUNT = 128;
 import { ProductId } from "../../src/sysex/devices.js";
 
 interface State {
@@ -120,7 +131,6 @@ function replan(): void {
   if (!state.source) return;
   state.plan = planExpansion(state.source.image, options());
   $("plan").innerHTML = renderPlan(state.plan);
-  $<HTMLButtonElement>("export").disabled = !state.template;
   // The device path needs a source too, and a project can be loaded either side of connecting.
   $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
@@ -128,8 +138,7 @@ function replan(): void {
   for (let i = selection.length - 1; i >= 0; i--) {
     if (!state.plan.livePatterns.includes(selection[i]!)) selection.splice(i, 1);
   }
-  renderPicker();
-  updateLandingHint();
+  renderSource();
   // The options changed what would be written, so any plan already on screen is now describing
   // something else. Recomputed locally — nothing is sent.
   replanForDevice();
@@ -140,23 +149,30 @@ async function loadSource(file: File): Promise<void> {
   state.source = await openProject(file);
   const name = readProjectName(state.source.image);
   const live = new Set<number>();
-  $("sourceInfo").innerHTML = renderSummary(name, file.name, live.size);
   replan();
-  $("sourceInfo").innerHTML = renderSummary(name, file.name, state.plan?.livePatterns.length ?? 0);
-  status(`Loaded ${file.name}.`);
+  $("sourceInfo").hidden = false;
+  $("sourceInfo").textContent = `${name} · ${file.name}`;
+  status(`Loaded ${file.name}. Pick a destination, then drag patterns onto it.`);
 }
 
 async function loadTemplate(file: File): Promise<void> {
   status(`Reading template ${file.name}…`);
-  useTemplate(await openProject(file));
+  useTemplate(await openProject(file), true);
   status(`Template ${file.name} ready.`);
 }
 
-function useTemplate(template: LoadedProject, note = ""): void {
+/**
+ * Adopt a Digitone II project.
+ *
+ * It plays two roles and they are not in tension: it is the **donor** every device read needs for
+ * the ~0.49% no dump carries, and — when picked deliberately rather than found on the server — it
+ * is a **destination** to merge into. The third way to fill one, beside a blank and a device.
+ */
+function useTemplate(template: LoadedProject, asDestination: boolean): void {
   state.template = template;
-  $("templateInfo").innerHTML =
-    renderSummary(projectName(template.image), template.fileName, 0) + note;
-  $<HTMLButtonElement>("export").disabled = !state.source;
+  if (asDestination) {
+    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName });
+  }
 }
 
 /**
@@ -169,37 +185,11 @@ function useTemplate(template: LoadedProject, note = ""): void {
 async function adoptServedTemplate(): Promise<void> {
   const served = await fetchServedTemplate();
   if (!served) return;
-  useTemplate(served, `<div class="info">Found by <code>npm run web</code>. Pick a file to override.</div>`);
+  // Found on the server: the donor, not a destination. Choosing a destination stays deliberate.
+  useTemplate(served, false);
   status(`Template ${served.fileName} loaded automatically. Pick a Digitone 1 project.`);
 }
 
-async function exportProject(): Promise<void> {
-  if (!state.source || !state.template || !state.plan) return;
-
-  const base = readProjectName(state.source.image);
-  const name = stampedName(base);
-  status(`Converting as "${name}"…`);
-
-  const { image, report } = convertProject(state.source.image, state.template.image, {
-    plan: state.plan,
-    projectName: name,
-  });
-
-  // A converted project is a new project and gets its own identity rather than inheriting the
-  // template's — otherwise every file exported from here claims to be the template. Minted at
-  // the point a file is authored, not inside convertProject, which must stay byte-identical to
-  // Elektron's importer.
-  writeProjectId(image, mintProjectId());
-
-  const blob = await buildProjectBlob(state.template, image);
-  download(blob, `${base.replace(/[^\w -]/g, "_")}_EXPANDED.dn2prj`);
-
-  const dropped = report.warnings.filter((w) => !w.message.includes("interpolated")).length;
-  status(
-    `Exported "${name}": ${report.patternsWritten} patterns, ${report.trigsWritten} trigs, ` +
-      `${report.trigsPromoted} promoted` + (dropped ? `, ${dropped} field(s) reported` : ""),
-  );
-}
 
 function wireFilePicker(inputId: string, load: (file: File) => Promise<void>): void {
   $<HTMLInputElement>(inputId).addEventListener("change", (event) => {
@@ -213,13 +203,6 @@ wireFilePicker("sourceFile", loadSource);
 wireFilePicker("templateFile", loadTemplate);
 for (const id of ["compact", "freeMidi", "rules", "aggregate"]) $(id).addEventListener("change", replan);
 for (const id of ["modeWhole", "modeSelect"]) $(id).addEventListener("change", syncMode);
-$("landing").addEventListener("input", () => {
-  updateLandingHint();
-  replanForDevice();
-});
-$("export").addEventListener("click", () => {
-  exportProject().catch((error: unknown) => status(String(error instanceof Error ? error.message : error), "error"));
-});
 
 syncMode();
 status("Pick a Digitone 1 project, and a Digitone II project to use as the template.");
@@ -302,7 +285,7 @@ async function fillFromBlank(): Promise<void> {
 function setDestination(next: Destination): void {
   destination = next;
   renderDestination();
-  updateLandingHint();
+  renderDestinationGrid();
   replanForDevice();
 }
 
@@ -402,7 +385,7 @@ function applyToDestination(): void {
   // The plan described a change *from* the old destination. Now that it is the destination, the
   // same plan is a no-op — so it is recomputed rather than left saying something untrue.
   renderDestination();
-  updateLandingHint();
+  renderDestinationGrid();
   replanForDevice();
   status(`Applied. ${more}`);
 }
@@ -411,7 +394,7 @@ function undoApply(): void {
   if (!destination?.previous) return;
   destination = { ...destination, image: destination.previous, previous: undefined };
   renderDestination();
-  updateLandingHint();
+  renderDestinationGrid();
   replanForDevice();
   status("Undone — back to the destination as it was before the last apply.");
 }
@@ -473,96 +456,9 @@ async function writeToDevice(): Promise<void> {
   }
 }
 
-/**
- * The pattern picker: **live patterns only**.
- *
- * 128 boxes of which eleven matter is a worse question than eleven boxes, and `planExpansion`
- * already knows which patterns hold anything. Click order is landing order, so each selected
- * button carries its position.
- */
-function renderPicker(): void {
-  const pick = $("pick");
-  pick.innerHTML = "";
-  const live = state.plan?.livePatterns ?? [];
 
-  if (live.length === 0) {
-    pick.innerHTML = `<p class="muted">Load a Digitone 1 project to choose patterns.</p>`;
-    return;
-  }
 
-  for (const index of live) {
-    const button = document.createElement("button");
-    const at = selection.indexOf(index);
-    button.type = "button";
-    button.setAttribute("aria-pressed", String(at >= 0));
-    button.innerHTML = patternName(index) + (at >= 0 ? `<span class="ord">${at + 1}</span>` : "");
-    button.addEventListener("click", () => {
-      // Clicking a chosen pattern removes it, and the numbers behind it close up — otherwise the
-      // only way to fix a mis-click is to clear everything.
-      if (at >= 0) selection.splice(at, 1);
-      else selection.push(index);
-      renderPicker();
-      updateLandingHint();
-      replanForDevice();
-    });
-    pick.append(button);
-  }
-}
 
-/** Say where the selection would land, before anything is planned. */
-function updateLandingHint(): void {
-  const hint = $("landingHint");
-  if (selection.length === 0) {
-    hint.textContent = "Nothing selected.";
-    return;
-  }
-  const landing = landingSlot();
-  if (landing === undefined) {
-    hint.textContent = "Not a pattern slot — try A1, B12, H16.";
-    return;
-  }
-  const last = landing + selection.length - 1;
-  if (last > 127) {
-    hint.textContent = `${selection.length} pattern(s) from ${patternName(landing)} would run past H16.`;
-    return;
-  }
-
-  const range = `${selection.length} pattern(s) → ${patternName(landing)}…${patternName(last)}`;
-
-  // **What is actually in those slots**, once the destination has been read. Choosing a landing
-  // slot blind and discovering it was occupied from a refusal is the wrong way round: the
-  // information exists the moment the device has been read, and this is where it is wanted.
-  if (!destination) {
-    hint.textContent = `${range}. Pick a destination to see what is in those slots.`;
-    return;
-  }
-
-  const occupied: string[] = [];
-  for (let slot = landing; slot <= last; slot++) {
-    const summary = DN2_DEVICE.summarise(destination.image, slot);
-    if (summary.occupied) occupied.push(`${patternName(slot)}${summary.name ? ` ${summary.name}` : ""}`);
-  }
-  hint.textContent =
-    occupied.length === 0
-      ? `${range} — all empty.`
-      : `${range} — ${occupied.length} occupied: ${occupied.slice(0, 4).join(", ")}${occupied.length > 4 ? "…" : ""}`;
-}
-
-/** The landing slot, or undefined when the box does not name one. */
-function landingSlot(): number | undefined {
-  try {
-    return patternIndex($<HTMLInputElement>("landing").value.trim());
-  } catch {
-    return undefined;
-  }
-}
-
-function syncMode(): void {
-  $("selectMode").hidden = !merging();
-  renderPicker();
-  updateLandingHint();
-  replanForDevice();
-}
 
 function reportDeviceError(error: unknown): void {
   const message = error instanceof DeviceSourceError || error instanceof Error ? error.message : String(error);
@@ -585,9 +481,6 @@ async function connect(): Promise<void> {
   }
 
   device.connected = connected;
-  $("deviceInfo").innerHTML =
-    `<strong>${escapeHtml(connected.name)}</strong> connected. Its currently loaded project is the ` +
-    `destination — nothing is permanent until SAVE PROJECT on the device.`;
   $<HTMLButtonElement>("fromDevice").disabled = false;
   status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
 }
@@ -625,8 +518,6 @@ function planWhole(destination: Uint8Array): string[] {
  */
 function planMerge(destination: Uint8Array): string[] {
   if (!state.source) return [];
-  const landing = landingSlot();
-  if (landing === undefined) throw new DeviceSourceError("the landing slot is not a pattern — try A1, B12, H16");
   if (selection.length === 0) throw new DeviceSourceError("no patterns selected");
 
   const base = {
@@ -663,4 +554,220 @@ Go ahead anyway?`)) {
   device.image = plan.image;
   status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
   return describeMerge(plan);
+}
+
+// --- the two grids ------------------------------------------------------------------------------
+//
+// Source on the left, destination on the right, and the same grid the manager uses for both.
+//
+// This page used to pick patterns from a row of pills and type a landing slot into a text box —
+// two tools answering *"which slots?"* in two different languages, and the typed one made you
+// choose blind. Now you select on the left and **drag onto the slot you want**, with occupancy,
+// names and conflicts visible before the drop.
+//
+// Everything visual comes from `dnx.css` and `grid.ts`. Nothing here draws a cell.
+
+/** Which bank each grid is showing. Independent: the source's A is not the destination's A. */
+let sourceBank = 0;
+let destinationBank = 0;
+
+/**
+ * Drag from the source grid onto the destination grid.
+ *
+ * The drop **chooses the landing slot** — that is the whole gesture. What lands is the current
+ * selection, in click order, starting at the slot dropped on.
+ *
+ * Refused rather than allowed for anything else: dropping inside one grid means nothing here, and
+ * a gesture that silently does nothing is worse than one the browser marks as impossible.
+ */
+const drag = new GridDrag({
+  onDragStart(grid, index) {
+    if (grid !== "source") return [];
+    // Dragging an unselected pattern drags just that one, and takes the selection with it so the
+    // two never disagree about what is happening.
+    if (!selection.includes(index)) {
+      selection.length = 0;
+      selection.push(index);
+      renderSource();
+    }
+    return [...selection];
+  },
+
+  hintFor(from, grid, index) {
+    if (from.grid !== "source" || grid !== "destination" || from.indices.length === 0) return undefined;
+    if (!destination) return undefined;
+
+    const last = index + from.indices.length - 1;
+    if (last >= DN2_PATTERN_COUNT) {
+      return undefined;
+    }
+
+    const occupied = occupiedInRange(index, last);
+    return {
+      action: "move",
+      label: occupied > 0 ? `MERGE · ${occupied} occupied` : "MERGE",
+      status:
+        `${from.indices.length} pattern(s) → ${patternName(index)}…${patternName(last)}` +
+        (occupied > 0 ? ` · ${occupied} slot(s) already hold a pattern` : " · all empty"),
+    };
+  },
+
+  onDrop(from, grid, index) {
+    if (from.grid !== "source" || grid !== "destination") return;
+    landing = index;
+    replanForDevice();
+  },
+
+  onStatus: (message) => {
+    status(message);
+  },
+});
+
+/** Where the selection would land. Set by a drop, never typed. */
+let landing = 0;
+
+function occupiedInRange(from: number, to: number): number {
+  if (!destination) return 0;
+  let n = 0;
+  for (let slot = from; slot <= to; slot++) {
+    if (DN2_DEVICE.summarise(destination.image, slot).occupied) n++;
+  }
+  return n;
+}
+
+/**
+ * The source grid: a Digitone 1's 128 patterns, in banks.
+ *
+ * Every pattern is shown rather than only the live ones. The bank counts say where the music is,
+ * which is the same answer the old "live patterns only" list gave — but in the layout the rest of
+ * the application uses, and without hiding the empty slots that make a bank legible.
+ */
+function renderSource(): void {
+  const image = state.source?.image;
+  const grid = $("sourceGrid");
+  const tabs = $("sourceTabs");
+  if (!image) {
+    grid.hidden = true;
+    tabs.hidden = true;
+    return;
+  }
+  grid.hidden = false;
+
+  const live = new Set(state.plan?.livePatterns ?? []);
+  renderBanks(tabs, {
+    patternCount: DN1_PATTERN_COUNT,
+    current: sourceBank,
+    countOccupied: (bank) => {
+      let n = 0;
+      for (let i = bank * 16; i < bank * 16 + 16; i++) if (live.has(i)) n++;
+      return n;
+    },
+    onSelect: (bank) => {
+      sourceBank = bank;
+      renderSource();
+    },
+  });
+
+  renderSlots(
+    grid,
+    bankSlots(sourceBank, DN1_PATTERN_COUNT, (index) => {
+      const summary = DN1_DEVICE.summarise(image, index);
+      return {
+        id: patternName(index),
+        name: summary.name || "—",
+        detail: live.has(index)
+          ? `${summary.trigCount ?? 0} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
+          : "empty",
+        occupied: live.has(index),
+        supported: summary.supported,
+      };
+    }),
+    {
+      selected: selection,
+      onClick: (index, event) => {
+        const next = nextSelection(selection, anchor, index, event);
+        selection.length = 0;
+        selection.push(...next.selection);
+        anchor = next.anchor;
+        renderSource();
+        replanForDevice();
+      },
+      drag: { controller: drag, grid: "source" },
+    },
+  );
+
+  $("sourceSub").textContent =
+    selection.length === 0
+      ? `${live.size} live pattern(s). Select some, then drag them onto the destination.`
+      : `${selection.length} selected: ${selection.map(patternName).join(" ")}`;
+}
+
+/** The destination grid: the working project, whatever it was filled from. */
+function renderDestinationGrid(): void {
+  const grid = $("destinationGrid");
+  const tabs = $("destinationTabs");
+  if (!destination) {
+    grid.hidden = true;
+    tabs.hidden = true;
+    return;
+  }
+  grid.hidden = false;
+  $("legend").hidden = false;
+
+  const image = destination.image;
+  renderBanks(tabs, {
+    patternCount: DN2_PATTERN_COUNT,
+    current: destinationBank,
+    countOccupied: (bank) => {
+      let n = 0;
+      for (let i = bank * 16; i < bank * 16 + 16; i++) {
+        if (DN2_DEVICE.summarise(image, i).occupied) n++;
+      }
+      return n;
+    },
+    onSelect: (bank) => {
+      destinationBank = bank;
+      renderDestinationGrid();
+    },
+  });
+
+  renderSlots(
+    grid,
+    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => {
+      const summary = DN2_DEVICE.summarise(image, index);
+      return {
+        id: patternName(index),
+        name: summary.supported ? summary.name || "—" : `v${summary.version}`,
+        detail: summary.supported
+          ? summary.occupied
+            ? `${summary.trigCount} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
+            : "empty"
+          : "unreadable version",
+        occupied: summary.occupied === true,
+        supported: summary.supported,
+      };
+    }),
+    {
+      // The landing slot is shown as the opened cell rather than a selection: nothing is selected
+      // in this grid, and marking it says "this is where the drop went" without implying it can be
+      // dragged from.
+      selected: [],
+      ...(merging() ? { opened: landing } : {}),
+      onClick: (index) => {
+        landing = index;
+        renderDestinationGrid();
+        replanForDevice();
+      },
+      drag: { controller: drag, grid: "destination" },
+    },
+  );
+}
+
+/** Anchor for shift-ranges in the source grid. */
+let anchor: number | undefined;
+
+function syncMode(): void {
+  renderSource();
+  renderDestinationGrid();
+  replanForDevice();
 }
