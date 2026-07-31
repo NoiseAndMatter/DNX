@@ -47,6 +47,9 @@
   /* A refusal from the device path, shown where the plan would have been rather than only in the
      status line — the plan area is where the reader is looking when it fails. */
   .bad { color:var(--bad); }
+  /* The one control here that changes an instrument. It should not look like the others. */
+  button.danger { border-color:var(--bad); background:transparent; color:var(--bad); }
+  button.danger:hover:not(:disabled) { background:var(--bad); color:#fff; }
   /* The pattern picker. Only *live* patterns are shown — 128 boxes of which 11 matter is a worse
      question than 11 boxes. Click order is landing order, so the badge carries the number. */
   .pick { display:flex; flex-wrap:wrap; gap:.35rem; margin:.4rem 0 1rem; }
@@ -128,23 +131,42 @@ Everything runs in this page — no upload, no server.</p>
 <button id="export" disabled>Convert and download .dn2prj</button>
 
 <!--
-  Writing straight to the instrument, no file in the loop.
+  The destination is a project this page holds, not a device read.
 
-  The destination is the project the Digitone II currently has LOADED, read back over the dump
-  protocol so the diff baseline is the live state rather than the last save. Only the pattern slots
-  that actually change are sent.
+  Filled from a blank or from a device; merges accumulate into it; delivered either way — an
+  exported .dn2prj, or written into the instrument's ACTIVE project.
 
-  Nothing lands until SAVE PROJECT on the device: a write goes to the active project and survives a
-  power cycle, but loading another project discards it. That is the undo.
+  Nothing lands on hardware until SAVE PROJECT: a write survives a power cycle but is discarded when
+  another project loads. That is the undo on the device; "Undo last apply" is the undo here.
 -->
-<h2>Or write it to the instrument</h2>
+<h2>Destination</h2>
 <div class="card">
-  <button id="connect">Connect a Digitone II…</button>
-  <div class="info" id="deviceInfo">Its <strong>currently loaded</strong> project is the destination. Nothing is written until you press Write, and nothing is permanent until you press SAVE PROJECT on the device.</div>
-  <button id="planDevice" disabled>Read the loaded project</button>
-  <div class="info" id="devicePlan"></div>
-  <button id="writeDevice" disabled>Write to the device</button>
+  <p>
+    <button id="fromBlank">Start from a blank project</button>
+    <button id="connect">Connect a Digitone II…</button>
+    <button id="fromDevice" disabled>Read its loaded project</button>
+  </p>
+  <div class="info" id="deviceInfo"></div>
+  <div class="info" id="destinationInfo">No destination yet. Start from a blank project, or read one off a device.</div>
+  <p>
+    <label for="destinationName">Name it</label>
+    <input type="text" id="destinationName" size="16" placeholder="leave blank to keep">
+    <span class="muted">The build time is appended, so a loaded file is identifiable on the device.</span>
+  </p>
 </div>
+
+<h2>What this would do</h2>
+<div class="info" id="devicePlan"></div>
+<p>
+  <button id="applyMerge" disabled>Apply to the destination</button>
+  <button id="undoApply" disabled>Undo last apply</button>
+</p>
+
+<h2>Deliver</h2>
+<p>
+  <button id="exportDestination" disabled>Export .dn2prj</button>
+  <button class="danger" id="writeDevice" disabled>Write to the instrument</button>
+</p>
 
 <div id="status"></div>
 
