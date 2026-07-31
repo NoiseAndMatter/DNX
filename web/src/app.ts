@@ -27,7 +27,9 @@ import {
   readProject,
   writeBack,
 } from "./devicesource.js";
-import { describeDeviceExpand, planDeviceExpand, type DeviceExpandPlan } from "../../src/expand/deviceexpand.js";
+import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
+import { MergeRefused, describeMerge, planPatternMerge, type MergePlan } from "../../src/expand/merge.js";
+import { patternIndex, patternName } from "../../src/sheet/naming.js";
 import { ProductId } from "../../src/sysex/devices.js";
 
 interface State {
@@ -38,10 +40,31 @@ interface State {
 
 const state: State = {};
 
+/**
+ * Which source patterns to merge, **in click order** — that order is the landing order.
+ *
+ * A list rather than a set, because "these four, in this order" is the question being asked and a
+ * set would answer a different one.
+ */
+const selection: number[] = [];
+
+/** Whole-project conversion, or a merge of selected patterns into a project already in use. */
+function merging(): boolean {
+  return $<HTMLInputElement>("modeSelect").checked;
+}
+
 interface DeviceState {
   connected?: ConnectedDevice;
   handle?: DeviceProjectHandle;
-  plan?: DeviceExpandPlan;
+  /**
+   * The image to write, whichever mode produced it.
+   *
+   * One field rather than one per mode: `writeChangedRecords` diffs it against what the device gave
+   * us and sends the difference, so a whole conversion and a four-pattern merge are the same
+   * operation by the time they reach the wire. Undefined means there is nothing to send — which is
+   * also how the write button knows to stay disabled.
+   */
+  image?: Uint8Array;
 }
 
 const device: DeviceState = {};
@@ -81,6 +104,13 @@ function replan(): void {
   $<HTMLButtonElement>("export").disabled = !state.template;
   // The device path needs a source too, and a project can be loaded either side of connecting.
   $<HTMLButtonElement>("planDevice").disabled = device.connected === undefined;
+  // Which patterns are live depends on the options, so the picker follows them. Selections that
+  // are no longer live are dropped rather than silently planned.
+  for (let i = selection.length - 1; i >= 0; i--) {
+    if (!state.plan.livePatterns.includes(selection[i]!)) selection.splice(i, 1);
+  }
+  renderPicker();
+  updateLandingHint();
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -160,10 +190,13 @@ function wireFilePicker(inputId: string, load: (file: File) => Promise<void>): v
 wireFilePicker("sourceFile", loadSource);
 wireFilePicker("templateFile", loadTemplate);
 for (const id of ["compact", "freeMidi", "rules", "aggregate"]) $(id).addEventListener("change", replan);
+for (const id of ["modeWhole", "modeSelect"]) $(id).addEventListener("change", syncMode);
+$("landing").addEventListener("input", updateLandingHint);
 $("export").addEventListener("click", () => {
   exportProject().catch((error: unknown) => status(String(error instanceof Error ? error.message : error), "error"));
 });
 
+syncMode();
 status("Pick a Digitone 1 project, and a Digitone II project to use as the template.");
 void adoptServedTemplate();
 
@@ -195,6 +228,75 @@ $("planDevice").addEventListener("click", () => {
 $("writeDevice").addEventListener("click", () => {
   writeToDevice().catch(reportDeviceError);
 });
+
+/**
+ * The pattern picker: **live patterns only**.
+ *
+ * 128 boxes of which eleven matter is a worse question than eleven boxes, and `planExpansion`
+ * already knows which patterns hold anything. Click order is landing order, so each selected
+ * button carries its position.
+ */
+function renderPicker(): void {
+  const pick = $("pick");
+  pick.innerHTML = "";
+  const live = state.plan?.livePatterns ?? [];
+
+  if (live.length === 0) {
+    pick.innerHTML = `<p class="muted">Load a Digitone 1 project to choose patterns.</p>`;
+    return;
+  }
+
+  for (const index of live) {
+    const button = document.createElement("button");
+    const at = selection.indexOf(index);
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(at >= 0));
+    button.innerHTML = patternName(index) + (at >= 0 ? `<span class="ord">${at + 1}</span>` : "");
+    button.addEventListener("click", () => {
+      // Clicking a chosen pattern removes it, and the numbers behind it close up — otherwise the
+      // only way to fix a mis-click is to clear everything.
+      if (at >= 0) selection.splice(at, 1);
+      else selection.push(index);
+      renderPicker();
+      updateLandingHint();
+    });
+    pick.append(button);
+  }
+}
+
+/** Say where the selection would land, before anything is planned. */
+function updateLandingHint(): void {
+  const hint = $("landingHint");
+  if (selection.length === 0) {
+    hint.textContent = "Nothing selected.";
+    return;
+  }
+  const landing = landingSlot();
+  if (landing === undefined) {
+    hint.textContent = "Not a pattern slot — try A1, B12, H16.";
+    return;
+  }
+  const last = landing + selection.length - 1;
+  hint.textContent =
+    last > 127
+      ? `${selection.length} pattern(s) from ${patternName(landing)} would run past H16.`
+      : `${selection.length} pattern(s) → ${patternName(landing)}…${patternName(last)}`;
+}
+
+/** The landing slot, or undefined when the box does not name one. */
+function landingSlot(): number | undefined {
+  try {
+    return patternIndex($<HTMLInputElement>("landing").value.trim());
+  } catch {
+    return undefined;
+  }
+}
+
+function syncMode(): void {
+  $("selectMode").hidden = !merging();
+  renderPicker();
+  updateLandingHint();
+}
 
 function reportDeviceError(error: unknown): void {
   const message = error instanceof DeviceSourceError || error instanceof Error ? error.message : String(error);
@@ -243,15 +345,7 @@ async function planForDevice(): Promise<void> {
   });
   device.handle = handle;
 
-  const plan = planDeviceExpand({
-    source: state.source.image,
-    destination: image,
-    ...(state.plan === undefined ? {} : { plan: state.plan }),
-    projectName: stampedName(readProjectName(state.source.image)),
-  });
-  device.plan = plan;
-
-  const lines = describeDeviceExpand(plan);
+  const lines = merging() ? planMerge(image) : planWhole(image);
   const problems = handle.problems.length > 0
     ? `<p class="bad">Read with problems: ${escapeHtml(handle.problems.join("; "))}. Read again before writing.</p>`
     : "";
@@ -260,22 +354,90 @@ async function planForDevice(): Promise<void> {
 
   // Nothing to send is not a failure, and the button should say so by being unavailable rather
   // than by writing zero records and reporting success.
-  $<HTMLButtonElement>("writeDevice").disabled = plan.changedSlots.length === 0;
+  $<HTMLButtonElement>("writeDevice").disabled = device.image === undefined;
+}
+
+/**
+ * Whole-project conversion: every live pattern, and the destination replaced.
+ *
+ * The destination is still read and used as the template — expansion is a transplant, and a field
+ * nobody writes inherits the destination's value.
+ */
+function planWhole(destination: Uint8Array): string[] {
+  if (!state.source) return [];
+  const plan = planDeviceExpand({
+    source: state.source.image,
+    destination,
+    ...(state.plan === undefined ? {} : { plan: state.plan }),
+    projectName: stampedName(readProjectName(state.source.image)),
+  });
+  device.image = plan.changedSlots.length > 0 ? plan.image : undefined;
   status(
     plan.changedSlots.length === 0
       ? "The device already holds this conversion — nothing to write."
       : `${plan.changedSlots.length} pattern slot(s) would change, about ${Math.round(plan.estimatedBytes / 1024)} kB.`,
   );
+  return describeDeviceExpand(plan);
+}
+
+/**
+ * Merge the selected patterns into the loaded project, keeping its pool.
+ *
+ * Both refusals are surfaced as questions rather than swallowed: an occupied landing slot and a
+ * pool with no room each stop the plan, and each is something only the person at the instrument can
+ * answer. `planPatternMerge` is asked twice in that case — once to find out, once with the answer —
+ * which costs milliseconds and keeps the consent explicit.
+ */
+function planMerge(destination: Uint8Array): string[] {
+  if (!state.source) return [];
+  const landing = landingSlot();
+  if (landing === undefined) throw new DeviceSourceError("the landing slot is not a pattern — try A1, B12, H16");
+  if (selection.length === 0) throw new DeviceSourceError("no patterns selected");
+
+  const base = {
+    source: state.source.image,
+    patterns: selection,
+    destination,
+    landing,
+    ...(state.plan === undefined ? {} : { plan: state.plan }),
+  };
+
+  let plan: MergePlan;
+  try {
+    plan = planPatternMerge(base);
+  } catch (error) {
+    if (!(error instanceof MergeRefused)) throw error;
+    // The two refusals worth asking about rather than reporting. Anything else stands.
+    const overwrite = /already hold a pattern/.test(error.message);
+    const overflow = /no room/.test(error.message);
+    if (!overwrite && !overflow) throw error;
+    if (!window.confirm(`${error.message}
+
+Go ahead anyway?`)) {
+      device.image = undefined;
+      status("Not planned.");
+      return [error.message, "Not planned."];
+    }
+    plan = planPatternMerge({
+      ...base,
+      ...(overwrite ? { confirmOverwrite: true } : {}),
+      ...(overflow ? { allowPoolOverflow: true, confirmOverwrite: true } : {}),
+    });
+  }
+
+  device.image = plan.image;
+  status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
+  return describeMerge(plan);
 }
 
 async function writeToDevice(): Promise<void> {
-  if (!device.handle || !device.plan) return;
-  const plan = device.plan;
+  if (!device.handle || !device.image) return;
+  const image = device.image;
 
-  // Asked, always, and with the count in the question. `applyRearrange` refuses to overwrite
-  // without consent for the same reason: for most people the +Drive is the only copy.
+  // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
+  // most people the instrument holds the only copy.
   const ok = window.confirm(
-    `Write ${plan.changedSlots.length} pattern slot(s) into the project loaded on the device?\n\n` +
+    `Write the planned changes into the project loaded on the device?\n\n` +
       `This overwrites those slots in the ACTIVE project. It is not permanent until you press ` +
       `SAVE PROJECT on the instrument — and loading another project discards it.`,
   );
@@ -286,7 +448,7 @@ async function writeToDevice(): Promise<void> {
 
   $<HTMLButtonElement>("writeDevice").disabled = true;
   try {
-    const outcome = await writeBack(device.handle, plan.image, (done, total, label) => {
+    const outcome = await writeBack(device.handle, image, (done, total, label) => {
       status(`Writing ${done}/${total} — ${label}`);
     });
     status(
