@@ -34,7 +34,13 @@ import {
   writeBack,
 } from "./devicesource.js";
 import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
-import { MergeRefused, describeMerge, planPatternMerge, type MergePlan } from "../../src/expand/merge.js";
+import {
+  MergeRefused,
+  describeMerge,
+  planPatternMerge,
+  type MergeNote,
+  type MergePlan,
+} from "../../src/expand/merge.js";
 import { patternName } from "../../src/sheet/naming.js";
 import {
   GridDrag,
@@ -86,6 +92,17 @@ interface DeviceState {
 }
 
 const device: DeviceState = {};
+
+/**
+ * What a plan says about itself: the lines that matter, and the conversion notes if it has any.
+ *
+ * The two are separate all the way to the DOM. Merged into one list they were indistinguishable,
+ * and the four lines somebody needs lost to the thousand they do not.
+ */
+interface Described {
+  lines: string[];
+  notes?: MergeNote[];
+}
 
 interface Destination {
   /** The project as it stands, including every merge applied so far. */
@@ -156,6 +173,19 @@ function replan(): void {
 }
 
 /**
+ * An expansion plan for these patterns and the options currently ticked.
+ *
+ * One helper, because the report and the merge must not disagree: a panel describing one layout
+ * beside a button that produces another is worse than no panel.
+ */
+function planFor(patterns: readonly number[]): ExpansionPlan {
+  return planExpansion(state.source!.image, {
+    ...options(),
+    patterns: [...patterns].sort((a, b) => a - b),
+  });
+}
+
+/**
  * The sounds-on-tracks report, for **what is actually going into the destination**.
  *
  * It used to render the whole-project plan unconditionally, so merging four patterns produced a
@@ -191,7 +221,7 @@ function renderReport(): void {
     return;
   }
 
-  $("plan").innerHTML = renderPlan(planExpansion(image, { ...options(), patterns: scope }));
+  $("plan").innerHTML = renderPlan(planFor(scope));
   const inPlace = destination?.merged.length ?? 0;
   heading.textContent =
     inPlace === scope.length
@@ -426,9 +456,9 @@ async function readDestination(): Promise<void> {
 function replanForDevice(): void {
   if (!destination || !state.source) return;
 
-  let lines: string[];
+  let described: Described;
   try {
-    lines = merging() ? planMerge(destination.image) : planWhole(destination.image);
+    described = merging() ? planMerge(destination.image) : planWhole(destination.image);
   } catch (error) {
     // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
     // where the plan would have been, and the apply button has to go with it.
@@ -440,8 +470,29 @@ function replanForDevice(): void {
     return;
   }
 
-  $("devicePlan").innerHTML = `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
+  $("devicePlan").innerHTML =
+    `<ul>${described.lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` + renderNotes(described.notes);
   $<HTMLButtonElement>("applyMerge").disabled = device.image === undefined;
+}
+
+/**
+ * Conversion notes, **folded away**.
+ *
+ * These used to be printed straight into this strip — over a thousand `<li>`s of "inferred at
+ * DN1+173 -> DN2+229", which grew the sticky bar past the height of the page and drew the rest of
+ * the tool underneath it. They are diagnostics about the field mapping, worth having and worth
+ * nobody's whole screen, so they live behind a disclosure with their counts folded in.
+ */
+function renderNotes(notes: readonly MergeNote[] | undefined): string {
+  if (!notes || notes.length === 0) return "";
+  const total = notes.reduce((n, note) => n + note.count, 0);
+  const items = notes
+    .map((n) => `<li>${escapeHtml(n.message)}${n.count > 1 ? ` <b>× ${n.count}</b>` : ""}</li>`)
+    .join("");
+  return (
+    `<details class="notes"><summary>${total} conversion note(s), ` +
+    `${notes.length} distinct</summary><ul>${items}</ul></details>`
+  );
 }
 
 /**
@@ -571,8 +622,8 @@ async function connect(): Promise<void> {
  * The destination is still read and used as the template — expansion is a transplant, and a field
  * nobody writes inherits the destination's value.
  */
-function planWhole(destination: Uint8Array): string[] {
-  if (!state.source) return [];
+function planWhole(destination: Uint8Array): Described {
+  if (!state.source) return { lines: [] };
   const plan = planDeviceExpand({
     source: state.source.image,
     destination,
@@ -585,7 +636,7 @@ function planWhole(destination: Uint8Array): string[] {
       ? "The device already holds this conversion — nothing to write."
       : `${plan.changedSlots.length} pattern slot(s) would change, about ${Math.round(plan.estimatedBytes / 1024)} kB.`,
   );
-  return describeDeviceExpand(plan);
+  return { lines: describeDeviceExpand(plan) };
 }
 
 /**
@@ -596,8 +647,8 @@ function planWhole(destination: Uint8Array): string[] {
  * answer. `planPatternMerge` is asked twice in that case — once to find out, once with the answer —
  * which costs milliseconds and keeps the consent explicit.
  */
-function planMerge(destination: Uint8Array): string[] {
-  if (!state.source) return [];
+function planMerge(destination: Uint8Array): Described {
+  if (!state.source) return { lines: [] };
   if (selection.length === 0) throw new DeviceSourceError("no patterns selected");
 
   const base = {
@@ -605,7 +656,10 @@ function planMerge(destination: Uint8Array): string[] {
     patterns: selection,
     destination,
     landing,
-    ...(state.plan === undefined ? {} : { plan: state.plan }),
+    // Scoped to the selection, **not** `state.plan`. That one is the whole-project plan, and
+    // handing it over made the merge allocate tracks against 128 patterns of competition — the
+    // layout it produced was not the one the panel above described, and not the one asked for.
+    plan: planFor(selection),
   };
 
   let plan: MergePlan;
@@ -622,7 +676,7 @@ function planMerge(destination: Uint8Array): string[] {
 Go ahead anyway?`)) {
       device.image = undefined;
       status("Not planned.");
-      return [error.message, "Not planned."];
+      return { lines: [error.message, "Not planned."] };
     }
     plan = planPatternMerge({
       ...base,
@@ -633,7 +687,7 @@ Go ahead anyway?`)) {
 
   device.image = plan.image;
   status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
-  return describeMerge(plan);
+  return { lines: describeMerge(plan), notes: plan.notes };
 }
 
 // --- the two grids ------------------------------------------------------------------------------

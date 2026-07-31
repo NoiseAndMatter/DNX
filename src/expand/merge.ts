@@ -101,7 +101,27 @@ export interface MergePlan {
   /** Free pool slots left afterwards. */
   freePoolSlots: number;
   report: ConversionReport;
+  /**
+   * What the merge itself did that somebody has to know about — overwrites, dangling locks, sounds
+   * with nowhere to go. Short by construction, and always worth reading.
+   */
   warnings: string[];
+  /**
+   * Per-field conversion notes, **scoped to what is being merged** and folded by message.
+   *
+   * Converting the source emits one note per inferred field per sound across all 128 patterns:
+   * over a thousand lines, nearly all of them about patterns staying behind, and nearly all of them
+   * the same sentence repeated. They describe the DN1→DN2 field mapping, not this merge, so they
+   * are kept out of `warnings` — a caller can fold them, hide them behind a disclosure or ignore
+   * them, but is never handed a wall of text with the four real findings buried in it.
+   */
+  notes: MergeNote[];
+}
+
+/** A conversion note, and how many times it occurred within the merge's scope. */
+export interface MergeNote {
+  message: string;
+  count: number;
 }
 
 /**
@@ -231,7 +251,8 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     setKitRecord(image, to, kitRecord(converted, from, DN2_LAYOUT));
   });
 
-  const warnings = report.warnings.map((w) => w.message);
+  const notes = scopedNotes(report, patterns, pool);
+  const warnings: string[] = [];
   if (outOfRange.length > 0) {
     warnings.unshift(
       `${outOfRange.length} lock(s) point outside the 128-slot pool (${outOfRange.slice(0, 6).join(", ")}) ` +
@@ -265,13 +286,54 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     freePoolSlots: free.length,
     report,
     warnings,
+    notes,
   };
 }
 
-/** How a merge reads to someone about to commit it. */
+/**
+ * The conversion notes that are about **this merge**, folded by message.
+ *
+ * A merge converts the whole source project — it has to, because a pattern's kit is written by the
+ * same pass that writes every other kit — and the report that comes back describes all of it. Two
+ * filters make it relevant again:
+ *
+ * - **pattern-scoped notes** survive only for the patterns being merged. A note about pattern 90's
+ *   kit describes something that is not going anywhere.
+ * - **pool-scoped notes** survive only for the source slots whose sounds were actually placed.
+ *
+ * Notes with neither scope are project-wide and always kept. What is left is then folded by
+ * message, because the same inferred field on the same offset produces the identical sentence for
+ * every sound that carries it, and forty copies of it say nothing the first one did not.
+ */
+function scopedNotes(
+  report: ConversionReport,
+  patterns: readonly number[],
+  pool: readonly PoolPlacement[],
+): MergeNote[] {
+  const inScope = new Set(patterns);
+  const fromSlots = new Set(pool.map((p) => p.from));
+  const counts = new Map<string, number>();
+
+  for (const w of report.warnings) {
+    if (w.pattern !== undefined && !inScope.has(w.pattern)) continue;
+    if (w.poolSlot !== undefined && !fromSlots.has(w.poolSlot)) continue;
+    counts.set(w.message, (counts.get(w.message) ?? 0) + 1);
+  }
+
+  return [...counts].map(([message, count]) => ({ message, count })).sort((a, b) => b.count - a.count);
+}
+
+/**
+ * How a merge reads to someone about to commit it.
+ *
+ * **Facts and findings only.** The conversion notes live in `plan.notes`, folded and scoped, and a
+ * caller shows them separately — putting them here once buried the four lines that matter under a
+ * thousand that did not.
+ */
 export function describeMerge(plan: MergePlan): string[] {
   const appended = plan.pool.filter((p) => !p.reused);
   const reused = plan.pool.length - appended.length;
+  const notes = plan.notes.reduce((n, note) => n + note.count, 0);
   return [
     `${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}`,
     `${appended.length} sound(s) appended to the pool${reused > 0 ? `, ${reused} already there and reused` : ""}`,
@@ -279,6 +341,9 @@ export function describeMerge(plan: MergePlan): string[] {
     `${plan.freePoolSlots} pool slot(s) free afterwards`,
     ...(plan.overwrites.length > 0 ? [`replacing ${plan.overwrites.map(patternName).join(", ")}`] : []),
     ...plan.warnings,
+    ...(notes > 0
+      ? [`${notes} conversion note(s) about ${plan.notes.length} field mapping(s) — details below`]
+      : []),
   ];
 }
 

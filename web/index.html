@@ -27,6 +27,15 @@
 @media (max-width: 62rem) { .assign .cols { grid-template-columns: minmax(0, 1fr); } }
 
 .plan ul { margin: .3rem 0; padding-left: 1.1rem; }
+
+/* The plan panel lives inside the sticky strip, so it must never grow without bound: a merge that
+   reported every conversion note grew this taller than the page and drew the rest of the tool
+   underneath it. Bounded and scrollable, whatever a plan has to say. */
+#devicePlan { max-height: 28vh; overflow-y: auto; }
+.notes { margin-top: .4rem; }
+.notes summary { cursor: pointer; color: var(--muted); }
+.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
+.notes b { color: var(--fg); font-weight: 600; }
 .bad { color: var(--salmon); }
 .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
 </style>
