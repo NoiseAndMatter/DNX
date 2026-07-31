@@ -67,6 +67,9 @@ import {
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
+import { $, escapeHtml, saveBytes as save, statusBar } from "../dom.js";
+
+const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -76,24 +79,6 @@ import {
   describeMessages,
   hex,
 } from "../../../src/device/capabilities.js";
-
-const $ = <T extends HTMLElement>(id: string): T => {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`missing element #${id}`);
-  return el as T;
-};
-
-type Kind = "info" | "ok" | "warn" | "error";
-
-function status(message: string, kind: Kind = "info"): void {
-  const bar = $("status");
-  bar.textContent = message;
-  bar.className = `status ${kind}`;
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 let access: MIDIAccess | undefined;
 
@@ -812,18 +797,6 @@ $("save").addEventListener("click", () => {
   status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
 });
 
-/** Hand bytes to the browser as a download. */
-function save(bytes: Uint8Array, name: string): void {
-  // Copied into a fresh buffer: a Uint8Array over a SharedArrayBuffer is not a valid BlobPart,
-  // and which kind you have depends on how the runtime allocated it.
-  const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
 
 
 // --- requesting --------------------------------------------------------------------------------
