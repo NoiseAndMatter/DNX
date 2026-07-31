@@ -62,13 +62,6 @@ interface DeviceState {
   connected?: ConnectedDevice;
   handle?: DeviceProjectHandle;
   /**
-   * The destination project as it is on the instrument right now.
-   *
-   * Kept so the landing slot can be moved without reading the device again — and so the hint can
-   * say what is actually in those slots rather than leaving it to be discovered by a refusal.
-   */
-  destination?: Uint8Array;
-  /**
    * The image to write, whichever mode produced it.
    *
    * One field rather than one per mode: `writeChangedRecords` diffs it against what the device gave
@@ -80,6 +73,32 @@ interface DeviceState {
 }
 
 const device: DeviceState = {};
+
+interface Destination {
+  /** The project as it stands, including every merge applied so far. */
+  image: Uint8Array;
+  /** What it was filled from, so the page can say so. */
+  origin: "blank" | "file" | "device";
+  label: string;
+  /**
+   * The instrument this came from, when it came from one.
+   *
+   * Carries `original` — the baseline a write diffs against — so accumulated merges all reach the
+   * device rather than only the most recent.
+   */
+  handle?: DeviceProjectHandle;
+  /**
+   * The image as it was before the last apply.
+   *
+   * **One step, deliberately.** A full history belongs to the manager's session, which has undo,
+   * redo and a log; here the mistake worth covering is the last drop, and a second stack that
+   * behaved almost like the manager's would be worse than none.
+   */
+  previous?: Uint8Array;
+}
+
+let destination: Destination | undefined;
+
 
 function options() {
   return {
@@ -232,30 +251,6 @@ void adoptServedTemplate();
 // expansion is a transplant: a field nobody writes inherits the destination's value, so the
 // destination has to be the real one.
 
-interface Destination {
-  /** The project as it stands, including every merge applied so far. */
-  image: Uint8Array;
-  /** What it was filled from, so the page can say so. */
-  origin: "blank" | "file" | "device";
-  label: string;
-  /**
-   * The instrument this came from, when it came from one.
-   *
-   * Carries `original` — the baseline a write diffs against — so accumulated merges all reach the
-   * device rather than only the most recent.
-   */
-  handle?: DeviceProjectHandle;
-  /**
-   * The image as it was before the last apply.
-   *
-   * **One step, deliberately.** A full history belongs to the manager's session, which has undo,
-   * redo and a log; here the mistake worth covering is the last drop, and a second stack that
-   * behaved almost like the manager's would be worse than none.
-   */
-  previous?: Uint8Array;
-}
-
-let destination: Destination | undefined;
 
 $("connect").addEventListener("click", () => {
   connect().catch(reportDeviceError);
@@ -537,15 +532,14 @@ function updateLandingHint(): void {
   // **What is actually in those slots**, once the destination has been read. Choosing a landing
   // slot blind and discovering it was occupied from a refusal is the wrong way round: the
   // information exists the moment the device has been read, and this is where it is wanted.
-  const destination = device.destination;
   if (!destination) {
-    hint.textContent = `${range}. Read the device to see what is in them.`;
+    hint.textContent = `${range}. Pick a destination to see what is in those slots.`;
     return;
   }
 
   const occupied: string[] = [];
   for (let slot = landing; slot <= last; slot++) {
-    const summary = DN2_DEVICE.summarise(destination, slot);
+    const summary = DN2_DEVICE.summarise(destination.image, slot);
     if (summary.occupied) occupied.push(`${patternName(slot)}${summary.name ? ` ${summary.name}` : ""}`);
   }
   hint.textContent =
