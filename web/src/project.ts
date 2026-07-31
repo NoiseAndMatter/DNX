@@ -10,6 +10,7 @@ import { parsePayload, type ProjectManifest, type ProjectPayload } from "../../s
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
 import { buildPayload } from "../../src/project/write.js";
 import { buildZip, readZip } from "./zip.js";
+import { saveBlob } from "./dom.js";
 
 export interface LoadedProject {
   fileName: string;
@@ -75,12 +76,10 @@ export async function buildProjectBlob(template: LoadedProject, image: Uint8Arra
   return new Blob([file as BlobPart], { type: "application/octet-stream" });
 }
 
-/** Hand a built file to the browser as a download. */
-export function download(blob: Blob, name: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+/**
+ * Hand a built file to the browser as a download.
+ *
+ * Kept as a name the expander already uses, delegating to the shared helper rather than repeating
+ * the object-URL dance a third time.
+ */
+export const download = saveBlob;
