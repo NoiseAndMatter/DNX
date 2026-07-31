@@ -47,6 +47,16 @@
   /* A refusal from the device path, shown where the plan would have been rather than only in the
      status line — the plan area is where the reader is looking when it fails. */
   .bad { color:var(--bad); }
+  /* The pattern picker. Only *live* patterns are shown — 128 boxes of which 11 matter is a worse
+     question than 11 boxes. Click order is landing order, so the badge carries the number. */
+  .pick { display:flex; flex-wrap:wrap; gap:.35rem; margin:.4rem 0 1rem; }
+  .pick button { font:inherit; font-size:.8rem; font-weight:600; padding:.3rem .5rem; min-width:3rem;
+    border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg);
+    position:relative; }
+  .pick button[aria-pressed=true] { border-color:var(--accent); color:var(--accent); }
+  .pick button .ord { display:inline-block; margin-left:.3rem; font-size:.7rem; opacity:.8; }
+  input[type=text] { font:inherit; padding:.3rem .45rem; border-radius:6px; border:1px solid var(--line);
+    background:var(--card); color:var(--fg); }
 </style>
 </head>
 <body>
@@ -79,6 +89,35 @@ Everything runs in this page — no upload, no server.</p>
   </label>
   <label><input type="checkbox" id="rules"> Percussion low, melodic high
     <span>Place by tag rather than filling in order.</span></label>
+</div>
+
+<!--
+  Two modes, because they are two different jobs.
+
+  Whole project — every live pattern, its own new DN2 project. The destination's patterns and pool
+  are replaced.
+
+  Selected patterns — take a few and drop them into a project you are already working on. The
+  destination keeps its patterns and its pool; incoming sounds are appended after what is there and
+  every sound lock is re-pointed at where its sound actually landed.
+-->
+<h2>Mode</h2>
+<div class="toggles">
+  <label><input type="radio" name="mode" id="modeWhole" value="whole" checked> Whole project
+    <span>Every live pattern. Replaces the destination.</span></label>
+  <label><input type="radio" name="mode" id="modeSelect" value="select"> Selected patterns
+    <span>Merge a few into a project you are working on, keeping its pool.</span></label>
+</div>
+
+<div id="selectMode" hidden>
+  <h2>Which patterns</h2>
+  <p class="muted" id="pickHint">Click patterns in the order you want them to land.</p>
+  <div id="pick" class="pick"></div>
+  <p>
+    <label for="landing">Landing slot on the Digitone II</label>
+    <input type="text" id="landing" value="A1" size="4">
+    <span class="muted" id="landingHint"></span>
+  </p>
 </div>
 
 <h2>Plan</h2>
