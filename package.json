@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "dn-sysex",
   "version": "0.1.0",
   "description": "Expand Elektron Digitone 1 patterns across the 16 tracks of the Digitone II",
@@ -17,6 +17,7 @@
     "rebuild": "tsx src/cli/rebuild.ts",
     "usbcap": "tsx src/cli/usbcap.ts",
     "extract-blank": "tsx src/cli/extractblank.ts",
+    "extract-blank-project": "tsx src/cli/extractblankproject.ts",
     "hwtest": "tsx src/cli/hardwaretest.ts",
     "trackhwtest": "tsx src/cli/trackhwtest.ts",
     "tags": "tsx src/cli/tags.ts",

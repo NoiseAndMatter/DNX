@@ -24,10 +24,11 @@ export class ProjectLoadError extends Error {}
 
 /** Read a `.dnprj` / `.dn2prj` the user picked. */
 export async function openProject(file: File): Promise<LoadedProject> {
-  return readProject(file.name, new Uint8Array(await file.arrayBuffer()));
+  return readProjectFile(file.name, new Uint8Array(await file.arrayBuffer()));
 }
 
-async function readProject(fileName: string, bytes: Uint8Array): Promise<LoadedProject> {
+/** Read project bytes from anywhere — a picked file, the server, or the embedded blank. */
+export async function readProjectFile(fileName: string, bytes: Uint8Array): Promise<LoadedProject> {
   const entries = await readZip(bytes);
 
   const manifestBytes = entries.get("manifest.json");
@@ -55,7 +56,7 @@ export async function fetchServedTemplate(): Promise<LoadedProject | undefined> 
     const response = await fetch("template.dn2prj", { cache: "no-store" });
     if (!response.ok) return undefined;
     const name = response.headers.get("x-template-name") ?? "template.dn2prj";
-    return await readProject(name, new Uint8Array(await response.arrayBuffer()));
+    return await readProjectFile(name, new Uint8Array(await response.arrayBuffer()));
   } catch {
     // Offline, opened over file://, or served by something that is not our server.
     return undefined;
