@@ -3,116 +3,118 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNX — expand a Digitone 1 project</title>
+<title>DNX — expander</title>
 <link rel="stylesheet" href="./dnx.css">
 <style>
 /*
- * Page-specific layout only. Everything that makes a control look like DNX — cells, tabs, buttons,
- * colours — comes from `dnx.css`, which is where the manager's look was designed and refined
- * against hardware use.
+ * Page-specific layout only. Cells, tabs, buttons, panels and colours come from `dnx.css`.
  *
- * Two grids side by side is the one thing genuinely unique to this page: source on the left,
- * destination on the right, so a drag between them is a short movement rather than a scroll.
+ * The page reads top to bottom in the order the work happens: what you bring in, the source, how it
+ * should be expanded, where it is going, what that does to the sounds, and how to get it out.
+ *
+ * **Nothing here is sized to the viewport**, which was the previous version's whole problem — it
+ * borrowed the manager's app shell, a two-column grid fitted to the window, while using markup that
+ * shell had never styled. A flowing page cannot come apart at a width nobody tested.
  */
-.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.1rem; }
-@media (max-width: 60rem) { .pair { grid-template-columns: minmax(0, 1fr); } }
-.pane h3 { margin: 0 0 .35rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--teal); font-weight: 600; }
-.pane .sub { color: var(--muted); font-size: .75rem; margin: 0 0 .5rem; min-height: 1.1rem; }
-.row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .5rem 0; }
-.plan { font-size: .8rem; }
+
+/* The options strip sits between the two explorers and follows you down, because it is what you
+   reach for while looking at either. `sticky` degrades to ordinary flow when the viewport is too
+   short, which is the behaviour we want rather than a rule to guard. */
+.between { position: sticky; top: 0; z-index: 5; }
+
+/* The assignment table is the most important thing on the page, so it gets the full width. */
+.assign .cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.1rem; }
+@media (max-width: 62rem) { .assign .cols { grid-template-columns: minmax(0, 1fr); } }
+
 .plan ul { margin: .3rem 0; padding-left: 1.1rem; }
 .bad { color: var(--salmon); }
+.count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
 </style>
 </head>
-<body>
+<body class="page">
 
-<header>
-  <h1>Expander</h1>
-  <label class="lbl file">Digitone 1<input type="file" id="sourceFile" accept=".dnprj"></label>
+<div class="topbar">
+  <span class="brand"><span class="d">DNX</span> <span class="sub">expander</span></span>
+  <span class="spacer"></span>
   <span class="device" id="sourceInfo" hidden></span>
-  <span class="spacer"></span>
-  <button class="btn" id="fromBlank">Blank destination</button>
-  <button class="btn" id="connect">Connect a Digitone II…</button>
-  <button class="btn" id="fromDevice" disabled>Read its project</button>
-  <label class="lbl file">Destination file<input type="file" id="templateFile" accept=".dn2prj"></label>
-  <span class="spacer"></span>
-  <button class="btn" id="undoApply" disabled>Undo</button>
-  <button class="btn primary" id="exportDestination" disabled>Export .dn2prj</button>
-  <button class="btn danger" id="writeDevice" disabled>Write to instrument</button>
-</header>
-
-<main>
-<div>
-
-  <!--
-    Options first, because they change which patterns are live — and therefore what the left grid
-    even shows.
-  -->
-  <div class="toggles">
-    <label><input type="checkbox" id="compact"> Compact per pattern</label>
-    <label><input type="checkbox" id="freeMidi"> Use freed MIDI tracks</label>
-    <label><input type="checkbox" id="aggregate"> Aggregate by name</label>
-    <label><input type="checkbox" id="rules"> Percussion low, melodic high</label>
-    <span class="spacer"></span>
-    <label class="lbl" for="destinationName">Name</label>
-    <input type="text" id="destinationName" size="14" placeholder="keep existing">
-  </div>
-
-  <!--
-    Two grids, the same grid. Select patterns on the left, drag them onto a slot on the right.
-
-    Whole-project mode ignores the selection and takes every live pattern; selected-patterns mode
-    takes what is chosen and lands it where it is dropped, keeping the destination's pool and
-    re-pointing every sound lock at wherever its sound ended up.
-  -->
-  <div class="pair">
-    <section class="pane">
-      <h3>Digitone 1 — source</h3>
-      <p class="sub" id="sourceSub">Load a Digitone 1 project.</p>
-      <div class="tabs" id="sourceTabs" hidden></div>
-      <div class="grid" id="sourceGrid" hidden></div>
-    </section>
-
-    <section class="pane">
-      <h3>Digitone II — destination</h3>
-      <p class="sub" id="destinationInfo">No destination yet. Start from a blank, read one off a device, or open a file.</p>
-      <div class="tabs" id="destinationTabs" hidden></div>
-      <div class="grid" id="destinationGrid" hidden></div>
-    </section>
-  </div>
-
-  <div class="legend" id="legend" hidden>
-    <span><i class="sw occupied"></i>occupied</span>
-    <span><i class="sw sel"></i>selected</span>
-    <span>drag source patterns onto a destination slot</span>
-    <span>shift = range, ctrl = add</span>
-  </div>
+  <span class="device" id="destinationBadge" hidden></span>
 </div>
 
-<aside>
-  <div class="panel">
-    <h2>Mode</h2>
-    <div class="toggles">
-      <label><input type="radio" name="mode" id="modeWhole" value="whole"> Whole project</label>
+<main>
+
+  <!-- 0. Everything that brings data in. -->
+  <section class="section">
+    <h2>In</h2>
+    <div class="bar">
+      <label class="btn filebtn">Digitone 1 project…<input type="file" id="sourceFile" accept=".dnprj"></label>
+      <span class="sep"></span>
+      <span class="lbl">Destination</span>
+      <button class="btn" id="fromBlank">Blank</button>
+      <label class="btn filebtn">From file…<input type="file" id="templateFile" accept=".dn2prj"></label>
+      <button class="btn" id="connect">Connect a Digitone II…</button>
+      <button class="btn" id="fromDevice" disabled>Read its project</button>
+    </div>
+  </section>
+
+  <!-- 1. The source, in the same grid every tool uses. -->
+  <section class="section">
+    <h2>Digitone 1 <span class="count" id="sourceSub"></span></h2>
+    <p class="hint" id="sourceEmpty">Load a Digitone 1 project to begin.</p>
+    <div class="tabs" id="sourceTabs" hidden></div>
+    <div class="grid" id="sourceGrid" hidden></div>
+  </section>
+
+  <!-- 2. What to do with it, between the two explorers and following the scroll. -->
+  <section class="section between">
+    <div class="bar">
       <label><input type="radio" name="mode" id="modeSelect" value="select" checked> Selected patterns</label>
-    </div>
-    <p class="hint" id="pickHint">Whole project replaces the destination. Selected patterns merge into it.</p>
-  </div>
-
-  <div class="panel">
-    <h2>What this would do</h2>
-    <div class="plan" id="devicePlan"><p class="hint">Load a project and pick a destination.</p></div>
-    <div class="row">
+      <label><input type="radio" name="mode" id="modeWhole" value="whole"> Whole project</label>
+      <span class="sep"></span>
+      <label><input type="checkbox" id="compact"> Compact</label>
+      <label><input type="checkbox" id="freeMidi"> Freed MIDI</label>
+      <label><input type="checkbox" id="aggregate"> Aggregate by name</label>
+      <label><input type="checkbox" id="rules"> Percussion low</label>
+      <span class="spacer"></span>
       <button class="btn primary" id="applyMerge" disabled>Apply</button>
+      <button class="btn" id="undoApply" disabled>Undo</button>
     </div>
-  </div>
+    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
+  </section>
 
-  <div class="panel">
-    <h2>Expansion</h2>
-    <div id="plan"><p class="hint">Load a project to see what expansion would do.</p></div>
-  </div>
-</aside>
+  <!-- 3. The destination, stacked below the source so a drag is a straight movement down. -->
+  <section class="section">
+    <h2>Digitone II <span class="count" id="destinationInfo">— no destination yet</span></h2>
+    <div class="tabs" id="destinationTabs" hidden></div>
+    <div class="grid" id="destinationGrid" hidden></div>
+    <div class="legend" id="legend" hidden>
+      <span><i class="sw occupied"></i>occupied</span>
+      <span><i class="sw sel"></i>selected</span>
+      <span>drag from the Digitone 1 grid onto a slot here</span>
+      <span>shift = range, ctrl = add</span>
+    </div>
+  </section>
+
+  <!--
+    4. Where every sound went. The most important data on the page, so it is full width and sits
+    directly under the destination it describes.
+  -->
+  <section class="section assign">
+    <h2>Sounds on tracks</h2>
+    <div id="plan"><p class="hint">Load a project to see how its sounds would be laid out.</p></div>
+  </section>
+
+  <!-- 5. Everything that takes data out. -->
+  <section class="section">
+    <h2>Out</h2>
+    <div class="bar">
+      <span class="lbl">Name</span>
+      <input type="text" id="destinationName" size="16" placeholder="keep existing">
+      <span class="spacer"></span>
+      <button class="btn primary" id="exportDestination" disabled>Export .dn2prj</button>
+      <button class="btn danger" id="writeDevice" disabled>Write to instrument</button>
+    </div>
+  </section>
+
 </main>
 
 <div class="status" id="status"></div>
