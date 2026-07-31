@@ -70,20 +70,10 @@ import {
 } from "./dragrules.js";
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
-import { GridDrag, escapeHtml, renderGrid as renderSlots } from "../grid.js";
+import { GridDrag, renderGrid as renderSlots } from "../grid.js";
+import { $, escapeHtml, statusBar } from "../dom.js";
 
-const $ = <T extends HTMLElement>(id: string): T => {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`missing element #${id}`);
-  return el as T;
-};
-
-type Kind = "info" | "error" | "warn" | "ok";
-function status(message: string, kind: Kind = "info"): void {
-  const bar = $("status");
-  bar.textContent = message;
-  bar.className = `status ${kind === "info" ? "" : kind}`;
-}
+const status = statusBar();
 
 interface State {
   file?: LoadedProject;
