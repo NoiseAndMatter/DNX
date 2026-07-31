@@ -30,6 +30,7 @@ import {
 import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
 import { MergeRefused, describeMerge, planPatternMerge, type MergePlan } from "../../src/expand/merge.js";
 import { patternIndex, patternName } from "../../src/sheet/naming.js";
+import { DN2_DEVICE } from "../../src/librarian/device.js";
 import { ProductId } from "../../src/sysex/devices.js";
 
 interface State {
@@ -56,6 +57,13 @@ function merging(): boolean {
 interface DeviceState {
   connected?: ConnectedDevice;
   handle?: DeviceProjectHandle;
+  /**
+   * The destination project as it is on the instrument right now.
+   *
+   * Kept so the landing slot can be moved without reading the device again — and so the hint can
+   * say what is actually in those slots rather than leaving it to be discovered by a refusal.
+   */
+  destination?: Uint8Array;
   /**
    * The image to write, whichever mode produced it.
    *
@@ -111,6 +119,9 @@ function replan(): void {
   }
   renderPicker();
   updateLandingHint();
+  // The options changed what would be written, so any plan already on screen is now describing
+  // something else. Recomputed locally — nothing is sent.
+  replanForDevice();
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -191,7 +202,10 @@ wireFilePicker("sourceFile", loadSource);
 wireFilePicker("templateFile", loadTemplate);
 for (const id of ["compact", "freeMidi", "rules", "aggregate"]) $(id).addEventListener("change", replan);
 for (const id of ["modeWhole", "modeSelect"]) $(id).addEventListener("change", syncMode);
-$("landing").addEventListener("input", updateLandingHint);
+$("landing").addEventListener("input", () => {
+  updateLandingHint();
+  replanForDevice();
+});
 $("export").addEventListener("click", () => {
   exportProject().catch((error: unknown) => status(String(error instanceof Error ? error.message : error), "error"));
 });
@@ -222,7 +236,7 @@ $("connect").addEventListener("click", () => {
 });
 
 $("planDevice").addEventListener("click", () => {
-  planForDevice().catch(reportDeviceError);
+  readDestination().catch(reportDeviceError);
 });
 
 $("writeDevice").addEventListener("click", () => {
@@ -259,6 +273,7 @@ function renderPicker(): void {
       else selection.push(index);
       renderPicker();
       updateLandingHint();
+      replanForDevice();
     });
     pick.append(button);
   }
@@ -277,10 +292,31 @@ function updateLandingHint(): void {
     return;
   }
   const last = landing + selection.length - 1;
+  if (last > 127) {
+    hint.textContent = `${selection.length} pattern(s) from ${patternName(landing)} would run past H16.`;
+    return;
+  }
+
+  const range = `${selection.length} pattern(s) → ${patternName(landing)}…${patternName(last)}`;
+
+  // **What is actually in those slots**, once the destination has been read. Choosing a landing
+  // slot blind and discovering it was occupied from a refusal is the wrong way round: the
+  // information exists the moment the device has been read, and this is where it is wanted.
+  const destination = device.destination;
+  if (!destination) {
+    hint.textContent = `${range}. Read the device to see what is in them.`;
+    return;
+  }
+
+  const occupied: string[] = [];
+  for (let slot = landing; slot <= last; slot++) {
+    const summary = DN2_DEVICE.summarise(destination, slot);
+    if (summary.occupied) occupied.push(`${patternName(slot)}${summary.name ? ` ${summary.name}` : ""}`);
+  }
   hint.textContent =
-    last > 127
-      ? `${selection.length} pattern(s) from ${patternName(landing)} would run past H16.`
-      : `${selection.length} pattern(s) → ${patternName(landing)}…${patternName(last)}`;
+    occupied.length === 0
+      ? `${range} — all empty.`
+      : `${range} — ${occupied.length} occupied: ${occupied.slice(0, 4).join(", ")}${occupied.length > 4 ? "…" : ""}`;
 }
 
 /** The landing slot, or undefined when the box does not name one. */
@@ -296,6 +332,7 @@ function syncMode(): void {
   $("selectMode").hidden = !merging();
   renderPicker();
   updateLandingHint();
+  replanForDevice();
 }
 
 function reportDeviceError(error: unknown): void {
@@ -326,8 +363,18 @@ async function connect(): Promise<void> {
   status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
 }
 
-async function planForDevice(): Promise<void> {
-  if (!device.connected || !state.source) return;
+/**
+ * Read the destination **once**.
+ *
+ * Reading takes about a minute, and it used to be welded to planning — so changing the landing slot
+ * meant reading the whole project again to find out whether the new slot was any better. Choosing
+ * blind and paying a minute to discover the answer is the wrong way round.
+ *
+ * Now the read stands on its own and the plan is recomputed locally, so the landing slot can be
+ * moved as often as it takes. Nothing is sent while doing that.
+ */
+async function readDestination(): Promise<void> {
+  if (!device.connected) return;
 
   // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Required, and
   // honestly so: without it there is no image, only most of one.
@@ -344,9 +391,39 @@ async function planForDevice(): Promise<void> {
     if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
   });
   device.handle = handle;
+  device.destination = image;
 
-  const lines = merging() ? planMerge(image) : planWhole(image);
-  const problems = handle.problems.length > 0
+  updateLandingHint();
+  replanForDevice();
+}
+
+/**
+ * Recompute the plan from the destination already in hand. **Sends nothing.**
+ *
+ * Called whenever anything it depends on changes — the mode, the selection, the landing slot, the
+ * expansion options — because a plan shown beside a control that has since moved is worse than no
+ * plan at all.
+ */
+function replanForDevice(): void {
+  const destination = device.destination;
+  if (!destination || !state.source) return;
+
+  let lines: string[];
+  try {
+    lines = merging() ? planMerge(destination) : planWhole(destination);
+  } catch (error) {
+    // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
+    // where the plan would have been, and the write button has to go with it.
+    device.image = undefined;
+    $<HTMLButtonElement>("writeDevice").disabled = true;
+    const message = error instanceof Error ? error.message : String(error);
+    $("devicePlan").innerHTML = `<p class="bad">${escapeHtml(message)}</p>`;
+    status(message, "error");
+    return;
+  }
+
+  const handle = device.handle;
+  const problems = handle && handle.problems.length > 0
     ? `<p class="bad">Read with problems: ${escapeHtml(handle.problems.join("; "))}. Read again before writing.</p>`
     : "";
   $("devicePlan").innerHTML =
