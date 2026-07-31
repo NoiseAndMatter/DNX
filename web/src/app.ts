@@ -8,7 +8,7 @@
 
 import { convertProject } from "../../src/expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../../src/expand/plan.js";
-import { mintProjectId, projectName, writeProjectId } from "../../src/project/dn2image.js";
+import { mintProjectId, projectName, writeProjectId, writeProjectName } from "../../src/project/dn2image.js";
 import { readProjectName } from "../../src/project/dn1.js";
 import type { ExpansionPlan } from "../../src/expand/types.js";
 import {
@@ -103,7 +103,7 @@ function replan(): void {
   $("plan").innerHTML = renderPlan(state.plan);
   $<HTMLButtonElement>("export").disabled = !state.template;
   // The device path needs a source too, and a project can be loaded either side of connecting.
-  $<HTMLButtonElement>("planDevice").disabled = device.connected === undefined;
+  $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
   // are no longer live are dropped rather than silently planned.
   for (let i = selection.length - 1; i >= 0; i--) {
@@ -206,34 +206,277 @@ syncMode();
 status("Pick a Digitone 1 project, and a Digitone II project to use as the template.");
 void adoptServedTemplate();
 
-// --- writing to the instrument --------------------------------------------------------------
+// --- the working destination ------------------------------------------------------------------
 //
-// The same conversion, delivered over MIDI instead of as a file. Everything above this line is
-// unchanged: `planDeviceExpand` runs the same `convertProject`, so the bytes that reach the
-// device are the bytes the download would have contained.
+// **The destination is a project this page holds**, not a device read. That distinction is the
+// whole of this section.
 //
-// ## Why the destination is the LOADED project
+// It used to be "whatever the instrument has loaded": read fresh, merged once, written. Two things
+// that does not cover, and both are real ways people work:
 //
-// A dump-protocol write lands in the **active** project — verified on hardware, survives a power
-// cycle, discarded when another project loads, and SAVE PROJECT is the commit. So the diff
-// baseline has to be the live state, not the last save: reading the destination off the +Drive
-// would give a complete file and the wrong baseline the moment anything is unsaved.
+//   1. No Digitone II present at all. Expand a few patterns into a blank project and export a file.
+//   2. More than one merge. Take four patterns, then four more, then some from another project.
 //
-// That is also why this reads the destination rather than assuming a blank. Expansion is a
-// transplant — a field nobody writes inherits the destination's value — so the destination has to
-// be the real one.
+// So the destination is filled from a blank, a file or a device, merges **accumulate** into it, and
+// it is delivered either way — exported as a `.dn2prj` or written to the instrument.
+//
+// ## The device write stays correct across repeated merges
+//
+// `DeviceProjectHandle.original` holds what the instrument gave us, and `writeChangedRecords` diffs
+// against that. So however many merges went into the working project, the write sends everything
+// that differs from what is actually on the device — not only the last one.
+//
+// ## Why a device destination is still read rather than assumed blank
+//
+// A dump write lands in the **active** project, so the baseline must be the live state. And
+// expansion is a transplant: a field nobody writes inherits the destination's value, so the
+// destination has to be the real one.
+
+interface Destination {
+  /** The project as it stands, including every merge applied so far. */
+  image: Uint8Array;
+  /** What it was filled from, so the page can say so. */
+  origin: "blank" | "file" | "device";
+  label: string;
+  /**
+   * The instrument this came from, when it came from one.
+   *
+   * Carries `original` — the baseline a write diffs against — so accumulated merges all reach the
+   * device rather than only the most recent.
+   */
+  handle?: DeviceProjectHandle;
+  /**
+   * The image as it was before the last apply.
+   *
+   * **One step, deliberately.** A full history belongs to the manager's session, which has undo,
+   * redo and a log; here the mistake worth covering is the last drop, and a second stack that
+   * behaved almost like the manager's would be worse than none.
+   */
+  previous?: Uint8Array;
+}
+
+let destination: Destination | undefined;
 
 $("connect").addEventListener("click", () => {
   connect().catch(reportDeviceError);
 });
 
-$("planDevice").addEventListener("click", () => {
+$("fromBlank").addEventListener("click", () => {
+  fillFromBlank().catch(reportDeviceError);
+});
+
+$("fromDevice").addEventListener("click", () => {
   readDestination().catch(reportDeviceError);
+});
+
+$("applyMerge").addEventListener("click", () => {
+  applyToDestination();
+});
+
+$("undoApply").addEventListener("click", () => {
+  undoApply();
+});
+
+$("exportDestination").addEventListener("click", () => {
+  exportDestination().catch(reportDeviceError);
 });
 
 $("writeDevice").addEventListener("click", () => {
   writeToDevice().catch(reportDeviceError);
 });
+
+/**
+ * Start from an empty Digitone II project.
+ *
+ * The template the page already has — served by `npm run web`, or picked as a file — is exactly the
+ * right blank: it is device-authored, so it contributes an *empty* song table rather than another
+ * project's. Same reasoning the device read uses it for.
+ */
+async function fillFromBlank(): Promise<void> {
+  const blank = state.template ?? (await fetchServedTemplate());
+  if (!blank) {
+    throw new DeviceSourceError(
+      "no Digitone II project to start from. Pick a template file above — a blank saved by the " +
+        "device is cleanest.",
+    );
+  }
+  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName });
+  status(`Destination: a blank project from ${blank.fileName}. Merge into it, then export.`);
+}
+
+function setDestination(next: Destination): void {
+  destination = next;
+  renderDestination();
+  updateLandingHint();
+  replanForDevice();
+}
+
+function renderDestination(): void {
+  const info = $("destinationInfo");
+  if (!destination) {
+    info.textContent = "No destination yet. Start from a blank project, or read one off a device.";
+  } else {
+    const where =
+      destination.origin === "device"
+        ? "read from the instrument — a write goes back to its ACTIVE project"
+        : destination.origin === "blank"
+          ? "a blank project — export it as a file when you are done"
+          : "a project file";
+    info.innerHTML = `<strong>${escapeHtml(projectName(destination.image))}</strong> · ${escapeHtml(where)}`;
+  }
+  $<HTMLButtonElement>("exportDestination").disabled = destination === undefined;
+  $<HTMLButtonElement>("undoApply").disabled = destination?.previous === undefined;
+  // Writing needs a device baseline. A blank or a file has none, and the button says so by being
+  // unavailable rather than by failing at the point of sending.
+  $<HTMLButtonElement>("writeDevice").disabled = destination?.handle === undefined;
+}
+
+/**
+ * Read the instrument's loaded project as the destination. **Once.**
+ *
+ * Reading takes about a minute, and it was once welded to planning — so changing the landing slot
+ * meant reading the whole project again to find out whether the new slot was any better. Choosing
+ * blind and paying a minute to discover the answer is the wrong way round.
+ */
+async function readDestination(): Promise<void> {
+  if (!device.connected) throw new DeviceSourceError("connect a Digitone II first");
+
+  // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Required, and
+  // honestly so: without it there is no image, only most of one.
+  const donor = state.template ?? (await fetchServedTemplate());
+  if (!donor) {
+    throw new DeviceSourceError(
+      "reading a device needs a Digitone II project for the parts no dump carries — the header, " +
+        "the song table and the slot array. Pick a template file above.",
+    );
+  }
+
+  const connected = device.connected;
+  status(`Reading ${connected.name} — this takes about a minute…`);
+  const { image, handle } = await readProject(connected, donor.image, (done, total, label) => {
+    if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
+  });
+
+  setDestination({ image, origin: "device", label: connected.name, handle });
+  status(
+    handle.problems.length > 0
+      ? `Read with problems: ${handle.problems.join("; ")}. Read again before writing.`
+      : `${connected.name} read. Merge into it, then write it back.`,
+  );
+}
+
+/**
+ * Recompute the plan against the working destination. **Sends nothing.**
+ *
+ * Called whenever anything it depends on changes — the mode, the selection, the landing slot, the
+ * options, the destination itself — because a plan shown beside a control that has since moved is
+ * worse than no plan at all.
+ */
+function replanForDevice(): void {
+  if (!destination || !state.source) return;
+
+  let lines: string[];
+  try {
+    lines = merging() ? planMerge(destination.image) : planWhole(destination.image);
+  } catch (error) {
+    // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
+    // where the plan would have been, and the apply button has to go with it.
+    device.image = undefined;
+    $<HTMLButtonElement>("applyMerge").disabled = true;
+    const message = error instanceof Error ? error.message : String(error);
+    $("devicePlan").innerHTML = `<p class="bad">${escapeHtml(message)}</p>`;
+    status(message, "error");
+    return;
+  }
+
+  $("devicePlan").innerHTML = `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
+  $<HTMLButtonElement>("applyMerge").disabled = device.image === undefined;
+}
+
+/**
+ * Fold the planned result into the destination.
+ *
+ * **Explicit, and separate from the preview.** The plan recomputes as you type a landing slot or
+ * click a pattern; if that also mutated the accumulating project, choosing would be
+ * indistinguishable from committing.
+ */
+function applyToDestination(): void {
+  if (!destination || !device.image) return;
+  destination = { ...destination, previous: destination.image, image: device.image };
+  const more = destination.origin === "device" ? "Write it back, or merge more first." : "Merge more, or export.";
+  // The plan described a change *from* the old destination. Now that it is the destination, the
+  // same plan is a no-op — so it is recomputed rather than left saying something untrue.
+  renderDestination();
+  updateLandingHint();
+  replanForDevice();
+  status(`Applied. ${more}`);
+}
+
+function undoApply(): void {
+  if (!destination?.previous) return;
+  destination = { ...destination, image: destination.previous, previous: undefined };
+  renderDestination();
+  updateLandingHint();
+  replanForDevice();
+  status("Undone — back to the destination as it was before the last apply.");
+}
+
+/**
+ * Export the working destination as a `.dn2prj`.
+ *
+ * The route journey 2 exists for: a Digitone 1 and no Digitone II, expand into a blank project and
+ * take a file away.
+ */
+async function exportDestination(): Promise<void> {
+  if (!destination) return;
+  const template = state.template ?? (await fetchServedTemplate());
+  if (!template) throw new DeviceSourceError("exporting needs a Digitone II project to carry the manifest");
+
+  const image = Uint8Array.from(destination.image);
+  // A project authored here is a new project and gets its own identity rather than inheriting the
+  // template's — otherwise every file exported claims to be the template.
+  writeProjectId(image, mintProjectId());
+
+  const named = $<HTMLInputElement>("destinationName").value.trim();
+  if (named) writeProjectName(image, stampedName(named));
+
+  const base = projectName(image) || "EXPANDED";
+  download(await buildProjectBlob(template, image), `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`);
+  status(`Exported ${base}.`);
+}
+
+async function writeToDevice(): Promise<void> {
+  const handle = destination?.handle;
+  if (!handle || !destination) return;
+
+  // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
+  // most people the instrument holds the only copy.
+  const ok = window.confirm(
+    "Write everything merged so far into the project loaded on the device?\n\n" +
+      "It is not permanent until you press SAVE PROJECT on the instrument — and loading another " +
+      "project discards it.",
+  );
+  if (!ok) {
+    status("Not written.");
+    return;
+  }
+
+  $<HTMLButtonElement>("writeDevice").disabled = true;
+  try {
+    // Diffed against what the instrument gave us, not against the last merge — so every change
+    // accumulated in the working project is sent, however many applies went into it.
+    const outcome = await writeBack(handle, destination.image, (done, total, label) => {
+      status(`Writing ${done}/${total} — ${label}`);
+    });
+    status(
+      `Wrote ${outcome.written} record(s), ${outcome.bytes.toLocaleString()} bytes. ` +
+        `Press SAVE PROJECT on the device to keep it.` +
+        (outcome.untransmittable.length > 0 ? ` Not sent: ${outcome.untransmittable.join(", ")}.` : ""),
+    );
+  } finally {
+    renderDestination();
+  }
+}
 
 /**
  * The pattern picker: **live patterns only**.
@@ -351,79 +594,8 @@ async function connect(): Promise<void> {
   $("deviceInfo").innerHTML =
     `<strong>${escapeHtml(connected.name)}</strong> connected. Its currently loaded project is the ` +
     `destination — nothing is permanent until SAVE PROJECT on the device.`;
-  $<HTMLButtonElement>("planDevice").disabled = !state.source;
+  $<HTMLButtonElement>("fromDevice").disabled = false;
   status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
-}
-
-/**
- * Read the destination **once**.
- *
- * Reading takes about a minute, and it used to be welded to planning — so changing the landing slot
- * meant reading the whole project again to find out whether the new slot was any better. Choosing
- * blind and paying a minute to discover the answer is the wrong way round.
- *
- * Now the read stands on its own and the plan is recomputed locally, so the landing slot can be
- * moved as often as it takes. Nothing is sent while doing that.
- */
-async function readDestination(): Promise<void> {
-  if (!device.connected) return;
-
-  // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Required, and
-  // honestly so: without it there is no image, only most of one.
-  const donor = state.template ?? (await fetchServedTemplate());
-  if (!donor) {
-    throw new DeviceSourceError(
-      "reading a device needs a Digitone II project for the parts no dump carries — the header, " +
-        "the song table and the slot array. Pick a template file above.",
-    );
-  }
-
-  status(`Reading ${device.connected.name} — this takes about a minute…`);
-  const { image, handle } = await readProject(device.connected, donor.image, (done, total, label) => {
-    if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
-  });
-  device.handle = handle;
-  device.destination = image;
-
-  updateLandingHint();
-  replanForDevice();
-}
-
-/**
- * Recompute the plan from the destination already in hand. **Sends nothing.**
- *
- * Called whenever anything it depends on changes — the mode, the selection, the landing slot, the
- * expansion options — because a plan shown beside a control that has since moved is worse than no
- * plan at all.
- */
-function replanForDevice(): void {
-  const destination = device.destination;
-  if (!destination || !state.source) return;
-
-  let lines: string[];
-  try {
-    lines = merging() ? planMerge(destination) : planWhole(destination);
-  } catch (error) {
-    // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
-    // where the plan would have been, and the write button has to go with it.
-    device.image = undefined;
-    $<HTMLButtonElement>("writeDevice").disabled = true;
-    const message = error instanceof Error ? error.message : String(error);
-    $("devicePlan").innerHTML = `<p class="bad">${escapeHtml(message)}</p>`;
-    status(message, "error");
-    return;
-  }
-
-  const handle = device.handle;
-  const problems = handle && handle.problems.length > 0
-    ? `<p class="bad">Read with problems: ${escapeHtml(handle.problems.join("; "))}. Read again before writing.</p>`
-    : "";
-  $("devicePlan").innerHTML =
-    problems + `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
-
-  // Nothing to send is not a failure, and the button should say so by being unavailable rather
-  // than by writing zero records and reporting success.
-  $<HTMLButtonElement>("writeDevice").disabled = device.image === undefined;
 }
 
 /**
@@ -498,35 +670,3 @@ Go ahead anyway?`)) {
   status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
   return describeMerge(plan);
 }
-
-async function writeToDevice(): Promise<void> {
-  if (!device.handle || !device.image) return;
-  const image = device.image;
-
-  // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
-  // most people the instrument holds the only copy.
-  const ok = window.confirm(
-    `Write the planned changes into the project loaded on the device?\n\n` +
-      `This overwrites those slots in the ACTIVE project. It is not permanent until you press ` +
-      `SAVE PROJECT on the instrument — and loading another project discards it.`,
-  );
-  if (!ok) {
-    status("Not written.");
-    return;
-  }
-
-  $<HTMLButtonElement>("writeDevice").disabled = true;
-  try {
-    const outcome = await writeBack(device.handle, image, (done, total, label) => {
-      status(`Writing ${done}/${total} — ${label}`);
-    });
-    status(
-      `Wrote ${outcome.written} record(s), ${outcome.bytes.toLocaleString()} bytes. ` +
-        `Press SAVE PROJECT on the device to keep it.` +
-        (outcome.untransmittable.length > 0 ? ` Not sent: ${outcome.untransmittable.join(", ")}.` : ""),
-    );
-  } finally {
-    $<HTMLButtonElement>("writeDevice").disabled = false;
-  }
-}
-
