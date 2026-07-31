@@ -350,6 +350,47 @@ library is not in the project file and its format is unknown, so it needs SysEx 
 3. **Publish target** — the CI config targets GitLab Pages while the repository is on GitHub. Not
    a question so much as a twenty-minute fix nobody has done.
 
+## The expansion report follows the mode — 2026-07-31
+
+**Reported by the user:** the *Sounds on tracks* breakdown showed the whole project even with
+selected patterns ticked. It should show the expansion of the patterns already dragged into the
+DN2; only whole-project mode should break down the whole project.
+
+It was not only a display bug. The report rendered `planExpansion(source)` unconditionally, and
+`planPatternMerge` converted with a whole-project plan too — so the panel was accurate about a
+conversion nobody had asked for, and the merge allocated tracks against 128 patterns' worth of
+competition. Both now scope the plan to the patterns in play; see `docs/expansion-design.md`.
+
+What the panel shows, by mode:
+
+- **whole project** — every live pattern, with the heading saying so.
+- **selected patterns** — the merged patterns plus the current selection, so the panel answers
+  *what is this project becoming* while you are choosing rather than going blank until you apply.
+  The heading names the patterns and how many are not applied yet.
+- **nothing chosen yet** — a hint to drag, rather than a stale breakdown.
+
+### The panel above it had two faults of its own
+
+Found in the same session, from a screenshot: selecting one pattern printed a wall of text over
+the whole page, and the breakdown was still the whole project's.
+
+1. **The page handed the merge the whole-project plan.** `planMerge` passed `state.plan` whenever
+   it existed, which defeated the scoping underneath it entirely — the merge allocated tracks
+   against 128 patterns of competition and produced a layout nothing on screen described. It now
+   builds a plan for the selection, through the same `planFor` helper the report uses, so the two
+   cannot disagree.
+2. **Conversion notes were printed raw, all of them.** A merge converts the whole source project —
+   a pattern's kit is written by the pass that writes every kit — so the report came back with one
+   note per inferred field per sound across 128 patterns. On a real project that is over a thousand
+   lines of the same few sentences, inside a `position: sticky` strip, so it grew taller than the
+   page and drew the rest of the tool underneath it.
+
+   `MergePlan.notes` now carries them scoped to the merged patterns and the pool slots actually
+   placed, folded by message with counts, separate from `warnings` (which stays short and always
+   worth reading). One corpus merge goes from 163 raw notes to 2. The panel renders them behind a
+   `<details>`, and `#devicePlan` is capped and scrollable — a sticky element must never be able to
+   grow without bound, whatever it has to say.
+
 ## Sequencing
 
 1. ~~**The spine.**~~ **Done, CLI only** (`npm run rearrange`). Device-agnostic librarian, pattern
