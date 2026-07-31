@@ -60,7 +60,7 @@ import {
   openDeviceProject,
   readProject,
   writeBack,
-} from "./devicesource.js";
+} from "../devicesource.js";
 import {
   type Drag,
   type DropHint,
