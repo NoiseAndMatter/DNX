@@ -70,7 +70,7 @@ import {
 } from "./dragrules.js";
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
-import { GridDrag, renderGrid as renderSlots } from "../grid.js";
+import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
 import { $, escapeHtml, statusBar } from "../dom.js";
 
 const status = statusBar();
@@ -133,35 +133,21 @@ function slotName(index: number): string {
   return nameAt(state.level, index);
 }
 
-const BANKS = "ABCDEFGH";
 
 // --- rendering ----------------------------------------------------------------------------
-
-function bankCount(device: Device): number {
-  return Math.ceil(device.patternCount / 16);
-}
 
 function renderTabs(): void {
   const { device, session } = state;
   if (!device || !session) return;
-
-  const tabs = $("tabs");
-  tabs.hidden = false;
-  tabs.innerHTML = "";
-
-  for (let bank = 0; bank < bankCount(device); bank++) {
-    const occupied = countOccupied(bank);
-    const button = document.createElement("button");
-    button.className = "tab";
-    button.setAttribute("role", "tab");
-    button.setAttribute("aria-selected", String(bank === state.bank));
-    button.innerHTML = `${BANKS[bank]}<span class="n">${occupied || ""}</span>`;
-    button.addEventListener("click", () => {
+  renderBanks($("tabs"), {
+    patternCount: device.patternCount,
+    current: state.bank,
+    countOccupied,
+    onSelect: (bank) => {
       state.bank = bank;
       render();
-    });
-    tabs.append(button);
-  }
+    },
+  });
 }
 
 function countOccupied(bank: number): number {
