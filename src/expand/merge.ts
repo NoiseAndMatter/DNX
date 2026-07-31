@@ -1,0 +1,390 @@
+/**
+ * Merging **selected** patterns from a Digitone 1 into an existing Digitone II project.
+ *
+ * ## The other mode
+ *
+ * `convertProject` transplants a whole project: 128 patterns and the sound pool, wholesale. That is
+ * right for *"turn this DN1 project into a DN2 one"* and wrong for *"take these four patterns and
+ * put them in the project I am working on"* — because the destination's pool is somebody's work,
+ * and overwriting it to make room for four patterns' worth of sounds is not a merge.
+ *
+ * So this keeps the destination's pool and **grows it**: incoming sounds are appended after what is
+ * already there, an identical sound already present is reused rather than duplicated, and every
+ * sound lock in the incoming patterns is re-pointed at wherever its sound actually landed.
+ *
+ * ## Why it converts the whole project first and then takes four patterns
+ *
+ * Wasteful-looking, and deliberate. `convertProject` is where every expansion rule lives —
+ * placement, promotion, aggregation, the field map, 1,152 kit pairs' worth of verified byte
+ * mappings — and it works on a project. Reimplementing "convert one pattern" would be a second
+ * implementation of the thing this project has spent months getting right, and it would drift.
+ *
+ * The conversion is pure and takes milliseconds. Only its output is subsetted.
+ *
+ * ## What a sound lock is, since the whole file turns on it
+ *
+ * One byte per step per track at `TRACK.soundLockOffset`, `0xFF` for none, otherwise an index into
+ * the project's 128-slot pool. Track sounds are **not** pool references — they sit inline in the
+ * kit — so a merge only has to re-point locks, and a pattern whose sounds were all promoted to
+ * their own tracks needs no pool at all.
+ */
+
+import { type ConversionReport } from "./convert.js";
+import { convertProject } from "./convert.js";
+import { type ExpansionPlan } from "./types.js";
+import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
+import { PATTERN, TRACK, TRACK_COUNT } from "../project/dn2pattern.js";
+import { DN2_POOL_OFFSET, POOL_SOUND_COUNT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
+import { patternName } from "../sheet/naming.js";
+import { DN2_DEVICE } from "../librarian/device.js";
+
+/** Bytes per DN2 pool sound. */
+const DN2_SOUND_SIZE = 359;
+
+/** No lock on this step. */
+const NO_LOCK = 0xff;
+
+export class MergeRefused extends Error {}
+
+export interface MergeOptions {
+  /** The Digitone 1 project the patterns come from. */
+  source: Uint8Array;
+  /** Which source patterns to take, in the order they should land. */
+  patterns: number[];
+  /** The Digitone II project to merge into — its pool and its other patterns are preserved. */
+  destination: Uint8Array;
+  /** Destination slot the first pattern lands on; the rest follow consecutively. */
+  landing: number;
+  plan?: ExpansionPlan;
+  /**
+   * Write what fits when the destination's pool cannot take every incoming sound.
+   *
+   * **Off by default, and the refusal is the point.** A partial merge loses sounds *silently* — the
+   * trigs still fire, at whatever the pool holds at that index, which is worse than not merging.
+   */
+  allowPoolOverflow?: boolean;
+  /**
+   * Overwrite destination patterns that already hold something.
+   *
+   * Off by default. `applyRearrange` asks before overwriting for the same reason: for most people
+   * the instrument holds the only copy.
+   */
+  confirmOverwrite?: boolean;
+}
+
+/** Where one incoming sound ended up in the destination's pool. */
+export interface PoolPlacement {
+  /** Its index in the converted source. */
+  from: number;
+  /** Its index in the destination. */
+  to: number;
+  /** True when an identical sound was already in the destination and was pointed at instead. */
+  reused: boolean;
+  name: string;
+}
+
+export interface MergePlan {
+  /** The destination with the patterns merged in. */
+  image: Uint8Array;
+  /** Destination slots written, in landing order. */
+  landingSlots: number[];
+  /** Destination slots that already held a pattern and would be overwritten. */
+  overwrites: number[];
+  pool: PoolPlacement[];
+  /** Incoming sounds that found no free slot. Empty unless `allowPoolOverflow`. */
+  dropped: number[];
+  /** Locks pointing past the end of the pool, and locks pointing at empty slots. Left untouched. */
+  dangling: { outOfRange: number[]; empty: number[] };
+  /** Sound-lock bytes re-pointed. */
+  rerouted: number;
+  /** Free pool slots left afterwards. */
+  freePoolSlots: number;
+  report: ConversionReport;
+  warnings: string[];
+}
+
+/**
+ * Work out what merging these patterns would do. **Changes nothing and sends nothing.**
+ *
+ * Returns a whole destination image rather than a patch, because everything downstream — the
+ * device write's diff, the file exporter, the manager's session — already works on images, and a
+ * patch format would be a fourth way of saying the same thing.
+ */
+export function planPatternMerge(options: MergeOptions): MergePlan {
+  const { source, destination, patterns, landing } = options;
+
+  if (destination.length !== DN2_LAYOUT.imageSize) {
+    throw new MergeRefused(
+      `the destination is ${destination.length} bytes, not a Digitone II image — a merge writes ` +
+        `DN2 patterns and a DN1 cannot receive them`,
+    );
+  }
+  if (source.length !== DN1_LAYOUT.imageSize) {
+    throw new MergeRefused(`the source is ${source.length} bytes, not a Digitone 1 image`);
+  }
+  if (patterns.length === 0) throw new MergeRefused("no patterns selected");
+  for (const p of patterns) {
+    if (!Number.isInteger(p) || p < 0 || p >= DN1_LAYOUT.patternCount) {
+      throw new MergeRefused(`${p} is not a Digitone 1 pattern index`);
+    }
+  }
+  if (!Number.isInteger(landing) || landing < 0 || landing >= DN2_LAYOUT.patternCount) {
+    throw new MergeRefused(`${landing} is not a Digitone II pattern slot`);
+  }
+  // Refused rather than truncated. Dropping the tail of a selection is the kind of quiet
+  // helpfulness that gets discovered three patterns later.
+  if (landing + patterns.length > DN2_LAYOUT.patternCount) {
+    throw new MergeRefused(
+      `${patterns.length} pattern(s) landing on ${patternName(landing)} would run past ` +
+        `${patternName(DN2_LAYOUT.patternCount - 1)}. Land them earlier or take fewer.`,
+    );
+  }
+
+  const { image: converted, report } = convertProject(source, destination, {
+    ...(options.plan === undefined ? {} : { plan: options.plan }),
+  });
+
+  const image = Uint8Array.from(destination);
+  const landingSlots = patterns.map((_, i) => landing + i);
+
+  const overwrites = landingSlots.filter((slot) => patternOccupied(destination, slot));
+  if (overwrites.length > 0 && !options.confirmOverwrite) {
+    throw new MergeRefused(
+      `${overwrites.length} destination slot(s) already hold a pattern ` +
+        `(${overwrites.map(patternName).join(", ")}). Nothing was changed — pass confirmOverwrite ` +
+        `to replace them, or land somewhere empty.`,
+    );
+  }
+
+  // --- which pool slots the incoming patterns actually need ------------------------------------
+  //
+  // Read off the *converted* patterns, not the source: expansion promotes sound-locked trigs onto
+  // their own tracks, so the set of locks that survive is smaller than the DN1's and is only known
+  // after conversion. A merge that reserved pool space for the pre-conversion set would append
+  // sounds nothing points at.
+  const seen = new Set<number>();
+  for (const p of patterns) {
+    for (const slot of lockedSlots(patternRecord(converted, p, DN2_LAYOUT))) seen.add(slot);
+  }
+
+  // **A lock can point at a slot that is not there.** Found by the round-trip test: merging the
+  // same pattern twice kept appending a nameless sound, because one lock referenced slot **161** —
+  // beyond the 128-slot pool entirely. Reading it walked off the end of the pool into whatever
+  // follows and wrote that into the destination.
+  //
+  // Dangling locks are ordinary in real projects (`poolCoverage` had to learn the same thing from
+  // `003 AMBZ.dnprj`), so this reports them and leaves them pointing where they were rather than
+  // refusing a whole merge over somebody's old untidiness. What it will not do is invent a sound.
+  const outOfRange = [...seen].filter((slot) => slot >= POOL_SOUND_COUNT).sort((a, b) => a - b);
+  const empty = [...seen].filter(
+    (slot) => slot < POOL_SOUND_COUNT && !poolSlotHoldsSound(converted, slot),
+  ).sort((a, b) => a - b);
+  const needed = new Set(
+    [...seen].filter((slot) => slot < POOL_SOUND_COUNT && poolSlotHoldsSound(converted, slot)),
+  );
+
+  // --- place them ------------------------------------------------------------------------------
+  const free = freePoolSlots(destination);
+  const pool: PoolPlacement[] = [];
+  const dropped: number[] = [];
+  const remap = new Map<number, number>();
+
+  for (const from of [...needed].sort((a, b) => a - b)) {
+    const sound = poolSlot(converted, from);
+    const already = findIdenticalSound(destination, sound);
+    if (already !== undefined) {
+      pool.push({ from, to: already, reused: true, name: soundName(sound) });
+      remap.set(from, already);
+      continue;
+    }
+    const to = free.shift();
+    if (to === undefined) {
+      dropped.push(from);
+      continue;
+    }
+    setPoolSlot(image, to, sound);
+    pool.push({ from, to, reused: false, name: soundName(sound) });
+    remap.set(from, to);
+  }
+
+  if (dropped.length > 0 && !options.allowPoolOverflow) {
+    throw new MergeRefused(
+      `the destination's pool has no room for ${dropped.length} of the ${needed.size} sound(s) ` +
+        `these patterns need. Nothing was changed.\n\n` +
+        `A partial merge is worse than none: the trigs would still fire, at whatever those slots ` +
+        `happen to hold. Free some pool slots, take fewer patterns, or pass allowPoolOverflow ` +
+        `knowing what it costs.`,
+    );
+  }
+
+  // --- copy the patterns in, re-pointing every lock ---------------------------------------------
+  let rerouted = 0;
+  patterns.forEach((from, i) => {
+    const to = landing + i;
+    const pattern = Uint8Array.from(patternRecord(converted, from, DN2_LAYOUT));
+    rerouted += reroute(pattern, remap);
+    setPatternRecord(image, to, pattern);
+    setKitRecord(image, to, kitRecord(converted, from, DN2_LAYOUT));
+  });
+
+  const warnings = report.warnings.map((w) => w.message);
+  if (outOfRange.length > 0) {
+    warnings.unshift(
+      `${outOfRange.length} lock(s) point outside the 128-slot pool (${outOfRange.slice(0, 6).join(", ")}) ` +
+        `— left as they are, since there is no sound to move`,
+    );
+  }
+  if (empty.length > 0) {
+    warnings.unshift(
+      `${empty.length} lock(s) point at empty pool slot(s) (${empty.slice(0, 6).join(", ")}) — a ` +
+        `dangling lock in the source, left as it is`,
+    );
+  }
+  if (dropped.length > 0) {
+    warnings.unshift(
+      `${dropped.length} sound(s) had nowhere to go and their trigs will play whatever the ` +
+        `destination already holds at those slots`,
+    );
+  }
+  if (overwrites.length > 0) {
+    warnings.unshift(`${overwrites.length} destination pattern(s) replaced: ${overwrites.map(patternName).join(", ")}`);
+  }
+
+  return {
+    image,
+    landingSlots,
+    overwrites,
+    pool,
+    dropped,
+    dangling: { outOfRange, empty },
+    rerouted,
+    freePoolSlots: free.length,
+    report,
+    warnings,
+  };
+}
+
+/** How a merge reads to someone about to commit it. */
+export function describeMerge(plan: MergePlan): string[] {
+  const appended = plan.pool.filter((p) => !p.reused);
+  const reused = plan.pool.length - appended.length;
+  return [
+    `${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}`,
+    `${appended.length} sound(s) appended to the pool${reused > 0 ? `, ${reused} already there and reused` : ""}`,
+    `${plan.rerouted} sound lock(s) re-pointed`,
+    `${plan.freePoolSlots} pool slot(s) free afterwards`,
+    ...(plan.overwrites.length > 0 ? [`replacing ${plan.overwrites.map(patternName).join(", ")}`] : []),
+    ...plan.warnings,
+  ];
+}
+
+// --- pattern and pool access ----------------------------------------------------------------------
+
+/** Every pool slot this pattern's trigs are locked to. */
+function lockedSlots(pattern: Uint8Array): Set<number> {
+  const slots = new Set<number>();
+  for (let t = 0; t < TRACK_COUNT; t++) {
+    const at = PATTERN.trackOffset + t * PATTERN.trackSize;
+    for (let step = 0; step < 128; step++) {
+      const slot = pattern[at + TRACK.soundLockOffset + step]!;
+      if (slot !== NO_LOCK) slots.add(slot);
+    }
+  }
+  return slots;
+}
+
+/** Re-point every lock through the map. Locks with no entry are left alone. */
+function reroute(pattern: Uint8Array, remap: Map<number, number>): number {
+  let changed = 0;
+  for (let t = 0; t < TRACK_COUNT; t++) {
+    const at = PATTERN.trackOffset + t * PATTERN.trackSize;
+    for (let step = 0; step < 128; step++) {
+      const i = at + TRACK.soundLockOffset + step;
+      const slot = pattern[i]!;
+      if (slot === NO_LOCK) continue;
+      const to = remap.get(slot);
+      if (to === undefined || to === slot) continue;
+      pattern[i] = to;
+      changed++;
+    }
+  }
+  return changed;
+}
+
+function poolAt(slot: number): number {
+  return DN2_LAYOUT.tailBase + DN2_POOL_OFFSET + slot * DN2_SOUND_SIZE;
+}
+
+function poolSlot(image: Uint8Array, slot: number): Uint8Array {
+  const at = poolAt(slot);
+  return image.subarray(at, at + DN2_SOUND_SIZE);
+}
+
+function setPoolSlot(image: Uint8Array, slot: number, sound: Uint8Array): void {
+  image.set(sound, poolAt(slot));
+}
+
+function soundName(sound: Uint8Array): string {
+  const raw = sound.subarray(SOUND_NAME_OFFSET, SOUND_NAME_OFFSET + SOUND_NAME_SIZE);
+  const end = raw.indexOf(0);
+  return new TextDecoder("windows-1252").decode(end === -1 ? raw : raw.subarray(0, end)).trim();
+}
+
+/**
+ * Whether a pool slot holds a sound, by its name field.
+ *
+ * The same test `poolCoverage` uses, and for the same reason: a DN1's slots are all *framed*
+ * whether or not they hold anything, so framing answers nothing and the name does.
+ */
+function poolSlotHoldsSound(image: Uint8Array, slot: number): boolean {
+  const at = poolAt(slot) + SOUND_NAME_OFFSET;
+  const name = image.subarray(at, at + SOUND_NAME_SIZE);
+  return !name.every((b) => b === 0 || b === 0xff);
+}
+
+/** Free slots, ascending — so incoming sounds land after what is already there. */
+function freePoolSlots(image: Uint8Array): number[] {
+  const free: number[] = [];
+  for (let slot = 0; slot < POOL_SOUND_COUNT; slot++) {
+    if (!poolSlotHoldsSound(image, slot)) free.push(slot);
+  }
+  return free;
+}
+
+/**
+ * A pool slot already holding this exact sound, if there is one.
+ *
+ * Byte-identical only. A looser test — same name, say — would collapse two sounds a musician
+ * deliberately kept apart, and the cost of missing a match is one duplicated pool slot out of 128.
+ */
+function findIdenticalSound(image: Uint8Array, sound: Uint8Array): number | undefined {
+  for (let slot = 0; slot < POOL_SOUND_COUNT; slot++) {
+    if (!poolSlotHoldsSound(image, slot)) continue;
+    const existing = poolSlot(image, slot);
+    let same = true;
+    for (let i = 0; i < DN2_SOUND_SIZE; i++) {
+      if (existing[i] !== sound[i]) { same = false; break; }
+    }
+    if (same) return slot;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a destination slot already holds a pattern.
+ *
+ * `DN2_DEVICE.summarise` already answers this, and the manager's grid has been showing it on
+ * hardware-verified data for weeks. A second implementation here would be a second opinion about
+ * what "occupied" means, and the two would disagree the first time either changed.
+ */
+function patternOccupied(image: Uint8Array, slot: number): boolean {
+  return DN2_DEVICE.summarise(image, slot).occupied === true;
+}
+
+function setPatternRecord(image: Uint8Array, slot: number, pattern: Uint8Array): void {
+  image.set(pattern, DN2_LAYOUT.headerSize + slot * DN2_LAYOUT.patternSize);
+}
+
+function setKitRecord(image: Uint8Array, slot: number, kit: Uint8Array): void {
+  image.set(kit, DN2_LAYOUT.kitBase + slot * DN2_LAYOUT.kitSize);
+}
