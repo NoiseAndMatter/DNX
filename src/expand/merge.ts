@@ -333,17 +333,14 @@ function scopedNotes(
 export function describeMerge(plan: MergePlan): string[] {
   const appended = plan.pool.filter((p) => !p.reused);
   const reused = plan.pool.length - appended.length;
-  const notes = plan.notes.reduce((n, note) => n + note.count, 0);
   return [
     `${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}`,
     `${appended.length} sound(s) appended to the pool${reused > 0 ? `, ${reused} already there and reused` : ""}`,
     `${plan.rerouted} sound lock(s) re-pointed`,
     `${plan.freePoolSlots} pool slot(s) free afterwards`,
-    ...(plan.overwrites.length > 0 ? [`replacing ${plan.overwrites.map(patternName).join(", ")}`] : []),
+    // Overwrites are not listed twice. `warnings` already names them, with a count, and a merge
+    // that replaces a pattern should say so once in the voice that means "look at this".
     ...plan.warnings,
-    ...(notes > 0
-      ? [`${notes} conversion note(s) about ${plan.notes.length} field mapping(s) — details below`]
-      : []),
   ];
 }
 
