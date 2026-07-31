@@ -16,8 +16,10 @@ import {
   download,
   fetchServedTemplate,
   openProject,
+  readProjectFile,
   type LoadedProject,
 } from "./project.js";
+import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
 import { renderPlan } from "./render.js";
 import { $, escapeHtml, statusBar } from "./dom.js";
 
@@ -271,16 +273,31 @@ $("writeDevice").addEventListener("click", () => {
  * project's. Same reasoning the device read uses it for.
  */
 async function fillFromBlank(): Promise<void> {
-  const blank = state.template ?? (await fetchServedTemplate());
-  if (!blank) {
-    throw new DeviceSourceError(
-      "no Digitone II project to start from. Pick a template file above — a blank saved by the " +
-        "device is cleanest.",
-    );
-  }
+  // The embedded blank first, so this works on a fresh clone with no corpus and no file picked —
+  // which is what "blank" should mean. A template found on the server or picked by hand is
+  // preferred when there is one, because it is *this* user's device's idea of empty rather than
+  // the one that happened to be captured.
+  const picked = state.template ?? (await fetchServedTemplate());
+  const blank = picked ?? (await loadEmbeddedBlank());
+  if (!picked) state.template = blank;
+
   setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName });
   status(`Destination: a blank project from ${blank.fileName}. Merge into it, then export.`);
 }
+
+/**
+ * The blank project that ships with the code.
+ *
+ * `src/librarian/blankproject.ts` carries a device-initialised `.dn2prj` — 7,805 bytes, verified to
+ * hold no occupied pattern and no named pool slot before it was embedded. It is the blank
+ * destination, the donor a device read needs for the parts no dump carries, and the manifest an
+ * export writes out: one artefact doing all three, which is why the file is embedded rather than
+ * the image.
+ */
+async function loadEmbeddedBlank(): Promise<LoadedProject> {
+  return readProjectFile("blank.dn2prj", blankDn2ProjectFile());
+}
+
 
 function setDestination(next: Destination): void {
   destination = next;
