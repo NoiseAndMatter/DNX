@@ -292,7 +292,7 @@ function setDestination(next: Destination): void {
 function renderDestination(): void {
   const info = $("destinationInfo");
   if (!destination) {
-    info.textContent = "No destination yet. Start from a blank project, or read one off a device.";
+    info.textContent = "— no destination yet";
   } else {
     const where =
       destination.origin === "device"
@@ -300,7 +300,10 @@ function renderDestination(): void {
         : destination.origin === "blank"
           ? "a blank project — export it as a file when you are done"
           : "a project file";
-    info.innerHTML = `<strong>${escapeHtml(projectName(destination.image))}</strong> · ${escapeHtml(where)}`;
+    info.textContent = `— ${projectName(destination.image)} · ${where}`;
+    const badge = $("destinationBadge");
+    badge.hidden = false;
+    badge.textContent = destination.origin === "device" ? destination.label : destination.origin;
   }
   $<HTMLButtonElement>("exportDestination").disabled = destination === undefined;
   $<HTMLButtonElement>("undoApply").disabled = destination?.previous === undefined;
@@ -652,6 +655,7 @@ function renderSource(): void {
     return;
   }
   grid.hidden = false;
+  $("sourceEmpty").hidden = true;
 
   const live = new Set(state.plan?.livePatterns ?? []);
   renderBanks(tabs, {
@@ -698,8 +702,8 @@ function renderSource(): void {
 
   $("sourceSub").textContent =
     selection.length === 0
-      ? `${live.size} live pattern(s). Select some, then drag them onto the destination.`
-      : `${selection.length} selected: ${selection.map(patternName).join(" ")}`;
+      ? `— ${live.size} live`
+      : `— ${selection.length} selected: ${selection.map(patternName).join(" ")}`;
 }
 
 /** The destination grid: the working project, whatever it was filled from. */
