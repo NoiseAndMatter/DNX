@@ -277,3 +277,65 @@ function clear(cell: HTMLElement): void {
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+// --- banks ---------------------------------------------------------------------------------------
+
+/** `A`…`H`. Both families number their patterns in banks of sixteen. */
+export const BANKS = "ABCDEFGH";
+
+export const BANK_SIZE = 16;
+
+/** How many banks a device of this many patterns has. */
+export function bankCount(patternCount: number): number {
+  return Math.ceil(patternCount / BANK_SIZE);
+}
+
+/**
+ * The bank strip above a grid.
+ *
+ * Shared for the same reason the grid is: it is half of *"which slot?"*, and a tool that drew its
+ * own would answer that question in its own way. The count on each tab is what makes a bank worth
+ * clicking — it is the only thing on screen that says where the music is.
+ */
+export function renderBanks(
+  container: HTMLElement,
+  options: {
+    patternCount: number;
+    current: number;
+    /** Occupied slots in a bank, for the badge. Omitted for a grid that cannot count. */
+    countOccupied?: (bank: number) => number;
+    onSelect(bank: number): void;
+  },
+): void {
+  container.hidden = false;
+  container.innerHTML = "";
+
+  for (let bank = 0; bank < bankCount(options.patternCount); bank++) {
+    const occupied = options.countOccupied?.(bank) ?? 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tab";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(bank === options.current));
+    // The badge is empty rather than `0` for an empty bank: a row of zeroes is noise, and the
+    // absence of a number already says it.
+    button.innerHTML = `${BANKS[bank]}<span class="n">${occupied || ""}</span>`;
+    button.addEventListener("click", () => {
+      options.onSelect(bank);
+    });
+    container.append(button);
+  }
+}
+
+/** The slots of one bank, ready for `renderGrid`. */
+export function bankSlots(
+  bank: number,
+  patternCount: number,
+  view: (index: number) => Omit<SlotView, "index">,
+): SlotView[] {
+  const from = bank * BANK_SIZE;
+  const to = Math.min(from + BANK_SIZE, patternCount);
+  const slots: SlotView[] = [];
+  for (let index = from; index < to; index++) slots.push({ index, ...view(index) });
+  return slots;
+}
