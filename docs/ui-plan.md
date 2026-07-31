@@ -369,6 +369,28 @@ What the panel shows, by mode:
   The heading names the patterns and how many are not applied yet.
 - **nothing chosen yet** — a hint to drag, rather than a stale breakdown.
 
+### The panel above it had two faults of its own
+
+Found in the same session, from a screenshot: selecting one pattern printed a wall of text over
+the whole page, and the breakdown was still the whole project's.
+
+1. **The page handed the merge the whole-project plan.** `planMerge` passed `state.plan` whenever
+   it existed, which defeated the scoping underneath it entirely — the merge allocated tracks
+   against 128 patterns of competition and produced a layout nothing on screen described. It now
+   builds a plan for the selection, through the same `planFor` helper the report uses, so the two
+   cannot disagree.
+2. **Conversion notes were printed raw, all of them.** A merge converts the whole source project —
+   a pattern's kit is written by the pass that writes every kit — so the report came back with one
+   note per inferred field per sound across 128 patterns. On a real project that is over a thousand
+   lines of the same few sentences, inside a `position: sticky` strip, so it grew taller than the
+   page and drew the rest of the tool underneath it.
+
+   `MergePlan.notes` now carries them scoped to the merged patterns and the pool slots actually
+   placed, folded by message with counts, separate from `warnings` (which stays short and always
+   worth reading). One corpus merge goes from 163 raw notes to 2. The panel renders them behind a
+   `<details>`, and `#devicePlan` is capped and scrollable — a sticky element must never be able to
+   grow without bound, whatever it has to say.
+
 ## Sequencing
 
 1. ~~**The spine.**~~ **Done, CLI only** (`npm run rearrange`). Device-agnostic librarian, pattern

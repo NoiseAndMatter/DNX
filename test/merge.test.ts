@@ -283,3 +283,59 @@ test("a lock pointing outside the pool is reported, never invented", { skip }, (
     assert.match(plan.warnings.join(" "), /left as (they are|it is)/);
   }
 });
+
+/**
+ * Conversion notes are scoped to the merge and folded.
+ *
+ * **Found on hardware-less testing by the user**: selecting one DN1 pattern printed well over a
+ * thousand lines into the options strip — one per inferred field per sound across all 128 patterns
+ * — which grew the sticky panel past the height of the page and drew the rest of the tool
+ * underneath it. Nearly every line was about a pattern staying behind, and nearly every line was
+ * the same sentence repeated.
+ *
+ * A merge has to convert the whole project (a pattern's kit is written by the pass that writes all
+ * of them), so the filtering happens on the way out.
+ */
+test("a one-pattern merge does not report the whole project's conversion notes", { skip }, () => {
+  const plan = planPatternMerge({
+    source: source(),
+    patterns: [0],
+    destination: destination(),
+    landing: 100,
+    confirmOverwrite: true,
+  });
+
+  const all = plan.report.warnings.length;
+  const kept = plan.notes.reduce((n, note) => n + note.count, 0);
+  assert.ok(all > 0, "the corpus source converts with no notes at all — this proves nothing");
+  assert.ok(kept < all, `kept every one of the ${all} notes; nothing was scoped`);
+
+  // Every note's count is exactly the number of in-scope warnings carrying that message.
+  //
+  // Counted rather than matched by text: the same sentence is emitted for pattern 0 and for pattern
+  // 90, so "is this message present" cannot tell a kept note from a dropped one. The count can.
+  const placed = new Set(plan.pool.map((p) => p.from));
+  const expected = new Map<string, number>();
+  for (const w of plan.report.warnings) {
+    if (w.pattern !== undefined && w.pattern !== 0) continue;
+    if (w.poolSlot !== undefined && !placed.has(w.poolSlot)) continue;
+    expected.set(w.message, (expected.get(w.message) ?? 0) + 1);
+  }
+  for (const note of plan.notes) {
+    assert.equal(note.count, expected.get(note.message), `"${note.message}" counted wrong`);
+  }
+  assert.equal(plan.notes.length, expected.size, "a note in scope was dropped");
+
+  // Folded: distinct messages, each with its count, and the counts add up.
+  assert.equal(new Set(plan.notes.map((n) => n.message)).size, plan.notes.length, "duplicate messages survived");
+  assert.ok(plan.notes.every((n) => n.count >= 1));
+});
+
+test("the summary lines stay short enough to read", { skip }, () => {
+  // The panel that broke was a list somebody had to scan. Whatever a merge finds, its description
+  // is a handful of lines; the notes are counted in one of them and rendered elsewhere.
+  const lines = describeMerge(
+    planPatternMerge({ source: source(), patterns: [0, 1, 2], destination: destination(), landing: 100, confirmOverwrite: true }),
+  );
+  assert.ok(lines.length <= 12, `describeMerge returned ${lines.length} lines:\n${lines.join("\n")}`);
+});
