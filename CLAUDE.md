@@ -15,6 +15,30 @@ Not related to any ECheck / ArchiSharp / C# work — those conventions do not ap
 
 **One branch per task, cut from `main`.** Never commit to `main` directly.
 
+**Cut from `origin/main`, never from another branch.** A PR based on another PR is lost the moment
+its base merges first: the child then merges into a branch nobody will merge again. That has already
+cost one PR entirely — GitHub reported it merged while `main` never received the commit. If a
+follow-up genuinely cannot build on `main`, wait for the merge rather than stacking.
+
+**One open PR at a time, by default.** This is the rule that prevents most of the trouble. Parallel
+branches against a moving `main` are what produce conflicts, stale bases and lost work: five were
+open at once on 2026-08-01 and three separate git failures followed. Independent work can wait
+locally — the queue costs nothing and the conflicts cost everyone.
+
+**Rebase and re-verify before every push, not only when GitHub reports a conflict.** `git fetch`,
+rebase onto `origin/main`, then build and test again. A branch that passed against yesterday's
+`main` is not evidence about today's, and a routine rebase found a real defect that no conflict
+marker would have shown.
+
+**Check whether a PR is open before committing, not before pushing.** Getting that order wrong is
+how commits landed on branches whose PRs were already merged. If a branch's PR is open or merged,
+the work goes on a new branch cut from `origin/main`.
+
+**Append-only documents are where conflicts actually happen.** `docs/device-probing.md` and
+`docs/ROADMAP.md` collect conflicts because every change adds a section at the end. Put a new
+section beside the subject it belongs to rather than at the bottom by habit, and when a change is
+purely a finding, consider its own dated file instead of growing one file forever.
+
 **Never push `main`, and never merge a branch into `main`.** The repository owner is the only
 integrator. Merging locally and pushing skips their review and moves the shared branch under
 them.
