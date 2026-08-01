@@ -118,11 +118,17 @@ export function describeApiReply(frame: ApiFrame): string {
   } catch (error) {
     return `${frame.body.length} bytes that did not decode: ${String(error)}`;
   }
-  return `${frame.body.length} bytes, undecoded — ${hex(frame.body)}`;
+  return `${frame.body.length} bytes, undecoded — ${hexBody(frame.body)}`;
 }
 
-/** Hex, with the text alongside when it looks like text, because half these replies are strings. */
-export function hex(body: Uint8Array, limit = 32): string {
+/**
+ * Hex, with the text alongside when it looks like text, because half these replies are strings.
+ *
+ * Named for its subject rather than its output: `capabilities.ts` also exported a `hex`, taking a
+ * number instead of bytes, and the probe page imported both — aliasing this one at the import to
+ * tell them apart. Two exported functions with one name is the defect; the alias was the symptom.
+ */
+export function hexBody(body: Uint8Array, limit = 32): string {
   const shown = body.subarray(0, limit);
   const bytes = [...shown].map((b) => b.toString(16).padStart(2, "0")).join(" ");
   const text = new TextDecoder("windows-1252").decode(shown).replace(/[^\x20-\x7e]/g, ".");

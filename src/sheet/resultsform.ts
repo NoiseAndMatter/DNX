@@ -27,6 +27,10 @@
  * No network, no dependencies, no build step — the file opens from disk on any browser.
  */
 
+// Imported under this file's own name for it, rather than renaming thirty call sites to prove a
+// point about consistency.
+import { escapeHtml as esc } from "./html.js";
+
 /** One thing the tester has to answer. */
 export interface ResultField {
   /** Stable id, used for the control name and the localStorage key. */
@@ -66,14 +70,6 @@ export const RESULTS_FORM_CSS = `
   .rf-status { color:var(--muted); font-size:.84rem; }
   @media print { .rf-bar { display:none; } }
 `;
-
-function esc(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /** The pass/fail pair for one row. Radios, so "not answered yet" stays representable. */
 export function verdictCell(id: string): string {
