@@ -21,10 +21,8 @@ import {
 } from "./project.js";
 import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
 import { renderPlan } from "./render.js";
-import { $, escapeHtml, statusBar } from "./dom.js";
-
-// The expander's stylesheet uses a bare `#status.error` rather than `.status.error`.
-const status = statusBar("status", "");
+import { $, escapeHtml } from "./dom.js";
+import { statusBar } from "./statusbar.js";
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -55,6 +53,15 @@ import { DN1_DEVICE, DN2_DEVICE } from "../../src/librarian/device.js";
 const DN1_PATTERN_COUNT = 128;
 const DN2_PATTERN_COUNT = 128;
 import { ProductId } from "../../src/sysex/devices.js";
+
+/**
+ * The page's status bar.
+ *
+ * Bound once, after the imports rather than between them, and after the DOM is parsed — this is a
+ * module script at the end of the body. Module-level work that throws takes every listener below
+ * it with it, which this page has been bitten by before.
+ */
+const status = statusBar();
 
 interface State {
   source?: LoadedProject;

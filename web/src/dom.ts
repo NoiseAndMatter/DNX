@@ -3,11 +3,15 @@
  *
  * ## Why these in particular
  *
- * Each is four lines, which is exactly why there were three copies. `$`, `escapeHtml`, the status
- * bar and the download helper were re-typed on every page because re-typing them is cheaper than
- * finding them — and then they drifted: the manager wrote `class="status warn"`, the expander wrote
- * `class="error"`, and the probe had its own `save` while `project.ts` had `download` doing the
+ * Each is four lines, which is exactly why there were three copies. `$`, `escapeHtml` and the
+ * download helper were re-typed on every page because re-typing them is cheaper than finding them —
+ * and then they drifted: the probe had its own `save` while `project.ts` had `download` doing the
  * same job with a different argument.
+ *
+ * The status bar started here too and has moved to `statusbar.ts`. It owns markup, a class the
+ * stylesheet depends on and a write protocol, which makes it a thing rather than a helper — and
+ * while it was filed as a helper, a caller was able to pass an argument that erased the class the
+ * whole appearance hangs off.
  *
  * Small and duplicated is worse than small and shared. A page that escapes HTML slightly
  * differently from its neighbour is a page with a slightly different set of bugs.
@@ -15,7 +19,8 @@
  * ## The layering this belongs to
  *
  * - `src/` — pure, platform-free, no DOM and no MIDI.
- * - `web/src/*.ts` — shared browser code. This file, `grid.ts`, `devicesource.ts`, `project.ts`.
+ * - `web/src/*.ts` — shared browser code. This file, `grid.ts`, `statusbar.ts`, `devicesource.ts`,
+ *   `project.ts`.
  * - `web/src/<page>/` — one page and nothing else.
  *
  * Anything a second page needs comes up a level. It is not a tidying job to do later: leaving the
@@ -34,26 +39,6 @@ export const $ = <T extends HTMLElement>(id: string): T => {
   if (!element) throw new Error(`missing element #${id}`);
   return element as T;
 };
-
-export type StatusKind = "info" | "error" | "warn" | "ok";
-
-/**
- * A status bar bound to one element.
- *
- * A factory rather than a function, because the pages disagree about the class: the manager and the
- * probe use `status warn`, the expander uses bare `error`. That disagreement is in their
- * stylesheets, so it is a parameter here rather than something to unify by editing CSS that already
- * works.
- */
-export function statusBar(id = "status", base = "status"): (message: string, kind?: StatusKind) => void {
-  return (message: string, kind: StatusKind = "info"): void => {
-    const bar = $(id);
-    bar.textContent = message;
-    // `info` carries no class: it is the resting state, and a class named after "nothing is wrong"
-    // is one more thing for a stylesheet to have an opinion about.
-    bar.className = `${base}${kind === "info" ? "" : ` ${kind}`}`.trim();
-  };
-}
 
 /** Escape text for insertion into HTML. */
 export function escapeHtml(text: string): string {

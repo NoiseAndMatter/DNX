@@ -67,7 +67,8 @@ import {
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
-import { $, escapeHtml, saveBytes as save, statusBar } from "../dom.js";
+import { $, escapeHtml, saveBytes as save } from "../dom.js";
+import { statusBar } from "../statusbar.js";
 
 const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
