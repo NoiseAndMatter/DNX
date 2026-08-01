@@ -420,3 +420,25 @@ them. Each fact is now stated once, in the voice that means "look at this".
 5. **Sound explorer**, then **kit explorer**, as read-only sources.
 6. **WebMIDI** — upgrades the explorers to canonical, and unblocks preview and the kit request.
 7. **Cross-device pattern copy**, then the pattern inspector, then songs and a song editor.
+
+## The status bar belongs to the page it is on — 2026-08-01
+
+**Reported by the user:** "1 pattern(s) → A3." sitting alone at the bottom, unaligned with
+everything else — "is this some kind of remnant from the old UI?"
+
+Not a remnant: `.status` is the manager's bottom bar, reused. In `body.app` it is the last child of
+a viewport-height column, so it is pinned and always in view. On `body.page` it became an ordinary
+`<div>` at the end of a long document — a message written while the user is looking at the middle
+of the page appeared below the fold, and when it did come into view it started at the far left of a
+window whose content is centred in a 78rem column.
+
+Both halves are the same mistake as the layout collapse earlier in this file: **anything reused has
+to say what it assumes.** `.status` assumed a flex column that fills the viewport.
+
+- `body.page > .status` is pinned to the bottom. `body.page` already reserved the room for it —
+  that is what its `padding-bottom` was for.
+- The full-bleed bars — the top bar and the status bar — align their contents with the content
+  column while still spanning the width. A bar that stopped at 78rem would read as a floating card.
+- The merge's status line now says what to do next (`Planned — press Apply to fold …`) instead of
+  repeating the panel's first line. Two identical sentences in two places is what made it look
+  like something left over.
