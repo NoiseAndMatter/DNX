@@ -28,34 +28,11 @@
 // its own, and it was the one that did not escape quotes.
 import { escapeHtml } from "../../src/sheet/html.js";
 import { type DropAction, type DropModifiers } from "./dropaction.js";
-
-/** One cell, already reduced to what it displays. */
-export interface SlotView {
-  index: number;
-  /** `A1`, `T12` — whatever the caller's naming says. */
-  id: string;
-  /** The pattern or track name, or a placeholder. */
-  name: string;
-  /** The line underneath: `12 trigs · 3 locks`, `empty`, `unreadable version`. */
-  detail: string;
-  /**
-   * A line between the name and the detail — the track grid's machine, `FM TONE` or `MIDI`.
-   *
-   * Omitted by the pattern grid, which has nothing to put there. Rendered only when present, so
-   * one renderer serves both rather than two drifting apart.
-   */
-  machine?: string;
-  /** Extra classes for this cell, e.g. `midi`. The stylesheet decides what they look like. */
-  classes?: readonly string[];
-  occupied: boolean;
-  /**
-   * False when the record's storage version is one we cannot read.
-   *
-   * Kept distinct from `occupied` because *"there is something here I cannot read"* and *"there is
-   * nothing here"* must never look the same — one of them is somebody's work.
-   */
-  supported: boolean;
-}
+// The view-model lives apart from the renderer: what a slot *says* is shared with anything that
+// reasons about slots, while drawing it needs a DOM. Re-exported because callers import both from
+// here and there is no reason to make them learn a second path.
+import { BANK_SIZE, type SlotView } from "./slotview.js";
+export { BANK_SIZE, type SlotView };
 
 /** Where a drag came from. `grid` identifies which grid, so a cross-grid drop can be judged. */
 export interface DragFrom {
@@ -286,7 +263,6 @@ function clear(cell: HTMLElement): void {
 /** `A`…`H`. Both families number their patterns in banks of sixteen. */
 export const BANKS = "ABCDEFGH";
 
-export const BANK_SIZE = 16;
 
 /** How many banks a device of this many patterns has. */
 export function bankCount(patternCount: number): number {
