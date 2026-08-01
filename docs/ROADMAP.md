@@ -1764,11 +1764,22 @@ Wanted:
 - **A toggle, "expand to contiguous patterns"**, for today's behaviour, which is the right one when
   gathering scattered sketches into a block.
 
-Design notes for whoever picks it up: relative placement can run off the end of the 128 slots, and
-that has to be refused before anything is written rather than wrapped or clamped. It also changes
-which destination slots are occupied, so the occupancy warning and `confirmOverwrite` must be
-computed from the real target list, not from a contiguous run. The landing slot stops being a start
-and becomes an **anchor**, which the UI should say.
+Design notes for whoever picks it up.
+
+**Crossing a bank boundary is normal, not an error** — clarified by the user. A1, A9, A10 anchored
+at A10 lands A10, B2, B3, and that is wanted: the banks are one 128-slot run, and the offsets are
+what carry the musician's spacing. Nothing special happens at a bank edge.
+
+**The one real limit is the end of bank H**, because there is no bank I. A target past slot 127 has
+nowhere to go, so the whole placement is **refused before anything is written** — not wrapped to A,
+not clamped onto H16. The refusal should name which patterns would fall off the end, since the fix
+is usually to pick an earlier anchor.
+
+Relative placement also changes *which* slots are written, so the occupancy warning and
+`confirmOverwrite` must be computed from the real target list rather than a contiguous run — with
+gaps, the patterns in between are untouched and must not be reported as overwritten.
+
+The landing slot stops being a start and becomes an **anchor**, which the UI should say.
 
 ### 6d. Navigation between tools, in the title
 
