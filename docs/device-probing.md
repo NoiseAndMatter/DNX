@@ -523,3 +523,34 @@ distinguishes it directly: if it freezes and then jumps, the page was suspended;
 smoothly past the timeout, the device is genuinely silent. That measurement should be taken with
 the tab **kept visible** for one run and **backgrounded** for another, which turns the hypothesis
 into a result either way.
+
+### Measuring the hidden tab — 2026-08-01
+
+The captures cleared the device, so the remaining suspect is the page's own timers. The write flows
+now measure it directly rather than arguing about it.
+
+`watchVisibility()` runs across the settle and the read-back and reports how long the tab spent
+hidden. It listens to `visibilitychange`, which is an event rather than a timer, so it stays
+accurate while everything around it is being throttled.
+
+When a write finishes, the card carries a row:
+
+```
+Tab was hidden   47.2s across 2 period(s) — browsers throttle timers in a background tab, so a
+                 wait can take far longer than its timeout says.
+```
+
+and a timeout card whose log carries that row says so in its verdict rather than leaving two facts
+side by side unconnected.
+
+**This is the test, not the fix.** Two outcomes, and both are worth having:
+
+- **Hidden time reported, and it accounts for the stall.** The instrument was never at fault, and
+  the tool needs to say so rather than look broken — the honest fix is then about what the page
+  promises while it is in the background, not about MIDI.
+- **No hidden time, and it still stalls.** The theory is dead, three diagnoses in, and the fault is
+  somewhere nobody has looked yet. That is worth as much as confirming it, and cheaper than the
+  next guess.
+
+Run it once with the tab **kept in view** and once **backgrounded**, and the pair answers it
+regardless of which way it falls.
