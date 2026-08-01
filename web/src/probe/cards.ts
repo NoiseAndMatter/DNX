@@ -20,7 +20,8 @@
  */
 
 import { escapeHtml } from "../../../src/sheet/html.js";
-import { describeMessages } from "../../../src/device/capabilities.js";
+import { type ApiGroup, type CaptureSummary } from "../../../src/device/capture.js";
+import { describeMessages, hex } from "../../../src/device/capabilities.js";
 import { type DirEntry } from "../../../src/device/api.js";
 
 /** A titled block of key/value rows — the probe's whole visual vocabulary. */
@@ -116,4 +117,118 @@ export function hex8(v: number): string {
 /** Two hex digits, for a byte. */
 export function hex2(b: number): string {
   return b.toString(16).padStart(2, "0");
+}
+
+/**
+ * The capture, drawn as cards.
+ *
+ * Moved here with the other renderers because that is what it is — it takes a summary and an
+ * element and produces markup. It used to reach for `#results`, the module-level capture and the
+ * page's `listening` flag, which is what made a presentation function look like page wiring.
+ *
+ * It returns the summary it was given, so the status line beneath it can use the parse that has
+ * already happened rather than starting another. That is not tidiness: the second parse, once per
+ * arriving MIDI message, is what blocked the main thread for 56 seconds during a write.
+ */
+export function renderCapture(
+  results: HTMLElement,
+  summary: CaptureSummary,
+  state: { listening: boolean; issuedIds: ReadonlySet<number> },
+): CaptureSummary {
+  results.innerHTML = "";
+
+  const rows: [string, string][] = [
+    ["Bytes", summary.bytes.toLocaleString()],
+    ["Messages", String(summary.messages)],
+  ];
+  if (summary.foreign > 0) rows.push(["Not Elektron", `${summary.foreign} — ignored`]);
+  if (summary.unparsed > 0) rows.push(["Unreadable", String(summary.unparsed)]);
+  // A transfer stopped mid-message is normal, and saying so beats a summary that quietly
+  // describes a truncated capture as a complete one.
+  if (summary.trailingBytes > 0) {
+    rows.push(["Incomplete tail", `${summary.trailingBytes} bytes — a message was cut short`]);
+  }
+  card(results, state.listening ? "Listening…" : "Capture", rows);
+
+  for (const group of summary.groups) {
+    const objects =
+      group.objects.length === 0
+        ? "—"
+        : group.objects.length <= 12
+          ? group.objects.join(", ")
+          : `${group.objects.length} objects, ${group.objects[0]}…${group.objects[group.objects.length - 1]}`;
+    card(results, `${group.product} — ${group.name} (${hex(group.dumpType)})`, [
+      ["Messages", String(group.count)],
+      ["Bytes", group.bytes.toLocaleString()],
+      ["Object numbers", objects],
+      // Said plainly, because "128 objects" against 182 messages reads as lost data. It is not:
+      // the field is one 7-bit byte, and the device reports 0 once it runs out.
+      // Observed, then both causes named — because the bytes genuinely cannot tell them apart.
+      // This used to assert saturation, and said so on a capture of 129 patternKits where the
+      // extra one was our own verification re-read. A confident wrong explanation is worse than
+      // an honest ambiguous one.
+      ...(group.numbersExhausted
+        ? ([[
+            "Note",
+            `${group.count} messages, ${group.objects.length} distinct numbers. Either the object ` +
+              `number saturated — it is a 7-bit field, so a bank of more than 128 reports 0 for ` +
+              `the rest and only send order identifies those — or some objects simply arrived ` +
+              `twice, which is what a re-read or a verification does. Nothing is lost either way.`,
+          ]] as [string, string][])
+        : []),
+      ["Checksums", group.badChecksum === 0 ? "all good" : `${group.badChecksum} BAD`],
+    ]);
+  }
+
+  // The other protocol, kept visibly apart. Before this existed, API traffic went through the dump
+  // parser and came out as "product 16 — unknown (0x04)" with every checksum BAD, which is a
+  // convincing description of a broken device rather than of a working one speaking a second
+  // language. Both machines produce some, so this is the *normal* case.
+  if (summary.api.length > 0) {
+    const total = summary.api.reduce((n, g) => n + g.count, 0);
+    card(results, `API traffic — ${total} message${total === 1 ? "" : "s"}`, [
+      ...summary.api.map(
+        (group) =>
+          [
+            `${hex(group.code)} ${group.name}`,
+            `${group.count} × ${group.bytes.toLocaleString()} B` +
+              (group.replies === group.count ? "" : `, ${group.replies} answering a request`) +
+              (group.respIds.length > 0 ? ` — answers ${group.respIds.join(", ")}` : ""),
+          ] as [string, string],
+      ),
+      ["Whose", whose(summary.api, state.issuedIds)],
+    ]);
+  }
+
+  return summary;
+}
+
+/**
+ * Say whose requests this traffic answers, which the summariser deliberately will not.
+ *
+ * `capture.ts` reports the response ids and stops, because a capture is bytes off an input port and
+ * has no record of what was sent. **This page does have that record** — it allocated every id it
+ * ever sent — so the knowledge lives here, where it exists, rather than in a module that would have
+ * to be told.
+ *
+ * Worth the trouble because the ambiguity is not academic: a flood of Transfer's replies was once
+ * read as our answer and a wrong finding was recorded on it. "Answers an id we never sent" ends
+ * that argument in one line.
+ */
+function whose(groups: readonly ApiGroup[], issuedIds: ReadonlySet<number>): string {
+  const seen = groups.flatMap((g) => g.respIds);
+  if (seen.length === 0) return "Nothing here answers a request — these were volunteered.";
+
+  const ours = seen.filter((id) => issuedIds.has(id));
+  const theirs = seen.filter((id) => !issuedIds.has(id));
+
+  if (theirs.length === 0) return `Ours — every id (${ours.join(", ")}) is one this page sent.`;
+  if (ours.length === 0) {
+    return (
+      `NOT ours. ${theirs.join(", ")} ${theirs.length === 1 ? "is an id" : "are ids"} this page ` +
+      `never sent, so ${theirs.length === 1 ? "it answers" : "they answer"} another application — ` +
+      `Elektron Transfer, or an earlier session on this port. Do not read this as a reply to us.`
+    );
+  }
+  return `Mixed. Ours: ${ours.join(", ")}. Not ours: ${theirs.join(", ")}.`;
 }
