@@ -35,12 +35,15 @@ import { type ExpansionPlan } from "./types.js";
 import { planExpansion } from "./plan.js";
 import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
 import { PATTERN, TRACK, TRACK_COUNT } from "../project/dn2pattern.js";
-import { DN2_POOL_OFFSET, POOL_SOUND_COUNT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
+import {
+  DN2_POOL_OFFSET,
+  DN2_SOUND_SIZE,
+  POOL_SOUND_COUNT,
+  SOUND_NAME_OFFSET,
+  SOUND_NAME_SIZE,
+} from "../project/soundmap.js";
 import { patternName } from "../sheet/naming.js";
 import { DN2_DEVICE } from "../librarian/device.js";
-
-/** Bytes per DN2 pool sound. */
-const DN2_SOUND_SIZE = 359;
 
 /** No lock on this step. */
 const NO_LOCK = 0xff;
