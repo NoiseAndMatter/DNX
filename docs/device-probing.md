@@ -269,7 +269,20 @@ record from a *different* project.
 
   Practical consequence: a write is **reversible until the user saves**, which is a stronger undo
   than anything in this codebase — but only for someone who has been told.
-- **Whether a write to an occupied slot prompts, overwrites, or is refused.** Unknown. This is why
+- ~~**Whether a write to an occupied slot prompts, overwrites, or is refused.**~~ **ANSWERED
+  2026-08-01: refused, silently.** `A1` was written to `H16`, which held work — 545 bytes different
+  from a blank. The read-back returned `H16` byte-for-byte as it was before. So the device declined
+  the write, said nothing about declining it, and **nothing was lost**.
+
+  This is exactly why the verdict is computed three ways rather than two. Held only against what
+  was sent, a refusal and a mangled write are the same answer; held against what the slot contained
+  before, the refusal is unambiguous and the card can say the original is intact.
+
+  **Do not read this as a safety guarantee yet.** One slot, one firmware, one record type. It says
+  what happened, not what the device promises — and a bulk operation built on "occupied slots are
+  protected" needs more than a single observation.
+
+- **(Superseded)** Whether a write to an occupied slot prompts, overwrites, or is refused. This is why
   the first non-null write went to an empty slot.
 
   **Do not expect a handshake.** The device answers a write with *nothing at all* — success and
@@ -554,3 +567,45 @@ side by side unconnected.
 
 Run it once with the tab **kept in view** and once **backgrounded**, and the pair answers it
 regardless of which way it falls.
+### The tab was never hidden — 2026-08-01, theory dead
+
+The measurement came back and it refutes the previous section:
+
+```
+Sending      24,006 bytes to H16…                (+0.0s)
+Settling     321ms before asking                  (+0.0s)
+Settling     246.1s                               <- the counter, when it stopped
+Sent         asking for H16 back                  (+246.1s)
+Waiting for the read-back   0.2s
+Tab was hidden   0.0s across 3 period(s)
+```
+
+**Zero hidden time, on a visible window, and the reply itself took 0.2 seconds.** So the page was
+not backgrounded and the instrument is not slow. A `setTimeout(321)` took 246 seconds anyway.
+
+That is three diagnoses now — truncation, a deaf port, a suspended tab — and each was refuted by the
+next measurement rather than by argument. The pattern is worth naming: **every one of them was a
+plausible story about a system nobody was measuring.** The instrumentation is what has produced
+every real answer here, including this one.
+
+### What is left, and what to measure next
+
+The facts that survive:
+
+- The delay sits in the settle, a timer with no device involvement whatsoever.
+- It follows a **24 KB SysEx send** every time, and its length varies with the run (152.8s, 246.1s).
+- The read-back — a request out, 21 KB back — completes in **0.2s** on the same page moments later.
+- Reading a whole project, ~3 MB inbound, has never stalled.
+
+So **outbound bulk is the only thing implicated**, and the page is fine before and after it. Two
+candidates, and they are distinguishable by measurement rather than reasoning:
+
+1. **The main thread is blocked or starved** while the browser transmits. A liveness probe — an
+   interval whose largest gap is recorded — answers this directly: a 246s gap is a blocked thread,
+   while thousands of small gaps are a busy one.
+2. **The page is being flooded with inbound traffic** during the send, with `renderCapture()`
+   rebuilding the results DOM per message. Counting messages received during the settle window
+   separates this from the first, and a device echoing our own write back at us would explain both
+   the duration and why it scales with the write.
+
+Neither is a guess to act on. Both are two lines of instrumentation.
