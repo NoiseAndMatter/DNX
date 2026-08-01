@@ -442,3 +442,19 @@ to say what it assumes.** `.status` assumed a flex column that fills the viewpor
 - The merge's status line now says what to do next (`Planned — press Apply to fold …`) instead of
   repeating the panel's first line. Two identical sentences in two places is what made it look
   like something left over.
+
+### The bar was being deleted, not mis-styled — 2026-08-01
+
+Pinning it did not fix it, which was the clue. `statusBar` rebuilt `className` from a `base`
+argument; the expander passed `""` on the strength of a comment claiming its stylesheet used a bare
+`#status.error` — no such rule has ever existed. So the **first message the page wrote deleted the
+element's `status` class**, and with it the background, the border, the padding and the pinning. The
+topbar kept its alignment because nothing ever rewrites its class.
+
+The bar now lives in `web/src/statusbar.ts`, which owns the class as well as the text: `statusBar`
+asserts the class at wiring time, and `applyStatus` adds one of `error`/`warn`/`ok` and removes the
+others, touching nothing else. There is no argument left that can spell "and forget what you were".
+
+Two tests came with it: `test/statusbar.test.ts` drives `applyStatus` against a fake target (which
+is why it takes a target rather than an id), and `test/web.test.ts` checks every page that writes
+status messages actually carries `<div class="status" id="status">`.
