@@ -91,6 +91,12 @@ import {
   requestListing,
   linkIsAlive as checkLink,
 } from "./storageio.js";
+import {
+  UNKNOWN_TIMEOUT_MS,
+  VERIFY_TIMEOUT_MS,
+  requestPatternKit,
+  tryCode,
+} from "./dumpio.js";
 
 const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -1084,10 +1090,7 @@ async function writeBack(): Promise<void> {
   status(`Written. Asking for ${slot} back…`);
   const watched = watchVisibility();
   const waiting = tickWhileWaiting("Write in progress", log, "Waiting for the read-back");
-  const readBack = await linkTo(output).awaitReply<Uint8Array>({
-    send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]),
-    match: (data) => matchDump(data, 0x50, candidate.objNr),
-    timeoutMs: VERIFY_TIMEOUT_MS,
+  const readBack = await requestPatternKit(linkTo(output), productId, candidate.objNr, {
     onSendError: (error) => trace("Read-back request failed", String(error)),
     // **Keep listening after giving up.** A reply that missed the timeout used to arrive, trigger a
     // capture redraw and wipe the verdict — which is how a slow but successful write came to look
@@ -1372,18 +1375,6 @@ function tickWhileWaiting(title: string, log: [string, string][], label: string)
   };
 }
 
-/** A dump reply of this type for this object, or `undefined` for anyone else's traffic. */
-function matchDump(data: Uint8Array, dumpType: number, objNr: number): Uint8Array | undefined {
-  let reply;
-  try {
-    reply = parseMessage(data);
-  } catch {
-    return undefined;
-  }
-  if (reply.dumpType !== dumpType || reply.objNr !== objNr) return undefined;
-  return reply.payload;
-}
-
 // --- writing to a different slot -----------------------------------------------------------------
 
 /**
@@ -1622,11 +1613,7 @@ async function writeToChosenSlot(): Promise<void> {
 function awaitPatternKit(
   output: MIDIOutput, productId: number, objNr: number,
 ): Promise<Uint8Array | undefined> {
-  return linkTo(output).awaitReply<Uint8Array>({
-    send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr })]),
-    match: (data) => matchDump(data, 0x50, objNr),
-    timeoutMs: VERIFY_TIMEOUT_MS,
-  });
+  return requestPatternKit(linkTo(output), productId, objNr);
 }
 
 // --- proving the link before believing a silence ---------------------------------------------------
@@ -2266,18 +2253,9 @@ async function tryUnknownCode(): Promise<void> {
   // Anything at all counts, not only the predicted response: an unknown request answering with an
   // unexpected code would be the most interesting outcome available, and matching strictly on the
   // convention would throw it away.
-  const reply = await linkTo(output).awaitReply({
-    send: () => output.send([...probeRequest(productId, { code, objNr })]),
-    match: (data) => {
-      try {
-        return parseMessage(data);
-      } catch {
-        return undefined;
-      }
-    },
-    timeoutMs: UNKNOWN_TIMEOUT_MS,
-    onSendError: (error) => log.push(["Send failed", String(error)]),
-  });
+  const reply = await tryCode(linkTo(output), productId, code, objNr, (error) =>
+    log.push(["Send failed", String(error)]),
+  );
 
   if (!reply) {
     // **This is the check whose absence voided a whole afternoon.** A run of silences was recorded
@@ -2328,8 +2306,6 @@ async function tryUnknownCode(): Promise<void> {
 }
 
 /** Longer than a normal request: an unknown object could be large, and silence must mean silence. */
-const UNKNOWN_TIMEOUT_MS = 8000;
-
 /**
  * Record sizes we can name, so an unfamiliar payload is measured rather than guessed at.
  *
@@ -2357,9 +2333,6 @@ function verdictCard(title: string, rows: [string, string][]): void {
 function messageCard(into: HTMLElement, codes: readonly number[]): void {
   drawMessages(into, codes, hex);
 }
-
-/** Long enough for a 114 KB PatternKit on a busy device. */
-const VERIFY_TIMEOUT_MS = 5000;
 
 /** The capture, as parsed messages. */
 function splitCapture(): ReturnType<typeof parseMessage>[] {
