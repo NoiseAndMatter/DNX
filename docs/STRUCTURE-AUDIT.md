@@ -9,7 +9,7 @@ rest are the sweep's reading and should be confirmed when the work is picked up.
 
 ---
 
-## 1. `web/src/probe/main.ts` — 2,438 lines, the one real god file — **2a done, 2b open**
+## 1. `web/src/probe/main.ts` — 2,438 lines, the one real god file — **DONE**
 
 2.4× the next-largest file, 6× the largest `src/` module, and eleven distinct jobs: port discovery,
 card/table renderers, the probe run, capture listening, dump requesting, whole-project read, two
@@ -147,7 +147,7 @@ Ranked by what the codebase most needs. Each is one PR.
 |---|---|---|
 | 1 | ~~Give DN2 kit geometry one home~~ **DONE 2026-08-01.** `levelOffset/levelSize/levelCount` added, width settled as u16le against 49,152 corpus levels, `trackLevel`/`setTrackLevel` accessors added, six re-declarations and two bare literals removed, `test/dn2image.test.ts` added | shipped |
 | 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
-| 2b | Split the rest of `probe/main.ts`. **2026-08-01: `cards.ts`, `ports.ts` and the first transports (`storageio.ts` — the link check and the listing conversation) extracted.** 2,625 → 2,380 lines. The remaining transports are the dump I/O and the +Drive file read/write | **high** for what remains; wants a hardware pass with the change |
+| 2b | ~~Split the rest of `probe/main.ts`~~ **DONE 2026-08-01.** `cards.ts` (rendering), `ports.ts` (selection), `storageio.ts` (+Drive conversations), `dumpio.ts` (dump conversations). **2,625 → 2,353 lines**, and what is left is genuinely this page's own work: the flows, the safety confirmations and the narration. **Wants a hardware pass** — every conversation with an instrument moved | shipped, unverified on device |
 | 3 | Extract the hardware-sheet page scaffold into `src/sheet/page.ts` + `src/sheet/html.ts`; reconcile the drifted `☐` encoding | low |
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | Move `zip.ts`, `projectfile.ts`, `open.ts` to `src/node/`; `tsconfig.web.json` excludes a directory instead of a list | low-medium — import churn; `web.test.ts` catches mistakes immediately |
