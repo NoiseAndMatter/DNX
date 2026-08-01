@@ -1,5 +1,10 @@
 /**
- * What a drag-and-drop means. Pure rules, no DOM.
+ * What a drag-and-drop means **in the manager**. Pure rules, no DOM.
+ *
+ * `DropAction` and `actionFor` used to live here and have moved to `dropaction.ts`: they govern how the
+ * shared grid paints a cell and the expander uses them too, so a page folder was the wrong home
+ * for them. What stays is genuinely this page's policy — which drops are refused, what the hint
+ * says, and which pattern an operation runs inside.
  *
  * They live apart from the handlers because they are the part with a right answer: which
  * modifier means what, and which drops are refused. A rule buried in a `dragover` listener can
@@ -9,29 +14,8 @@
 /** Which grid a slot belongs to. A pattern and a track share index 11 and mean different things. */
 export type Level = "pattern" | "track";
 
-/**
- * Plain drag moves — what dragging means everywhere else. Shift copies and Ctrl swaps,
- * following the file-manager convention people already have in their hands.
- *
- * Read at **drop** time, not at drag start, so changing your mind mid-drag works and the
- * cursor can say what will happen.
- */
-export type DropAction = "move" | "copy" | "swap";
-
-export interface Modifiers {
-  shiftKey: boolean;
-  ctrlKey: boolean;
-  /** Command on a Mac, where Ctrl is not the modifier people reach for. */
-  metaKey: boolean;
-}
-
-export function actionFor(event: Modifiers): DropAction {
-  // Ctrl wins over Shift when both are held: swap is the more specific request, and silently
-  // doing the other one is worse than picking the one the user was more deliberate about.
-  if (event.ctrlKey || event.metaKey) return "swap";
-  if (event.shiftKey) return "copy";
-  return "move";
-}
+import { type DropAction, type DropModifiers, actionFor } from "../dropaction.js";
+export { type DropAction, actionFor };
 
 /**
  * Which pattern an operation runs *inside*, or `undefined` when it operates on patterns.
@@ -111,7 +95,7 @@ export function dropHint(
   drag: Drag | undefined,
   level: Level,
   index: number,
-  modifiers: Modifiers,
+  modifiers: DropModifiers,
 ): DropHint | undefined {
   const action = actionFor(modifiers);
   if (refuseDrop(drag, level, index, action) !== undefined) return undefined;
