@@ -69,6 +69,7 @@ import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
+import { DeviceLink, matchApiFrame, sharedPrefix } from "../devicelink.js";
 
 const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -178,11 +179,6 @@ function isChromium(): boolean {
   return /Chrome\/|Edg\//.test(navigator.userAgent);
 }
 
-function sharedPrefix(a: string, b: string): number {
-  let n = 0;
-  while (n < a.length && n < b.length && a[n] === b[n]) n++;
-  return n;
-}
 
 /** Run the probe against one input/output pair. */
 async function probe(): Promise<void> {
@@ -740,10 +736,6 @@ async function startListening(): Promise<void> {
     // A read drives its own narration and owns the results area while it runs, so re-rendering
     // the capture on every message would tear down the progress it is drawing. The bytes are
     // already in the capture either way, which is the part that must not depend on the UI.
-    // The write verification takes precedence: it is waiting for one specific reply and the run
-    // is meaningless without it.
-    if (awaitingReply) awaitingReply(data);
-
     if (reading) {
       reading.receive(data);
       return;
@@ -1082,7 +1074,16 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
  * `docs/device-probing.md` for the regime, and `src/device/dumpwrite.ts` for the guards that
  * refuse everything this page does not explicitly ask for.
  */
-let awaitingReply: ((data: Uint8Array) => void) | undefined;
+/**
+ * Every request path on this page waits through `DeviceLink`, which attaches its own listener per
+ * request. There is deliberately no shared slot here any more: one used to serve seven paths, and
+ * two overlapping reads stole each other's answers.
+ */
+function linkTo(output: MIDIOutput): DeviceLink {
+  const input = access?.inputs.get($<HTMLSelectElement>("input").value);
+  if (!input) throw new Error("that input port is no longer there — press Rescan");
+  return new DeviceLink(input, output);
+}
 
 $("writeBack").addEventListener("click", () => {
   // **Never `void` a promise on this page.** A rejected `writeBack` used to vanish without a
@@ -1184,33 +1185,15 @@ async function writeBack(): Promise<void> {
 
   trace("Sent", "asking for it back to see what actually landed");
   status(`Written. Asking for ${slot} back…`);
-  const readBack = await new Promise<Uint8Array | undefined>((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(undefined);
-    }, VERIFY_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      let reply;
-      try {
-        reply = parseMessage(data);
-      } catch {
-        return;
-      }
-      if (reply.dumpType !== 0x50 || reply.objNr !== candidate.objNr) return;
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(reply.payload);
-    };
-
-    try {
-      output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]);
-    } catch (error) {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      trace("Read-back request failed", String(error));
-      resolve(undefined);
-    }
+  const readBack = await linkTo(output).awaitReply<Uint8Array>({
+    send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]),
+    match: (data) => matchDump(data, 0x50, candidate.objNr),
+    timeoutMs: VERIFY_TIMEOUT_MS,
+    onSendError: (error) => trace("Read-back request failed", String(error)),
+    // **Keep listening after giving up.** A reply that missed the timeout used to arrive, trigger a
+    // capture redraw and wipe the verdict — which is how a slow but successful write came to look
+    // like a control that does nothing. A late answer is an answer, so it upgrades the card.
+    onLate: (payload) => reportLateReadBack(payload, candidate, log, slot),
   });
 
   if (!readBack) {
@@ -1225,27 +1208,7 @@ async function writeBack(): Promise<void> {
     ]);
     status("Written; the read-back has not arrived yet. Still listening.", "warn");
 
-    // **Keep waiting after giving up.** A reply that missed the timeout used to arrive, trigger a
-    // capture redraw, and wipe the verdict — which is how a slow but successful write came to look
-    // like a control that does nothing. A late answer is an answer, so it upgrades the card.
-    awaitingReply = (data) => {
-      let reply;
-      try {
-        reply = parseMessage(data);
-      } catch {
-        return;
-      }
-      if (reply.dumpType !== 0x50 || reply.objNr !== candidate.objNr) return;
-      awaitingReply = undefined;
-      const late = verifyWrite(candidate.payload, reply.payload);
-      verdictCard(late.ok ? "Write VERIFIED (reply was late)" : "Write did NOT match", [
-        ...log,
-        ["Read back", `${reply.payload.length.toLocaleString()} bytes, after the wait expired`],
-        ["Result", late.ok ? "the device returned exactly what was sent" : late.reason ?? "differs"],
-        ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
-      ]);
-      status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
-    };
+    // The late answer, if it comes, is handled by `onLate` on the wait above.
     return;
   }
 
@@ -1265,6 +1228,40 @@ async function writeBack(): Promise<void> {
     verdict.ok ? `${slot} written and verified — writing works.` : `${slot} did NOT verify.`,
     verdict.ok ? "ok" : "error",
   );
+}
+
+/**
+ * A read-back that arrived after the wait expired.
+ *
+ * Separate from the verdict above because it is a different claim: the write is verified *and* the
+ * timeout is too short for this device at this record size, which is worth saying on the card.
+ */
+function reportLateReadBack(
+  payload: Uint8Array,
+  candidate: { payload: Uint8Array },
+  log: [string, string][],
+  slot: string,
+): void {
+  const late = verifyWrite(candidate.payload, payload);
+  verdictCard(late.ok ? "Write VERIFIED (reply was late)" : "Write did NOT match", [
+    ...log,
+    ["Read back", `${payload.length.toLocaleString()} bytes, after the wait expired`],
+    ["Result", late.ok ? "the device returned exactly what was sent" : late.reason ?? "differs"],
+    ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
+  ]);
+  status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+}
+
+/** A dump reply of this type for this object, or `undefined` for anyone else's traffic. */
+function matchDump(data: Uint8Array, dumpType: number, objNr: number): Uint8Array | undefined {
+  let reply;
+  try {
+    reply = parseMessage(data);
+  } catch {
+    return undefined;
+  }
+  if (reply.dumpType !== dumpType || reply.objNr !== objNr) return undefined;
+  return reply.payload;
 }
 
 // --- writing to a different slot -----------------------------------------------------------------
@@ -1479,32 +1476,10 @@ async function writeToChosenSlot(): Promise<void> {
 function awaitPatternKit(
   output: MIDIOutput, productId: number, objNr: number,
 ): Promise<Uint8Array | undefined> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(undefined);
-    }, VERIFY_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      let reply;
-      try {
-        reply = parseMessage(data);
-      } catch {
-        return;
-      }
-      if (reply.dumpType !== 0x50 || reply.objNr !== objNr) return;
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(reply.payload);
-    };
-
-    try {
-      output.send([...dumpRequest(productId, { code: 0x60, objNr })]);
-    } catch {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(undefined);
-    }
+  return linkTo(output).awaitReply<Uint8Array>({
+    send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr })]),
+    match: (data) => matchDump(data, 0x50, objNr),
+    timeoutMs: VERIFY_TIMEOUT_MS,
   });
 }
 
@@ -1532,36 +1507,15 @@ function awaitPatternKit(
  * business drawing conclusions from silence.**
  */
 async function linkIsAlive(output: MIDIOutput): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(false);
-    }, LINK_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      if (!isApiMessage(data)) return;
-      let frame;
-      try {
-        frame = decodeMessage(data);
-      } catch {
-        return;
-      }
-      // Transfer polls `Device` too, so a bare code match would pass on its traffic. Ours is the
-      // one answering the id we just sent.
-      if (frame.code !== Code.Device + 0x80 || frame.respId !== LINK_ID) return;
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(true);
-    };
-
-    try {
-      output.send([...deviceRequest(issue(LINK_ID))]);
-    } catch {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(false);
-    }
+  const frame = await linkTo(output).awaitReply({
+    send: () => output.send([...deviceRequest(issue(LINK_ID))]),
+    // Transfer polls `Device` too, so a bare code match would pass on its traffic. Ours is the one
+    // answering the id we just sent.
+    match: (data) =>
+      matchApiFrame(data, (f) => f.code === Code.Device + 0x80 && f.respId === LINK_ID),
+    timeoutMs: LINK_TIMEOUT_MS,
   });
+  return frame !== undefined;
 }
 
 /** Fixed and high, so a reply can be matched to it and it cannot collide with Transfer's low ids. */
@@ -1629,42 +1583,20 @@ async function listPath(): Promise<void> {
   verdictCard("Listing…", log);
 
   const listId = issue(nextListId++);
-  const reply = await new Promise<Uint8Array | undefined>((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(undefined);
-    }, LIST_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      // Only an API frame answering **this request** counts, and the message id is what decides
-      // that. Matching the response code alone is not enough: Elektron Transfer polls the same port
-      // constantly and lists directories of its own, so a `0xd3` arriving while we wait is as
-      // likely to be its answer as ours. Accepting "the next message" is exactly how its traffic
-      // got reported as our result once already.
-      if (!isApiMessage(data)) return;
-      let frame;
-      try {
-        frame = decodeMessage(data);
-      } catch {
-        return;
-      }
-      if (frame.respId !== listId || frame.code !== StorageCode.List + 0x80) return;
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(frame.body);
-    };
-
-    try {
-      output.send([
-        ...listRequest(listId, path, count > 0 ? { start: from, count } : undefined),
-      ]);
-    } catch (error) {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      log.push(["Send failed", String(error)]);
-      resolve(undefined);
-    }
+  const frame = await linkTo(output).awaitReply({
+    send: () =>
+      output.send([...listRequest(listId, path, count > 0 ? { start: from, count } : undefined)]),
+    // Only an API frame answering **this request** counts, and the message id is what decides that.
+    // Matching the response code alone is not enough: Elektron Transfer polls the same port
+    // constantly and lists directories of its own, so a `0xd3` arriving while we wait is as likely
+    // to be its answer as ours. Accepting "the next message" is exactly how its traffic got
+    // reported as our result once already.
+    match: (data) =>
+      matchApiFrame(data, (f) => f.respId === listId && f.code === StorageCode.List + 0x80),
+    timeoutMs: LIST_TIMEOUT_MS,
+    onSendError: (error) => log.push(["Send failed", String(error)]),
   });
+  const reply = frame?.body;
 
   if (!reply) {
     // The control that separates "it did not answer" from "we never spoke". Without it, both look
@@ -2138,86 +2070,16 @@ function looksLikeZip(data: Uint8Array): boolean {
 }
 
 /**
- * Web MIDI as an `ApiTransport`, **matching replies by message id**.
+ * Web MIDI as an `ApiTransport`.
  *
- * The id check is the whole substance of this function. Elektron Transfer polls the same port
- * continuously and a Digitone II volunteers API messages the moment a port opens, so matching on
- * the response *code* alone is not enough — a `0xd3` arriving while we wait for one is as likely to
- * be Transfer's as ours. That exact confusion has already produced a false finding.
+ * The correlation lives in `devicelink.ts` and is shared with the manager's device source. This
+ * page's own contribution is `issue`: the id is recorded as ours **before** the send, so a reply
+ * cannot arrive before its id is known. Omitting that is why a capture of 6,404 of our own reads
+ * was once labelled `Not ours: 8192, 8193, …` — the verdict was confidently wrong about traffic we
+ * had just generated.
  */
 function apiTransport(output: MIDIOutput): ApiTransport {
-  return {
-    request(request: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
-      // Recorded before the send, so a reply cannot arrive before its id is known to be ours.
-      // Omitting this is why a capture of 6,404 of our own reads was labelled `Not ours: 8192,
-      // 8193, …` — the verdict was confidently wrong about traffic we had just generated.
-      issue(msgId);
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          awaitingReply = undefined;
-          reject(new Error(`no reply within ${timeoutMs}ms`));
-        }, timeoutMs);
-
-        awaitingReply = (data) => {
-          if (!isApiMessage(data)) return;
-          let frame;
-          try {
-            frame = decodeMessage(data);
-          } catch {
-            return;
-          }
-          if (frame.respId !== msgId) return;
-          clearTimeout(timer);
-          awaitingReply = undefined;
-          resolve(frame);
-        };
-
-        try {
-          output.send([...request]);
-        } catch (error) {
-          clearTimeout(timer);
-          awaitingReply = undefined;
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-    },
-  };
-}
-
-/** Send something and wait for the API response paired with `code`, ignoring everyone else's. */
-function awaitApi(
-  _output: MIDIOutput,
-  code: number,
-  send: () => void,
-): Promise<Uint8Array | undefined> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(undefined);
-    }, LIST_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      if (!isApiMessage(data)) return;
-      let frame;
-      try {
-        frame = decodeMessage(data);
-      } catch {
-        return;
-      }
-      if (frame.code !== code + 0x80) return;
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(frame.body);
-    };
-
-    try {
-      send();
-    } catch {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(undefined);
-    }
-  });
+  return linkTo(output).transport({ onSend: issue });
 }
 
 /** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
@@ -2302,32 +2164,17 @@ async function tryUnknownCode(): Promise<void> {
   // Anything at all counts, not only the predicted response: an unknown request answering with an
   // unexpected code would be the most interesting outcome available, and matching strictly on the
   // convention would throw it away.
-  const reply = await new Promise<ReturnType<typeof parseMessage> | undefined>((resolve) => {
-    const timer = setTimeout(() => {
-      awaitingReply = undefined;
-      resolve(undefined);
-    }, UNKNOWN_TIMEOUT_MS);
-
-    awaitingReply = (data) => {
-      let parsed;
+  const reply = await linkTo(output).awaitReply({
+    send: () => output.send([...probeRequest(productId, { code, objNr })]),
+    match: (data) => {
       try {
-        parsed = parseMessage(data);
+        return parseMessage(data);
       } catch {
-        return;
+        return undefined;
       }
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      resolve(parsed);
-    };
-
-    try {
-      output.send([...probeRequest(productId, { code, objNr })]);
-    } catch (error) {
-      clearTimeout(timer);
-      awaitingReply = undefined;
-      log.push(["Send failed", String(error)]);
-      resolve(undefined);
-    }
+    },
+    timeoutMs: UNKNOWN_TIMEOUT_MS,
+    onSendError: (error) => log.push(["Send failed", String(error)]),
   });
 
   if (!reply) {

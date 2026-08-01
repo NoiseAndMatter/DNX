@@ -45,6 +45,7 @@ import {
   readDriveProject,
 } from "../../src/device/drive.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
+import { DeviceLink, bestPair } from "./devicelink.js";
 import { DeviceSession } from "../../src/device/session.js";
 import { dumpProductFor } from "../../src/device/dumprequest.js";
 import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
@@ -205,53 +206,17 @@ export async function writeBack(
 // --- the +Drive: any project, not just the open one -----------------------------------------------
 
 /**
- * Web MIDI as an `ApiTransport`, **matching replies by message id**.
+ * Web MIDI as an `ApiTransport`.
  *
- * The id match is the substance. Elektron Transfer polls the same port continuously and both
- * Digitones volunteer API messages when a port opens, so "the next message to arrive" is regularly
- * somebody else's — a confusion that has already produced one false finding here.
- *
- * A fresh listener per request, removed on the way out. The probe keeps a single global slot and
- * paid for it: two overlapping reads there stole each other's answers.
+ * The correlation itself lives in `devicelink.ts` — one listener per request, matched by message
+ * id — because the probe page needed exactly the same thing and had written its own, differing in
+ * the part that matters. All this adds is the error the +Drive code expects on silence.
  */
 function apiTransport(device: ConnectedDevice): ApiTransport {
-  return {
-    request(request: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
-      return new Promise((resolve, reject) => {
-        const done = (fn: () => void): void => {
-          clearTimeout(timer);
-          device.input.removeEventListener("midimessage", onMessage);
-          fn();
-        };
-        const timer = setTimeout(
-          () => done(() => reject(new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${timeoutMs}ms`))),
-          timeoutMs,
-        );
-        const onMessage = (event: MIDIMessageEvent): void => {
-          if (!event.data) return;
-          const data = new Uint8Array(event.data);
-          if (!isApiMessage(data)) return;
-          let frame: ApiFrame;
-          try {
-            frame = decodeMessage(data);
-          } catch {
-            return;
-          }
-          if (frame.respId !== msgId) return;
-          done(() => resolve(frame));
-        };
-
-        device.input.addEventListener("midimessage", onMessage);
-        try {
-          device.output.send([...request]);
-        } catch (error) {
-          done(() => reject(error instanceof Error ? error : new Error(String(error))));
-        }
-      });
-    },
-  };
+  return new DeviceLink(device.input, device.output).transport({
+    timeoutError: (msgId, ms) => new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${ms}ms`),
+  });
 }
-
 /**
  * Message ids for +Drive work, in bands.
  *
@@ -307,24 +272,4 @@ export async function openDeviceProject(
   }
 
   return { image: imageFrom(read.payload), project, bytes: read.bytes };
-}
-
-function bestPair(
-  inputs: MIDIInput[],
-  outputs: MIDIOutput[],
-): { input: MIDIInput; output: MIDIOutput } {
-  let best = { input: inputs[0]!, output: outputs[0]!, score: -1 };
-  for (const output of outputs) {
-    for (const input of inputs) {
-      const score = sharedPrefix(input.name ?? "", output.name ?? "");
-      if (score > best.score) best = { input, output, score };
-    }
-  }
-  return { input: best.input, output: best.output };
-}
-
-function sharedPrefix(a: string, b: string): number {
-  let n = 0;
-  while (n < a.length && n < b.length && a[n] === b[n]) n++;
-  return n;
 }
