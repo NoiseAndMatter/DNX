@@ -686,7 +686,12 @@ Go ahead anyway?`)) {
   }
 
   device.image = plan.image;
-  status(`${plan.landingSlots.length} pattern(s) → ${plan.landingSlots.map(patternName).join(", ")}.`);
+  // What to do next, not what the panel already says. The panel's first line is this same landing
+  // list; repeating it in the bar made the bar look like a leftover rather than a prompt.
+  status(
+    `Planned — press Apply to fold ${plan.landingSlots.length} pattern(s) into ` +
+      `${plan.landingSlots.map(patternName).join(", ")}.`,
+  );
   return { lines: describeMerge(plan), notes: plan.notes };
 }
 
