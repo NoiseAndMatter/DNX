@@ -72,6 +72,7 @@ import {
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
 import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
 import { $, escapeHtml } from "../dom.js";
+import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
 
 const status = statusBar();
@@ -154,11 +155,7 @@ function renderTabs(): void {
 function countOccupied(bank: number): number {
   const { device, session } = state;
   if (!device || !session) return 0;
-  let n = 0;
-  for (let i = bank * 16; i < Math.min((bank + 1) * 16, device.patternCount); i++) {
-    if (device.summarise(session.image, i).occupied) n++;
-  }
-  return n;
+  return countOccupiedIn(bank, device, session.image);
 }
 
 /**
@@ -225,19 +222,7 @@ function renderGrid(): void {
 
   const slots = [];
   for (let index = from; index < to; index++) {
-    const summary = device.summarise(session.image, index);
-    slots.push({
-      index,
-      id: patternName(index),
-      name: summary.supported ? summary.name || "—" : `v${summary.version}`,
-      detail: summary.supported
-        ? summary.occupied
-          ? `${summary.trigCount} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
-          : "empty"
-        : "unreadable version",
-      occupied: summary.occupied === true,
-      supported: summary.supported,
-    });
+    slots.push({ index, ...patternSlotView(device, session.image, index) });
   }
 
   renderSlots(grid, slots, {
