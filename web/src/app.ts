@@ -762,7 +762,18 @@ const drag = new GridDrag({
   onDrop(from, grid, index) {
     if (from.grid !== "source" || grid !== "destination") return;
     landing = index;
+    // **The redraw is the whole bug.** Clicking a destination slot re-rendered the grid, so the
+    // marker moved; dropping on one did not, so the only visible effect of a drag was a line of
+    // text far down the page. The gesture worked and looked like it had done nothing, which is
+    // indistinguishable from broken — and was reported as exactly that.
+    renderDestinationGrid();
     replanForDevice();
+    const last = index + Math.max(0, selection.length - 1);
+    status(
+      `${selection.length} pattern(s) will land in ${patternName(index)}` +
+        (selection.length > 1 ? `…${patternName(last)}` : "") +
+        `. Press Apply to write them.`,
+    );
   },
 
   onStatus: (message) => {
@@ -869,7 +880,7 @@ function renderDestinationGrid(): void {
       // in this grid, and marking it says "this is where the drop went" without implying it can be
       // dragged from.
       selected: [],
-      ...(merging() ? { opened: landing } : {}),
+      ...(merging() ? { opened: landing, landing: landingSlots() } : {}),
       onClick: (index) => {
         landing = index;
         renderDestinationGrid();
@@ -878,6 +889,17 @@ function renderDestinationGrid(): void {
       drag: { controller: drag, grid: "destination" },
     },
   );
+}
+
+/**
+ * Every destination slot the pending merge would write to.
+ *
+ * Contiguous from the landing slot for now, because that is what the merge does today. When
+ * relative placement lands (ROADMAP 6c) this is the one place that has to learn about it, and the
+ * grid will follow — which is the reason it is a function rather than a marked index.
+ */
+function landingSlots(): number[] {
+  return selection.map((_, i) => landing + i).filter((slot) => slot < DN2_PATTERN_COUNT);
 }
 
 /** Anchor for shift-ranges in the source grid. */

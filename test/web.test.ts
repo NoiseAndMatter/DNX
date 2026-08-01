@@ -194,6 +194,23 @@ test("patterns and tracks are laid out on the same grid", () => {
   }
 });
 
+test("every state the grid paints on a cell has a rule in the shared stylesheet", () => {
+  // The grid adds classes; the stylesheet colours them. Neither side fails when the other is
+  // missing — the cell simply renders as though nothing happened, which is precisely how a drop
+  // that worked came to look like a drop that did not.
+  const grid = readFileSync(resolve(HERE, "../web/src/grid.ts"), "utf8");
+  const css = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
+
+  const added = [...grid.matchAll(/classList\.add\("([a-z-]+)"\)/g)].map((m) => m[1]!);
+  assert.ok(added.length >= 3, `found ${added.length} classes the grid adds, expected several`);
+
+  // A plain substring rather than a built regex: the class names are literals, and escaping dots
+  // into a template string is how this test first reported `.slot.dragging` as missing while it sat
+  // in the stylesheet.
+  const unstyled = [...new Set(added)].filter((name) => !css.includes(`.slot.${name}`));
+  assert.deepEqual(unstyled, [], "these grid states have no `.slot.<state>` rule and render as nothing");
+});
+
 test("every drop action has a colour in the shared stylesheet", () => {
   // `dropHint` puts the action's own name on the cell as a class, so its hue comes from a rule
   // named after it. A fourth action would typecheck, name itself correctly, draw its label — and
