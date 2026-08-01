@@ -391,6 +391,24 @@ the whole page, and the breakdown was still the whole project's.
    `<details>`, and `#devicePlan` is capped and scrollable — a sticky element must never be able to
    grow without bound, whatever it has to say.
 
+### Where the plan panel belongs — 2026-08-01
+
+**The user, on seeing it fixed:** it should sit under *Sounds on tracks*, below "Every sound-locked
+sound gets its own track" — "it is only relevant together with the sound allocation".
+
+Right, and it says something about the page's structure. The options strip is for *controls*; what
+a merge would do to the pool, to the locks and to the destination's patterns is a *result*, and it
+means nothing except beside the allocation it comes from. Two panels describing the same operation,
+one at the top of the page and one in the middle, made the reader hold one in their head to
+understand the other.
+
+It also closed the last of the overflow problem: out of the sticky strip, nothing about the panel
+can cover the page, whatever a plan has to say.
+
+Two duplications went with the move — the panel said `replacing A3` and `1 destination pattern(s)
+replaced: A3`, and counted the conversion notes in a line directly above the disclosure that counts
+them. Each fact is now stated once, in the voice that means "look at this".
+
 ## Sequencing
 
 1. ~~**The spine.**~~ **Done, CLI only** (`npm run rearrange`). Device-agnostic librarian, pattern
