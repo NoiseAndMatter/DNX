@@ -61,7 +61,7 @@ import { type Entry, StorageCode, listRequest, parseListing } from "../../../src
 import {
   INFORMATION_CODES,
   describeApiReply,
-  hex as apiBytes,
+  hexBody,
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
@@ -1848,7 +1848,7 @@ async function askDevice(): Promise<void> {
     return;
   }
 
-  const body = apiBytes(frame.body);
+  const body = hexBody(frame.body);
   const previous = previousAnswers.get(code);
   previousAnswers.set(code, body);
 

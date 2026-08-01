@@ -25,6 +25,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { escapeHtml } from "../sheet/html.js";
 import { basename, join } from "node:path";
 import { buildProjectFile } from "../project/projectfile.js";
 import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
@@ -70,14 +71,6 @@ function fail(message: string): never {
 
 function hhmm(when = new Date()): string {
   return `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 /**

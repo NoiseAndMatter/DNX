@@ -24,6 +24,10 @@
  * knows which one a drag started in, and the caller's policy decides whether that is allowed.
  */
 
+// Shared with `src/`, which is where the platform-free copy has to live. This module used to carry
+// its own, and it was the one that did not escape quotes.
+import { escapeHtml } from "../../src/sheet/html.js";
+
 /** One cell, already reduced to what it displays. */
 export interface SlotView {
   index: number;
@@ -272,10 +276,6 @@ function paint(cell: HTMLElement, hint: GridDropHint | undefined): void {
 function clear(cell: HTMLElement): void {
   cell.classList.remove("target", "move", "copy", "swap", "merge");
   cell.removeAttribute("data-action");
-}
-
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // --- banks ---------------------------------------------------------------------------------------

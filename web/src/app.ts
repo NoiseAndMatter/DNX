@@ -240,7 +240,6 @@ async function loadSource(file: File): Promise<void> {
   status(`Reading ${file.name}…`);
   state.source = await openProject(file);
   const name = readProjectName(state.source.image);
-  const live = new Set<number>();
   replan();
   $("sourceInfo").hidden = false;
   $("sourceInfo").textContent = `${name} · ${file.name}`;

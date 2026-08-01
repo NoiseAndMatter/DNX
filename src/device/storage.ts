@@ -791,7 +791,8 @@ const HEADER = 13;
 const SHORT = 0x01;
 const LONG = 0x02;
 
-function u32(b: Uint8Array, at: number): number {
+/** A big-endian u32. Exported because `storagewrite.ts` had an identical private copy. */
+export function u32(b: Uint8Array, at: number): number {
   return ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0;
 }
 
