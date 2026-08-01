@@ -1199,6 +1199,10 @@ async function writeBack(): Promise<void> {
     log.push([what, `${detail}  (${since()})`]);
     verdictCard("Write in progress", log);
   };
+  // Started before the send, because the send is the suspect — a measurement that begins after it
+  // would miss exactly the window in question.
+  const thread = watchMainThread();
+  const inbound = watchInbound(linkTo(output).input);
   trace("Sending", `0x50 to slot ${slot}…`);
 
   try {
@@ -1232,6 +1236,7 @@ async function writeBack(): Promise<void> {
     onLate: (payload) => reportLateReadBack(payload, candidate, log, slot),
   });
   waiting();
+  log.push(...timeGoesRow(thread(), inbound()));
   log.push(...hiddenRow(watched()));
 
   if (!readBack) {
@@ -1295,6 +1300,92 @@ function reportLateReadBack(
     ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
   ]);
   status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+}
+
+/**
+ * The longest the page stopped running, and how much arrived while it did.
+ *
+ * **Written because three theories have been wrong and the fourth should not be a theory.** The
+ * measured facts: a 321ms settle takes minutes (152.8s, then 246.1s), the tab is visible with zero
+ * hidden time, the read-back on the same page moments later takes 0.2s, and inbound project reads of
+ * ~3 MB have never stalled. Outbound bulk is the only thing implicated.
+ *
+ * Two candidates remain, and these two numbers separate them without any argument:
+ *
+ * - **One enormous gap** — the main thread was blocked solid. Whatever `output.send()` sets in
+ *   motion is holding the renderer, and no amount of timer discipline will help.
+ * - **Many small gaps, with traffic** — the page is being flooded while it sends, and
+ *   `renderCapture()` rebuilding the results DOM per message is eating it. A device echoing our own
+ *   write back at us would explain both the duration and why it scales with the write.
+ *
+ * A 50ms interval, so a blocked thread shows as one gap of the stall's whole length rather than
+ * being smeared across a slow poll.
+ */
+function watchMainThread(): () => { longestGapMs: number; ticks: number } {
+  const period = 50;
+  let last = Date.now();
+  let longest = 0;
+  let ticks = 0;
+
+  const timer = setInterval(() => {
+    const now = Date.now();
+    // The gap beyond what was asked for: a timer that fires on time contributes nothing.
+    longest = Math.max(longest, now - last - period);
+    last = now;
+    ticks++;
+  }, period);
+
+  return () => {
+    clearInterval(timer);
+    return { longestGapMs: Math.max(0, Math.round(longest)), ticks };
+  };
+}
+
+/**
+ * What arrived on the input port during one operation.
+ *
+ * Its own listener rather than a count from the capture, because the capture is also what would be
+ * doing the work being measured — and a counter that only runs when the thing it measures is idle
+ * measures nothing.
+ */
+function watchInbound(input: MIDIInput): () => { messages: number; bytes: number } {
+  let messages = 0;
+  let bytes = 0;
+
+  const onMessage = (event: MIDIMessageEvent): void => {
+    if (!event.data) return;
+    messages++;
+    bytes += event.data.length;
+  };
+
+  input.addEventListener("midimessage", onMessage);
+  return () => {
+    input.removeEventListener("midimessage", onMessage);
+    return { messages, bytes };
+  };
+}
+
+/** The two rows that say where a write's time went, when there is anything to say. */
+function timeGoesRow(
+  thread: { longestGapMs: number; ticks: number },
+  inbound: { messages: number; bytes: number },
+): [string, string][] {
+  const rows: [string, string][] = [];
+  if (thread.longestGapMs > 500) {
+    rows.push([
+      "Page stopped for",
+      `${(thread.longestGapMs / 1000).toFixed(1)}s in one go — the main thread was blocked that ` +
+        `long, so nothing on this page ran, timers included. ${thread.ticks} tick(s) got through.`,
+    ]);
+  }
+  if (inbound.messages > 0) {
+    rows.push([
+      "Arrived meanwhile",
+      `${inbound.messages} message(s), ${inbound.bytes.toLocaleString()} bytes — while we were ` +
+        `sending. A device echoing the write back would look like this.`,
+    ]);
+  }
+  return rows;
 }
 
 /**
@@ -1517,6 +1608,8 @@ async function writeToChosenSlot(): Promise<void> {
     return;
   }
 
+  const thread = watchMainThread();
+  const inbound = watchInbound(linkTo(output).input);
   trace("Sending", `${message.length.toLocaleString()} bytes to ${to}…`);
   try {
     output.send([...message]);
@@ -1543,6 +1636,7 @@ async function writeToChosenSlot(): Promise<void> {
   // Stopped once and kept: calling it twice would detach the listener twice and re-measure, and the
   // row belongs in the log either way so both the verdict and the timeout card carry it.
   const hidden = watched();
+  log.push(...timeGoesRow(thread(), inbound()));
   log.push(...hiddenRow(hidden));
 
   if (!readBack) {
