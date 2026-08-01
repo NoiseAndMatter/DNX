@@ -11,7 +11,14 @@
  * which reads the preset properly rather than skimming two bytes out of it.
  */
 
-import { DN2_KIT, DN2_LAYOUT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE, kitRecord } from "../project/dn2image.js";
+import {
+  DN2_KIT,
+  DN2_LAYOUT,
+  SOUND_NAME_OFFSET,
+  SOUND_NAME_SIZE,
+  kitRecord,
+  trackLevel,
+} from "../project/dn2image.js";
 import { readMidiTrackMask } from "../project/dn2pattern.js";
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 import { DN2_TRACK_COUNT, lockCounts, trigCounts } from "./trackmove.js";
@@ -60,7 +67,7 @@ export function summariseTracks(image: Uint8Array, pattern: number): TrackSummar
       midi: ((midiMask >> index) & 1) === 1,
       trigCount: trigs[index]!,
       lockCount: locks[index]!,
-      level: kit[0x1c + index * 2]!,
+      level: trackLevel(kit, index),
       empty: trigs[index] === 0 && locks[index] === 0,
     });
   }

@@ -9,18 +9,17 @@
  * Produces a plain model. Rendering is `render.ts`'s job.
  */
 
-import { kitRecord } from "../project/dn2image.js";
+import {
+  DN2_KIT,
+  SOUND_NAME_OFFSET,
+  SOUND_NAME_SIZE,
+  kitRecord,
+  trackLevel,
+} from "../project/dn2image.js";
 import { readPattern, readSoundPool, type Dn1Pattern } from "../project/dn1.js";
 import { readDn2Pattern, readMidiTrackMask, type Dn2Pattern } from "../project/dn2pattern.js";
 import { stepName, stepsByPage } from "./naming.js";
 
-/** DN2 kit geometry: header, then 16 sound slots; the name sits 12 bytes into each. */
-const KIT_SOUND_OFFSET = 60;
-const SOUND_SIZE = 359;
-const SOUND_NAME_OFFSET = 12;
-const SOUND_NAME_SIZE = 16;
-/** 16 x u16le track levels in the kit header. */
-const KIT_LEVEL_OFFSET = 0x1c;
 /** DN2 tracks 9-16, which no Elektron import ever populates. Expansion is what fills them. */
 const FIRST_EXPANDED_TRACK = 8;
 
@@ -61,14 +60,10 @@ export interface PatternSheet {
 }
 
 function soundName(kit: Uint8Array, track: number): string {
-  const at = KIT_SOUND_OFFSET + track * SOUND_SIZE + SOUND_NAME_OFFSET;
+  const at = DN2_KIT.soundOffset + track * DN2_KIT.soundSize + SOUND_NAME_OFFSET;
   const raw = kit.subarray(at, at + SOUND_NAME_SIZE);
   const nul = raw.indexOf(0);
   return new TextDecoder("latin1").decode(nul === -1 ? raw : raw.subarray(0, nul));
-}
-
-function trackLevel(kit: Uint8Array, track: number): number {
-  return kit[KIT_LEVEL_OFFSET + track * 2]! | (kit[KIT_LEVEL_OFFSET + track * 2 + 1]! << 8);
 }
 
 /** Per-trig detail that has to survive a move to another track. */

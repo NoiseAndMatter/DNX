@@ -230,6 +230,17 @@ kit contents track pattern contents across the whole matched-pair corpus (§6).
 | `5,964` | 16 × 268 = 4,288 | **16 MIDI track records**, one per track |
 | `10,252` | 500 | unidentified |
 
+**Track levels are a u16le container holding a 0-127 value** [verified, 2026-08-01]. Measured
+across every DN2 project in the corpus: 49,152 levels read, the **high byte is never non-zero**,
+and the maximum is 127 — which is the range the device shows. So the second byte exists in the
+format and has never been used by the instrument.
+
+Both facts matter, and only the first is visible in the bytes. Two readers in this codebase had
+disagreed about the width — one read the pair, one read the low byte — and agreed on every project
+we own precisely because of the second fact. `DN2_KIT.levelOffset/levelSize/levelCount` and the
+`trackLevel` / `setTrackLevel` accessors in `src/project/dn2image.ts` are now the only way to touch
+the field.
+
 **An empty kit name is legitimate; the device supplies `KIT <slot index + 1>` lazily.**
 A round-trip of a project we wrote came back with 13 kits newly named `KIT 1`, `KIT 17`,
 `KIT 113` and so on — always the 1-based slot index, always only for kits the device had
