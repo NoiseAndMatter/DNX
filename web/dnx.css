@@ -156,6 +156,17 @@ body.app > main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 2
   padding: .7rem .9rem 0; min-height: 0; }
 /* A flowing page keeps one column and a comfortable measure at any width. */
 body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 auto; }
+
+/*
+ * The full-bleed bars align their contents with that column, not with the window edge.
+ *
+ * They span the width — a bar that stopped at 78rem would look like a floating card — but their
+ * text starts where the sections start. Without this the status line sat at the far left of a wide
+ * window, under content that begins several centimetres to its right, and read as something left
+ * over from another layout rather than as this page's own status.
+ */
+body.page > .topbar,
+body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem); padding-right: calc((100% - min(78rem, 100%)) / 2 + .9rem); }
 .side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
 
 /* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
@@ -297,6 +308,16 @@ kbd {
   padding: .45rem .9rem; border-top: 1px solid var(--line); background: #1a1f21;
   font-size: .76rem; color: var(--muted); min-height: 2rem;
 }
+/*
+ * On a flowing page the status bar is pinned, because otherwise it is not a status bar.
+ *
+ * In `body.app` it is the last child of a viewport-height column, so it sits at the bottom of the
+ * window and is always in view. Reused on `body.page` it became an ordinary `<div>` at the end of a
+ * long document: a message written while the user is looking at the middle of the page appeared
+ * somewhere below the fold, out of sight and out of context. `body.page` already reserves the room
+ * for it (`padding-bottom`), which is what that rule was for.
+ */
+body.page > .status { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; }
 .status.error { color: var(--salmon); }
 .status.warn { color: var(--amber); }
 .status.ok { color: var(--teal); }
