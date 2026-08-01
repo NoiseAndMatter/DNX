@@ -608,4 +608,20 @@ candidates, and they are distinguishable by measurement rather than reasoning:
    separates this from the first, and a device echoing our own write back at us would explain both
    the duration and why it scales with the write.
 
-Neither is a guess to act on. Both are two lines of instrumentation.
+Neither is a guess to act on. Both are two lines of instrumentation, and both are now measured.
+
+#### The two numbers, and how to read them
+
+Both write flows start a **50ms liveness interval** and an **inbound counter** *before* the send —
+before, because the send is the suspect and a measurement starting after it would miss the window
+in question. The counter keeps its own listener rather than reading the capture's, since the capture
+is also what would be doing the work being measured.
+
+| What the card says | What it means |
+|---|---|
+| `Page stopped for 246.0s in one go` | The main thread was blocked solid. Whatever `output.send()` sets in motion holds the renderer, and no timer discipline will help |
+| Several seconds of gaps, plus `Arrived meanwhile: N messages` | The page is being flooded while it sends, and `renderCapture()` rebuilding the results DOM per message is eating it |
+| Neither row appears, and it still stalls | The time is going somewhere outside the page's own execution — and that is a fifth thing, worth knowing before guessing at it |
+
+`Arrived meanwhile` is the one to watch: a Digitone echoing our own write back at us would explain
+both the duration and why it scales with the size of the write, and nothing so far rules it out.
