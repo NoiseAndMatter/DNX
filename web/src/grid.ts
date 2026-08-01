@@ -175,6 +175,15 @@ export interface RenderGridOptions {
   selected: readonly number[];
   /** A cell to mark as drilled into — the manager's opened pattern. */
   opened?: number;
+  /**
+   * Cells that are about to receive something, marked but not selected.
+   *
+   * **Selection and destination are different claims.** A selected cell is one the user picked and
+   * can act on; these are cells a pending operation will write to, which the user chose only
+   * indirectly by dropping N patterns on the first of them. Painting them as selected would invite
+   * clicking them as if that meant something.
+   */
+  landing?: readonly number[];
   onClick(index: number, event: MouseEvent): void;
   /** Omitted for a read-only grid. */
   drag?: { controller: GridDrag; grid: string };
@@ -201,6 +210,7 @@ export function renderGrid(
     if (!slot.supported) cell.classList.add("unsupported");
     else if (slot.occupied) cell.classList.add("occupied");
     if (slot.index === options.opened) cell.classList.add("opened");
+    if (options.landing?.includes(slot.index)) cell.classList.add("landing");
     cell.setAttribute("aria-selected", String(options.selected.includes(slot.index)));
 
     for (const extra of slot.classes ?? []) cell.classList.add(extra);
