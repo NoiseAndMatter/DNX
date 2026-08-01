@@ -27,6 +27,9 @@
 import { decodeMessage, isApiMessage, type ApiFrame } from "../../src/device/api.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
 
+/** How long `.open()` on a closed port gets before a wait gives up rather than hangs. */
+const OPEN_TIMEOUT_MS = 2000;
+
 /** How a caller waits for one reply. */
 export interface AwaitOptions<T> {
   /**
@@ -42,6 +45,16 @@ export interface AwaitOptions<T> {
   timeoutMs: number;
   /** Called when `send` throws. The wait then finishes as `undefined`. */
   onSendError?: (error: unknown) => void;
+  /**
+   * Called when the input port could not be opened. The wait finishes as `undefined` and
+   * **nothing is sent**.
+   *
+   * Separate from `onSendError` deliberately. Reporting this through that hook put "could not open
+   * the port" under a caller's *"Send failed"* heading, describing a send that never happened — and
+   * an error names what failed, not what was wanted. Callers that do not care may omit it; they
+   * still get `undefined` rather than a hang.
+   */
+  onOpenError?: (error: Error) => void;
   /**
    * Keep listening after the timeout, and call this if the answer turns up late.
    *
@@ -66,13 +79,43 @@ export class DeviceLink {
    * seeing the other's traffic, which is the whole point.
    */
   async awaitReply<T>(options: AwaitOptions<T>): Promise<T | undefined> {
-    const { send, match, timeoutMs, onSendError, onLate } = options;
+    const { send, match, timeoutMs, onSendError, onOpenError, onLate } = options;
 
     // **A closed input delivers nothing, and looks exactly like a device that never answered.**
-    // `addEventListener` does not open a port. The probe page knew this and opened the port in its
-    // capture handler, which is why its request paths silently only worked while Listen was
-    // running. Opening here means a wait cannot be attached to a port that cannot hear.
-    await this.input.open();
+    // `addEventListener` does not open a port, so a wait must not be attached to one that cannot
+    // hear.
+    //
+    // But **only when there is something to open.** Opening unconditionally stalled both write
+    // tests on hardware: `writeBack` and `writeToChosenSlot` refuse to run unless Listen is already
+    // active, so their read-backs always called `.open()` on an already-open port, and the wait sat
+    // there with no verdict. The timeout below is armed *after* this await, so while the open call
+    // was outstanding nothing existed to report the delay — the card showed "Write in progress"
+    // rather than "NOT verified — yet", because the 5,000ms timer had not started.
+    //
+    // That an already-open `.open()` is what delayed it is **inferred**: what was measured is that
+    // the stall sat before the timer, and that one run resolved with a full-length reply once it
+    // cleared. Skipping the call when the port is open removes the suspect either way.
+    //
+    // The genuinely-closed path keeps its own ceiling, because a promise that does not know how to
+    // fail is worse than one that fails fast — the same defect one level down.
+    if (this.input.connection !== "open") {
+      let ceiling: ReturnType<typeof setTimeout> | undefined;
+      const opened = await Promise.race([
+        this.input.open().then(() => true),
+        new Promise<boolean>((resolve) => {
+          ceiling = setTimeout(() => resolve(false), OPEN_TIMEOUT_MS);
+        }),
+      ]);
+      // Cleared on both paths: a race leaves the loser running, and a stray two-second timer per
+      // wait is exactly the kind of thing this module exists to not do.
+      clearTimeout(ceiling);
+      if (!opened) {
+        onOpenError?.(
+          new Error(`could not open ${this.input.name ?? "the input port"} within ${OPEN_TIMEOUT_MS}ms`),
+        );
+        return undefined;
+      }
+    }
 
     return new Promise<T | undefined>((resolve) => {
       let settled = false;

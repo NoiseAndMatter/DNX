@@ -14,14 +14,26 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DeviceLink, bestPair, matchApiFrame, sharedPrefix } from "../web/src/devicelink.js";
 
-/** A MIDI input that hands out whatever we feed it, and counts its listeners. */
-function fakeInput() {
+/**
+ * A MIDI input that hands out whatever we feed it, and counts its listeners.
+ *
+ * `connection` defaults to `"open"`, matching the state a wait finds Listen in on the probe page —
+ * the exact case where calling `.open()` again hung on real hardware. `neverOpens` reproduces a
+ * genuinely closed port whose `.open()` never settles, which is the case the ceiling exists for.
+ */
+function fakeInput(options: { connection?: "open" | "closed"; neverOpens?: boolean } = {}) {
   const listeners = new Set<(event: { data: Uint8Array | null }) => void>();
   let opened = 0;
+  let connection = options.connection ?? "open";
   return {
     port: {
+      get connection() {
+        return connection;
+      },
       open: async () => {
         opened++;
+        if (options.neverOpens) return new Promise(() => {}); // never resolves, on purpose
+        connection = "open";
       },
       addEventListener: (_type: string, fn: (event: { data: Uint8Array | null }) => void) => {
         listeners.add(fn);
@@ -161,13 +173,56 @@ test("a send that throws is reported, and does not leave a listener behind", asy
   assert.equal(input.listenerCount, 0);
 });
 
-test("the input is opened before anything is expected from it", async () => {
+test("a closed input is opened before anything is expected from it", async () => {
   // A closed port delivers nothing and looks exactly like a device that never answered. The probe
   // page's request paths only worked while its capture was running, for exactly this reason.
-  const input = fakeInput();
+  const input = fakeInput({ connection: "closed" });
   const link = linkOver(input, fakeOutput());
   await link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 5 });
   assert.equal(input.openCalls, 1);
+});
+
+test("an input that is already open is not opened again", async () => {
+  // **Found on hardware.** A write's read-back requires Listen to be running, which means the
+  // input is already open by the time the wait starts. Calling `.open()` again did not resolve
+  // promptly the way the spec says it should — it hung, past even this function's own timeout,
+  // because the timeout is set up *after* this await. A write that had already landed on the
+  // device sat in "Write in progress" forever. Confirmed by writing to H13 and H16 on real
+  // hardware: both showed the write succeed on the device and the page never move past it.
+  const input = fakeInput({ connection: "open" });
+  const link = linkOver(input, fakeOutput());
+  const result = await link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 5 });
+  assert.equal(input.openCalls, 0, "an already-open port must not be re-opened");
+  assert.equal(result, undefined, "the wait must still resolve — this is the regression test");
+});
+
+test("an open that never resolves does not hang the wait", async () => {
+  // Defence in depth for the same class of bug, on the path that genuinely needs to open: if
+  // `.open()` itself is the thing that never settles, the wait must still finish rather than
+  // silently hanging past its own timeout the way the hardware bug did.
+  const input = fakeInput({ connection: "closed", neverOpens: true });
+  const link = linkOver(input, fakeOutput());
+  const output = fakeOutput();
+  let openError: unknown;
+  let sendError: unknown;
+  const result = await link.awaitReply({
+    send: () => output.port.send([0x01]),
+    match: byTag(0xaa),
+    timeoutMs: 5,
+    onOpenError: (error) => {
+      openError = error;
+    },
+    onSendError: (error) => {
+      sendError = error;
+    },
+  });
+  assert.equal(result, undefined);
+  assert.match(String(openError), /could not open/);
+  // A failure to open is not a failure to send, and must not be reported as one: a caller that
+  // logs `onSendError` under "Send failed" would be describing a send that never happened.
+  assert.equal(sendError, undefined, "an open failure was reported as a send failure");
+  assert.deepEqual(output.sent, [], "nothing may be sent through a port that never opened");
+  assert.equal(input.listenerCount, 0, "no listener should have been attached — the port never opened");
 });
 
 test("the transport rejects on silence, because its callers expect a throw", async () => {
@@ -179,8 +234,10 @@ test("the transport rejects on silence, because its callers expect a throw", asy
 
 test("the transport tells the page an id is ours before the bytes go out", async () => {
   // Recorded before the send, or a reply can arrive before its id is known to be ours — which is
-  // how a capture of our own reads came to be labelled "not ours".
-  const input = fakeInput();
+  // how a capture of our own reads came to be labelled "not ours". Exercised on a closed port,
+  // where opening genuinely suspends execution, so there is a real gap for the ordering to fail
+  // across. An already-open port has no such gap — see the next test.
+  const input = fakeInput({ connection: "closed" });
   const output = fakeOutput();
   const order: string[] = [];
   const transport = linkOver(input, output).transport({ onSend: (id) => order.push(`issued ${id}`) });
@@ -193,6 +250,24 @@ test("the transport tells the page an id is ours before the bytes go out", async
 
   assert.deepEqual(order, ["issued 4242", "sent 0", "timed out"]);
   assert.equal(output.sent.length, 1, "the request never went out");
+});
+
+test("an already-open port sends without an extra hop — the regression that mattered", async () => {
+  // The fix this file exists for: an already-open port used to be re-opened unconditionally,
+  // which hung on real hardware rather than resolving promptly. There being no async gap here at
+  // all is the point — the id is still recorded first, but nothing waits for a port that is
+  // already listening.
+  const input = fakeInput({ connection: "open" });
+  const output = fakeOutput();
+  const order: string[] = [];
+  const transport = linkOver(input, output).transport({ onSend: (id) => order.push(`issued ${id}`) });
+
+  const sending = transport.request(Uint8Array.of(0xf0), 4242, 5).catch(() => order.push("timed out"));
+  order.push(`sent ${output.sent.length}`);
+  await sending;
+
+  assert.deepEqual(order, ["issued 4242", "sent 1", "timed out"]);
+  assert.equal(input.openCalls, 0);
 });
 
 test("matchApiFrame refuses anything that is not an API message", () => {

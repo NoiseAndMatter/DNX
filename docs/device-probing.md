@@ -413,3 +413,49 @@ opened, and a request that reached the device looked exactly like a device that 
 `DeviceLink.awaitReply` opens the input before attaching, so a wait can no longer be hung on a port
 that cannot hear. **A closed port delivers nothing and looks exactly like silence** — the same trap
 as "prove the link before believing a silence", one level further down.
+
+### That fix itself stalled, on hardware — corrected 2026-08-01
+
+**Both write tests stalled.** Writing to H13 and to H16, both under Listen, both stored correctly on
+the device — and the page sat on "Write in progress" with no verdict. One run resolved eventually;
+the other had not when it was abandoned.
+
+The cause was the fix above, applied unconditionally. `writeBack` and `writeToChosenSlot` both
+refuse to run unless Listen is already active — the exact state the previous fix was guarding
+against *not* having. So every write's read-back called `.open()` on a port that was **already
+open**.
+
+The diagnostic detail worth keeping: the timeout inside `awaitReply` is armed *after* the open
+await, so while that call was outstanding **nothing existed to report the delay**. The card showed
+"Write in progress" rather than "NOT verified — yet", which is how the stall was located — a wait
+that misses its own timeout cannot be waiting where it says it is.
+
+**The mechanism is inferred, not measured.** What is established is that the stall sat before the
+timer and that one run resolved with a full-length reply once it cleared. `awaitReply` now skips
+`.open()` when `input.connection` is already `"open"`, which removes the suspect either way, and
+keeps a 2,000ms ceiling on the genuinely-closed path.
+
+### The H13 byte mismatch is a separate, open question
+
+The run that resolved reported *"Write did NOT match, and neither does the original"*, with
+`byte 20738: sent 0x4b, device holds 0x00`.
+
+**This was first written up as a truncated reply. That was wrong, and it compared two different
+units.** `24,006` in the log line is the **encoded SysEx message**; `20,992` is the **decoded
+payload** — and `18,432 + 2,560 = 20,992` is exactly a DN1 pattern record plus its kit. The reply
+was complete and the right length. The stall corrupted nothing.
+
+What remains is a real difference at a structural boundary:
+
+```
+20,738 − 18,432 = 2,306 bytes into the kit
+DN1 KIT.macroOffset (0x81a = 2,074) + 8 × 29 = 2,306
+```
+
+So the differing byte is **the first byte after the DN1 macro array** — not a random position.
+Candidates, none tested: the device does not store that field and zeroes it; it is filled lazily,
+the way a DN2 supplies kit names; or `writeToSlot` is writing a byte there that it should not.
+`verifyWrite` reports only the first difference, so there may be more past it.
+
+Worth re-running now the stall is gone. If it survives, it belongs to the write path and wants its
+own investigation — it is not transport.
