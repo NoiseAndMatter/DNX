@@ -136,6 +136,11 @@ createServer((request, response) => {
   response.writeHead(200, {
     "content-type": TYPES[extname(served)] ?? "application/octet-stream",
     "cache-control": "no-store",
+    // **So a page can say which build it is running.** `npm run web` rebuilds, but only when it is
+    // restarted — so a pulled fix and a stale `web/dist` are indistinguishable in the browser, and
+    // a debugging session was spent on a stall without knowing whether the fix for it was even in
+    // the code being served. A module can `HEAD` its own URL and read this.
+    "last-modified": statSync(served).mtime.toUTCString(),
   });
   createReadStream(served).pipe(response);
 }).listen(PORT, "127.0.0.1", () => {
