@@ -625,3 +625,40 @@ is also what would be doing the work being measured.
 
 `Arrived meanwhile` is the one to watch: a Digitone echoing our own write back at us would explain
 both the duration and why it scales with the size of the write, and nothing so far rules it out.
+
+### FOUND: the page was blocking itself — 2026-08-01
+
+The instrumentation answered it on the first run:
+
+```
+Page stopped for   56.4s in one go — the main thread was blocked that long, so nothing on this
+                   page ran, timers included. 2 tick(s) got through.
+Arrived meanwhile  7279 message(s), 55,289 bytes — while we were sending.
+```
+
+**Nothing to do with MIDI, the instrument, or the write.** The capture listener called
+`renderCapture()` for every arriving message, and the status line under it called `summarise()` a
+second time — so each message parsed the **entire capture, twice**. During a write, ~7,300 messages
+arrived; MIDI events are dispatched back to back, so no timer, promise or repaint got a turn until
+the queue drained. A 321ms settle took 56 seconds.
+
+That is why every earlier theory fitted badly. The stall scaled with inbound traffic rather than
+with the write; it happened on a visible tab; and the read-back that followed took 0.2s, because by
+then the flood was over.
+
+**The fix is coalescing.** The capture redraws at most every 250ms however many messages arrive,
+with a trailing redraw so the last of a burst is still shown, and the status line reuses the summary
+the redraw already computed instead of parsing again. Thousands of full re-parses become one.
+
+The inbound counter now also reports **what** arrived, by kind — clock, active sensing, SysEx,
+channel messages. "7,279 messages" did not say whether that was the instrument's own clock, an echo
+of our write, or something else, and which it is decides whether anything further is needed.
+
+#### The lesson, which is not about MIDI
+
+Four diagnoses were wrong — truncation, a deaf port, a suspended tab, and a re-opened port — and
+every one was a plausible story about a system nobody was measuring. The instrumentation that
+settled it took less time to write than any single one of those theories took to argue.
+
+**A per-message full re-render is a performance bug that only shows up under load**, and the load
+here was ordinary MIDI traffic. Worth remembering before the manager grows a live view of anything.
