@@ -559,3 +559,25 @@ device. Transplant the bytes.
 **Rebuilt files are not byte-identical and that is fine.** LZ4 admits many valid encodings.
 Correctness means *decodes to the same image*, never *same bytes*. Do not diff project files
 to check a change.
+
+## The probe stalled for minutes on a write — FIXED 2026-08-01
+
+**Symptom:** writing a pattern appeared to hang. The device stored the bytes correctly and answered,
+and the page sat with no verdict for 152s, then 246s, then 56s across separate runs.
+
+**Cause:** the capture listener redrew the whole capture for every arriving MIDI message, and the
+status line under it parsed the capture a second time. The instrument's sequencer sends MIDI clock
+continuously, so ~100 messages per second each triggered two full parses of a multi-megabyte
+capture. MIDI events dispatch back to back, so no timer, promise or repaint ran until the queue
+drained.
+
+**Fix:** the redraw is coalesced to at most one per 250ms with a trailing redraw, and the status
+line reuses the summary the redraw already computed. A null round trip went from 246s to **0.3s**.
+
+**Why it took four wrong diagnoses:** truncation, a deaf port, a suspended tab and a re-opened port
+were each plausible, and each was argued rather than measured. What settled it was a liveness probe
+and an inbound counter — together about thirty lines, less work than any single theory.
+
+**The general trap:** a cost paid *per message* meeting a source that sends *many small messages*.
+Total bytes were unremarkable — 24 KB — so anything profiling volume would have missed it. Worth
+remembering before any live view of device traffic is built.
