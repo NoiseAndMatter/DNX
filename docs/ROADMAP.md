@@ -1781,18 +1781,43 @@ gaps, the patterns in between are untouched and must not be reported as overwrit
 
 The landing slot stops being a start and becomes an **anchor**, which the UI should say.
 
-### 6d. Navigation between tools, in the title
+### 6d. Navigation between tools, in the title — DECIDED 2026-08-01
 
-The tool titles become the navigation: the current tool's title sits first, the others beside it,
-and picking one moves it to the front. Order follows most-recently-used.
+The tool titles become the navigation. **Their order is fixed and never changes**; the current tool
+is highlighted, and the page slides.
 
-Movement should be **smooth but snappy, with easing**, and the tool transition itself a lateral
-carousel-style displacement, so the title shifting and the page sliding read as one motion.
+```
+DNX   >EXPANDER<   manager    probe
+      ^^^^^^^^^^
+```
 
-**Open question the user offered to clarify:** whether the title order really is most-recently-used
-— which moves controls under the cursor between visits — or fixed with only the current tool
-promoted. Ask before building; it is the difference between a stable and a self-rearranging
-navigation.
+**Settled by the user against a most-recently-used ordering**, which was the first sketch. MRU
+turns the row into a history stack, so a tool's position depends on where you have been — going
+back and forth between two tools swaps positions 2 and 3 every time, and the target you just
+clicked is not where it was. A fixed row makes each tool a permanent screen position and therefore
+muscle memory, which is worth more than expressing recency.
+
+So **all the motion lives in the page**, not in the titles: a lateral carousel displacement,
+**smooth but snappy, with easing**. The highlight moves; nothing reflows.
+
+**A keyboard shortcut slides between tools too** — the row is ordered, so previous/next is
+meaningful. Combo not chosen yet; see the note below.
+
+#### Choosing the shortcut
+
+The constraint is browser conflicts, which are unforgiving here:
+
+- `Ctrl`+`1`…`9` and `Ctrl`+`Tab` are **taken by the browser's own tabs** in Chrome and Edge.
+- `Alt`+`←` / `Alt`+`→` are **back and forward**. Taking them would break history navigation.
+- Bare keys (`[`, `]`) are the fastest to reach, but this page is full of text inputs, so they need
+  a focus guard: ignore the key whenever the target is an `input`, `select` or `textarea`.
+
+Recommended: **`Ctrl`+`Alt`+`←` / `Ctrl`+`Alt`+`→`** for previous/next, with `Ctrl`+`Alt`+`1/2/3`
+jumping straight to a tool — free in every browser we target, and the arrows match the carousel's
+direction so the shortcut and the animation say the same thing.
+
+Whatever is chosen, the shortcut must be **discoverable**: show it in each title's `title=`
+attribute, since a shortcut nobody can find is a shortcut nobody uses.
 
 This wants `web/dnx.css` and the shared page shell, so it lands after the structure work rather than
 before it.
