@@ -482,3 +482,44 @@ question answerable:
 
 **None of this fixes a stall.** It replaces an inference with a measurement, which is what the two
 previous attempts were missing.
+
+### The captures clear the write path — 2026-08-01
+
+Four captures taken around the stalled writes settle what was happening on the wire, and it is not
+what two rounds of fixes assumed.
+
+| Capture | Messages | patternKit objects |
+|---|---|---|
+| `133msg_1443` | 133 | 128, objects 0-127 |
+| `134msg_1446` | 134 | **129** |
+| `134msg_1450` | 134 | **129** |
+| `134msg_1450 (1)` | 134 | **129** |
+
+The extra message in each of the later three is **object 0 a second time**, as the last message of
+the capture — the read-back after the null round trip. Compared against the project's original
+copy of object 0, both payloads are 20,992 bytes and **byte-for-byte identical**.
+
+So, in order: the device received the write, stored it, received the read-back request, and
+answered it correctly — and the reply reached the page, because the page is what wrote the capture
+file. **The write path and the verification are both working.** What failed is the page resolving a
+reply it had already received.
+
+That also rules out the two previous diagnoses. Nothing was truncated (see the section above), and
+the port was not deaf — a deaf port could not have produced message #133 in the capture at all.
+
+### What the evidence now points at
+
+**The page's timers, not its MIDI.** Two stalls stopped at unrelated awaits — one at a 321ms
+`setTimeout`, one at a 5,000ms wait — and one run completed "after some time" without intervention.
+A `setTimeout` that does not fire for minutes is not a slow device; it is a suspended page.
+
+Chrome throttles timers in backgrounded tabs, heavily after a few minutes hidden, and a hardware
+test is exactly when the tab gets backgrounded: the tester is looking at the instrument. Events
+still queue and are delivered on resume, which is why the capture is complete and the verdict
+eventually appeared.
+
+**Inferred, and testable rather than assertable.** The counter added in the previous section
+distinguishes it directly: if it freezes and then jumps, the page was suspended; if it ticks
+smoothly past the timeout, the device is genuinely silent. That measurement should be taken with
+the tab **kept visible** for one run and **backgrounded** for another, which turns the hypothesis
+into a result either way.
