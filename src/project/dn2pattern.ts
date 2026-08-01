@@ -56,7 +56,6 @@
  */
 
 import { DN2_LAYOUT, kitRecord, patternRecord, type ImageLayout } from "./dn2image.js";
-import { DN2_POOL_OFFSET, DN2_SOUND_SIZE } from "./soundmap.js";
 
 // --- constants ------------------------------------------------------------
 
@@ -624,17 +623,6 @@ export function readDn2Pattern(
   layout: ImageLayout = DN2_LAYOUT,
 ): Dn2Pattern {
   return readDn2PatternRecord(patternRecord(image, index, layout), index, readMidiTrackMask(image, index, layout));
-}
-
-/** Resolve a trig's sound lock to its offset in the project's 128-slot sound pool. */
-export function soundLockPoolOffset(
-  trig: Dn2Trig,
-  layout: ImageLayout = DN2_LAYOUT,
-  poolOffset = DN2_POOL_OFFSET,
-  soundSize = DN2_SOUND_SIZE,
-): number | undefined {
-  if (trig.soundLock === undefined) return undefined;
-  return layout.tailBase + poolOffset + trig.soundLock * soundSize;
 }
 
 // --- whole-record checks --------------------------------------------------

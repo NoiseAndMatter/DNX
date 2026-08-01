@@ -50,7 +50,7 @@ Levels are 0–127, so the high byte is always zero and nothing is visibly broke
 divergence waiting for the first value above 255 — and it is exactly the class of defect the corpus
 method exists to catch. The width itself needs settling against the corpus, not choosing.
 
-## 3. `escapeHtml` exists seven times, in three behaviours
+## 3. `escapeHtml` exists seven times, in three behaviours — **DONE**
 
 **Verified for the divergent one.** `web/src/grid.ts:277` does not escape `"`; `web/src/dom.ts`
 does. `grid.ts` is the module *both* browser pages render every cell through, and it exports its
@@ -149,7 +149,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
 | 2b | Split the rest of `probe/main.ts` into `ports`/`cards`/`capture`/`dumpio`/`storageio`, leaving `main.ts` as wiring | **high** — same; ship separately from 2a |
 | 3 | Extract the hardware-sheet page scaffold into `src/sheet/page.ts` + `src/sheet/html.ts`; reconcile the drifted `☐` encoding | low |
-| 4 | Collapse the seven `escapeHtml`s (fixing grid.ts's missing quote escape), export `u32` once, rename the colliding `hex`s, delete the four dead exports | low |
+| 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | Move `zip.ts`, `projectfile.ts`, `open.ts` to `src/node/`; `tsconfig.web.json` excludes a directory instead of a list | low-medium — import churn; `web.test.ts` catches mistakes immediately |
 | 6 | Share the grid view-model: `slotViewFor` and `countOccupiedIn` in `grid.ts`, replacing three parallel copies across the two pages | low |
 | 7 | Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`; the manager keeps its own policy | low |

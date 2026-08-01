@@ -6,6 +6,7 @@
  */
 
 import { patternName } from "./naming.js";
+import { escapeHtml } from "./html.js";
 import type { PatternSheet } from "./collect.js";
 
 export interface SheetMeta {
@@ -15,10 +16,6 @@ export interface SheetMeta {
   outputFile: string;
   /** Free-form notes to show at the top: open questions, what changed in this build. */
   callouts?: { title: string; body: string }[];
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
 const STYLE = `
