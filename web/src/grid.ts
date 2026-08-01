@@ -27,6 +27,7 @@
 // Shared with `src/`, which is where the platform-free copy has to live. This module used to carry
 // its own, and it was the one that did not escape quotes.
 import { escapeHtml } from "../../src/sheet/html.js";
+import { type DropAction, type DropModifiers } from "./dropaction.js";
 
 /** One cell, already reduced to what it displays. */
 export interface SlotView {
@@ -64,8 +65,8 @@ export interface DragFrom {
 
 /** What hovering over a cell would do, or `undefined` when the drop is refused. */
 export interface GridDropHint {
-  /** Used as a CSS class, so it must be one the stylesheet paints. */
-  action: string;
+  /** Painted by the shared stylesheet from `data-action`. */
+  action: DropAction;
   /** Drawn by CSS from `data-action`, rather than injected as a child that a re-render would eat. */
   label: string;
   /**
@@ -77,12 +78,14 @@ export interface GridDropHint {
   status?: string;
 }
 
-/** Modifier keys, as both a `MouseEvent` and a `DragEvent` supply them. */
-export interface GridModifiers {
-  shiftKey: boolean;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
+/**
+ * Modifier keys, as both a `MouseEvent` and a `DragEvent` supply them.
+ *
+ * Extends the rule vocabulary rather than restating it, and adds the one key the grid stores but
+ * no rule consults.
+ */
+export interface GridModifiers extends DropModifiers {
+  altKey?: boolean;
 }
 
 export interface GridDragPolicy {
