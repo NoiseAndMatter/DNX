@@ -85,6 +85,12 @@ import {
 } from "./cards.js";
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
+import {
+  LINK_DEAD,
+  LIST_TIMEOUT_MS,
+  requestListing,
+  linkIsAlive as checkLink,
+} from "./storageio.js";
 
 const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -1625,48 +1631,10 @@ function awaitPatternKit(
 
 // --- proving the link before believing a silence ---------------------------------------------------
 
-/**
- * Ask the device something it must answer, and report whether it did.
- *
- * **`output.send()` does not throw when another application holds the port.** It returns normally
- * and the bytes go nowhere — so a silence means either *the device did not answer* or *we never
- * spoke*, and this page has had no way to tell those apart. It has been resolving that ambiguity
- * by assumption for three days.
- *
- * The cost is on the record. `DirList` timing out was one of the two pillars holding up the
- * conclusion *"the +Drive file API does not exist on a Digitone"* — and if Transfer was running at
- * the time, that request may never have left the machine. The API turned out to exist. Later, a
- * run of unknown-code "silences" was recorded while Transfer held the port, and every one of them
- * is void for the same reason.
- *
- * elk-herd has had a `LoopbackProbe` in `SysEx/Client.elm` all along. It was read on day one and
- * filed as housekeeping.
- *
- * `Device` is the control because every Elektron answers it, it takes no arguments, and it is
- * already the first thing the probe sends. **A tool that cannot tell whether it spoke has no
- * business drawing conclusions from silence.**
- */
+/** Is anything we send reaching the device? See `storageio.ts` for why this exists. */
 async function linkIsAlive(output: MIDIOutput): Promise<boolean> {
-  const frame = await linkTo(output).awaitReply({
-    send: () => output.send([...deviceRequest(issue(LINK_ID))]),
-    // Transfer polls `Device` too, so a bare code match would pass on its traffic. Ours is the one
-    // answering the id we just sent.
-    match: (data) =>
-      matchApiFrame(data, (f) => f.code === Code.Device + 0x80 && f.respId === LINK_ID),
-    timeoutMs: LINK_TIMEOUT_MS,
-  });
-  return frame !== undefined;
+  return checkLink(linkTo(output), issue);
 }
-
-/** Fixed and high, so a reply can be matched to it and it cannot collide with Transfer's low ids. */
-const LINK_ID = 40_000;
-const LINK_TIMEOUT_MS = 1500;
-
-/** Shown when the control fails, because the cause is almost always the same one. */
-const LINK_DEAD =
-  "the device did not answer a message it always answers, so nothing we send is reaching it. " +
-  "Another application — Elektron Transfer, Overbridge, a DAW — is most likely holding the output " +
-  "port. Close it and try again. Until this passes, a silence proves nothing.";
 
 // --- listing the +Drive --------------------------------------------------------------------------
 
@@ -1723,21 +1691,16 @@ async function listPath(): Promise<void> {
   verdictCard("Listing…", log);
 
   const listId = issue(nextListId++);
-  const frame = await linkTo(output).awaitReply({
-    send: () =>
-      output.send([...listRequest(listId, path, count > 0 ? { start: from, count } : undefined)]),
-    // Only an API frame answering **this request** counts, and the message id is what decides that.
-    // Matching the response code alone is not enough: Elektron Transfer polls the same port
-    // constantly and lists directories of its own, so a `0xd3` arriving while we wait is as likely
-    // to be its answer as ours. Accepting "the next message" is exactly how its traffic got
-    // reported as our result once already.
-    match: (data) =>
-      matchApiFrame(data, (f) => f.respId === listId && f.code === StorageCode.List + 0x80),
-    timeoutMs: LIST_TIMEOUT_MS,
-    onSendError: (error) => log.push(["Send failed", String(error)]),
-  });
-  const reply = frame?.body;
+  const reply = await requestListing(
+    linkTo(output),
+    listId,
+    path,
+    count > 0 ? { start: from, count } : undefined,
+    (error) => log.push(["Send failed", String(error)]),
+  );
 
+  // Silence, which must not be read as an empty directory — they are different answers and only
+  // one of them is about the directory.
   if (!reply) {
     // The control that separates "it did not answer" from "we never spoke". Without it, both look
     // the same and the temptation is to record the more interesting one.
@@ -2189,11 +2152,17 @@ async function readThenWrite(): Promise<void> {
   }
 }
 
-/** List one directory and hand back its entries, for checking a destination is empty. */
+/**
+ * List one directory and hand back its entries, for checking a destination is empty.
+ *
+ * Throws on silence rather than returning nothing, because its caller is about to **write**: a
+ * destination that could not be listed must stop the write, and an empty array would read as
+ * "nothing in the way".
+ */
 async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]> {
-  const id = issue(nextListId++);
-  const reply = await apiTransport(output).request(listRequest(id, path), id, LIST_TIMEOUT_MS);
-  return parseListing(reply.body).entries;
+  const reply = await requestListing(linkTo(output), issue(nextListId++), path, undefined);
+  if (!reply) throw new Error(`no answer listing ${path} — refusing to treat that as empty`);
+  return parseListing(reply).entries;
 }
 
 
@@ -2219,7 +2188,6 @@ function apiTransport(output: MIDIOutput): ApiTransport {
 /** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
 let nextListId = 30_000;
 
-const LIST_TIMEOUT_MS = 4000;
 
 // --- trying an unidentified request code ---------------------------------------------------------
 
