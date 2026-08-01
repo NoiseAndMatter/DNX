@@ -1219,6 +1219,7 @@ async function writeBack(): Promise<void> {
 
   trace("Sent", "asking for it back to see what actually landed");
   status(`Written. Asking for ${slot} back…`);
+  const watched = watchVisibility();
   const waiting = tickWhileWaiting("Write in progress", log, "Waiting for the read-back");
   const readBack = await linkTo(output).awaitReply<Uint8Array>({
     send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]),
@@ -1231,6 +1232,7 @@ async function writeBack(): Promise<void> {
     onLate: (payload) => reportLateReadBack(payload, candidate, log, slot),
   });
   waiting();
+  log.push(...hiddenRow(watched()));
 
   if (!readBack) {
     log.push(["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`]);
@@ -1238,8 +1240,15 @@ async function writeBack(): Promise<void> {
       ...log,
       [
         "Means",
+        // The hidden-tab row, when there is one, sits directly above this in the log — so this
+        // names the likelier cause rather than leaving two facts side by side unconnected.
         "unverified is not the same as failed. The write may well have landed; the reply may " +
-          "simply be slower than the wait. Still listening — if it arrives this card updates.",
+          "simply be slower than the wait. Still listening — if it arrives this card updates." +
+          (log.some(([what]) => what === "Tab was hidden")
+            ? " The tab was hidden during this wait, which throttles the timer that gave up — so " +
+              "this is very likely the browser rather than the instrument. Repeat it with the tab " +
+              "in view."
+            : ""),
       ],
     ]);
     status("Written; the read-back has not arrived yet. Still listening.", "warn");
@@ -1286,6 +1295,59 @@ function reportLateReadBack(
     ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
   ]);
   status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+}
+
+/**
+ * How long the tab spent hidden during one operation.
+ *
+ * **The measurement that decides what the stalled writes were.** Browsers throttle `setTimeout` in
+ * a backgrounded tab — heavily, after a few minutes — and a hardware test is exactly when the tab
+ * gets backgrounded, because the tester is looking at the instrument. Every observation so far fits
+ * that: two stalls at *unrelated* awaits, one of them a 321ms timer that a device cannot influence,
+ * and a run that finished on its own "after some time".
+ *
+ * `visibilitychange` is not a timer and is not throttled, so this stays accurate while everything
+ * around it is slowed down. If the next stalled write reports no hidden time at all, the theory is
+ * dead and the fault is somewhere nobody has looked yet — which is worth as much as confirming it.
+ */
+function watchVisibility(): () => { hiddenMs: number; times: number } {
+  let hiddenMs = 0;
+  let times = 0;
+  let since: number | undefined;
+
+  if (document.visibilityState === "hidden") {
+    since = Date.now();
+    times = 1;
+  }
+
+  const onChange = (): void => {
+    if (document.visibilityState === "hidden") {
+      since = Date.now();
+      times++;
+    } else if (since !== undefined) {
+      hiddenMs += Date.now() - since;
+      since = undefined;
+    }
+  };
+
+  document.addEventListener("visibilitychange", onChange);
+  return () => {
+    document.removeEventListener("visibilitychange", onChange);
+    // Counted up to now if the tab is still hidden — a write read while the tab is away is the
+    // whole case being measured, so it must not be lost by being unfinished.
+    return { hiddenMs: hiddenMs + (since === undefined ? 0 : Date.now() - since), times };
+  };
+}
+
+/** The log row for a hidden tab, or nothing when it stayed in view. */
+function hiddenRow(watched: { hiddenMs: number; times: number }): [string, string][] {
+  if (watched.hiddenMs === 0) return [];
+  return [[
+    "Tab was hidden",
+    `${(watched.hiddenMs / 1000).toFixed(1)}s across ${watched.times} period(s) — browsers throttle ` +
+      `timers in a background tab, so a wait can take far longer than its timeout says. Keep this ` +
+      `tab visible for a clean measurement.`,
+  ]];
 }
 
 /**
@@ -1469,6 +1531,7 @@ async function writeToChosenSlot(): Promise<void> {
   // never comes, which is exactly how this looked on hardware.
   const settle = settleMsAfter(message.length, productId);
   trace("Settling", `${settle}ms before asking — the device is still taking it in`);
+  const watched = watchVisibility();
   const settling = tickWhileWaiting("Write in progress", log, "Settling");
   await new Promise((resolve) => setTimeout(resolve, settle));
   settling();
@@ -1477,11 +1540,23 @@ async function writeToChosenSlot(): Promise<void> {
   const waiting = tickWhileWaiting("Write in progress", log, "Waiting for the read-back");
   const readBack = await awaitPatternKit(output, productId, destination);
   waiting();
+  // Stopped once and kept: calling it twice would detach the listener twice and re-measure, and the
+  // row belongs in the log either way so both the verdict and the timeout card carry it.
+  const hidden = watched();
+  log.push(...hiddenRow(hidden));
+
   if (!readBack) {
     verdictCard("Write NOT verified — yet", [
       ...log,
       ["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
-      ["Means", "unverified is not failed. Read the project again and compare."],
+      [
+        "Means",
+        "unverified is not failed. Read the project again and compare." +
+          (hidden.hiddenMs > 0
+            ? " The tab was hidden during this write, which throttles the timer that gave up — so " +
+              "this is very likely the browser rather than the instrument. Repeat it with the tab in view."
+            : ""),
+      ],
     ]);
     status(`${to} written; no read-back yet.`, "warn");
     return;
