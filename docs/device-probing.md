@@ -459,3 +459,26 @@ the way a DN2 supplies kit names; or `writeToSlot` is writing a byte there that 
 
 Worth re-running now the stall is gone. If it survives, it belongs to the write path and wants its
 own investigation — it is not transport.
+
+### Saying where a wait is — 2026-08-01
+
+After the fix above, two write runs stalled again and their logs **disagreed about which step was
+last**: the null round trip stopped after *"asking for it back"*, the slot write stopped at
+*"Settling"*, before the trace that follows a 321ms timer. No single code path explains both.
+
+That is the shape of a page that is not running, rather than a wait that is slow — and the log
+could not tell those apart, so the debugging went into the wait each time. Three changes make the
+question answerable:
+
+- **Every write trace carries elapsed time** (`+2.4s`), so the gap between two lines is visible.
+- **A ticking counter** during the settle and the read-back. A moving number means the page is
+  alive and the device has not answered; a frozen one means the page stopped and the wait is
+  innocent. It is stopped on every exit path, because a heartbeat that outlives its wait would
+  rewrite a finished verdict — the same defect as the late-reply redraw fixed earlier.
+- **A build stamp in the page title**, from the served module's own `last-modified`. `npm run web`
+  rebuilds only when restarted, so a pulled fix and a stale `web/dist` are indistinguishable in
+  the browser. A session was spent on a stall without knowing whether the fix for it was in the
+  code being served.
+
+**None of this fixes a stall.** It replaces an inference with a measurement, which is what the two
+previous attempts were missing.

@@ -521,7 +521,29 @@ function listing(into: HTMLElement, path: string, entries: DirEntry[]): void {
   into.append(section);
 }
 
+/**
+ * Show when the code running this page was compiled.
+ *
+ * **Because "is the fix actually running?" must be answerable without guessing.** `npm run web`
+ * rebuilds, but only when it is restarted, so a pulled fix and a stale `web/dist` look identical
+ * from the browser — and a stalled-write session was debugged without knowing whether the fix for
+ * that stall was in the served code at all.
+ *
+ * Taken from this module's own URL rather than a constant: a literal compiled into the file would
+ * be evaluated at load time and always say "now", which is exactly the reassuring lie to avoid.
+ */
+async function showBuildTime(): Promise<void> {
+  try {
+    const response = await fetch(import.meta.url, { method: "HEAD" });
+    const built = response.headers.get("last-modified");
+    if (built) document.title = `Device probe — build ${new Date(built).toTimeString().slice(0, 5)}`;
+  } catch {
+    // A missing stamp is not worth a message; the page's job is unaffected.
+  }
+}
+
 async function connect(): Promise<void> {
+  void showBuildTime();
   if (!navigator.requestMIDIAccess) {
     status("This browser has no WebMIDI. Chrome or Edge; Safari and Firefox do not.", "error");
     return;
@@ -1161,8 +1183,14 @@ async function writeBack(): Promise<void> {
     ["Record", `${candidate.payload.length.toLocaleString()} bytes payload`],
     ["Message", `${message.length.toLocaleString()} bytes on the wire`],
   ];
+  // Every line carries how long the write has been running. Two stalled runs on hardware reported
+  // their last line at *different* steps, which no single code path explains — without elapsed
+  // times there was no way to tell a wait that is running from a page that has stopped running at
+  // all. A log that cannot distinguish those two is not a log.
+  const startedAt = Date.now();
+  const since = (): string => `+${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const trace = (what: string, detail: string): void => {
-    log.push([what, detail]);
+    log.push([what, `${detail}  (${since()})`]);
     verdictCard("Write in progress", log);
   };
   trace("Sending", `0x50 to slot ${slot}…`);
@@ -1185,6 +1213,7 @@ async function writeBack(): Promise<void> {
 
   trace("Sent", "asking for it back to see what actually landed");
   status(`Written. Asking for ${slot} back…`);
+  const waiting = tickWhileWaiting("Write in progress", log, "Waiting for the read-back");
   const readBack = await linkTo(output).awaitReply<Uint8Array>({
     send: () => output.send([...dumpRequest(productId, { code: 0x60, objNr: candidate.objNr })]),
     match: (data) => matchDump(data, 0x50, candidate.objNr),
@@ -1195,6 +1224,7 @@ async function writeBack(): Promise<void> {
     // like a control that does nothing. A late answer is an answer, so it upgrades the card.
     onLate: (payload) => reportLateReadBack(payload, candidate, log, slot),
   });
+  waiting();
 
   if (!readBack) {
     log.push(["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`]);
@@ -1250,6 +1280,33 @@ function reportLateReadBack(
     ["Note", `the ${VERIFY_TIMEOUT_MS}ms wait is too short for this device at this record size`],
   ]);
   status(late.ok ? `${slot} verified — the reply was just slow.` : `${slot} did NOT verify.`, late.ok ? "ok" : "error");
+}
+
+/**
+ * Tick a "still waiting" line on the card until the wait finishes.
+ *
+ * **This is a diagnostic, and it earns its place.** Two stalled writes on hardware left their card
+ * mid-log with no verdict, and the logs disagreed about which step was last — so the question was
+ * not *why is this wait slow* but *is anything on this page still running at all*. A timer that
+ * ticks answers that directly: a moving counter means the page is alive and the device has not
+ * answered, while a frozen one means the page stopped and the wait is innocent.
+ *
+ * Returns the stopper. Always call it — a heartbeat that outlives its wait rewrites a finished
+ * verdict, which is the same defect as the late-reply redraw this page already fixed once.
+ */
+function tickWhileWaiting(title: string, log: [string, string][], label: string): () => void {
+  const startedAt = Date.now();
+  const row: [string, string] = [label, "0.0s"];
+  log.push(row);
+  const timer = setInterval(() => {
+    row[1] = `${((Date.now() - startedAt) / 1000).toFixed(1)}s and counting…`;
+    verdictCard(title, log);
+  }, 500);
+  return () => {
+    clearInterval(timer);
+    const took = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+    row[1] = took;
+  };
 }
 
 /** A dump reply of this type for this object, or `undefined` for anyone else's traffic. */
@@ -1368,8 +1425,14 @@ async function writeToChosenSlot(): Promise<void> {
     ["To", to],
     ["Destination was", occupancy],
   ];
+  // Every line carries how long the write has been running. Two stalled runs on hardware reported
+  // their last line at *different* steps, which no single code path explains — without elapsed
+  // times there was no way to tell a wait that is running from a page that has stopped running at
+  // all. A log that cannot distinguish those two is not a log.
+  const startedAt = Date.now();
+  const since = (): string => `+${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const trace = (what: string, detail: string): void => {
-    log.push([what, detail]);
+    log.push([what, `${detail}  (${since()})`]);
     verdictCard("Write in progress", log);
   };
 
@@ -1400,10 +1463,14 @@ async function writeToChosenSlot(): Promise<void> {
   // never comes, which is exactly how this looked on hardware.
   const settle = settleMsAfter(message.length, productId);
   trace("Settling", `${settle}ms before asking — the device is still taking it in`);
+  const settling = tickWhileWaiting("Write in progress", log, "Settling");
   await new Promise((resolve) => setTimeout(resolve, settle));
+  settling();
 
   trace("Sent", `asking for ${to} back`);
+  const waiting = tickWhileWaiting("Write in progress", log, "Waiting for the read-back");
   const readBack = await awaitPatternKit(output, productId, destination);
+  waiting();
   if (!readBack) {
     verdictCard("Write NOT verified — yet", [
       ...log,
