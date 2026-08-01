@@ -391,3 +391,25 @@ Both advertise `0x01 Device`, `0x02 Version`, `0x03`, `0x04`, and the dump band.
 `0x06`, `0x07` and `0x09 Query`.
 
 See `docs/ROADMAP.md` §3c-iv for how this was found, including the assumption it corrected.
+
+## One waiter per request — 2026-08-01
+
+The page used to keep **one** module-global `awaitingReply` slot, shared by seven independent
+request paths: the write read-back, the pattern-kit read, the link check, the +Drive listing, the
+unknown-code trial and the API transport. Whichever path armed it last received the next matching
+reply, and the other waited out its timeout. Its own comments record paying for that twice.
+
+Correlation now lives in `web/src/devicelink.ts`, shared with the manager's device source, which
+had already solved it: **a listener per request, removed on the way out, matched by message id.**
+Two waits can be in flight without seeing each other's traffic.
+
+### A silent dependency came out with it
+
+The old slot was fed from the **capture** listener, and that listener exists only while *Listen* is
+running — it is also where the input port gets opened. So every request path on this page quietly
+depended on capture being active: with it off, the listener was never attached, the port was never
+opened, and a request that reached the device looked exactly like a device that ignored it.
+
+`DeviceLink.awaitReply` opens the input before attaching, so a wait can no longer be hung on a port
+that cannot hear. **A closed port delivers nothing and looks exactly like silence** — the same trap
+as "prove the link before believing a silence", one level further down.
