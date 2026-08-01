@@ -74,6 +74,14 @@ import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
+import {
+  card,
+  hex2,
+  hex8,
+  listing,
+  messageCard as drawMessages,
+  verdictCard as drawVerdict,
+} from "./cards.js";
 import { DeviceLink, matchApiFrame, sharedPrefix } from "../devicelink.js";
 
 const status = statusBar();
@@ -397,20 +405,6 @@ async function probe(): Promise<void> {
   }
 }
 
-function card(into: HTMLElement, title: string, rows: [string, string][]): void {
-  const section = document.createElement("section");
-  section.className = "card";
-  section.innerHTML =
-    `<h2>${escapeHtml(title)}</h2>` +
-    rows
-      .map(
-        ([k, v]) =>
-          `<div class="row"><span class="k">${escapeHtml(k)}</span>` +
-          `<span class="v">${escapeHtml(v) || "&mdash;"}</span></div>`,
-      )
-      .join("");
-  into.append(section);
-}
 
 /**
  * Ask the device about itself, one key at a time.
@@ -468,63 +462,12 @@ async function runQueries(into: HTMLElement, session: DeviceSession): Promise<vo
  */
 const QUERY_TIMEOUT_MS = 400;
 
-/** Long enough for a real port, short enough that a held one is obvious rather than a hang. */
-const OPEN_TIMEOUT_MS = 3000;
-
 /** Three silences means the device does not answer unknown keys, not that these three were bad. */
 const GIVE_UP_AFTER = 3;
 
-/**
- * Every advertised message, named.
- *
- * The unknown ones are shown rather than filtered out. A Digitone II advertises `0x03`, `0x04`,
- * `0x06` and `0x07`, which appear in no source we have — and a list that quietly dropped them
- * would hide the most interesting thing on the page.
- */
-function messageCard(into: HTMLElement, codes: readonly number[]): void {
-  const rows = describeMessages(codes)
-    .map(
-      (m) =>
-        `<tr><td class="mono">${hex(m.code)}</td>` +
-        `<td class="mono">${m.kind}</td>` +
-        `<td>${m.known ? escapeHtml(m.name) : `<em>unknown</em>`}</td>` +
-        `<td class="mono ${m.safety}">${m.safety}</td></tr>`,
-    )
-    .join("\n  ");
+/** Long enough for a real port, short enough that a held one is obvious rather than a hang. */
+const OPEN_TIMEOUT_MS = 3000;
 
-  const section = document.createElement("section");
-  section.className = "card";
-  section.innerHTML =
-    `<h2>Supported messages (${codes.length})</h2>` +
-    `<p class="hint">The probe only ever sends <span class="mono read">read</span>. A
-     <span class="mono write">write</span> changes the instrument; an
-     <span class="mono unknown">unknown</span> has never been shown not to, and those are
-     different things worth keeping apart.</p>` +
-    `<table><thead><tr><th>Code</th><th>Kind</th><th>Message</th><th>Sending it</th></tr></thead>` +
-    `<tbody>${rows}</tbody></table>`;
-  into.append(section);
-}
-
-function listing(into: HTMLElement, path: string, entries: DirEntry[]): void {
-  const section = document.createElement("section");
-  section.className = "card";
-  section.innerHTML =
-    `<h2>+Drive ${escapeHtml(path)}</h2>` +
-    (entries.length === 0
-      ? `<p class="hint">Empty.</p>`
-      : `<table><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Locked</th></tr></thead><tbody>` +
-        entries
-          .map(
-            (e) =>
-              `<tr><td class="mono">${escapeHtml(e.name)}</td>` +
-              `<td class="mono">${escapeHtml(e.type)}</td>` +
-              `<td class="mono num">${e.size.toLocaleString()}</td>` +
-              `<td>${e.locked ? "yes" : ""}</td></tr>`,
-          )
-          .join("") +
-        `</tbody></table>`);
-  into.append(section);
-}
 
 /**
  * Show when the code running this page was compiled.
@@ -2396,13 +2339,7 @@ async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]
   return parseListing(reply.body).entries;
 }
 
-function hex8(v: number): string {
-  return v.toString(16).padStart(8, "0");
-}
 
-function hex2(b: number): string {
-  return b.toString(16).padStart(2, "0");
-}
 
 /** A `.dnprj` and a `.dn2prj` are both ZIPs, so this says whether we got a project file at all. */
 function looksLikeZip(data: Uint8Array): boolean {
@@ -2585,22 +2522,15 @@ const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
   "DN1 project settings": 11_776,
 };
 
-/**
- * The verdict, put somewhere the capture renderer cannot reach.
- *
- * **Third attempt, and the first structural one.** The first version appended to `#results` and was
- * cleared by the next incoming message. The second guarded that with a `writing` flag — which
- * still lost, because the flag is only true *during* the write and any message arriving afterwards
- * redraws the area: a reply that beat the timeout, a late one that missed it, anything at all.
- *
- * Flags cannot fix this. The verdict lives in its own element, and `renderCapture` does not know
- * that element exists. Nothing that redraws the capture can destroy it, whatever the ordering.
- */
+
+/** The write verdict, into the element this page reserves for it. */
 function verdictCard(title: string, rows: [string, string][]): void {
-  const into = $("writeResult");
-  into.innerHTML = "";
-  card(into, title, rows);
-  into.scrollIntoView({ block: "start" });
+  drawVerdict($("writeResult"), title, rows);
+}
+
+/** Supported messages, with this page's hex formatter. */
+function messageCard(into: HTMLElement, codes: readonly number[]): void {
+  drawMessages(into, codes, hex);
 }
 
 /** Long enough for a 114 KB PatternKit on a busy device. */
