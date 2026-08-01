@@ -88,7 +88,7 @@ to assert they agree.
 `open.ts` documents its own violation and states the rule correctly. The other two carry no note. A
 `src/node/` directory would turn a hand-maintained file list into a boundary that cannot go stale.
 
-**Second violation:** `DropAction` lives in `web/src/manager/dragrules.ts`, but its strings become
+**Second violation — FIXED 2026-08-01, see item 7:** `DropAction` lives in `web/src/manager/dragrules.ts`, but its strings become
 CSS classes on the shared grid, are styled in the shared stylesheet, and are passed by the
 *expander*. `grid.ts` types the action as bare `string` to avoid importing from a page folder —
 the inversion is visible in the type system.
@@ -152,7 +152,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | Move `zip.ts`, `projectfile.ts`, `open.ts` to `src/node/`; `tsconfig.web.json` excludes a directory instead of a list | low-medium — import churn; `web.test.ts` catches mistakes immediately |
 | 6 | Share the grid view-model: `slotViewFor` and `countOccupiedIn` in `grid.ts`, replacing three parallel copies across the two pages | low |
-| 7 | Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`; the manager keeps its own policy | low |
+| 7 | ~~Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`~~ **DONE 2026-08-01, and the proposed destination was wrong.** They went to a new DOM-free `web/src/dropaction.ts`: `dragrules.ts` is type-checked by the root config, which has no DOM library, so pointing it at `grid.ts` failed immediately on `NodeListOf` having no iterator. `grid.ts` now types its `action` as `DropAction` rather than `string`, and the stylesheet guard reads the union from its real home | shipped |
 | 8 | Add `src/cli/args.ts` (`arg`, `flag`, `fail`, `readProjectImage`) and route the eleven CLIs through it | low, but eleven untested entry points — ship with a smoke script |
 | 9 | Move the track counters out of the mover into `tracksummary.ts`; drop the `SOUND_SIZE` pass-through | low |
 | 10 | Convert the seven silent skips to throws, add `api`/`route`/`shuffle`/`grid` tests, disambiguate the six colliding test names | low for the new tests; **medium** for the throws — it may turn a green run red, which is the point. Own PR so failures are attributable |

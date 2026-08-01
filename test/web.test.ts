@@ -199,9 +199,11 @@ test("every drop action has a colour in the shared stylesheet", () => {
   // named after it. A fourth action would typecheck, name itself correctly, draw its label — and
   // be styled like nothing at all, silently, because a missing CSS rule is not an error.
   //
-  // The actions are read out of `dragrules.ts` rather than listed here. A copy of the list is a
-  // copy that goes stale, and going stale is the thing this test exists to catch.
-  const rules = readFileSync(resolve(HERE, "../web/src/manager/dragrules.ts"), "utf8");
+  // The actions are read out of the module that declares them rather than listed here. A copy of
+  // the list is a copy that goes stale, and going stale is the thing this test exists to catch —
+  // which is also why this reads `dropaction.ts` now: the union moved there precisely so a shared
+  // grid would stop depending on one page's folder for how it paints itself.
+  const rules = readFileSync(resolve(HERE, "../web/src/dropaction.ts"), "utf8");
   const union = /export type DropAction =([^;]+);/.exec(rules);
   assert.ok(union, "DropAction is no longer a string union — rewrite this test, do not delete it");
 
