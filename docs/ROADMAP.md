@@ -1731,6 +1731,61 @@ work with no unknowns.
 
 ---
 
+## 6. Queued for the expander — raised 2026-08-01, after the structure refactor
+
+**Recorded, not started.** Four items from using the expander against real hardware. They wait
+until `docs/STRUCTURE-AUDIT.md` is worked through, so they are built on the tidied code rather than
+widening what has to be moved.
+
+### 6a. A connected DN1 as a source
+
+The expander can only open a **file**. There is no way to pick a Digitone 1 that is plugged in,
+even though `devicesource.ts` already reads a project from an instrument and the manager already
+lists the +Drive.
+
+Most of the machinery exists; what is missing is the source half of the *In* row — the destination
+half already offers Blank / From file / Connect / Read its project, and the source should mirror it.
+
+### 6b. Drag and drop from DN1 to DN2 does not work
+
+**Only Apply works.** The gesture the whole two-grid design is built around does nothing, which
+makes the grids decorative and the button the real interface. `GridDrag` is shared with the manager,
+where dragging does work — so the fault is in the expander's wiring of it, not in the control.
+
+### 6c. Merged patterns must keep their relative positions
+
+**Current behaviour, and it is wrong as a default:** selecting A1, A9, A10 and dropping on A1 writes
+them to **A1, A2, A3** — contiguous from the landing slot, discarding the spacing the musician chose.
+
+Wanted:
+
+- **Default — keep relative position.** A1, A9, A10 landing on A1 go to A1, A9, A10. Landing on B1,
+  they go to B1, B9, B10: the offset from the first selected pattern is preserved.
+- **A toggle, "expand to contiguous patterns"**, for today's behaviour, which is the right one when
+  gathering scattered sketches into a block.
+
+Design notes for whoever picks it up: relative placement can run off the end of the 128 slots, and
+that has to be refused before anything is written rather than wrapped or clamped. It also changes
+which destination slots are occupied, so the occupancy warning and `confirmOverwrite` must be
+computed from the real target list, not from a contiguous run. The landing slot stops being a start
+and becomes an **anchor**, which the UI should say.
+
+### 6d. Navigation between tools, in the title
+
+The tool titles become the navigation: the current tool's title sits first, the others beside it,
+and picking one moves it to the front. Order follows most-recently-used.
+
+Movement should be **smooth but snappy, with easing**, and the tool transition itself a lateral
+carousel-style displacement, so the title shifting and the page sliding read as one motion.
+
+**Open question the user offered to clarify:** whether the title order really is most-recently-used
+— which moves controls under the cursor between visits — or fixed with only the current tool
+promoted. Ask before building; it is the difference between a stable and a self-rearranging
+navigation.
+
+This wants `web/dnx.css` and the shared page shell, so it lands after the structure work rather than
+before it.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
