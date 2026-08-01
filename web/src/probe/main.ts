@@ -43,7 +43,12 @@ import {
   versionRequest,
 } from "../../../src/device/api.js";
 import { DeviceSession } from "../../../src/device/session.js";
-import { type ApiGroup, DumpCapture, captureFileName } from "../../../src/device/capture.js";
+import {
+  type ApiGroup,
+  type CaptureSummary,
+  DumpCapture,
+  captureFileName,
+} from "../../../src/device/capture.js";
 import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/device/dumprequest.js";
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
@@ -597,7 +602,13 @@ void connect();
 const capture = new DumpCapture();
 let listening: { input: MIDIInput; onMessage: (event: MIDIMessageEvent) => void } | undefined;
 
-function renderCapture(): void {
+/**
+ * Draw the capture, and hand back the summary it had to compute anyway.
+ *
+ * Returned rather than discarded because the status line beneath it called `summarise()` again —
+ * parsing the whole capture twice for every single message that arrived.
+ */
+function renderCapture(): CaptureSummary {
   const summary = capture.summarise();
   const results = $("results");
   results.innerHTML = "";
@@ -664,6 +675,8 @@ function renderCapture(): void {
       ["Whose", whose(summary.api)],
     ]);
   }
+
+  return summary;
 }
 
 /**
@@ -712,6 +725,14 @@ function issue(id: number): number {
 }
 
 /** A rolling indicator, so "still going" is visible without reading numbers. */
+/**
+ * How often the capture may redraw while messages are pouring in.
+ *
+ * Fast enough to look live, slow enough that a flood cannot starve the page. The failure it
+ * prevents was not subtle: 56.4 seconds of blocked main thread for one write.
+ */
+const REPAINT_MS = 250;
+
 const SPINNER = ["|", "/", "-", "\\"];
 
 let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -768,16 +789,48 @@ async function startListening(): Promise<void> {
       reading.receive(data);
       return;
     }
-    renderCapture();
+    repaint();
+  };
 
+  /**
+   * Redraw at most once every `REPAINT_MS`, however many messages arrive.
+   *
+   * **This is the write stall.** The listener used to call `renderCapture()` per message, and the
+   * status line under it called `summarise()` a second time — so every arriving message parsed the
+   * entire capture twice. Measured on hardware: 7,279 messages arrived during one write, the main
+   * thread was blocked for **56.4 seconds in one go**, and two interval ticks got through in that
+   * time. A 321ms settle took the whole of it.
+   *
+   * MIDI events are dispatched back to back, so nothing else — no timer, no promise, no repaint —
+   * gets a turn until the queue drains. Coalescing turns thousands of full re-parses into one, and
+   * a burst that blocks the page becomes a burst the page reads through.
+   *
+   * The trailing redraw matters as much as the throttle: when the flood ends, the last messages
+   * must still be shown, and a leading-edge-only throttle would leave the count stale.
+   */
+  let repaintAt = 0;
+  let repaintQueued: ReturnType<typeof setTimeout> | undefined;
+  const draw = (): void => {
+    repaintAt = Date.now();
+    repaintQueued = undefined;
+    const summary = renderCapture();
     // A project dump is minutes of silence punctuated by a message every so often, and a static
-    // byte count during that gap is indistinguishable from a stall. The spinner advances on every
-    // message and the message count rises, so *something moving* is visible without having to
-    // compare two numbers a minute apart.
+    // byte count during that gap is indistinguishable from a stall. The spinner advances and the
+    // message count rises, so *something moving* is visible without comparing two numbers a
+    // minute apart. Uses the summary the render already computed rather than asking again.
     status(
       `${SPINNER[ticks++ % SPINNER.length]}  receiving — ` +
-        `${capture.byteLength.toLocaleString()} bytes, ${capture.summarise().messages} message(s)`,
+        `${summary.bytes.toLocaleString()} bytes, ${summary.messages} message(s)`,
     );
+  };
+  const repaint = (): void => {
+    if (repaintQueued !== undefined) return;
+    const due = REPAINT_MS - (Date.now() - repaintAt);
+    if (due <= 0) {
+      draw();
+      return;
+    }
+    repaintQueued = setTimeout(draw, due);
   };
 
   // And a heartbeat between messages, so the gap itself is legible: how long since the last one
@@ -1348,27 +1401,46 @@ function watchMainThread(): () => { longestGapMs: number; ticks: number } {
  * doing the work being measured — and a counter that only runs when the thing it measures is idle
  * measures nothing.
  */
-function watchInbound(input: MIDIInput): () => { messages: number; bytes: number } {
+function watchInbound(input: MIDIInput): () => { messages: number; bytes: number; kinds: string } {
   let messages = 0;
   let bytes = 0;
+  // Counted by kind, because "7,279 messages" did not say what they were — and what they are
+  // decides whether this is the instrument's own clock, an echo of our write, or something else.
+  const kinds = new Map<string, number>();
 
   const onMessage = (event: MIDIMessageEvent): void => {
     if (!event.data) return;
     messages++;
     bytes += event.data.length;
+    kinds.set(kindOf(event.data[0] ?? 0), (kinds.get(kindOf(event.data[0] ?? 0)) ?? 0) + 1);
   };
 
   input.addEventListener("midimessage", onMessage);
   return () => {
     input.removeEventListener("midimessage", onMessage);
-    return { messages, bytes };
+    const kinds$ = [...kinds]
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, n]) => `${n}× ${kind}`)
+      .join(", ");
+    return { messages, bytes, kinds: kinds$ };
   };
+}
+
+/** What a status byte is, in the terms this investigation needs. */
+function kindOf(status: number): string {
+  if (status === 0xf0) return "SysEx";
+  if (status === 0xf8) return "clock";
+  if (status === 0xfe) return "active sensing";
+  if (status === 0xfa || status === 0xfb || status === 0xfc) return "transport";
+  if (status >= 0xf1 && status <= 0xff) return `system 0x${status.toString(16)}`;
+  if (status >= 0x80) return `channel 0x${(status & 0xf0).toString(16)}`;
+  return "continuation";
 }
 
 /** The two rows that say where a write's time went, when there is anything to say. */
 function timeGoesRow(
   thread: { longestGapMs: number; ticks: number },
-  inbound: { messages: number; bytes: number },
+  inbound: { messages: number; bytes: number; kinds: string },
 ): [string, string][] {
   const rows: [string, string][] = [];
   if (thread.longestGapMs > 500) {
@@ -1381,8 +1453,9 @@ function timeGoesRow(
   if (inbound.messages > 0) {
     rows.push([
       "Arrived meanwhile",
-      `${inbound.messages} message(s), ${inbound.bytes.toLocaleString()} bytes — while we were ` +
-        `sending. A device echoing the write back would look like this.`,
+      `${inbound.messages} message(s), ${inbound.bytes.toLocaleString()} bytes — ${inbound.kinds}. ` +
+        `Arrived while we were ` +
+        `sending, and each one used to redraw the whole capture.`,
     ]);
   }
   return rows;
@@ -1454,17 +1527,42 @@ function hiddenRow(watched: { hiddenMs: number; times: number }): [string, strin
  * verdict, which is the same defect as the late-reply redraw this page already fixed once.
  */
 function tickWhileWaiting(title: string, log: [string, string][], label: string): () => void {
+  const period = 500;
   const startedAt = Date.now();
+  let last = startedAt;
+  let longestPause = 0;
   const row: [string, string] = [label, "0.0s"];
   log.push(row);
+
+  /**
+   * Elapsed, **and the longest this row has gone without updating**.
+   *
+   * The second half is what makes a card pasted mid-stall worth anything. Every report so far has
+   * arrived while the write was still hanging, and the measurement rows are only appended once it
+   * finishes — so "is the page alive right now?" had no answer in the one artefact anybody actually
+   * sends. Now it does:
+   *
+   * - the number climbs smoothly and reports no pause — the page is running, and waiting
+   * - the number is frozen where it was — the page is blocked, and that **is** the answer
+   * - the number jumps, with a large pause — it was blocked and has come back
+   */
+  const describe = (suffix: string): string => {
+    const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+    const pause = longestPause > 1000 ? ` · longest pause ${(longestPause / 1000).toFixed(1)}s` : "";
+    return `${elapsed}${suffix}${pause}`;
+  };
+
   const timer = setInterval(() => {
-    row[1] = `${((Date.now() - startedAt) / 1000).toFixed(1)}s and counting…`;
+    const now = Date.now();
+    longestPause = Math.max(longestPause, now - last - period);
+    last = now;
+    row[1] = describe(" and counting…");
     verdictCard(title, log);
-  }, 500);
+  }, period);
+
   return () => {
     clearInterval(timer);
-    const took = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
-    row[1] = took;
+    row[1] = describe("");
   };
 }
 
