@@ -82,7 +82,8 @@ import {
   messageCard as drawMessages,
   verdictCard as drawVerdict,
 } from "./cards.js";
-import { DeviceLink, matchApiFrame, sharedPrefix } from "../devicelink.js";
+import { DeviceLink, matchApiFrame } from "../devicelink.js";
+import { PortPicker } from "./ports.js";
 
 const status = statusBar();
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -107,72 +108,24 @@ let access: MIDIAccess | undefined;
 let lastProductId: number | undefined;
 
 /**
- * What the user last chose, so a re-render does not undo it.
+ * Which two ports are the instrument.
  *
- * Sending to a port opens it, and opening it fires `statechange`, which re-renders the lists.
- * Without this the auto-guess ran again on every probe and snapped the selects back to whichever
- * device it liked best — reported by the user while probing a Digitone and a Digitone II side by
- * side, which is exactly when it is most annoying and least obvious.
+ * The guessing and remembering live in `ports.ts`; this page keeps only what it does with the
+ * answer — which buttons that enables and what the status line says about it.
  */
-const chosen: { input?: string; output?: string } = {};
+const ports = new PortPicker($<HTMLSelectElement>("input"), $<HTMLSelectElement>("output"));
 
-/**
- * Ports are listed in pairs, and the pairing is a guess **only until the user disagrees**.
- *
- * A device is an input and an output that happen to have similar names, and nothing in WebMIDI
- * says which belong together — an interface with four ports gives no hint at all. So the guess is
- * by name, and a choice, once made, outranks it for as long as that port exists.
- */
 function renderPorts(): void {
   if (!access) return;
+  const { inputs, outputs } = ports.render(access);
 
-  const inputs = [...access.inputs.values()];
-  const outputs = [...access.outputs.values()];
-  const inSelect = $<HTMLSelectElement>("input");
-  const outSelect = $<HTMLSelectElement>("output");
-
-  const options = (ports: (MIDIInput | MIDIOutput)[]): string =>
-    ports
-      .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name ?? p.id)}</option>`)
-      .join("");
-
-  inSelect.innerHTML = options(inputs);
-  outSelect.innerHTML = options(outputs);
-
-  // Pair by the longest shared prefix, which handles "Digitone II" / "Digitone II MIDI 1" and
-  // costs nothing when it is wrong, because both selects remain the user's to change.
-  const best = outputs
-    .map((out) => ({
-      out,
-      match: inputs
-        .map((inp) => ({ inp, score: sharedPrefix(inp.name ?? "", out.name ?? "") }))
-        .sort((a, b) => b.score - a.score)[0],
-    }))
-    .filter((c) => c.match && c.match.score > 0)
-    .sort((a, b) => b.match!.score - a.match!.score)[0];
-
-  if (best?.match) {
-    outSelect.value = best.out.id;
-    inSelect.value = best.match.inp.id;
-  }
-
-  // The user's choice wins, if the port is still there. Checked against the live port maps
-  // rather than against the select's own value, because a stale id would silently leave the
-  // control showing something that is no longer plugged in.
-  if (chosen.output !== undefined && access.outputs.has(chosen.output)) {
-    outSelect.value = chosen.output;
-  }
-  if (chosen.input !== undefined && access.inputs.has(chosen.input)) {
-    inSelect.value = chosen.input;
-  }
-
-  $<HTMLButtonElement>("probe").disabled = inputs.length === 0 || outputs.length === 0;
-  $<HTMLButtonElement>("listen").disabled = inputs.length === 0;
+  $<HTMLButtonElement>("probe").disabled = inputs === 0 || outputs === 0;
+  $<HTMLButtonElement>("listen").disabled = inputs === 0;
   status(
-    inputs.length === 0 || outputs.length === 0
+    inputs === 0 || outputs === 0
       ? "No MIDI ports. Connect the device and press Rescan."
-      : `${inputs.length} input(s), ${outputs.length} output(s). Pick the pair and probe.`,
-    inputs.length === 0 ? "warn" : "info",
+      : `${inputs} input(s), ${outputs} output(s). Pick the pair and probe.`,
+    inputs === 0 ? "warn" : "info",
   );
 }
 
@@ -196,8 +149,8 @@ function isChromium(): boolean {
 /** Run the probe against one input/output pair. */
 async function probe(): Promise<void> {
   if (!access) return;
-  const input = access.inputs.get($<HTMLSelectElement>("input").value);
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const input = ports.input(access);
+  const output = ports.output(access);
   if (!input || !output) {
     status("Those ports are no longer there. Press Rescan.", "error");
     return;
@@ -515,15 +468,14 @@ async function connect(): Promise<void> {
 
 for (const id of ["input", "output"] as const) {
   $<HTMLSelectElement>(id).addEventListener("change", (event) => {
-    chosen[id] = (event.target as HTMLSelectElement).value;
+    ports.remember(id, (event.target as HTMLSelectElement).value);
   });
 }
 
 $("rescan").addEventListener("click", () => {
   // Rescan is the way back to the guess: forgetting the choice is the point of the button, and
   // without this there would be no way to undo a mis-click short of reloading the page.
-  chosen.input = undefined;
-  chosen.output = undefined;
+  ports.forget();
   void connect();
 });
 $("probe").addEventListener("click", () => {
@@ -701,7 +653,7 @@ function stopListening(): void {
 
 async function startListening(): Promise<void> {
   if (!access) return;
-  const input = access.inputs.get($<HTMLSelectElement>("input").value);
+  const input = ports.input(access);
   if (!input) {
     status("That input is no longer there. Press Rescan.", "error");
     return;
@@ -842,7 +794,7 @@ function requestOption(): (typeof REQUEST_OPTIONS)[number] {
 
 $("request").addEventListener("click", () => {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -904,7 +856,7 @@ $("readProject").addEventListener("click", () => {
 
 async function readProject(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -1104,7 +1056,7 @@ function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): v
  * two overlapping reads stole each other's answers.
  */
 function linkTo(output: MIDIOutput): DeviceLink {
-  const input = access?.inputs.get($<HTMLSelectElement>("input").value);
+  const input = access && ports.input(access);
   if (!input) throw new Error("that input port is no longer there — press Rescan");
   return new DeviceLink(input, output);
 }
@@ -1129,7 +1081,7 @@ $("writeBack").addEventListener("click", () => {
 
 async function writeBack(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   const productId = lastProductId;
   if (!output || productId === undefined) {
     status("Probe the device first — a write has to be addressed to a known product.", "warn");
@@ -1563,7 +1515,7 @@ $("writeSlot").addEventListener("click", () => {
 
 async function writeToChosenSlot(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   const productId = lastProductId;
   if (!output || productId === undefined) {
     status("Probe the device first.", "warn");
@@ -1835,7 +1787,7 @@ $("lsSend").addEventListener("click", () => {
 
 async function listPath(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -2010,7 +1962,7 @@ $("askSend").addEventListener("click", () => {
 
 async function askDevice(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -2112,7 +2064,7 @@ $("fileRead").addEventListener("click", () => {
 
 async function readFile(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -2241,7 +2193,7 @@ $("fileWrite").addEventListener("click", () => {
 
 async function readThenWrite(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   if (!output) {
     status("That output is no longer there. Press Rescan.", "error");
     return;
@@ -2404,7 +2356,7 @@ $("probeSend").addEventListener("click", () => {
 
 async function tryUnknownCode(): Promise<void> {
   if (!access) return;
-  const output = access.outputs.get($<HTMLSelectElement>("output").value);
+  const output = ports.output(access);
   const productId = lastProductId;
   if (!output || productId === undefined) {
     status("Probe the device first.", "warn");
