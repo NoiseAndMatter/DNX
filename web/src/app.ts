@@ -22,6 +22,7 @@ import {
 import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
 import { renderPlan } from "./render.js";
 import { $, escapeHtml } from "./dom.js";
+import { countOccupiedIn, patternSlotView } from "./slotview.js";
 import { statusBar } from "./statusbar.js";
 import {
   type ConnectedDevice,
@@ -804,11 +805,7 @@ function renderSource(): void {
   renderBanks(tabs, {
     patternCount: DN1_PATTERN_COUNT,
     current: sourceBank,
-    countOccupied: (bank) => {
-      let n = 0;
-      for (let i = bank * 16; i < bank * 16 + 16; i++) if (live.has(i)) n++;
-      return n;
-    },
+    countOccupied: (bank) => countOccupiedIn(bank, DN1_DEVICE, image, live),
     onSelect: (bank) => {
       sourceBank = bank;
       renderSource();
@@ -817,18 +814,9 @@ function renderSource(): void {
 
   renderSlots(
     grid,
-    bankSlots(sourceBank, DN1_PATTERN_COUNT, (index) => {
-      const summary = DN1_DEVICE.summarise(image, index);
-      return {
-        id: patternName(index),
-        name: summary.name || "—",
-        detail: live.has(index)
-          ? `${summary.trigCount ?? 0} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
-          : "empty",
-        occupied: live.has(index),
-        supported: summary.supported,
-      };
-    }),
+    // `live` rather than the record: a pattern the plan will not carry reads as empty even when
+    // the DN1 has trigs in it, which is the one real difference between the two grids.
+    bankSlots(sourceBank, DN1_PATTERN_COUNT, (index) => patternSlotView(DN1_DEVICE, image, index, live)),
     {
       selected: selection,
       onClick: (index, event) => {
@@ -866,13 +854,7 @@ function renderDestinationGrid(): void {
   renderBanks(tabs, {
     patternCount: DN2_PATTERN_COUNT,
     current: destinationBank,
-    countOccupied: (bank) => {
-      let n = 0;
-      for (let i = bank * 16; i < bank * 16 + 16; i++) {
-        if (DN2_DEVICE.summarise(image, i).occupied) n++;
-      }
-      return n;
-    },
+    countOccupied: (bank) => countOccupiedIn(bank, DN2_DEVICE, image),
     onSelect: (bank) => {
       destinationBank = bank;
       renderDestinationGrid();
@@ -881,20 +863,7 @@ function renderDestinationGrid(): void {
 
   renderSlots(
     grid,
-    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => {
-      const summary = DN2_DEVICE.summarise(image, index);
-      return {
-        id: patternName(index),
-        name: summary.supported ? summary.name || "—" : `v${summary.version}`,
-        detail: summary.supported
-          ? summary.occupied
-            ? `${summary.trigCount} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
-            : "empty"
-          : "unreadable version",
-        occupied: summary.occupied === true,
-        supported: summary.supported,
-      };
-    }),
+    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => patternSlotView(DN2_DEVICE, image, index)),
     {
       // The landing slot is shown as the opened cell rather than a selection: nothing is selected
       // in this grid, and marking it says "this is where the drop went" without implying it can be
