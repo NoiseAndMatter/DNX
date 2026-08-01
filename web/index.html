@@ -28,10 +28,11 @@
 
 .plan ul { margin: .3rem 0; padding-left: 1.1rem; }
 
-/* The plan panel lives inside the sticky strip, so it must never grow without bound: a merge that
-   reported every conversion note grew this taller than the page and drew the rest of the tool
-   underneath it. Bounded and scrollable, whatever a plan has to say. */
-#devicePlan { max-height: 28vh; overflow-y: auto; }
+/* The plan panel closes the assignment section, separated from the table above it. It used to sit
+   in the sticky strip, where a merge reporting every conversion note grew taller than the page and
+   drew the rest of the tool underneath it — hence the folded notes below, and nothing here that can
+   grow without bound. */
+#devicePlan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
 .notes { margin-top: .4rem; }
 .notes summary { cursor: pointer; color: var(--muted); }
 .notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
@@ -87,7 +88,6 @@
       <button class="btn primary" id="applyMerge" disabled>Apply</button>
       <button class="btn" id="undoApply" disabled>Undo</button>
     </div>
-    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
   </section>
 
   <!-- 3. The destination, stacked below the source so a drag is a straight movement down. -->
@@ -106,10 +106,14 @@
   <!--
     4. Where every sound went. The most important data on the page, so it is full width and sits
     directly under the destination it describes.
+
+    The plan panel lives here too, at the end, rather than up in the options strip: what a merge
+    would do to the pool and to the locks only means anything beside the allocation it comes from.
   -->
   <section class="section assign">
     <h2>Sounds on tracks <span class="count" id="reportScope"></span></h2>
     <div id="plan"><p class="hint">Load a project to see how its sounds would be laid out.</p></div>
+    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
   </section>
 
   <!-- 5. Everything that takes data out. -->
