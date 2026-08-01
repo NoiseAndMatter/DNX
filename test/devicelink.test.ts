@@ -282,3 +282,95 @@ test("ports are paired by the longest shared name", () => {
   assert.equal(bestPair(inputs, outputs).input.name, "Digitone II MIDI 1");
   assert.equal(sharedPrefix("Digitone II", "Digitone 1"), 9);
 });
+
+test("a timeout that fired impossibly late re-arms instead of declaring silence", async () => {
+  // **The defect this prevents.** A starved or suspended page resumes with both the overdue timer
+  // and any queued `midimessage` runnable, in an order nobody promises. Declaring "no reply" from a
+  // timer that fired minutes late reports a working instrument as a silent one.
+  //
+  // Measured on hardware: a 321ms settle taking 246 seconds, with the tab visible throughout.
+  const input = fakeInput();
+  const link = linkOver(input, fakeOutput());
+
+  // A clock that jumps a minute the moment the timer fires, which is what waking up looks like.
+  let clock = 0;
+  const suspicions: number[] = [];
+  let listeningWhenNoticed = -1;
+
+  const waiting = link.awaitReply({
+    send: () => {},
+    match: byTag(0xaa),
+    timeoutMs: 5,
+    now: () => clock,
+    onSuspicion: (elapsed) => {
+      suspicions.push(elapsed);
+      // Asserted at the moment it happens rather than after a sleep. The re-armed wait is only
+      // `timeoutMs` long, so anything that waits before looking is racing it — the first version of
+      // this test did exactly that and passed by luck.
+      listeningWhenNoticed = input.listenerCount;
+      // The device answers while the page is demonstrably awake. Delivering from inside the
+      // callback is also the case that proved the re-arm had to be scheduled before the caller is
+      // told: otherwise this resolves and a stray timer is then scheduled behind it.
+      input.deliver([0xaa, 0x01]);
+    },
+  });
+
+  clock = 60_000;
+  const answer = await waiting;
+
+  assert.deepEqual(suspicions, [60_000], "the late timer should have been noticed, once");
+  assert.equal(listeningWhenNoticed, 1, "it must still be listening — nothing has been concluded");
+  assert.deepEqual([...answer!], [0xaa, 0x01], "the answer after a late timer must still be heard");
+  assert.equal(input.listenerCount, 0, "and the listener goes once it is");
+});
+
+test("re-arming happens once, so a wait cannot run forever", async () => {
+  // A page starved repeatedly would otherwise never conclude anything.
+  const input = fakeInput();
+  const link = linkOver(input, fakeOutput());
+
+  let clock = 0;
+  let suspicions = 0;
+  const result = await new Promise<unknown>((resolve) => {
+    void link
+      .awaitReply({
+        send: () => {},
+        match: byTag(0xaa),
+        timeoutMs: 5,
+        now: () => clock,
+        onSuspicion: () => {
+          suspicions++;
+          // Still asleep on the second pass: the clock keeps running away from the timer.
+          clock += 60_000;
+        },
+      })
+      .then(resolve);
+    clock = 60_000;
+  });
+
+  assert.equal(result, undefined, "the second expiry must conclude rather than re-arm again");
+  assert.equal(suspicions, 1);
+  assert.equal(input.listenerCount, 0);
+});
+
+test("an on-time timeout still means silence", async () => {
+  // The ordinary case must not be disturbed by any of the above: a timer that fired when it was
+  // asked to is evidence about the device, and it is the only evidence a silence ever gives.
+  const input = fakeInput();
+  const link = linkOver(input, fakeOutput());
+  let clock = 0;
+  const suspicions: number[] = [];
+
+  const result = await link.awaitReply({
+    send: () => {},
+    match: byTag(0xaa),
+    timeoutMs: 5,
+    // Fired a few milliseconds late, which is ordinary jitter rather than a stopped page.
+    now: () => (clock += 6),
+    onSuspicion: (elapsed) => suspicions.push(elapsed),
+  });
+
+  assert.equal(result, undefined);
+  assert.deepEqual(suspicions, [], "ordinary jitter must not read as suspension");
+  assert.equal(input.listenerCount, 0);
+});
