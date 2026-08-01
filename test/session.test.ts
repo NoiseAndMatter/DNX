@@ -260,3 +260,40 @@ test("a whole-project rewrite is one step, and still undoes", { skip }, () => {
   session.undo();
   assert.deepEqual(session.snapshot(), original);
 });
+
+test("the future lists what redo would bring back, newest first", { skip }, () => {
+  // `history()` and `future()` are the two halves of one timeline, which is what a clickable
+  // history needs: a control that steps one at a time makes somebody click eleven times to reach a
+  // state they can already see on screen.
+  const session = new Session(corpusImage());
+  applyReal(session, tag("first"), (img) => applyRearrange(img, swap(0, 1), CONFIRM).image);
+  applyReal(session, tag("second"), (img) => applyRearrange(img, swap(2, 3), CONFIRM).image);
+  applyReal(session, tag("third"), (img) => applyRearrange(img, swap(4, 5), CONFIRM).image);
+
+  assert.deepEqual(session.future(), [], "nothing has been undone yet");
+  assert.deepEqual(session.history().map((e) => e.label), ["third", "second", "first"]);
+
+  session.undo();
+  session.undo();
+
+  assert.deepEqual(session.future().map((e) => e.label), ["third", "second"], "newest first");
+  assert.deepEqual(session.history().map((e) => e.label), ["first"]);
+
+  session.redo();
+  assert.deepEqual(session.future().map((e) => e.label), ["third"]);
+  assert.deepEqual(session.history().map((e) => e.label), ["second", "first"]);
+});
+
+test("a new action after undoing drops the future", { skip }, () => {
+  // The ordinary undo-then-diverge case. Those steps are unreachable now, and a timeline that
+  // still listed them would offer somewhere the user cannot go.
+  const session = new Session(corpusImage());
+  applyReal(session, tag("first"), (img) => applyRearrange(img, swap(0, 1), CONFIRM).image);
+  applyReal(session, tag("second"), (img) => applyRearrange(img, swap(2, 3), CONFIRM).image);
+  session.undo();
+  assert.equal(session.future().length, 1);
+
+  applyReal(session, tag("instead"), (img) => applyRearrange(img, swap(6, 7), CONFIRM).image);
+  assert.deepEqual(session.future(), [], "the abandoned branch must not stay clickable");
+  assert.deepEqual(session.history().map((e) => e.label), ["instead", "first"]);
+});
