@@ -35,6 +35,8 @@ header {
 }
 h1 { font-size: .82rem; margin: 0 .6rem 0 0; text-transform: uppercase; letter-spacing: .12em;
   color: var(--teal); font-weight: 600; }
+/* Quiet, but readable without hunting: it is checked once per session and ignored the rest. */
+.build { color: var(--dim); font-weight: 400; letter-spacing: .04em; font-size: .7rem; }
 label.lbl { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 input[type=text], input[type=number] {
   background: #1b2123; color: var(--fg); border: 1px solid var(--line-soft);
@@ -98,7 +100,11 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
 <body>
 
 <header>
-  <h1>Device probe</h1>
+  <!--
+    The build time sits beside the title, not only in the tab. The tab is where nobody looks, and
+    the entire point of the stamp is answering "am I running the fix?" at a glance.
+  -->
+  <h1>Device probe <span class="build" id="buildStamp" title="When the code running this page was compiled">build —</span></h1>
   <label class="lbl" for="output">Out</label>
   <select id="output"></select>
   <label class="lbl" for="input">In</label>

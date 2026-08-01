@@ -536,7 +536,13 @@ async function showBuildTime(): Promise<void> {
   try {
     const response = await fetch(import.meta.url, { method: "HEAD" });
     const built = response.headers.get("last-modified");
-    if (built) document.title = `Device probe — build ${new Date(built).toTimeString().slice(0, 5)}`;
+    if (!built) return;
+    const at = new Date(built).toTimeString().slice(0, 5);
+    // **On the page, beside the title.** It went only into the tab title first, which is where
+    // nobody looks — the first thing asked about it was where to find it. The tab keeps a copy
+    // because a pinned or duplicated tab is worth telling apart too.
+    $("buildStamp").textContent = `build ${at}`;
+    document.title = `Device probe — build ${at}`;
   } catch {
     // A missing stamp is not worth a message; the page's job is unaffected.
   }
