@@ -218,6 +218,17 @@ body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem);
 .slot.midi .id, .slot.midi .mc { color: var(--amber); }
 /* The pattern whose tracks are shown below, so the two sections are visibly connected. */
 .slot.opened { box-shadow: inset 0 -3px 0 var(--teal); }
+/*
+ * Where a pending drop will land.
+ *
+ * Deliberately not the selection ring and not the drag-hover wash: those mean 'you picked this'
+ * and 'you are over this right now'. This is the third thing — 'this is what Apply will write to'
+ * — and it has to survive after the cursor has gone, which is exactly when the other two vanish.
+ */
+.slot.landing {
+  border-color: var(--amber);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
 
 /*
  * A stacked sub-section: patterns, then that pattern's tracks, then its trigs later. The rule

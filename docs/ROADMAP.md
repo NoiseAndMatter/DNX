@@ -1746,12 +1746,27 @@ lists the +Drive.
 Most of the machinery exists; what is missing is the source half of the *In* row — the destination
 half already offers Blank / From file / Connect / Read its project, and the source should mirror it.
 
-### 6b. Drag and drop from DN1 to DN2 does not work
+### 6b. Drag and drop from DN1 to DN2 does not work — FIXED 2026-08-01
 
-**Only Apply works.** The gesture the whole two-grid design is built around does nothing, which
-makes the grids decorative and the button the real interface. `GridDrag` is shared with the manager,
-where dragging does work — so the fault is in the expander's wiring of it, not in the control.
+**Only Apply worked**, which made the grids look decorative and the button the real interface.
 
+**The gesture was never broken.** Both grids were bound to the shared `GridDrag`, the drop was
+received, the landing slot was set and the plan was recomputed. What was missing was one line:
+clicking a destination slot re-rendered the grid, so its marker moved — dropping on one did not.
+The only visible effect of a drag was a line of text far down the page, and a gesture that works
+invisibly is indistinguishable from one that does not.
+
+Fixed, and made unmistakable rather than merely visible:
+
+- the drop re-renders the destination grid, so the marker follows the drop
+- **every slot the merge will write to** is marked, not just the anchor — drag four patterns and
+  four cells light up, in a colour that is neither the selection ring nor the drag-hover wash,
+  because *"you picked this"*, *"you are over this"* and *"this is what Apply will write"* are
+  three different claims and the third has to survive after the cursor leaves
+- the status says what will happen and what to press
+
+Apply stays the commit. That separation is deliberate — choosing must not be the same act as
+writing — and the bug was never that the drop failed to commit, only that it said nothing.
 ### 6c. Merged patterns must keep their relative positions
 
 **Current behaviour, and it is wrong as a default:** selecting A1, A9, A10 and dropping on A1 writes
