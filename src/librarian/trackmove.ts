@@ -145,9 +145,13 @@ function copiedRegions(track: number): Region[] {
       inKit: DN2_KIT.midiOffset + track * DN2_KIT.midiSize,
       size: DN2_KIT.midiSize,
     },
-    // Track levels: 16 u16le at kit +0x1C, one per track. Small, and easy to forget — a move
+    // Track levels: 16 u16le in the kit header, one per track. Small, and easy to forget — a move
     // without it silently resets the destination's level to the source pattern's.
-    { part: "mix", inKit: 0x1c + track * 2, size: 2 },
+    {
+      part: "mix",
+      inKit: DN2_KIT.levelOffset + track * DN2_KIT.levelSize,
+      size: DN2_KIT.levelSize,
+    },
   ];
 }
 

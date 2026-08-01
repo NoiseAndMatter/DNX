@@ -76,11 +76,31 @@ export function layoutFor(image: Uint8Array): ImageLayout {
   throw new Error(`Unrecognised decoded image size ${image.length}`);
 }
 
-/** Offsets inside one DN2 kit record, relative to the start of that record. */
+/**
+ * Offsets inside one DN2 kit record, relative to the start of that record.
+ *
+ * **This is the only home for these numbers.** They were re-declared in `expand/convert.ts`,
+ * `sheet/collect.ts`, `project/locate.ts`, `expand/merge.ts` and `cli/extractblankproject.ts`, and
+ * the track level was worse — it had no home at all, so it appeared as a bare `0x1c` in two
+ * librarian modules. A constant with six homes cannot be corrected in one place when the next
+ * differential analysis moves it, and these bytes are written to hardware.
+ */
 export const DN2_KIT = {
   /** Kit object: BEEFBACE + u32be version 3 + 16-byte kit name + 16 u16le track levels. */
   headerOffset: 0,
   headerSize: 60,
+  /**
+   * 16 track levels, **u16le**, in the kit header. The DN1's four sit at its own kit+0x14.
+   *
+   * The container is two bytes; the value is 0-127, as the device shows it. Across the DN2 corpus
+   * — 49,152 levels — the high byte is **never** non-zero and the maximum is 127. So reading only
+   * the low byte has been accidentally right, which is precisely why `trackLevel` exists below:
+   * `sheet/collect.ts` read the pair and `librarian/tracksummary.ts` read one byte, and nothing
+   * would have said which was wrong until the first value above 255.
+   */
+  levelOffset: 0x1c,
+  levelSize: 2,
+  levelCount: 16,
   /** 16 sound slots, one per track, each a complete BEEFBACE sound object. */
   soundOffset: 60,
   soundSize: 359,
@@ -92,6 +112,27 @@ export const DN2_KIT = {
   /** 500 bytes after the last MIDI record. Contents unidentified. */
   trailingOffset: 10_252,
 } as const;
+
+/**
+ * A track's level, out of a DN2 kit record. `track` is 0-based.
+ *
+ * An accessor rather than a constant to import, because the two callers that read this by hand
+ * disagreed about its width — one read the pair, one read a byte. One accessor means the next
+ * caller cannot.
+ */
+export function trackLevel(kit: Uint8Array, track: number): number {
+  assertIndex(track, DN2_KIT.levelCount, "track");
+  const at = DN2_KIT.levelOffset + track * DN2_KIT.levelSize;
+  return kit[at]! | (kit[at + 1]! << 8);
+}
+
+/** Write a track's level into a DN2 kit record. `track` is 0-based. */
+export function setTrackLevel(kit: Uint8Array, track: number, level: number): void {
+  assertIndex(track, DN2_KIT.levelCount, "track");
+  const at = DN2_KIT.levelOffset + track * DN2_KIT.levelSize;
+  kit[at] = level & 0xff;
+  kit[at + 1] = (level >> 8) & 0xff;
+}
 
 /** Offsets inside one DN1 kit record. DN1 has 4 synth tracks, hence 4 sound slots. */
 export const DN1_KIT = {

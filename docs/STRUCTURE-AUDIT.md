@@ -29,7 +29,7 @@ already exists in `web/src/devicesource.ts`, which attaches a fresh listener per
 
 Dead: `awaitApi` (2188) is defined, takes an unused parameter, and is never called.
 
-## 2. Byte-offset arithmetic has no single home — and two readers already disagree
+## 2. Byte-offset arithmetic has no single home — and two readers already disagree — **DONE**
 
 **Verified.** `src/project/dn2image.ts` declares `DN2_KIT` as the canonical kit geometry, and five
 other modules re-declare the same numbers locally: the sound offset `60`, sound size `359`, the MIDI
@@ -145,7 +145,7 @@ Ranked by what the codebase most needs. Each is one PR.
 
 | # | Change | Risk |
 |---|---|---|
-| 1 | Give DN2 kit geometry one home in `dn2image.ts`, add the missing `levelOffset`, settle u8 vs u16le against the corpus, delete the five local re-declarations and two bare literals | **medium** — every line writes to hardware, but it is constant substitution and `convert.test.ts`'s byte-diff is a total check |
+| 1 | ~~Give DN2 kit geometry one home~~ **DONE 2026-08-01.** `levelOffset/levelSize/levelCount` added, width settled as u16le against 49,152 corpus levels, `trackLevel`/`setTrackLevel` accessors added, six re-declarations and two bare literals removed, `test/dn2image.test.ts` added | shipped |
 | 2a | Extract the reply-correlation transport into `web/src/devicelink.ts`, taken from `devicesource.ts`; both the probe and the expander use it | **high** — hardware path, almost no coverage. Fixes the known global-slot collision. Re-probe a real DN2 after |
 | 2b | Split the rest of `probe/main.ts` into `ports`/`cards`/`capture`/`dumpio`/`storageio`, leaving `main.ts` as wiring | **high** — same; ship separately from 2a |
 | 3 | Extract the hardware-sheet page scaffold into `src/sheet/page.ts` + `src/sheet/html.ts`; reconcile the drifted `☐` encoding | low |
