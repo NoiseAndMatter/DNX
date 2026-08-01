@@ -146,7 +146,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | # | Change | Risk |
 |---|---|---|
 | 1 | ~~Give DN2 kit geometry one home~~ **DONE 2026-08-01.** `levelOffset/levelSize/levelCount` added, width settled as u16le against 49,152 corpus levels, `trackLevel`/`setTrackLevel` accessors added, six re-declarations and two bare literals removed, `test/dn2image.test.ts` added | shipped |
-| 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Seven waiters migrated, the global slot and the dead `awaitApi` deleted, `test/devicelink.test.ts` added (11 tests, no DOM). **Awaiting a hardware pass.** | shipped, unverified on device |
+| 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
 | 2b | Split the rest of `probe/main.ts` into `ports`/`cards`/`capture`/`dumpio`/`storageio`, leaving `main.ts` as wiring | **high** — same; ship separately from 2a |
 | 3 | Extract the hardware-sheet page scaffold into `src/sheet/page.ts` + `src/sheet/html.ts`; reconcile the drifted `☐` encoding | low |
 | 4 | Collapse the seven `escapeHtml`s (fixing grid.ts's missing quote escape), export `u32` once, rename the colliding `hex`s, delete the four dead exports | low |
