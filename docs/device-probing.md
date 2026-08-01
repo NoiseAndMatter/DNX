@@ -226,6 +226,27 @@ write verifiable rather than merely apparently-successful.
 So the rule is: **a write is not finished until it has been read back and compared.** Not "the
 device did not complain" — the device does not complain.
 
+### WRITING WORKS — verified on hardware 2026-08-01
+
+**The null round trip passes.** Pattern `A1` written back to `A1` on a Digitone 1, read back, and
+compared: 20,992 bytes returned, **byte for byte what was sent**. Start to verdict in 0.3 seconds.
+
+```
+Sending      0x50 to slot A1…                        (+0.0s)
+Settling     321ms before asking                      (+0.0s)
+Sent         asking for it back                       (+0.3s)
+Waiting for the read-back   0.1s
+Read back    20,992 bytes
+Result       the device returned exactly what was sent
+```
+
+So the whole chain is proven end to end: build the message, send it, let the device settle, ask for
+the record back, and compare. **A write is verifiable, not merely apparently-successful** — which
+was the condition this section set before any of it could be trusted.
+
+Scope, stated plainly: one device, one firmware, one record type (`0x50` patternKit), one slot. It
+is a foundation, not a licence to write anything anywhere.
+
 ### Start with the write that cannot change anything
 
 The first write should be a **null round trip**: take a record just read from this device and send
@@ -277,6 +298,11 @@ record from a *different* project.
   This is exactly why the verdict is computed three ways rather than two. Held only against what
   was sent, a refusal and a mangled write are the same answer; held against what the slot contained
   before, the refusal is unambiguous and the card can say the original is intact.
+
+  **Observed twice**, the second time on a clean 0.3s run once the page stopped blocking itself —
+  so it is the device's behaviour rather than an artefact of a stalled tool. `A1` → `H16`, `H16`
+  unchanged both times, and the read-back matched what the slot held before rather than what was
+  sent.
 
   **Do not read this as a safety guarantee yet.** One slot, one firmware, one record type. It says
   what happened, not what the device promises — and a bulk operation built on "occupied slots are
@@ -662,3 +688,27 @@ settled it took less time to write than any single one of those theories took to
 
 **A per-message full re-render is a performance bug that only shows up under load**, and the load
 here was ordinary MIDI traffic. Worth remembering before the manager grows a live view of anything.
+
+### What the flood actually was — 2026-08-01
+
+The classified counter named it on the first run after the fix:
+
+```
+Arrived meanwhile  105 message(s), 24,110 bytes — 104× clock, 1× SysEx
+```
+
+**MIDI clock from the instrument's own sequencer**, plus the one SysEx reply we asked for. Nothing
+exotic, nothing to do with the write, and nothing that needed fixing on the device: ordinary traffic
+that any Elektron sends whenever its sequencer is running.
+
+The 24,110 bytes are almost entirely that single SysEx reply — the clock messages are one byte
+each. So the load was never volume, it was **message count**: ~100 events, each of which used to
+trigger two full parses of a multi-megabyte capture.
+
+That is the shape of the bug worth remembering. It was not a big-data problem, and profiling total
+bytes would have missed it entirely. **A cost paid per message meets a source that sends many small
+messages**, and the result looked like a hung instrument for four rounds of diagnosis.
+
+A possible refinement, not needed and not done: realtime bytes could be dropped before they ever
+reach the capture, since `DumpCapture` discards them anyway. With the redraw coalesced the cost is
+already gone, and an untaken optimisation is cheaper to leave than a speculative one to maintain.
