@@ -33,9 +33,12 @@ import { DN2_DEVICE } from "../librarian/device.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { parseProject } from "../project/projectfile.js";
 import { DN2_LAYOUT } from "../project/dn2image.js";
-import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
-
-const DN2_SOUND_SIZE = 359;
+import {
+  DN2_POOL_OFFSET,
+  DN2_SOUND_SIZE,
+  SOUND_NAME_OFFSET,
+  SOUND_NAME_SIZE,
+} from "../project/soundmap.js";
 
 function arg(name: string): string | undefined {
   const at = process.argv.indexOf(`--${name}`);

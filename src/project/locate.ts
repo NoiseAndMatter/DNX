@@ -11,7 +11,7 @@
  */
 
 import { PATTERN, STEP_COUNT, TRACK, TRACK_COUNT, KIT_MIDI_MASK_OFFSET } from "./dn2pattern.js";
-import { DN2_LAYOUT } from "./dn2image.js";
+import { DN2_KIT, DN2_LAYOUT } from "./dn2image.js";
 import { describeKitFx } from "./kitfx.js";
 
 /** A SysEx pattern dump is a pattern record followed by its kit record. */
@@ -61,13 +61,7 @@ const META_FIELDS: readonly { at: number; size: number; name: string }[] = [
 /** The six bytes of a trigger slot. */
 const TRIG_SLOT_FIELDS = ["track", "step", "note", "velocity", "note length", "micro timing"];
 
-/** DN2 kit geometry. */
-const KIT_HEADER = 60;
-const KIT_SOUND_SIZE = 359;
-const KIT_SOUND_COUNT = 16;
-const KIT_MIDI_BASE = 5_964;
-const KIT_MIDI_SIZE = 268;
-const KIT_MIDI_COUNT = 16;
+/** The per-track arrays after the kit's MIDI records. Kit geometry lives in `dn2image.ts`. */
 const KIT_PER_TRACK_ARRAY = 10_264;
 const KIT_PER_TRACK_STRIDE = 5;
 
@@ -99,7 +93,7 @@ function locateInTrack(track: number, within: number): Location {
 }
 
 function locateInKit(within: number): Location {
-  if (within < KIT_HEADER) {
+  if (within < DN2_KIT.headerSize) {
     const field =
       within < 4 ? "object magic" :
       within < 8 ? "record version" :
@@ -109,24 +103,24 @@ function locateInKit(within: number): Location {
     return { region: "kit header", field, within, unknown: field === "unidentified" };
   }
 
-  const soundArea = within - KIT_HEADER;
-  if (soundArea < KIT_SOUND_COUNT * KIT_SOUND_SIZE) {
-    const slot = Math.floor(soundArea / KIT_SOUND_SIZE);
-    const inSound = soundArea % KIT_SOUND_SIZE;
+  const soundArea = within - DN2_KIT.headerSize;
+  if (soundArea < DN2_KIT.soundCount * DN2_KIT.soundSize) {
+    const slot = Math.floor(soundArea / DN2_KIT.soundSize);
+    const inSound = soundArea % DN2_KIT.soundSize;
     const field = inSound < 12 ? "object header" : inSound < 28 ? "sound name" : "sound parameters";
     return { region: `kit sound slot ${slot + 1}`, field: `+${inSound} ${field}`, within: inSound, unknown: false };
   }
 
-  if (within < KIT_MIDI_BASE) {
+  if (within < DN2_KIT.midiOffset) {
     const fx = describeKitFx(within);
     if (fx) return { region: "kit FX", field: fx, within: within - 5_804, unknown: false };
     return { region: "kit gap 5804-5963", field: "FX and unidentified", within: within - 5_804, unknown: true };
   }
 
-  const midiArea = within - KIT_MIDI_BASE;
-  if (midiArea < KIT_MIDI_COUNT * KIT_MIDI_SIZE) {
-    const record = Math.floor(midiArea / KIT_MIDI_SIZE);
-    const inRecord = midiArea % KIT_MIDI_SIZE;
+  const midiArea = within - DN2_KIT.midiOffset;
+  if (midiArea < DN2_KIT.midiCount * DN2_KIT.midiSize) {
+    const record = Math.floor(midiArea / DN2_KIT.midiSize);
+    const inRecord = midiArea % DN2_KIT.midiSize;
     const field =
       inRecord < 12 ? "object header" :
       inRecord < 28 ? "track name" :
@@ -145,7 +139,7 @@ function locateInKit(within: number): Location {
     return { region: "kit", field: "synth/MIDI track mask", within, unknown: false };
   }
 
-  if (within >= KIT_PER_TRACK_ARRAY && within < KIT_PER_TRACK_ARRAY + KIT_MIDI_COUNT * KIT_PER_TRACK_STRIDE) {
+  if (within >= KIT_PER_TRACK_ARRAY && within < KIT_PER_TRACK_ARRAY + DN2_KIT.midiCount * KIT_PER_TRACK_STRIDE) {
     const entry = Math.floor((within - KIT_PER_TRACK_ARRAY) / KIT_PER_TRACK_STRIDE);
     return {
       region: "kit per-track array at 10264",

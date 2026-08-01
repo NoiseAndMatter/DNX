@@ -40,7 +40,7 @@ import {
   type Dn1Pattern,
   type Dn1Track,
 } from "../project/dn1.js";
-import { DN1_LAYOUT, DN2_LAYOUT } from "../project/dn2image.js";
+import { DN1_LAYOUT, DN2_KIT, DN2_LAYOUT } from "../project/dn2image.js";
 import {
   KIT_MIDI_MASK_OFFSET,
   PATTERN as DN2_PATTERN,
@@ -50,6 +50,7 @@ import {
   TRACK_COUNT as DN2_TRACK_COUNT,
 } from "../project/dn2pattern.js";
 import {
+  DN2_POOL_OFFSET,
   DN2_SOUND_SIZE,
   convertDn1SoundToDn2Detailed,
   type ConversionWarning as SoundWarning,
@@ -83,15 +84,6 @@ import type { ExpansionPlan } from "./types.js";
 
 /** DN1 kit sound slots, and therefore the DN2 slots they occupy. */
 const DN1_KIT_SOUNDS = SYNTH_TRACK_COUNT;
-/** DN2 kit: 60-byte header, then 16 sound slots. */
-const DN2_KIT_SOUND_OFFSET = 60;
-/** 16 x u16le track levels in the DN2 kit header. The DN1's four sit at its kit+0x14. */
-const DN2_KIT_LEVEL_OFFSET = 0x1c;
-/** DN2 kit: 16 MIDI track records of 268 bytes, one per track, after the sounds. */
-const DN2_KIT_MIDI_OFFSET = 5_964;
-const DN2_MIDI_RECORD_SIZE = 268;
-/** DN2 sound pool sits after a full kit record at the head of the tail. */
-const DN2_POOL_OFFSET = 10_756;
 const POOL_SLOTS = 128;
 /** Every DN1 project has four synth tracks then four MIDI tracks. */
 const DN1_MIDI_MASK = 0x00f0;
@@ -535,7 +527,7 @@ function writeKit(
     const source = dn1Kit.sounds[slot];
     if (!source) continue;
     const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);
-    out.set(sound, kitBase + DN2_KIT_SOUND_OFFSET + slot * DN2_SOUND_SIZE);
+    out.set(sound, kitBase + DN2_KIT.soundOffset + slot * DN2_SOUND_SIZE);
     report.soundsConverted++;
     for (const w of warnings) {
       report.warnings.push({
@@ -555,11 +547,11 @@ function writeKit(
   // MIDI slots, so a converted project's four MIDI tracks arrived carrying an FM TONE machine.
   // It looked correct only because the byte-diff test uses Elektron's own output as template.
   for (let slot = 0; slot < DN1_KIT_SOUNDS; slot++) {
-    out[kitBase + DN2_KIT_SOUND_OFFSET + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.fmTone;
+    out[kitBase + DN2_KIT.soundOffset + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.fmTone;
   }
   for (let track = 0; track < DN1_MIDI_TRACKS; track++) {
     const slot = DN1_KIT_SOUNDS + track;
-    out[kitBase + DN2_KIT_SOUND_OFFSET + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.midi;
+    out[kitBase + DN2_KIT.soundOffset + slot * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] = MACHINE.midi;
   }
 
   // Track levels. DN1 kit+0x14 holds four u16le levels, the DN2 sixteen at kit+0x1C, and the
@@ -572,13 +564,13 @@ function writeKit(
     (dn1Image[dn1KitBase + DN1_KIT.levelOffset + track * 2 + 1]! << 8);
 
   for (let track = 0; track < DN1_KIT_SOUNDS; track++) {
-    kitView.setUint16(kitBase + DN2_KIT_LEVEL_OFFSET + track * 2, dn1Level(track), true);
+    kitView.setUint16(kitBase + DN2_KIT.levelOffset + track * DN2_KIT.levelSize, dn1Level(track), true);
   }
   // A promoted track inherits the level of the track its trigs were lifted out of, so the
   // mix balance survives expansion instead of every new track jumping to the default.
   for (const [destination, source] of levelSources) {
     kitView.setUint16(
-      kitBase + DN2_KIT_LEVEL_OFFSET + destination * 2,
+      kitBase + DN2_KIT.levelOffset + destination * DN2_KIT.levelSize,
       dn1Level(source),
       true,
     );
@@ -608,9 +600,9 @@ function writeKit(
     const source = pool[poolSlot];
     if (!source?.name) continue;
     const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);
-    out.set(sound, kitBase + DN2_KIT_SOUND_OFFSET + destinationTrack * DN2_SOUND_SIZE);
+    out.set(sound, kitBase + DN2_KIT.soundOffset + destinationTrack * DN2_SOUND_SIZE);
     // A promoted sound comes from the DN1, so it is FM TONE whatever the template had here.
-    out[kitBase + DN2_KIT_SOUND_OFFSET + destinationTrack * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] =
+    out[kitBase + DN2_KIT.soundOffset + destinationTrack * DN2_SOUND_SIZE + SOUND_MACHINE_OFFSET] =
       MACHINE.fmTone;
     report.soundsConverted++;
     for (const w of warnings) {
@@ -687,7 +679,7 @@ function writeMidiTrackRecords(out: Uint8Array, kitBase: number, dn1Kit: ReturnT
   // would otherwise inherit — 10,112 bytes per project, and the largest single divergence
   // from Elektron's output once the configuration itself is transferred.
   for (let track = 0; track < DN2_TRACK_COUNT; track++) {
-    const record = kitBase + DN2_KIT_MIDI_OFFSET + track * DN2_MIDI_RECORD_SIZE;
+    const record = kitBase + DN2_KIT.midiOffset + track * DN2_KIT.midiSize;
     applyFieldConstants(out, record, MIDI_TRACK_CONSTANTS);
   }
 
@@ -696,7 +688,7 @@ function writeMidiTrackRecords(out: Uint8Array, kitBase: number, dn1Kit: ReturnT
     if (!source) continue;
 
     // DN1 MIDI track n lands on DN2 track 4+n, the same positional rule as the pattern.
-    const destination = kitBase + DN2_KIT_MIDI_OFFSET + (SYNTH_TRACK_COUNT + track) * DN2_MIDI_RECORD_SIZE;
+    const destination = kitBase + DN2_KIT.midiOffset + (SYNTH_TRACK_COUNT + track) * DN2_KIT.midiSize;
     applyFieldCopies(out, destination, source, 0, MIDI_TRACK_MAP);
   }
 }
