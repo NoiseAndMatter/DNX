@@ -37,6 +37,18 @@ exists, write down where things stand and what comes next, and tell the user. Co
 90% is **their call, not yours** — ask, do not assume. Stopping mid-edit with uncommitted work
 is the failure this exists to prevent.
 
+## Architecture principles — binding
+
+**`docs/PRINCIPLES.md` governs how code is written here. Read it before changing structure, and
+follow it in every change.** One job per module; anything a second caller needs moves up into
+shared code; `src/` stays pure and never imports from `web/`; reuse the shared thing rather than
+copying it; anything reused says what it assumes; a smarter default needs a caller sweep; verify
+through the surface the user touches; never invent data; bound anything that can grow; and name
+things the way the hardware does.
+
+Each principle there records what it cost to learn. A change that cannot follow one says so in
+its MR rather than breaking it quietly.
+
 ## Ground rules
 
 **Never commit Digitone project, pattern or sound files.** The test corpus is the author's
@@ -99,11 +111,13 @@ src/project/     Project files: ZIP, LZ4, CRC, images, patterns, kits, sounds, t
 src/expand/      Planning, routing, translation tables, the converter
 src/librarian/   Pattern copy with sound-dependency resolution
 src/cli/         Command-line entry points
-docs/            Format documentation, roadmap, known issues
+web/src/         Shared browser code; web/src/<page>/ is one page and nothing else
+docs/            Format documentation, roadmap, known issues, principles
 ```
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/KNOWN-ISSUES.md` tracks defects,
-gaps and traps. Keep both current as work lands.
+gaps and traps. `docs/PRINCIPLES.md` governs how anything new is structured. Keep all three
+current as work lands.
 
 ## Related material outside the repository
 

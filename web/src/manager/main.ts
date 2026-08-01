@@ -71,7 +71,8 @@ import {
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
 import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
-import { $, escapeHtml, statusBar } from "../dom.js";
+import { $, escapeHtml } from "../dom.js";
+import { statusBar } from "../statusbar.js";
 
 const status = statusBar();
 

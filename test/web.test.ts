@@ -42,7 +42,7 @@ function importGraph(entry: string): string[] {
     // Import and export statements only. A looser pattern picks up prose in doc comments —
     // "distinguish copied from ..." reads as an import to a naive regex.
     const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/^\s*(?:import|export)[^;]*?from\s+"([^"]+)"/gm)) {
+    for (const match of source.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/gm)) {
       const specifier = match[1]!;
       if (!specifier.startsWith(".")) {
         external.push(`${file} -> ${specifier}`);
@@ -106,6 +106,24 @@ for (const [name, entry, html] of PAGES) {
     }
 
     assert.deepEqual(missing, [], `the ${name} references ids its page does not define`);
+  });
+}
+
+for (const [name, entry, html] of PAGES) {
+  test(`the ${name}'s status bar is a status bar`, () => {
+    // `statusbar.ts` styles everything off the `status` class: panel background, top border, and on
+    // a flowing page the pinning that keeps it in view. A page that spells the element differently
+    // gets an unstyled line of text at the left edge — which is exactly what the expander showed
+    // for as long as its status writer rebuilt `className` from an empty base.
+    const uses = reachableFiles(entry).some((f) => f.endsWith(`statusbar.ts`));
+    if (!uses) return;
+
+    const markup = readFileSync(html, "utf8");
+    const element = /<div[^>]*id="status"[^>]*>/.exec(markup)?.[0];
+    assert.ok(element, `the ${name} writes status messages but its page has no #status`);
+
+    const classes = (/class="([^"]*)"/.exec(element)?.[1] ?? "").split(/\s+/);
+    assert.ok(classes.includes("status"), `#status on the ${name} lacks the status class: ${element}`);
   });
 }
 
