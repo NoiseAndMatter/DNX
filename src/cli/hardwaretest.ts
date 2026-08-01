@@ -23,6 +23,7 @@ import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile, parseProject } from "../project/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
+import { escapeHtml } from "../sheet/html.js";
 import {
   type ExportRow,
   type ExportSpec,
@@ -59,14 +60,6 @@ function hhmm(when = new Date()): string {
 function load(path: string) {
   const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
   return { manifest, payload, image: decodeProjectImage(payload.raw).image };
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 /**

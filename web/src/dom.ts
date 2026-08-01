@@ -34,20 +34,20 @@
  * as the page, so a missing one is a typo or a stale rename — a bug to fix, not a case to handle.
  * `test/pages.test.ts` checks every id a page asks for against its HTML for the same reason.
  */
+/**
+ * Escaping lives in `src/sheet/html.ts` and is re-exported here.
+ *
+ * Not reimplemented: four of the seven copies this replaced were in `src/`, which cannot import
+ * from `web/`, so the shared home had to be down there. Pages keep importing it from `dom.js`
+ * because that is where a page looks for it.
+ */
+export { escapeHtml } from "../../src/sheet/html.js";
+
 export const $ = <T extends HTMLElement>(id: string): T => {
   const element = document.getElementById(id);
   if (!element) throw new Error(`missing element #${id}`);
   return element as T;
 };
-
-/** Escape text for insertion into HTML. */
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /**
  * Hand bytes to the browser as a download.

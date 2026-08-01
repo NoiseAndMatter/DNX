@@ -7,11 +7,8 @@
  */
 
 import { patternName } from "../../src/sheet/naming.js";
+import { escapeHtml } from "../../src/sheet/html.js";
 import type { ExpansionPlan } from "../../src/expand/types.js";
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-}
 
 /** Compact list of patterns: "A1, A2, B5 +3 more". */
 function patternList(patterns: readonly number[], limit = 6): string {

@@ -405,11 +405,6 @@ export function stepsFor(seeds: TrackSeeds, before: readonly TrackSummary[]): Tr
   return steps.map((step, i) => ({ ...step, n: i + 1, pattern: FIRST_STEP + i }));
 }
 
-/** Every pattern the built file writes to, so the caller can seed exactly those. */
-export function stepPatterns(steps: readonly TrackTestStep[]): number[] {
-  return steps.map((s) => s.pattern);
-}
-
 /**
  * Things that fail quietly at track level, and so have to be looked for deliberately.
  *

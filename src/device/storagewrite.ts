@@ -40,6 +40,7 @@ import {
   type Entry,
   ListingError,
   StorageCode,
+  u32,
   writeChunkRequest,
   writeCloseRequest,
   writeOpenRequest,
@@ -176,8 +177,4 @@ function expect(frame: { code: number; body: Uint8Array }, code: number): void {
     const text = new TextDecoder("windows-1252").decode(frame.body.subarray(1)).replace(/\0+$/, "").trim();
     throw new ListingError(text.length > 0 ? text : `write step failed with status ${frame.body[0]}`);
   }
-}
-
-function u32(b: Uint8Array, at: number): number {
-  return ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0;
 }
