@@ -36,16 +36,16 @@ import { patternIndex, patternName } from "../sheet/naming.js";
 import { OpenError, openProject } from "../node/open.js";
 import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "../librarian/shuffle.js";
 import {
-  type TrackSummary,
   summariseTracks,
   trackIndex,
   trackName,
+  type TrackSummary,
 } from "../librarian/tracksummary.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "../project/dn2pattern.js";
 import {
-  DN2_TRACK_COUNT,
-  type TrackScope,
   applyTrackMove,
   planTrackMove,
+  type TrackScope,
   verifyTrackMove,
 } from "../librarian/trackmove.js";
 

@@ -86,17 +86,28 @@
 import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
 import {
   KIT_MIDI_MASK_OFFSET,
+  LOCK_TABLE,
   PATTERN as DN2_PATTERN,
   TRACK as DN2_TRACK,
+  TRIG_TABLE,
+  type TrackTable,
+  liveRecords,
   readMidiTrackMask,
 } from "../project/dn2pattern.js";
+// **A mover reads through the summariser, not the other way round.** These counters used to live
+// here, so anything that merely wanted to *count* what is on a track had to import from the module
+// that *moves* it — and `tracksummary.ts`, whose whole job is answering that question, was pulling
+// it out of the write path.
+import {
+  trackMachines,
+  trigCounts,
+} from "./tracksummary.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "../project/dn2pattern.js";
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 import { isMachineRelative } from "../project/machineplock.js";
 import { blankPatternKit } from "./blank.js";
 import { type Device } from "./device.js";
 import { type Shuffle, rereference, sourceOf, touchedSlots } from "./shuffle.js";
-
-export const DN2_TRACK_COUNT = 16;
 
 /**
  * Which half of a track a region belongs to, in the device's own vocabulary.
@@ -246,83 +257,6 @@ function machineDriftFindings(
  * lock's parameter id with a track number. `readLockTable` had it right all along; this now
  * agrees with it, and `a lock keeps its parameter id` holds the line.
  */
-interface TrackTable {
-  offset: number;
-  size: number;
-  count: number;
-  /** Byte within a record that names the track. */
-  trackAt: number;
-  /** Header bytes that mark a record unused, written from offset 0. */
-  unused: readonly number[];
-}
-
-const TRIG_TABLE: TrackTable = {
-  offset: DN2_PATTERN.trigOffset,
-  size: DN2_PATTERN.trigSize,
-  count: DN2_PATTERN.trigCount,
-  trackAt: 0,
-  unused: [0xff],
-};
-
-const LOCK_TABLE: TrackTable = {
-  offset: DN2_PATTERN.lockOffset,
-  size: DN2_PATTERN.lockSize,
-  count: DN2_PATTERN.lockCount,
-  // Byte 1. Byte 0 is the parameter id, which ranges well past 15 — see the corpus check in
-  // `docs/dn2-pattern-format.md` §7.
-  trackAt: 1,
-  // Both header bytes, because `readLockTable` tests the pair as one u16 against 0xFFFF.
-  // Clearing only byte 0 would leave 0xFF<track>, which reads back as a live lock on
-  // parameter 255.
-  unused: [0xff, 0xff],
-};
-
-/** Live records of one table, as `(recordOffset, track)` pairs. */
-function liveRecords(pattern: Uint8Array, table: TrackTable): { at: number; track: number }[] {
-  const out: { at: number; track: number }[] = [];
-  for (let i = 0; i < table.count; i++) {
-    const at = table.offset + i * table.size;
-    if (isUnused(pattern, at, table)) continue;
-    out.push({ at, track: pattern[at + table.trackAt]! });
-  }
-  return out;
-}
-
-function isUnused(record: Uint8Array, at: number, table: TrackTable): boolean {
-  return table.unused.every((byte, i) => record[at + i] === byte);
-}
-
-/** Live trigs per track, for reporting what an operation would destroy. */
-export function trigCounts(image: Uint8Array, pattern: number): number[] {
-  const record = patternRecord(image, pattern, DN2_LAYOUT);
-  const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
-  for (const { track } of liveRecords(record, TRIG_TABLE)) {
-    if (track < DN2_TRACK_COUNT) counts[track]!++;
-  }
-  return counts;
-}
-
-/** Live parameter-lock records per track, which a copy can exhaust. */
-export function lockCounts(image: Uint8Array, pattern: number): number[] {
-  const record = patternRecord(image, pattern, DN2_LAYOUT);
-  const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
-  for (const { track } of liveRecords(record, LOCK_TABLE)) {
-    if (track < DN2_TRACK_COUNT) counts[track]!++;
-  }
-  return counts;
-}
-
-/** The machine each track's preset runs, by name, or `undefined` where the value is unknown. */
-export function trackMachines(image: Uint8Array, pattern: number): (string | undefined)[] {
-  const kit = kitRecord(image, pattern, DN2_LAYOUT);
-  const out: (string | undefined)[] = [];
-  for (let t = 0; t < DN2_TRACK_COUNT; t++) {
-    const at = DN2_KIT.soundOffset + t * DN2_KIT.soundSize + SOUND_MACHINE_OFFSET;
-    out.push(machineName(kit[at]!));
-  }
-  return out;
-}
-
 /** Tracks carrying at least one lock whose parameter id only means something for its machine. */
 function tracksWithRelativeLocks(image: Uint8Array, pattern: number): Set<number> {
   const record = patternRecord(image, pattern, DN2_LAYOUT);
