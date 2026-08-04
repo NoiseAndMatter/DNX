@@ -5,6 +5,8 @@ import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { readPattern } from "../src/project/dn1.js";
 import { groupByName, groupCandidate, nameKey } from "../src/expand/aggregate.js";
+import { byTrigCount, rank } from "../src/expand/ranking.js";
+import { corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
 import { planExpansion } from "../src/expand/plan.js";
 import { destinationsBySound, priorityBySound, routePattern } from "../src/expand/route.js";
 import type { SoundUsage } from "../src/expand/types.js";
@@ -228,4 +230,48 @@ test("the same sound merged from several source tracks still coincides", { skip 
   for (const held of routing.blocked) {
     assert.notEqual(held.heldByPoolSlot, held.trig.soundLock);
   }
+});
+
+// --- ranking a group by what it is worth ---------------------------------------------------
+
+test("a group outranks a single sound its members would each lose to", () => {
+  // Reported from the instrument: two two-trig hi-hats stayed sound-locked while a single two-trig
+  // sound took the last track. `groupCandidate` had always summed the counts — but the candidates
+  // reached the allocator in the order their *leaders* had been ranked individually, so a group
+  // worth four sat behind four singles worth two.
+  const order: number[] = [];
+  const ranked = rank(
+    [usage("PUSH WEIGHT", 2, 1), usage("HH TINNY", 2, 2), usage("HH NOISY", 2, 3)],
+    byTrigCount(order),
+  );
+  const candidates = groupByName(ranked).map(groupCandidate);
+
+  const hh = candidates.find((c) => c.name === "HH")!;
+  assert.equal(hh.trigCount, 4, "the group is worth both its members");
+
+  // The fix: rank again once the counts have changed. Ranking asks which promotion frees the most
+  // trigs, and after grouping the answer is the total.
+  const reranked = rank(candidates, byTrigCount(order));
+  assert.equal(reranked[0]!.name, "HH", "the group must be offered a track before the single");
+});
+
+test("the reported case: HH beats PUSH WEIGHT for the last track", { skip }, () => {
+  // The whole path, on the project it was found in: eight patterns of `005 SEA_GROOVE`, aggregate
+  // by name, eight destination tracks and fourteen candidates for them.
+  const image = decodeProjectImage(
+    parseProject(new Uint8Array(readFileSync(requireCorpusFile(DN1_PROJECTS, "005 SEA_GROOVE.dnprj")))).payload.raw,
+  ).image;
+  const patterns = [0, 2, 3, 4, 8, 10, 14, 15];
+
+  const plan = planExpansion(image, { aggregateByName: true, useFreedMidiTracks: false, patterns });
+  const promoted = plan.assignments.map((a) => a.usage.name);
+
+  assert.ok(promoted.includes("HH"), `HH should have a track, got ${promoted.join(", ")}`);
+  assert.ok(
+    plan.overflow.some((u) => u.name === "PUSH WEIGHT"),
+    "PUSH WEIGHT is worth two trigs against the group's four, so it is the one that waits",
+  );
+  // The point of the exercise, in one number: two more trigs reach a track of their own.
+  assert.equal(plan.promotedTrigs, 92);
+  assert.equal(plan.overflowTrigs, 9);
 });

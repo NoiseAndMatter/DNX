@@ -183,6 +183,42 @@ say so in one word.
 
 > A guard written for one instance of a bug is the cheapest way to find the others.
 
+## Aggregated groups were ranked by their leader, not their total — FIXED 2026-08-04
+
+Reported from the expander: with **aggregate by name** on, `HH TINNY` (2 trigs) and `HH NOISY`
+(2 trigs) stayed sound-locked while `PUSH WEIGHT` (2 trigs) took the last free track. Promoting the
+pair would have freed twice as many trigs.
+
+`groupCandidate` had always summed the members' counts — the `HH` group *was* built, and it *did*
+report 4 trigs. What never happened was reordering:
+
+```ts
+const ranked = rank(candidates, byTrigCount(order));  // ranks individual sounds
+const groups = groupByName(ranked);                   // then groups them
+allocate({ ranked: [...byCandidate.keys()] });        // in the leaders' order
+```
+
+So the candidates reached the allocator ordered by their **leaders'** individual counts, and a
+four-trig group sat at position 12, behind four two-trig singles.
+
+> **Ranking asks which promotion frees the most trigs. Once several sounds share a track, the
+> answer is their total** — so grouping changes the answer, and the ranking has to be asked again.
+
+`plan.ts`'s own comment said aggregation *"needs no changes to placement rules, pinning or
+ranking"*. Two of those three were right.
+
+**Fixed** by ranking the group candidates a second time, after grouping. Grouping still runs on the
+individually-ranked list, so each group's leader — whose tags decide its placement character —
+remains its highest-ranked member.
+
+On the reported project (`005 SEA_GROOVE`, eight patterns): **92 trigs promoted instead of 90**, and
+overflow down from 11 trigs to 9. The converter confirms it end to end — `trigsPromoted: 92`, and
+**zero** trigs blocked by an aggregated-track step clash, so all four really move.
+
+That last check is the one worth keeping. Two sounds on one track cannot both hold the same step,
+and the converter reports it when they try; a ranking change that produced more promotions but more
+blocked trigs would be a worse plan wearing a better number.
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.
