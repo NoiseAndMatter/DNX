@@ -17,13 +17,51 @@ import {
   SOUND_NAME_OFFSET,
   SOUND_NAME_SIZE,
   kitRecord,
+  patternRecord,
   trackLevel,
 } from "../project/dn2image.js";
-import { readMidiTrackMask } from "../project/dn2pattern.js";
+import {
+  LOCK_TABLE,
+  TRACK_COUNT as DN2_TRACK_COUNT,
+  TRIG_TABLE,
+  liveRecords,
+  readMidiTrackMask,
+} from "../project/dn2pattern.js";
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
-import { DN2_TRACK_COUNT, lockCounts, trigCounts } from "./trackmove.js";
 
 const latin1 = new TextDecoder("latin1");
+
+/** Live trigs per track, for reporting what an operation would destroy. */
+export function trigCounts(image: Uint8Array, pattern: number): number[] {
+  const record = patternRecord(image, pattern, DN2_LAYOUT);
+  const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
+  for (const { track } of liveRecords(record, TRIG_TABLE)) {
+    if (track < DN2_TRACK_COUNT) counts[track]!++;
+  }
+  return counts;
+}
+
+/** Live parameter-lock records per track, which a copy can exhaust. */
+export function lockCounts(image: Uint8Array, pattern: number): number[] {
+  const record = patternRecord(image, pattern, DN2_LAYOUT);
+  const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
+  for (const { track } of liveRecords(record, LOCK_TABLE)) {
+    if (track < DN2_TRACK_COUNT) counts[track]!++;
+  }
+  return counts;
+}
+
+/** The machine each track's preset runs, by name, or `undefined` where the value is unknown. */
+export function trackMachines(image: Uint8Array, pattern: number): (string | undefined)[] {
+  const kit = kitRecord(image, pattern, DN2_LAYOUT);
+  const out: (string | undefined)[] = [];
+  for (let t = 0; t < DN2_TRACK_COUNT; t++) {
+    const at = DN2_KIT.soundOffset + t * DN2_KIT.soundSize + SOUND_MACHINE_OFFSET;
+    out.push(machineName(kit[at]!));
+  }
+  return out;
+}
+
 
 export interface TrackSummary {
   /** 0-based, so it indexes a shuffle directly. `label` is what a person reads. */

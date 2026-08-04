@@ -36,12 +36,12 @@ import {
 import { clear, copyMany, moveMany, swap, type Shuffle } from "../../../src/librarian/shuffle.js";
 import { Session, tag } from "../../../src/librarian/session.js";
 import {
-  DN2_TRACK_COUNT,
-  type TrackScope,
   applyTrackMove,
   planTrackMove,
+  type TrackScope,
   verifyTrackMove,
 } from "../../../src/librarian/trackmove.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "../../../src/project/dn2pattern.js";
 import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import {
