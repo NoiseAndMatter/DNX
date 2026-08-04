@@ -110,7 +110,7 @@ CSS classes on the shared grid, are styled in the shared stylesheet, and are pas
 *expander*. `grid.ts` types the action as bare `string` to avoid importing from a page folder —
 the inversion is visible in the type system.
 
-## 6. Cohesion and dead code
+## 6. Cohesion and dead code — **readers/pass-through DONE 2026-08-04**
 
 - `src/librarian/trackmove.ts` exports `trigCounts`, `lockCounts`, `trackMachines` — *readers* in a
   *mover*. So `tracksummary.ts` imports from the write module in order to summarise.
@@ -120,6 +120,35 @@ the inversion is visible in the type system.
 - Dead: `web/src/render.ts`'s `renderSummary` (never called), `trackhardwaretest.ts`'s
   `stepPatterns`, `web/src/app.ts`'s `live` set (assigned, never read), the probe's `awaitApi`.
 
+### What the move actually needed — 2026-08-04
+
+**The prescription was wrong, and the diagnosis was right.** "Move the counters into
+`tracksummary.ts`" assumed they were readers the mover merely re-exported. They are not: the mover
+*uses* all three, in `planTrackMove` and `verifyTrackMove`, and they are built on `liveRecords` and
+the two record tables, which were the mover's own private machinery. Moving only the counters would
+have forced the tables to be exported from the mover — leaking more, not less.
+
+So it split in two:
+
+- **`TrackTable`, `TRIG_TABLE`, `LOCK_TABLE`, `liveRecords` → `project/dn2pattern.ts`.** They are
+  record geometry, built from `PATTERN`, which already lives there.
+- **`trigCounts`, `lockCounts`, `trackMachines` → `librarian/tracksummary.ts`**, whose stated job is
+  exactly "what one pattern's 16 tracks hold".
+
+`trackmove.ts` imports both, and its export surface is now plan / apply / verify and their types —
+nothing a reader would want. **`dn2pattern` ← `tracksummary` ← `trackmove`**, with no cycle and no
+summariser reaching into a write path.
+
+Two more found on the way:
+
+- **`DN2_TRACK_COUNT` and `TRACK_COUNT` were both 16**, and `expand/convert.ts` already aliased one
+  to the other's name. Collapsed onto `dn2pattern`'s, aliased at the import where the longer name
+  reads better — the precedent `convert.ts` had already set.
+- **The `SOUND_SIZE` re-export had no importers at all.** Deleted rather than relocated.
+
+`test/trackmove.test.ts` no longer reimplements `0x1c`; it reads levels through `summariseTracks`.
+The hand-rolled version also took only the low byte of a u16le, so a level above 255 would have
+compared equal while being wrong.
 ## 7. Tests
 
 **Seven silent skips break our own rule — FIXED 2026-08-04.** After the `{ skip: NO_CORPUS }` guard has already passed,
@@ -182,7 +211,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 6 | ~~Share the grid view-model between the two pages~~ **DONE 2026-08-01.** `web/src/slotview.ts` — DOM-free, so it is testable — owns `SlotView`, `BANK_SIZE`, `patternSlotView` and `countOccupiedIn`. Three copies of the mapping gone; the expander's source grid keeps its one real difference as a `live` argument. `test/slotview.test.ts` added, 9 tests | shipped |
 | 7 | ~~Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`~~ **DONE 2026-08-01, and the proposed destination was wrong.** They went to a new DOM-free `web/src/dropaction.ts`: `dragrules.ts` is type-checked by the root config, which has no DOM library, so pointing it at `grid.ts` failed immediately on `NodeListOf` having no iterator. `grid.ts` now types its `action` as `DropAction` rather than `string`, and the stylesheet guard reads the union from its real home | shipped |
 | 8 | Add `src/cli/args.ts` (`arg`, `flag`, `fail`, `readProjectImage`) and route the eleven CLIs through it | low, but eleven untested entry points — ship with a smoke script |
-| 9 | Move the track counters out of the mover into `tracksummary.ts`; drop the `SOUND_SIZE` pass-through | low |
+| 9 | ~~Move the track counters out of the mover~~ **DONE 2026-08-04.** Geometry to `dn2pattern.ts`, counters to `tracksummary.ts`, so the mover exports only plan/apply/verify; duplicate track-count constant collapsed; dead `SOUND_SIZE` re-export deleted; the `0x1c` reimplementation in the tests replaced by `summariseTracks` | shipped |
 | 10 | **Throws DONE 2026-08-04** — `requireCorpusFile`/`requireCorpusFiles` in `test/corpus.ts`, all seven sites converted, `test/corpus.test.ts` added; 744 pass. **Still open:** `api`/`route`/`shuffle`/`grid` tests, and the six colliding test names | shipped in part |
 
 ## Checked and found healthy

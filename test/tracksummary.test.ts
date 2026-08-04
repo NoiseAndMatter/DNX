@@ -6,7 +6,12 @@ import { parseProject } from "../src/node/projectfile.js";
 import { DN2_LAYOUT } from "../src/project/dn2image.js";
 import { readMidiTrackMask } from "../src/project/dn2pattern.js";
 import { deviceFor } from "../src/librarian/device.js";
-import { applyTrackMove, trigCounts } from "../src/librarian/trackmove.js";
+import {
+  applyTrackMove,
+} from "../src/librarian/trackmove.js";
+import {
+  trigCounts,
+} from "../src/librarian/tracksummary.js";
 import { swap } from "../src/librarian/shuffle.js";
 import { summariseTracks, trackIndex, trackName } from "../src/librarian/tracksummary.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";

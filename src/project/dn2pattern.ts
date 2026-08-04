@@ -700,3 +700,61 @@ export function checkDn2Pattern(
 ): Dn2PatternCheck {
   return checkDn2PatternRecord(patternRecord(image, index, layout));
 }
+
+/**
+ * Trig and lock records, addressed the same way.
+ *
+ * Both tables are a run of fixed-size records with a header that marks the unused ones and a byte
+ * naming the track. Describing that shape once means a reader and a mover cannot disagree about
+ * where a lock's track number is — which they did: treating byte 0 as the track both matched the
+ * wrong records *and* overwrote each surviving lock's parameter id with a track number.
+ *
+ * These lived in `librarian/trackmove.ts`, so anything wanting to *count* what is on a track had to
+ * import from the module that *moves* it. They are geometry, and geometry belongs beside
+ * `DN2_PATTERN`, which is what they are built from.
+ */
+export interface TrackTable {
+  offset: number;
+  size: number;
+  count: number;
+  /** Byte within a record that names the track. */
+  trackAt: number;
+  /** Header bytes that mark a record unused, written from offset 0. */
+  unused: readonly number[];
+}
+
+export const TRIG_TABLE: TrackTable = {
+  offset: PATTERN.trigOffset,
+  size: PATTERN.trigSize,
+  count: PATTERN.trigCount,
+  trackAt: 0,
+  unused: [0xff],
+};
+
+export const LOCK_TABLE: TrackTable = {
+  offset: PATTERN.lockOffset,
+  size: PATTERN.lockSize,
+  count: PATTERN.lockCount,
+  // Byte 1. Byte 0 is the parameter id, which ranges well past 15 — see the corpus check in
+  // `docs/dn2-pattern-format.md` §7.
+  trackAt: 1,
+  // Both header bytes, because `readLockTable` tests the pair as one u16 against 0xFFFF.
+  // Clearing only byte 0 would leave 0xFF<track>, which reads back as a live lock on
+  // parameter 255.
+  unused: [0xff, 0xff],
+};
+
+/** Live records of one table, as `(recordOffset, track)` pairs. */
+export function liveRecords(pattern: Uint8Array, table: TrackTable): { at: number; track: number }[] {
+  const out: { at: number; track: number }[] = [];
+  for (let i = 0; i < table.count; i++) {
+    const at = table.offset + i * table.size;
+    if (isUnused(pattern, at, table)) continue;
+    out.push({ at, track: pattern[at + table.trackAt]! });
+  }
+  return out;
+}
+
+function isUnused(record: Uint8Array, at: number, table: TrackTable): boolean {
+  return table.unused.every((byte, i) => record[at + i] === byte);
+}
