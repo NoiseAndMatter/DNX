@@ -30,6 +30,7 @@ import { SYSEX_END, SYSEX_START, parseMessage } from "../sysex/container.js";
 import { ELEKTRON_MANUFACTURER_ID, PRODUCT_NAMES } from "../sysex/devices.js";
 import { RESPONSE_BIT, decodeMessage, isApiMessage } from "./api.js";
 import { DUMP_MESSAGES } from "./capabilities.js";
+import { hhmm } from "../sheet/naming.js";
 
 /** One kind of message seen, and how much of it. */
 export interface CaptureGroup {
@@ -337,8 +338,7 @@ function isElektron(raw: Uint8Array): boolean {
  * later, let alone next week.
  */
 export function captureFileName(summary: CaptureSummary, when = new Date()): string {
-  const stamp =
-    `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
+  const stamp = hhmm(when);
   const biggest = summary.groups.slice().sort((a, b) => b.bytes - a.bytes)[0];
   if (!biggest) {
     // No dumps, but API traffic is still worth a name. The capture that started all this — nearly
