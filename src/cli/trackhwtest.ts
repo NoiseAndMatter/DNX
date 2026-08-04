@@ -25,6 +25,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { cliArgs, fail } from "./args.js";
 import { escapeHtml } from "../sheet/html.js";
 import { basename, join } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
@@ -62,10 +63,6 @@ import {
 
 const CONFIRM = { confirmOverwrite: true } as const;
 
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
 
 /**
  * The individual trigs worth looking at, named by step.
@@ -492,11 +489,7 @@ function survey(image: Uint8Array, device: Device): void {
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag } = cliArgs();
 
   const projectPath = arg("project");
   if (!projectPath) {
@@ -508,7 +501,7 @@ function main(): void {
 
   let project;
   try {
-    project = openProject(projectPath, { asDn2: argv.includes("--as-dn2") });
+    project = openProject(projectPath, { asDn2: flag("as-dn2") });
   } catch (e) {
     if (e instanceof OpenError) fail(`\n${e.message}\n`);
     throw e;

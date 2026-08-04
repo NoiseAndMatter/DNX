@@ -30,6 +30,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { cliArgs, fail } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
@@ -51,10 +52,6 @@ import {
 
 const SCOPES: readonly TrackScope[] = ["both", "sequence", "preset"];
 
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
 
 function resolveTrack(token: string): number {
   const index = trackIndex(token);
@@ -83,16 +80,12 @@ function printTracks(image: Uint8Array, pattern: number): void {
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag, argv } = cliArgs();
 
   const projectPath = arg("project");
   const patternArg = arg("pattern");
-  const apply = argv.includes("--apply");
-  const confirm = argv.includes("--confirm");
+  const apply = flag("apply");
+  const confirm = flag("confirm");
   const outPath = arg("out");
 
   if (!projectPath) {
@@ -111,10 +104,10 @@ function main(): void {
   let project;
   try {
     project = openProject(projectPath, {
-      asDn2: argv.includes("--as-dn2"),
-      expand: argv.includes("--expand"),
-      compact: argv.includes("--compact"),
-      aggregateByName: argv.includes("--aggregate"),
+      asDn2: flag("as-dn2"),
+      expand: flag("expand"),
+      compact: flag("compact"),
+      aggregateByName: flag("aggregate"),
       ...(arg("template") === undefined ? {} : { template: arg("template")! }),
     });
   } catch (e) {
