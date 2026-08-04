@@ -23,6 +23,7 @@ import { renderPlan } from "./render.js";
 import { $, escapeHtml } from "./dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "./slotview.js";
 import { statusBar } from "./statusbar.js";
+import { renderToolNav } from "./toolnav.js";
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -66,6 +67,10 @@ import { ProductId } from "../../src/sysex/devices.js";
  * it with it, which this page has been bitten by before.
  */
 const status = statusBar();
+
+// Drawn rather than written into the HTML, so the row cannot say different things on different
+// pages. Immediately, because a navigation control that appears late is one you click through.
+renderToolNav($("toolnav"), "expander");
 
 /**
  * The Digitone 1 project being expanded — **an image and what to call it, and nothing else.**
