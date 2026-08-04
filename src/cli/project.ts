@@ -10,7 +10,7 @@ import { basename } from "node:path";
 import { isLengthValid } from "../project/container.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { readSavedPosition } from "../project/position.js";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { deviceFor } from "../librarian/device.js";
 import { patternName } from "../sheet/naming.js";
 

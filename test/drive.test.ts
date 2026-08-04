@@ -23,7 +23,7 @@ import {
 } from "../src/device/drive.js";
 import { parsePayload } from "../src/project/container.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 

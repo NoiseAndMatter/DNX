@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
 import { readDn2Pattern, readLockTable, readMidiTrackMask } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, deviceFor } from "../src/librarian/device.js";

@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { CORPUS } from "./corpus.js";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
 import { patternRecord as dn1PatternRecord, readLockTable as dn1ReadLockTable, readPattern } from "../src/project/dn1.js";

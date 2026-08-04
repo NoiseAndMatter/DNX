@@ -31,7 +31,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { DN2_DEVICE } from "../librarian/device.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { DN2_LAYOUT } from "../project/dn2image.js";
 import {
   DN2_POOL_OFFSET,

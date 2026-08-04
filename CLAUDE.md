@@ -75,6 +75,13 @@ its MR rather than breaking it quietly.
 
 ## Ground rules
 
+**`src/` is platform-free, and that is now enforced.** Everything under `src/` is shared byte
+for byte with the browser, so nothing there may import a `node:` module. The three that must —
+`zip.ts`, `projectfile.ts`, `open.ts` — live in `src/node/`, which `tsconfig.web.json` excludes
+as a directory rather than as a list of filenames. `test/web.test.ts` fails if anything outside
+`src/node/` or `src/cli/` takes a Node dependency. Needing one is a signal to split the module,
+not to add an exception.
+
 **Never commit Digitone project, pattern or sound files.** The test corpus is the author's
 own music and is deliberately outside this repository. `.gitignore` refuses `*.dnprj`,
 `*.dn2prj`, `*.syx` and friends as a safety net. Purpose-built example files created
@@ -131,9 +138,12 @@ change; that is the point of the tool.
 
 ```
 src/sysex/       SysEx dumps: 8-in-7 codec, container, device IDs
-src/project/     Project files: ZIP, LZ4, CRC, images, patterns, kits, sounds, tags
+src/project/     Project files: LZ4, CRC, images, patterns, kits, sounds, tags
 src/expand/      Planning, routing, translation tables, the converter
 src/librarian/   Pattern copy with sound-dependency resolution
+src/device/      Talking to an instrument: the API, the +Drive, dump requests
+src/sheet/       Hardware check sheets, and how positions are named
+src/node/        The only place under src/ that may import node: (besides cli/)
 src/cli/         Command-line entry points
 web/src/         Shared browser code; web/src/<page>/ is one page and nothing else
 docs/            Format documentation, roadmap, known issues, principles

@@ -34,7 +34,7 @@ import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findTemplate } from "../librarian/open.js";
+import { findTemplate } from "../node/open.js";
 import { htmlFallback, resolveStaticPath } from "./staticpath.js";
 
 // fileURLToPath rather than `.pathname` with a drive-letter regex: the latter leaves forward

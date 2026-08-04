@@ -4,7 +4,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { isCheckValid, readCheckField } from "../src/project/checksum.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { encodeBlockChain } from "../src/project/lz4encode.js";
 import { buildPayload } from "../src/project/write.js";

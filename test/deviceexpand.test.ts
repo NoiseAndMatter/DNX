@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { NO_CORPUS, corpusFiles, DN1_PROJECTS } from "./corpus.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
 import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET } from "../src/project/soundmap.js";
