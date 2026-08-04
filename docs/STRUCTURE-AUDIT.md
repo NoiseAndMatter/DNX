@@ -105,11 +105,22 @@ the inversion is visible in the type system.
 
 ## 7. Tests
 
-**Seven silent skips break our own rule.** After the `{ skip: NO_CORPUS }` guard has already passed,
+**Seven silent skips break our own rule — FIXED 2026-08-04.** After the `{ skip: NO_CORPUS }` guard has already passed,
 these do `if (!existsSync(...)) return;` — the corpus is present, the specific fixture is missing,
 and the test reports green: `machine.test.ts` (×3), `web.test.ts` (×2), `plan.test.ts`,
 `checksum.test.ts`, `container.test.ts`, `write.test.ts`, `soundmap.test.ts`. `capture.test.ts` and
 `merge.test.ts` throw instead, which is the pattern the rest should follow.
+
+`test/corpus.ts` now has `requireCorpusFile` and `requireCorpusFiles`, which throw naming the
+missing fixture, and all seven sites use them. The four list builders throw when the corpus exists
+but the directory does not, and return `[]` only when there is no corpus at all — the one case that
+is genuinely a skip.
+
+**All seven fixtures turned out to be present**, so nothing was passing on nothing here. That is
+the good outcome and not the point: the guard was unenforceable, and on any other machine the same
+suite would have gone green while checking less. `test/corpus.test.ts` proves the new guard fires,
+because a guard that never fires is the same bug one level up and this is the last place anyone
+would look for it.
 
 **Untested subjects that matter:** `src/device/api.ts` (487 lines, eight response readers — the
 existing `deviceapi.test.ts` tests the codec, not this); the whole `src/expand/` pipeline
@@ -155,7 +166,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 7 | ~~Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`~~ **DONE 2026-08-01, and the proposed destination was wrong.** They went to a new DOM-free `web/src/dropaction.ts`: `dragrules.ts` is type-checked by the root config, which has no DOM library, so pointing it at `grid.ts` failed immediately on `NodeListOf` having no iterator. `grid.ts` now types its `action` as `DropAction` rather than `string`, and the stylesheet guard reads the union from its real home | shipped |
 | 8 | Add `src/cli/args.ts` (`arg`, `flag`, `fail`, `readProjectImage`) and route the eleven CLIs through it | low, but eleven untested entry points — ship with a smoke script |
 | 9 | Move the track counters out of the mover into `tracksummary.ts`; drop the `SOUND_SIZE` pass-through | low |
-| 10 | Convert the seven silent skips to throws, add `api`/`route`/`shuffle`/`grid` tests, disambiguate the six colliding test names | low for the new tests; **medium** for the throws — it may turn a green run red, which is the point. Own PR so failures are attributable |
+| 10 | **Throws DONE 2026-08-04** — `requireCorpusFile`/`requireCorpusFiles` in `test/corpus.ts`, all seven sites converted, `test/corpus.test.ts` added; 744 pass. **Still open:** `api`/`route`/`shuffle`/`grid` tests, and the six colliding test names | shipped in part |
 
 ## Checked and found healthy
 

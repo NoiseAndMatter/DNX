@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { CORPUS } from "./corpus.js";
+import { CORPUS, NO_CORPUS } from "./corpus.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -15,7 +15,8 @@ import { DumpType, ProductId } from "../src/sysex/devices.js";
 const EXAMPLES = CORPUS ?? "";
 
 function syxFilesUnder(dir: string): string[] {
-  if (!existsSync(dir)) return [];
+  if (NO_CORPUS) return [];
+  if (!existsSync(dir)) throw new Error(`${dir} is not in the corpus — nothing would be checked`);
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
