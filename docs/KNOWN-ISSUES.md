@@ -115,28 +115,31 @@ slot — and compressing the image behind it. `test/driveexport.test.ts` round-t
 2,781,743-byte capture through the export and back, checks the result decodes to the identical
 image, and checks it is actually compressed rather than the raw bytes passed through.
 
-### SAVE to the device is blocked, and one experiment unblocks it
+### SAVE to the device — the experiment was run, 2026-08-04
 
-The other half of this report — *"we need SAVE so the changes can be committed to the project in the
-device"* — cannot be built yet, and the reason is specific rather than general.
+Both presses, on a Digitone 1, captured in `99_HardwareTest/API_17msg_2251.syx`.
 
-Writing a project to the +Drive needs `0x57`/`0x58`/`0x59`, which are decoded, and a **checksum
-whose algorithm is unknown** (`docs/device-storage.md` §7). We can write back bytes the device
-itself gave us a checksum for, and nothing else — which excludes every edited project by
-definition.
+**The write sequence works.** `/soundbanks/A/1` → `/soundbanks/H/256`, 345 bytes in one chunk with
+the checksum the device reported on the read, `0x59` acknowledged — and the device's own re-listing
+then showed `256: "DIGIT-ONE"`. The first write to a Digitone's +Drive in this project's history.
 
-**The experiment that settles it is already built** and sits in the probe: read a file, write the
-identical bytes to an *empty* slot with the device's own checksum, then repeat with **Corrupt the
-checksum** ticked.
+**The checksum is enforced.** One bit flipped in it and the device answered
+`Invalid package checksum; corrupt transfer`, with the link check passing so the refusal is an
+answer rather than a silence. It is rejected at `0x58` — write-data — before any commit, so nothing
+is left half-written.
 
-- **Refused** → the field is validated, and the algorithm has to be fitted from the pairs we already
-  hold before SAVE is possible at all.
-- **Accepted** → the field is not enforced, and writing arbitrary content is unblocked outright.
+> **SAVE-to-+Drive stays blocked, and is now a solvable problem rather than an unknown one.**
 
-Until then the working route to the instrument is unchanged: **Write to device** sends changed
-patterns to the *active* project over the dump protocol, and SAVE PROJECT on the front panel commits
-them. That route is proven on hardware; the +Drive one has never been performed.
+What changed is the shape of the remaining work. We can write back bytes the device checksummed
+for us, and nothing else — which still excludes every edited project. But the device **names** a bad
+checksum, so it is an oracle: a candidate algorithm can be tested one round trip at a time with an
+unambiguous answer, writing only into an empty slot. That is a far better position than fitting a
+function to matched pairs and hoping.
 
+Next step is a checksum search driven from the instrument, seeded by the pairs already held
+(`docs/device-storage.md` §7). The working route to the device is unchanged meanwhile: **Write to
+device** sends changed patterns to the active project over the dump protocol, and SAVE PROJECT on
+the front panel commits them.
 ## The grid drew one landing while the panel described another — FIXED 2026-08-04
 
 Reported: *"if you tick/untick contiguous, the distribution of patterns already dropped doesn't

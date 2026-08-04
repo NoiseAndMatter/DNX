@@ -601,15 +601,89 @@ Arithmetic checks out both times: `0x57` declared `0x4690` = 18,064 and the `0x5
 16-byte header + 18,064; the sound declared 269 and carried 285.
 
 > [!warning] **The checksum's algorithm is unknown, and it is the last thing standing between us
-> and writing.**
+> and writing arbitrary content.**
 > It is the **same field the read reply carries at offset 14**: the sound uploaded to
 > `/soundbanks/C/29` declared `cb 49 92 19`, and reading that sound back reported `cb 49 92 19`.
 > Two sides of one value — which identifies the field and not the function.
->
-> **A first write can be proved without solving it**: read a file, keep the checksum the device
-> reported, and write the identical bytes back with it. Accepted means it is a content checksum and
-> the algorithm can be fitted from pairs we already hold; refused means it is something else, learnt
-> cheaply.
+
+### The first write to a Digitone's +Drive — 2026-08-04, on a Digitone 1
+
+Both halves of the experiment were run, and both answered.
+
+**1. Writing back what was read: COMMITTED, and verified on the instrument.**
+
+```
+read   /soundbanks/A/1     345 bytes, checksum e48ff54e
+write  /soundbanks/H/256   345 bytes in 1 chunk, checksum e48ff54e
+commit 0x59 acknowledged
+```
+
+So `0x57`/`0x58`/`0x59` work end to end, and the destination guard — re-list the directory at the
+moment of writing, refuse an occupied slot — held. **The acknowledgement was not taken as proof:**
+the slot was checked on the device itself, because `0x59` says the device accepted the message and
+not that the bytes are on the drive.
+
+**2. The same write with one bit flipped in the checksum: REFUSED, in the device's own words.**
+
+```
+Error: Invalid package checksum; corrupt transfer
+Link check: PASSED
+```
+
+> **The checksum is validated.** Writing *edited* content to the +Drive is blocked until the
+> algorithm is fitted. Writing back bytes the device itself checksummed works today.
+
+The link check matters as much as the error: a refusal and a silence are different findings, and
+this project has already spent three days treating one as the other. The link was proven alive, so
+the refusal is the device's answer rather than a message that never arrived.
+
+#### What this changes about solving it
+
+**The device is now an oracle.** It does not merely reject a bad checksum, it *names* the reason —
+so a candidate algorithm can be tested directly, one attempt at a time, with an unambiguous yes or
+no. That is a much stronger position than fitting a function to matched pairs and hoping:
+
+- matched pairs say what the answer is for bytes we already hold
+- the oracle says whether a *proposed function* is right, for bytes we choose
+
+An algorithm search can therefore be driven from the instrument. It costs one round trip per
+candidate and writes only to an empty slot.
+
+#### The whole session, off the wire
+
+`99_HardwareTest/API_17msg_2251.syx` carries both experiments end to end, which is what makes the
+result evidence rather than a screenshot:
+
+| # | code | what |
+|---|---|---|
+| 1–2 | `0xd3` | list `/soundbanks/H` — 256 entries, **0 named** |
+| 3–6 | `0xd4` `0xd5` `0xd5` `0xd6` | open, two chunks, close — reading `/soundbanks/A/1` |
+| 7–9 | `0xd7` `0xd8` `0xd9` | write-open, write-data, **commit acknowledged** |
+| 10 | `0xd3` | list again — **256:"DIGIT-ONE" (302)** |
+| 11–14 | `0xd4` `0xd5` `0xd5` `0xd6` | the same read again |
+| 15–16 | `0xd7` `0xd8` | write-open, then `Invalid package checksum; corrupt transfer` |
+| 17 | `0x81` | the link check — the device answers `Digitone` |
+
+Two things fall out of that trace which neither card on screen could show.
+
+**The write is confirmed by the device's own listing.** Line 10 is `/soundbanks/H` re-listed after
+the commit, and slot 256 now carries the name `DIGIT-ONE`. That is the instrument reporting the
+file, independently of the acknowledgement and of anyone reading a screen.
+
+**The checksum is validated at `0x58`, not at `0x59`.** The refused attempt reaches write-open
+(`0xd7`) and dies on write-data (`0xd8`); there is no commit response at all. So a bad checksum is
+rejected before anything is provisionally stored — the failure is clean, and an algorithm search
+cannot leave half-written files behind.
+
+#### The listing's `size` is an allocation, not a file length
+
+**Settled by the same capture, and it corrects a note in `storage.ts`.** Every empty slot in
+`/soundbanks/H` listed at `size: 302`. After the write, the *occupied* slot 256 also lists at
+`size: 302` — while the file itself read **345 bytes**.
+
+So `302` is what a DN1 sound *slot* measures, not what a sound measures, and the listing reports it
+whether the slot holds anything or not. Occupancy is read from the name and the permission mask, as
+`Entry.occupied` already does; `size` must not be used for it.
 
 ### Moving, copying, deleting
 

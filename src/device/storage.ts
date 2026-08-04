@@ -620,7 +620,16 @@ export interface Entry {
   kind: EntryKind;
   /** Position in the directory. **32-bit**, so unaffected by the dump protocol's 7-bit limit. */
   index: number;
-  /** Bytes, for a file. A DN1 sound reads 302, which is how the format was recognised. */
+  /**
+   * Bytes, for a file — **the slot's allocation, not the length of what is in it.**
+   *
+   * Every slot in a DN1 sound bank reports 302 whether it holds a sound or not: verified
+   * 2026-08-04 by listing an empty `/soundbanks/H`, writing a sound into slot 256, and listing
+   * again — the name changed and the size did not, while the file itself read 345 bytes.
+   *
+   * So this must never be used to decide occupancy. `occupied` reads the name and the permission
+   * mask, which is what actually changes.
+   */
   size?: number;
   /** Children, for a directory. */
   children?: number;
