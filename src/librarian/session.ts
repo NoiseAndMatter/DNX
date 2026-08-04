@@ -155,6 +155,20 @@ export class Session {
       .map((s) => ({ label: s.tag.label, bytes: s.patch.bytes }));
   }
 
+  /**
+   * Steps that have been undone and could be redone, **newest first**.
+   *
+   * The mirror of `history()`, and it exists for the same reason: a control that can only step one
+   * at a time makes the user click eleven times to reach a state they can see. Together the two
+   * make a timeline — what has happened, and what would happen again — which is the thing somebody
+   * actually wants to navigate.
+   *
+   * Newest first so the two lists concatenate into one ordering without either being reversed.
+   */
+  future(): HistoryEntry[] {
+    return this.undone.map((s) => ({ label: s.tag.label, bytes: s.patch.bytes }));
+  }
+
   /** What undo would take back, for labelling the control. */
   get undoLabel(): string | undefined {
     return this.done[this.done.length - 1]?.tag.label;
