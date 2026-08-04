@@ -277,25 +277,68 @@ export function matchApiFrame(data: Uint8Array, accept: (frame: ApiFrame) => boo
   return accept(frame) ? frame : undefined;
 }
 
+/** An input and an output guessed to be the same instrument. */
+export interface PortPair {
+  input: MIDIInput;
+  output: MIDIOutput;
+}
+
 /**
- * The input and output most likely to be the same instrument.
+ * Every plausible instrument on the ports, best guess first.
  *
- * Ports are named by the OS and a device usually shows up twice with the same prefix. Longest
- * shared prefix wins, which is how "Digitone II MIDI 1" finds "Digitone II MIDI 1" rather than
- * whatever else is plugged in.
+ * ## Why one pair is not enough
+ *
+ * `bestPair` answers *"which single pair is most likely?"*, and that is the wrong question the
+ * moment two instruments are plugged in — which is the expander's whole premise: a Digitone 1 to
+ * read from and a Digitone II to write to, at the same time. Asking for the best pair returns one
+ * of them arbitrarily, and there is no way to say which one you wanted.
+ *
+ * So this returns **all** of them, and the caller asks each who it is. Nothing in Web MIDI says
+ * which ports belong together or what is behind them; the only authority on either question is the
+ * device's own `Device` reply, and you cannot get one without picking a pair to ask on.
+ *
+ * ## How they are grouped
+ *
+ * One pair per output, matched to the input sharing the longest name prefix — the OS names both
+ * ends of an instrument alike, so "Digitone II MIDI 1" finds its twin rather than whatever else is
+ * connected. Ordered by that score, so the most confident guess is probed first and a single
+ * connected device costs exactly one request.
+ *
+ * A pair whose two ends share nothing is still returned, last. On a machine where the naming
+ * convention does not hold, a poor guess that can be tested beats no guess at all.
  */
-export function bestPair(
-  inputs: MIDIInput[],
-  outputs: MIDIOutput[],
-): { input: MIDIInput; output: MIDIOutput } {
-  let best = { input: inputs[0]!, output: outputs[0]!, score: -1 };
+export function candidatePairs(inputs: MIDIInput[], outputs: MIDIOutput[]): PortPair[] {
+  const scored: { pair: PortPair; score: number }[] = [];
+
   for (const output of outputs) {
+    let best: { input: MIDIInput; score: number } | undefined;
     for (const input of inputs) {
       const score = sharedPrefix(input.name ?? "", output.name ?? "");
-      if (score > best.score) best = { input, output, score };
+      if (!best || score > best.score) best = { input, score };
     }
+    if (best) scored.push({ pair: { input: best.input, output }, score: best.score });
   }
-  return { input: best.input, output: best.output };
+
+  // Highest score first, and stable within a score so the order is reproducible rather than
+  // dependent on how the browser happened to enumerate the ports.
+  return scored
+    .map((entry, at) => ({ ...entry, at }))
+    .sort((a, b) => b.score - a.score || a.at - b.at)
+    .map((entry) => entry.pair);
+}
+
+/**
+ * The pair most likely to be one instrument, or `undefined` when the names give no reason to think
+ * any two ports belong together.
+ *
+ * **No shared prefix means no guess.** Returning the first of each list would be a guess dressed as
+ * a fact, and the probe — which shows its guess in two selects the user can override — has always
+ * refused to make it. That rule lives here now rather than in a fourth copy of the scoring.
+ */
+export function bestPair(inputs: MIDIInput[], outputs: MIDIOutput[]): PortPair | undefined {
+  const best = candidatePairs(inputs, outputs)[0];
+  if (!best) return undefined;
+  return sharedPrefix(best.input.name ?? "", best.output.name ?? "") > 0 ? best : undefined;
 }
 
 /** Length of the shared prefix of two strings. */
