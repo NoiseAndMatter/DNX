@@ -219,6 +219,40 @@ That last check is the one worth keeping. Two sounds on one track cannot both ho
 and the converter reports it when they try; a ranking change that produced more promotions but more
 blocked trigs would be a worse plan wearing a better number.
 
+## An exported +Drive project claimed to be uncompressed — FIXED 2026-08-04
+
+Reported from the hardware (T14): a project opened from a +Drive slot exported fine, but loading
+the file with **Elektron Transfer stopped at "Calculating Checksum" and Transfer then crashed**.
+
+Byte 29 of the 31-byte container header:
+
+```
+real .dnprj  ac 11 d3 03 02 00 05 00 09 30 30 39 37 00 … 04 01 0c   body LZ4-compressed
++Drive read  ac 11 d3 03 02 00 05 00 09 30 30 39 37 00 … 04 00 0c   body uncompressed
+                                                            ^^
+```
+
+Every other byte of the two headers is identical. `buildPayload` copies the header verbatim — right
+for all of them but this one — and then always writes an **LZ4 chain**. So a project exported from
+the +Drive claimed to be uncompressed while being compressed.
+
+**All 79 project files in the corpus carry `0x01` here**, both families, every firmware present. The
+only `0x00` ever seen is the uncompressed +Drive stream. What the byte is *called* is still unknown
+and does not need to be: everything `buildPayload` emits is compressed, so it now writes `0x01`.
+
+### Why the test suite did not catch it
+
+`test/driveexport.test.ts` already round-tripped the real 2,781,743-byte capture through the export
+and back, and passed. **Our reader measures the body rather than trusting the flag** — `imageFrom`
+decides by comparing the declared length against the image size for the family — so a wrong flag
+was invisible to us and fatal to Transfer.
+
+> **A round trip through your own reader proves your reader agrees with your writer, and nothing
+> more.** The corpus is the only witness to what a real file looks like, and the check that was
+> missing is the one that compares against it rather than against ourselves.
+
+A test now asserts the emitted byte is `0x01`.
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.

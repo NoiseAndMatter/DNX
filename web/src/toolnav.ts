@@ -45,6 +45,38 @@ export const TOOLS = [
 
 export type ToolId = (typeof TOOLS)[number]["id"];
 
+/**
+ * Where the row is now, or a thrown error naming what it was asked about.
+ *
+ * **A silent `-1` here is indistinguishable from wrapping.** `findIndex` returns it for an id that
+ * is not in the row, and `-1 + 1` is `0` — so "next" from an unknown position lands on the leftmost
+ * tool, which looks exactly like the row cycling round. Every id is written in the same repository
+ * as the row, so an unknown one is a bug to fix rather than a case to handle.
+ */
+export function indexOfTool(tool: ToolId): number {
+  const at = TOOLS.findIndex((t) => t.id === tool);
+  if (at === -1) {
+    throw new Error(`${tool} is not one of ${TOOLS.map((t) => t.id).join(", ")}`);
+  }
+  return at;
+}
+
+/**
+ * The tool one step along, or `undefined` at either end.
+ *
+ * **The row does not wrap**, and this is where that is decided. A "next" that jumps from the last
+ * tool back to the first is how you end up on the probe when you meant to leave the expander — and
+ * because the row is three fixed positions, the end of it is a place you can feel rather than a
+ * thing you have to read.
+ *
+ * Pure and exported so the rule is actually tested: it was previously three lines inside a keydown
+ * listener, where nothing could reach it.
+ */
+export function stepFrom(at: number, direction: 1 | -1): number | undefined {
+  const to = at + direction;
+  return to < 0 || to >= TOOLS.length ? undefined : to;
+}
+
 /** Where the arriving page should slide in from. Set on the way out, read and cleared on arrival. */
 const DIRECTION_KEY = "dnx-nav-direction";
 
@@ -97,7 +129,7 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
 
 /** Navigate to a tool by position, remembering which way the page should appear to move. */
 function goTo(to: number, current: ToolId): void {
-  const from = TOOLS.findIndex((tool) => tool.id === current);
+  const from = indexOfTool(current);
   if (to === from || !TOOLS[to]) return;
   try {
     sessionStorage.setItem(DIRECTION_KEY, to > from ? "right" : "left");
@@ -109,18 +141,18 @@ function goTo(to: number, current: ToolId): void {
 }
 
 function wireShortcuts(current: ToolId): void {
-  const at = TOOLS.findIndex((tool) => tool.id === current);
+  const at = indexOfTool(current);
 
   window.addEventListener("keydown", (event) => {
     if (!event.ctrlKey || !event.altKey || event.shiftKey || event.metaKey) return;
 
     if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-      const to = at + (event.key === "ArrowRight" ? 1 : -1);
-      // **Stops at the ends rather than wrapping.** The row is a fixed line of three, and a
-      // "next" that jumps from the last back to the first is how you end up on the probe when
-      // you meant to leave the expander.
-      if (to < 0 || to >= TOOLS.length) return;
+      const to = stepFrom(at, event.key === "ArrowRight" ? 1 : -1);
+      // **Swallowed at the ends, not passed on.** Reported as wrapping from the hardware, and
+      // whatever the cause, a modified arrow that reaches the browser from the last tool is one the
+      // page has decided not to act on — so it should not act anywhere else either.
       event.preventDefault();
+      if (to === undefined) return;
       goTo(to, current);
       return;
     }
