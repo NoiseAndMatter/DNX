@@ -91,6 +91,14 @@
       <label><input type="radio" name="mode" id="modeSelect" value="select" checked> Selected patterns</label>
       <label><input type="radio" name="mode" id="modeWhole" value="whole"> Whole project</label>
       <span class="sep"></span>
+      <!--
+        Unticked by default, because the default is to keep what the musician arranged. Selecting
+        A1, A9, A10 and dropping on A1 lands them on A1, A9, A10 — the gaps are usually where the
+        variations sit relative to the main idea. Tick this when the job is the opposite one:
+        gathering scattered sketches into a block.
+      -->
+      <label title="Pack the selection one after another from the drop, instead of keeping the gaps between them"><input type="checkbox" id="contiguous"> Contiguous</label>
+      <span class="sep"></span>
       <label><input type="checkbox" id="compact"> Compact</label>
       <label><input type="checkbox" id="freeMidi"> Freed MIDI</label>
       <label><input type="checkbox" id="aggregate"> Aggregate by name</label>

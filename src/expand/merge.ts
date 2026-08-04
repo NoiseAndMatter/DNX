@@ -33,6 +33,12 @@ import { type ConversionReport } from "./convert.js";
 import { convertProject } from "./convert.js";
 import { type ExpansionPlan } from "./types.js";
 import { planExpansion } from "./plan.js";
+import {
+  DEFAULT_LANDING,
+  type LandingMode,
+  landingSlotsFor,
+  landingRefusal,
+} from "./landing.js";
 import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
 import { PATTERN, TRACK, TRACK_COUNT } from "../project/dn2pattern.js";
 import {
@@ -57,8 +63,20 @@ export interface MergeOptions {
   patterns: number[];
   /** The Digitone II project to merge into — its pool and its other patterns are preserved. */
   destination: Uint8Array;
-  /** Destination slot the first pattern lands on; the rest follow consecutively. */
+  /**
+   * The slot the drop chose — an **anchor**, not necessarily a start.
+   *
+   * In `relative` mode it is where the lowest-numbered selected pattern goes; in `contiguous`
+   * it is where the first one goes and the rest follow it.
+   */
   landing: number;
+  /**
+   * How the rest are positioned around the anchor. Defaults to keeping their spacing.
+   *
+   * See `landing.ts` — the rule lives there because the page previews it and this writes it, and
+   * a preview computed separately from the write is a preview that can be wrong.
+   */
+  landingMode?: LandingMode;
   plan?: ExpansionPlan;
   /**
    * Write what fits when the destination's pool cannot take every incoming sound.
@@ -157,12 +175,13 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   }
   // Refused rather than truncated. Dropping the tail of a selection is the kind of quiet
   // helpfulness that gets discovered three patterns later.
-  if (landing + patterns.length > DN2_LAYOUT.patternCount) {
-    throw new MergeRefused(
-      `${patterns.length} pattern(s) landing on ${patternName(landing)} would run past ` +
-        `${patternName(DN2_LAYOUT.patternCount - 1)}. Land them earlier or take fewer.`,
-    );
-  }
+  //
+  // Computed from the real destinations rather than from `landing + count`: with relative
+  // landing the two are different numbers, and the arithmetic version would both miss real
+  // overflows and invent ones that are not there.
+  const landingSlots = landingSlotsFor(patterns, landing, options.landingMode ?? DEFAULT_LANDING);
+  const refusal = landingRefusal(patterns, landingSlots, DN2_LAYOUT.patternCount);
+  if (refusal) throw new MergeRefused(refusal);
 
   // **Planned for the patterns being merged, not for the project they came from.** Expansion
   // decides which sounds get a track and which stay locked across everything in scope, so a
@@ -172,7 +191,6 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   const { image: converted, report } = convertProject(source, destination, { plan });
 
   const image = Uint8Array.from(destination);
-  const landingSlots = patterns.map((_, i) => landing + i);
 
   const overwrites = landingSlots.filter((slot) => patternOccupied(destination, slot));
   if (overwrites.length > 0 && !options.confirmOverwrite) {
@@ -247,7 +265,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   // --- copy the patterns in, re-pointing every lock ---------------------------------------------
   let rerouted = 0;
   patterns.forEach((from, i) => {
-    const to = landing + i;
+    const to = landingSlots[i]!;
     const pattern = Uint8Array.from(patternRecord(converted, from, DN2_LAYOUT));
     rerouted += reroute(pattern, remap);
     setPatternRecord(image, to, pattern);
