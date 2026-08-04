@@ -67,6 +67,50 @@ export function corpusPath(...parts: string[]): string {
   return join(CORPUS, ...parts);
 }
 
+/**
+ * A corpus path that **must** be there, or a thrown error naming it.
+ *
+ * ## The failure this exists to stop
+ *
+ * `{ skip: NO_CORPUS }` answers "is there a corpus at all". It says nothing about whether *this*
+ * fixture is in it — so tests grew a second guard, `if (!existsSync(path)) return;`, which runs
+ * **after** the skip has already passed. The corpus is present, the file is not, and the test
+ * reports green having asserted nothing at all.
+ *
+ * Seven tests were doing that. A suite that goes green when its evidence is missing is worse than
+ * one that fails, because the failure is at least visible.
+ *
+ * > A missing corpus is a reason to skip. A missing fixture inside a corpus that exists is a
+ * > broken test, and it should say so.
+ */
+export function requireCorpusFile(...parts: string[]): string {
+  const path = corpusPath(...parts);
+  if (!existsSync(path)) {
+    throw new Error(
+      `${path} is not in the corpus. This test asserts nothing without it — add the file, or ` +
+        `delete the test rather than letting it pass by finding nothing.`,
+    );
+  }
+  return path;
+}
+
+/**
+ * Corpus files that must not be an empty list.
+ *
+ * The looping equivalent of the above: a `for` over nothing completes successfully, so a test that
+ * checks a thousand patterns and a test that checks none are indistinguishable in the output.
+ */
+export function requireCorpusFiles(subdir: string, extension: string): string[] {
+  const files = corpusFiles(subdir, extension);
+  if (files.length === 0) {
+    throw new Error(
+      `no ${extension} files under ${subdir} in the corpus — this test would iterate over nothing ` +
+        `and report success`,
+    );
+  }
+  return files;
+}
+
 /** Files matching an extension under a corpus subdirectory, sorted. Empty when absent. */
 export function corpusFiles(subdir: string, extension: string): string[] {
   if (!CORPUS) return [];

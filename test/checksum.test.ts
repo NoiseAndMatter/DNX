@@ -20,7 +20,8 @@ const EXAMPLES = CORPUS ?? "";
 
 /** Every reference project on disk: 53 DN1 .dnprj files plus 1 DN2 .dn2prj file. */
 function projectFilesUnder(dir: string): string[] {
-  if (!existsSync(dir)) return [];
+  if (NO_CORPUS) return [];
+  if (!existsSync(dir)) throw new Error(`${dir} is not in the corpus — nothing would be checked`);
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);

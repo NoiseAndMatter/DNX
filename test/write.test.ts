@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { CORPUS } from "./corpus.js";
+import { CORPUS, NO_CORPUS } from "./corpus.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -13,8 +13,12 @@ const ROOT = CORPUS ?? "";
 
 function projectFiles(): string[] {
   const out: string[] = [];
+  if (NO_CORPUS) return [];
   for (const dir of [join(ROOT, "01_DN1", "01_Projects"), join(ROOT, "02_DN2", "01_Projects")]) {
-    if (!existsSync(dir)) continue;
+    // A corpus that exists but holds none of these is a broken corpus, not a reason to pass: a
+    // loop over an empty list completes successfully and looks identical to one that checked
+    // every file.
+    if (!existsSync(dir)) throw new Error(`${dir} is not in the corpus — nothing would be rebuilt`);
     for (const f of readdirSync(dir)) {
       if (/\.dn2?prj$/i.test(f)) out.push(join(dir, f));
     }

@@ -16,7 +16,7 @@ import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { kitRecord, DN2_LAYOUT } from "../src/project/dn2image.js";
 import { MACHINE, SOUND_MACHINE_OFFSET, machineName, machineOf } from "../src/project/machine.js";
 import { convertProject } from "../src/expand/convert.js";
-import { NO_CORPUS, SKIP_REASON, corpusPath, DN1_PROJECTS, DN2_PROJECTS } from "./corpus.js";
+import { NO_CORPUS, SKIP_REASON, corpusPath, requireCorpusFile, DN1_PROJECTS, DN2_PROJECTS } from "./corpus.js";
 
 const KIT_SOUND_OFFSET = 60;
 const SOUND_SIZE = 359;
@@ -46,8 +46,7 @@ test("machineOf reads the documented offset", () => {
 });
 
 test("the capture's three switched tracks read their machines", { skip }, () => {
-  const path = corpusPath(DN2_PROJECTS, "DATA_CAPTURE.dn2prj");
-  if (!existsSync(path)) return;
+  const path = requireCorpusFile(DN2_PROJECTS, "DATA_CAPTURE.dn2prj");
   // A6 is the machines pattern: track 2 FM DRUM, track 3 MIDI, track 7 Wavetone, track 8 Swarmer.
   const got = machines(image(path), 5);
   assert.equal(got[1], MACHINE.fmDrum, "track 2");
@@ -79,9 +78,8 @@ test("Elektron's conversions use only FM TONE and MIDI, and MIDI only on slots 4
 });
 
 test("conversion writes the MIDI machine even from a neutral template", { skip }, () => {
-  const source = corpusPath(DN1_PROJECTS, "002 MORNING_JAM.dnprj");
-  const template = corpusPath(DN2_PROJECTS, "EMPTY.dn2prj");
-  if (!existsSync(source) || !existsSync(template)) return;
+  const source = requireCorpusFile(DN1_PROJECTS, "002 MORNING_JAM.dnprj");
+  const template = requireCorpusFile(DN2_PROJECTS, "EMPTY.dn2prj");
 
   const templateImage = image(template);
   // The premise: a neutral template has FM TONE everywhere, so inheriting is silently wrong.

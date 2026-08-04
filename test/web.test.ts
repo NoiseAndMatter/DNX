@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { NO_CORPUS, corpusPath, DN1_PROJECTS } from "./corpus.js";
+import { NO_CORPUS, corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/project/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
 
@@ -248,8 +248,7 @@ test("the manager reaches the librarian rather than reimplementing it", () => {
 test("the browser ZIP writer produces something the library can read", { skip: NO_CORPUS }, async () => {
   // A real project is the only honest input: it exercises a multi-megabyte deflate and the
   // exact entry names the device expects.
-  const path = join(corpusPath(DN1_PROJECTS), "002 MORNING_JAM.dnprj");
-  if (!existsSync(path)) return;
+  const path = requireCorpusFile(DN1_PROJECTS, "002 MORNING_JAM.dnprj");
 
   const original = new Uint8Array(readFileSync(path));
   const entries = await readZip(original);
@@ -264,8 +263,7 @@ test("the browser ZIP writer produces something the library can read", { skip: N
 });
 
 test("the browser reader agrees with the library reader", { skip: NO_CORPUS }, async () => {
-  const path = join(corpusPath(DN1_PROJECTS), "002 MORNING_JAM.dnprj");
-  if (!existsSync(path)) return;
+  const path = requireCorpusFile(DN1_PROJECTS, "002 MORNING_JAM.dnprj");
 
   const bytes = new Uint8Array(readFileSync(path));
   const entries = await readZip(bytes);
