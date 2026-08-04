@@ -1837,6 +1837,57 @@ attribute, since a shortcut nobody can find is a shortcut nobody uses.
 This wants `web/dnx.css` and the shared page shell, so it lands after the structure work rather than
 before it.
 
+## 7. From the hardware session — raised 2026-08-04
+
+Found with a DN1 connected and the server running the current build. **Recorded, not started.**
+
+### 7a. Open Device fails on a missing template, while Browse +Drive works
+
+The manager's *Open device* refuses with:
+
+> No template available, and a device read needs one for the parts no dump carries — the header,
+> the song table and the slot array. Open a project file first, or run the local server so it can
+> serve EMPTY.dn2prj.
+
+**But the server was running and a device was connected**, and *Browse +Drive* on the same page
+works — projects can be listed and opened. So the +Drive path finds what it needs and the dump path
+does not.
+
+That asymmetry is the lead worth following, and it points at the template lookup rather than at
+MIDI: `fetchServedTemplate` fails or is never called, while `openDeviceProject` needs no template
+because a stored file carries every byte. Note the expander gained an **embedded blank project**
+(`src/librarian/blankproject.ts`) for exactly this reason — the manager may simply not use it yet,
+in which case the fix is to reach for the same fallback rather than to serve a file.
+
+### 7b. Export does nothing after an edit, and there is no SAVE to the device
+
+Two things behind one report. **Export appearing to do nothing is a bug** and comes first.
+
+The second is a real gap: everything the manager does lives in memory, and the only way out is a
+file. There is no *write this back to the instrument*, even though the write path is now proven
+byte-for-byte (`docs/device-probing.md`). A SAVE would need the same three-way verdict the probe
+uses — overwritten, refused, or something else — and the reminder that a write lands in the active
+project until the user presses SAVE PROJECT on the device itself.
+
+### 7c. The drop is redundant with Apply, and says too little
+
+Clarified during testing: **the drag works.** It has the same effect as picking a destination and
+pressing Apply, which makes the gesture feel like it did nothing.
+
+The ask, in the user's words: once a target is drawn or selected, the destination cells should show
+**the name of the future pattern in a darker colour**, becoming the final state once Apply runs.
+Today the only indicator is the amber outline from the landing marker.
+
+So the drop should *stage* visibly rather than merely record a slot — a preview of what will be
+there, distinct from what is there. Whether the drop should also commit outright is a separate
+question and probably a later one: Apply exists because choosing must not be the same act as
+writing, and that separation earns its keep as soon as a write can reach an instrument (7b).
+
+### 7d. A connected DN1 still cannot be a source
+
+Already recorded as 6a. Repeated here because it was hit again in use: the expander offers only a
+file, while its destination half already offers Blank / From file / Connect / Read its project.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
