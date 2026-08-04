@@ -22,7 +22,7 @@ import {
 import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
 import { renderPlan } from "./render.js";
 import { $, escapeHtml } from "./dom.js";
-import { countOccupiedIn, patternSlotView } from "./slotview.js";
+import { countOccupiedIn, patternSlotView, type SlotView } from "./slotview.js";
 import { statusBar } from "./statusbar.js";
 import {
   type ConnectedDevice,
@@ -874,7 +874,7 @@ function renderDestinationGrid(): void {
 
   renderSlots(
     grid,
-    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => patternSlotView(DN2_DEVICE, image, index)),
+    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => incomingSlotView(index, image)),
     {
       // The landing slot is shown as the opened cell rather than a selection: nothing is selected
       // in this grid, and marking it says "this is where the drop went" without implying it can be
@@ -889,6 +889,53 @@ function renderDestinationGrid(): void {
       drag: { controller: drag, grid: "destination" },
     },
   );
+}
+
+/**
+ * How a destination slot reads, **including what is about to be put in it**.
+ *
+ * A slot with something landing on it shows the incoming pattern's name rather than its own,
+ * dimmed, with where it comes from and what it would replace. Until this existed the only sign of
+ * a drop was an outline: the cell went on showing the pattern already there, so a gesture that had
+ * worked perfectly looked like one that had done nothing — and was reported as broken, reasonably.
+ *
+ * **The dimming is the tense.** What the cell shows is the future; Apply is what makes it the
+ * present, and at that point the same cell renders normally because the merge has really happened.
+ * A preview that looked identical to a result would be worse than no preview, because it would
+ * claim something had been written when nothing had.
+ */
+function incomingSlotView(index: number, image: Uint8Array): Omit<SlotView, "index"> {
+  const here = patternSlotView(DN2_DEVICE, image, index);
+  const source = state.source?.image;
+  const from = pendingSources().get(index);
+  if (from === undefined || !source) return here;
+
+  const arriving = patternSlotView(DN1_DEVICE, source, from);
+  return {
+    ...arriving,
+    // The cell keeps its own address: it is still H16, whatever is about to be in it.
+    id: here.id,
+    detail: here.occupied ? `← ${patternName(from)} · replaces ${here.name}` : `← ${patternName(from)}`,
+    occupied: true,
+    classes: ["pending"],
+  };
+}
+
+/**
+ * Which source pattern is destined for which destination slot.
+ *
+ * Keyed by destination so a renderer can ask about one cell. Contiguous from the landing slot for
+ * now — when relative placement lands (ROADMAP 6c) this and `landingSlots` are the two places that
+ * have to learn it, and they should learn it together.
+ */
+function pendingSources(): Map<number, number> {
+  const pending = new Map<number, number>();
+  if (!merging()) return pending;
+  selection.forEach((from, i) => {
+    const to = landing + i;
+    if (to < DN2_PATTERN_COUNT) pending.set(to, from);
+  });
+  return pending;
 }
 
 /**
