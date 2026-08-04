@@ -47,10 +47,10 @@ import { patternName, stampedProjectName as stampedName } from "../../src/sheet/
 import {
   GridDrag,
   bankSlots,
-  nextSelection,
   renderBanks,
   renderGrid as renderSlots,
 } from "./grid.js";
+import { nextSelection } from "./selection.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../src/librarian/device.js";
 import { type LandingMode, describeLanding, landingSlotsFor } from "../../src/expand/landing.js";
 

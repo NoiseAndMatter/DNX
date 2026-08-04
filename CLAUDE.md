@@ -109,6 +109,17 @@ wrong knob to a device.
 `tracks` budgets, `rules` and `ranking` decide policy, `allocate` assigns, `route` maps trigs
 to destinations, `convert` writes. Keep it that way.
 
+## Naming a test file
+
+**A test is named after the module it tests**, with a folder prefix only where the bare name would
+be ambiguous: `deviceapi.test.ts` for `device/api.ts`, but plain `trackmove.test.ts` because there
+is only one.
+
+Six names exist in both `cli/` and a domain folder — `plan`, `convert`, `rearrange`, `rename`,
+`copy`, `hardwaretest`. For those, **the unprefixed name means the domain module** and a `cli`
+prefix would mean the command. In practice the commands are covered collectively by
+`clismoke.test.ts`, which runs all seventeen as subprocesses, so no per-command file is expected.
+
 ## The method that solved almost everything
 
 Fourteen DN1 projects sit beside Elektron's own DN2 conversions of them, and the DN1 side is
