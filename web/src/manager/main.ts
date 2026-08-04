@@ -336,9 +336,29 @@ function renderHistory(): void {
       `title="Go to this point">${escapeHtml(e.label)}` +
       `<span class="b">${(e.bytes / 1024).toFixed(0)} KB</span></li>`;
 
+    /**
+     * The project as it was opened, at the foot of the list.
+     *
+     * Every other row is an *action*; this one is the state before any of them, and without it the
+     * untouched original is the one place in the timeline you cannot click — reachable only by
+     * pressing Undo once per step. Reported from the hardware.
+     *
+     * **Offered only when undo can actually get there.** `trimmedSteps` counts steps dropped to stay
+     * inside the memory budget, and once any have gone the original is genuinely unreachable; a row
+     * promising it would be a lie the session cannot keep. So that case says what happened instead.
+     */
+    const origin =
+      entries.length === 0
+        ? ""
+        : session && session.trimmedSteps > 0
+          ? `<li class="hint">${session.trimmedSteps} earlier step(s) dropped — the original is no longer reachable</li>`
+          : `<li class="origin" data-step="undo:${entries.length}" tabindex="0" role="button" ` +
+            `title="Go back to the project as it was opened">as opened</li>`;
+
     list.innerHTML = [
       ...future.map((e, i) => row(e, "ahead", `redo:${future.length - i}`)),
       ...entries.slice(0, 12).map((e, i) => row(e, "", `undo:${i}`)),
+      origin,
     ].join("");
   }
 

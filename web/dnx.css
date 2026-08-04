@@ -335,6 +335,13 @@ kbd {
 .hist li[data-step]:hover { color: var(--fg); background: var(--panel-2); }
 .hist li[data-step]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /*
+ * The project as it was opened. Italic and quieter than the actions above it, because it is not
+ * one of them: every other row is something that happened, and this is the state before anything
+ * did. It sits last and carries no size, since nothing was written to get there.
+ */
+.hist li.origin { font-style: italic; color: var(--dim); border-bottom: none; }
+.hist li.origin:hover { color: var(--fg); }
+/*
  * Undone steps: still listed, because they are where forward is, but dimmed and marked so the
  * line between past and future is visible without a label saying so.
  */
