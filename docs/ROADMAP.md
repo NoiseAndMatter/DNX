@@ -1737,14 +1737,32 @@ work with no unknowns.
 until `docs/STRUCTURE-AUDIT.md` is worked through, so they are built on the tidied code rather than
 widening what has to be moved.
 
-### 6a. A connected DN1 as a source
+### 6a. A connected DN1 as a source — DONE 2026-08-04
 
-The expander can only open a **file**. There is no way to pick a Digitone 1 that is plugged in,
-even though `devicesource.ts` already reads a project from an instrument and the manager already
-lists the +Drive.
+The source half of the *In* row now mirrors the destination half: **From file… / Connect a Digitone
+1… / Browse its +Drive**, then a slot picker and Open slot.
 
-Most of the machinery exists; what is missing is the source half of the *In* row — the destination
-half already offers Blank / From file / Connect / Read its project, and the source should mirror it.
+Three things had to change, and two of them were not where the feature looked like it was.
+
+**It reads the +Drive, not the dump protocol.** Reading the active project record by record needs a
+donor for the ~0.49% no dump carries, and for a Digitone 1 that donor has to be a *Digitone 1*
+project — which the page cannot produce, which is exactly why the manager refuses that route (§7a).
+The stored file needs no donor at all: every byte, any slot, verified byte-for-byte against
+Elektron's own export. The DN1 advertises the whole storage band `0x53`–`0x5c`
+(`OBSERVED_DIGITONE_1`), and the DN1 project capture in `99_HardwareTest` was read exactly this way.
+
+**`connectDevice` can now be asked for a particular instrument.** It took the single best-named
+port pair and failed if that guess was wrong — fine with one device connected and useless with two,
+which is this page's entire premise. It now walks every candidate pair in order of confidence, asks
+each one who it is, and returns the first that matches; wrong ones are closed on the way past. With
+one device connected that is still exactly one request.
+
+**The source type was the quiet blocker.** `state.source` was a whole `LoadedProject` while all
+fourteen uses of it read `.image` — so a source had to arrive with a manifest and a payload, which
+a file has and an instrument does not. Narrowing it to an image and a label is most of what made
+the device route possible at all.
+
+> A type that demands more than its readers use is a constraint nobody chose and everybody pays.
 
 ### 6b. Drag and drop from DN1 to DN2 does not work — FIXED 2026-08-01
 
@@ -1883,10 +1901,10 @@ there, distinct from what is there. Whether the drop should also commit outright
 question and probably a later one: Apply exists because choosing must not be the same act as
 writing, and that separation earns its keep as soon as a write can reach an instrument (7b).
 
-### 7d. A connected DN1 still cannot be a source
+### 7d. A connected DN1 still cannot be a source — DONE 2026-08-04
 
-Already recorded as 6a. Repeated here because it was hit again in use: the expander offers only a
-file, while its destination half already offers Blank / From file / Connect / Read its project.
+The same item as 6a, recorded twice because it was hit twice in use. Fixed there; see that entry
+for what it took, which was mostly not what it looked like.
 
 ## 5. A device analytics view — IDEA, 2026-07-31
 
