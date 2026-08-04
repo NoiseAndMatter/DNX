@@ -37,13 +37,17 @@ import {
   deviceRequest,
   isApiMessage,
   readDeviceResponse,
+  readVersionResponse,
+  versionRequest,
 } from "../../src/device/api.js";
 import {
   type DriveProject,
   imageFrom,
   listProjects,
+  manifestFor,
   readDriveProject,
 } from "../../src/device/drive.js";
+import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
 import { DeviceLink, bestPair } from "./devicelink.js";
 import { DeviceSession } from "../../src/device/session.js";
@@ -59,6 +63,16 @@ export interface ConnectedDevice {
   io: DeviceIo;
   input: MIDIInput;
   output: MIDIOutput;
+  /**
+   * The instrument's own firmware string, e.g. `1.10E`. **`undefined` when it did not answer**, and
+   * left that way rather than filled in.
+   *
+   * A project file's manifest carries a `FirmwareVersion`, so exporting anything read off this
+   * device needs it — and a manifest claiming a firmware we made up is precisely the
+   * plausible-looking wrong field this codebase keeps paying for. Absent means absent; the caller
+   * says so instead of writing a guess into a file.
+   */
+  firmwareVersion?: string;
   close(): void;
 }
 
@@ -111,12 +125,24 @@ export async function connectDevice(): Promise<ConnectedDevice> {
         `${info.deviceName} is not a device this build knows how to address in the dump protocol.`,
       );
     }
+    // Asked here because the session is already open and this is the cheapest request there is —
+    // and because the alternative is asking at export time, when the port may have moved on.
+    // **A silence is tolerated**: the connection is not worth failing over a field only the
+    // exporter needs, and `firmwareVersion` staying undefined is a truthful answer.
+    let firmwareVersion: string | undefined;
+    try {
+      firmwareVersion = readVersionResponse((await session.request(Code.Version, versionRequest)).body).version;
+    } catch {
+      firmwareVersion = undefined;
+    }
+
     return {
       productId,
       name: PRODUCT_NAMES[productId] ?? info.deviceName,
       io,
       input: pair.input,
       output: pair.output,
+      ...(firmwareVersion ? { firmwareVersion } : {}),
       close,
     };
   } catch (error) {
@@ -243,6 +269,22 @@ export interface DriveProjectHandle {
   project: DriveProject;
   /** The payload bytes exactly as the device sent them, so the project can be saved as a file. */
   bytes: Uint8Array;
+  /**
+   * The parsed payload — the 31-byte container header an export has to preserve.
+   *
+   * That header carries the device signature and the project slot, and `buildPayload` copies it
+   * verbatim. Taking it from *this* project rather than from a donor is what makes an exported
+   * +Drive project the device's own file rather than a transplant.
+   */
+  payload: ProjectPayload;
+  /**
+   * The manifest an export needs, or **`undefined` when the device did not give its firmware**.
+   *
+   * The +Drive sends no `manifest.json` — it is reconstructed by `manifestFor`, and every field of
+   * it is read off the payload or off the device except one. Without the firmware string there is
+   * no honest manifest, so there is none, and the export says why rather than inventing a version.
+   */
+  manifest?: ProjectManifest;
 }
 
 /**
@@ -271,5 +313,18 @@ export async function openDeviceProject(
     console.warn(`the +Drive did not acknowledge closing ${project.name}; the read itself succeeded`);
   }
 
-  return { image: imageFrom(read.payload), project, bytes: read.bytes };
+  // The manifest the +Drive never sends, rebuilt from the payload and the device's own firmware
+  // string. `manifestFor` has existed and been tested since the read was written; nothing called
+  // it, which is why a project opened from a slot could be looked at and not saved.
+  const manifest = device.firmwareVersion
+    ? manifestFor(read.payload, project.name, device.firmwareVersion)
+    : undefined;
+
+  return {
+    image: imageFrom(read.payload),
+    project,
+    bytes: read.bytes,
+    payload: read.payload,
+    ...(manifest ? { manifest } : {}),
+  };
 }
