@@ -67,7 +67,7 @@ Also duplicated: `ApiTransport` (probe vs `devicesource.ts` — the latter is th
 `sharedPrefix`, `u32`, `readName` (four copies of "latin1, stop at NUL"), and five mutually
 incompatible functions named `hex`, two of which `probe/main.ts` imports at once and has to alias.
 
-## 4. The two hardware-test CLIs are a half-finished extraction
+## 4. The two hardware-test CLIs are a half-finished extraction — **DONE 2026-08-04**
 
 `src/cli/hardwaretest.ts` (476) and `src/cli/trackhwtest.ts` (766) share their design-token CSS,
 `hhmm`, `escapeHtml`, `rowId`, `metaFields`, `exportSpec` and most of `renderSheet`'s prose.
@@ -77,6 +77,23 @@ literal, the other as `\2610`, and only one has `td.num` rules.
 
 `hhmm` alone has six copies (both hwtest CLIs, `cli/convert.ts`, `device/capture.ts`,
 `web/src/app.ts`).
+
+`src/sheet/page.ts` owns the page: doctype, design tokens, the forty lines of CSS, and the export
+bar and script in the order the form needs them. Two lengths stay parameters — the track sheet has
+more columns — and everything else is the same sheet. **469 → 414** and **759 → 703** lines.
+
+The drift was resolved rather than merged: the CSS escape `±0` over the literal `☐`, because it
+survives a file opened without a charset; `td.num`, `.scope` and the rule under `td.note` present
+for both, since a rule a sheet does not use costs nothing and a class with no rule is the `.sw` bug.
+
+`hhmm` and the project-name stamping moved to `src/sheet/naming.ts`, removing five and two copies.
+Extracting the stamper surfaced a discrepancy neither copy explained: both cap at **15** while
+`NAME_SIZE` is **16**. Preserved and documented rather than corrected — a name that overruns on
+hardware is worse than one character wasted, and nothing here establishes which is right.
+
+**Verified by generating both sheets before and after and diffing them**, which is the only check
+that means anything for a code path whose entire output is a string. The only differences are the
+three intended ones.
 
 ## 5. Layering: three Node-only modules sit in `src/`
 
@@ -159,7 +176,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 1 | ~~Give DN2 kit geometry one home~~ **DONE 2026-08-01.** `levelOffset/levelSize/levelCount` added, width settled as u16le against 49,152 corpus levels, `trackLevel`/`setTrackLevel` accessors added, six re-declarations and two bare literals removed, `test/dn2image.test.ts` added | shipped |
 | 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
 | 2b | ~~Split the rest of `probe/main.ts`~~ **DONE 2026-08-01.** `cards.ts` (rendering), `ports.ts` (selection), `storageio.ts` (+Drive conversations), `dumpio.ts` (dump conversations). **2,625 → 2,353 lines**, and what is left is genuinely this page's own work: the flows, the safety confirmations and the narration. **Wants a hardware pass** — every conversation with an instrument moved | shipped, unverified on device |
-| 3 | Extract the hardware-sheet page scaffold into `src/sheet/page.ts` + `src/sheet/html.ts`; reconcile the drifted `☐` encoding | low |
+| 3 | ~~Extract the hardware-sheet page scaffold~~ **DONE 2026-08-04.** `src/sheet/page.ts`; drift resolved on the CSS escape; `hhmm` (×5) and the name stamper (×2) moved to `sheet/naming.ts`; both sheets diffed before and after; `test/sheetpage.test.ts` added, 7 tests | shipped |
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | Move `zip.ts`, `projectfile.ts`, `open.ts` to `src/node/`; `tsconfig.web.json` excludes a directory instead of a list | low-medium — import churn; `web.test.ts` catches mistakes immediately |
 | 6 | ~~Share the grid view-model between the two pages~~ **DONE 2026-08-01.** `web/src/slotview.ts` — DOM-free, so it is testable — owns `SlotView`, `BANK_SIZE`, `patternSlotView` and `countOccupiedIn`. Three copies of the mapping gone; the expander's source grid keeps its one real difference as a `live` argument. `test/slotview.test.ts` added, 9 tests | shipped |
