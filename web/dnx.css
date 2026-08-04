@@ -231,6 +231,18 @@ body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem);
 }
 
 /*
+ * A slot showing what is *about* to be in it.
+ *
+ * Dimmed on purpose: the dimming is the tense. This is the future, and Apply is what makes it the
+ * present — at which point the cell renders normally, because the merge has really happened. A
+ * preview that looked identical to a result would be worse than none, since it would claim
+ * something had been written when nothing had.
+ */
+.slot.pending .nm { color: var(--muted); font-style: italic; }
+.slot.pending .tc { color: var(--amber); }
+.slot.pending .id { color: var(--amber); }
+
+/*
  * A stacked sub-section: patterns, then that pattern's tracks, then its trigs later. The rule
  * above it and the generous gap are the separation — without them the second grid reads as
  * more of the first, which is exactly how it looked when the two overlapped by accident.
@@ -351,6 +363,15 @@ label.file input { display: none; }
 .legend { display: flex; gap: .9rem; font-size: .68rem; color: var(--dim); margin-top: .55rem; }
 .legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px;
   margin-right: .25rem; vertical-align: -1px; }
+/*
+ * The chips themselves. `.sw` was in the markup with no rule behind it, so every legend swatch
+ * rendered as an empty box — the same silent pairing between markup and stylesheet that the grid
+ * class guard in `web.test.ts` now catches. Each one matches the state it stands for.
+ */
+.legend .sw { border: 1px solid var(--line); background: var(--panel-2); }
+.legend .sw.occupied { background: #1d2726; border-color: var(--teal-dim); }
+.legend .sw.sel { background: #24322f; border-color: var(--focus); }
+.legend .sw.pending { background: transparent; border-color: var(--amber); }
 
 /* ---- a section of a flowing page ------------------------------------------------------ */
 .section { margin: 0 0 1.1rem; }
