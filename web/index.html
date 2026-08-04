@@ -55,8 +55,19 @@
   <!-- 0. Everything that brings data in. -->
   <section class="section">
     <h2>In</h2>
+    <!--
+      Source and destination read as one row of two halves, in that order, because that is the
+      order the work happens in. The source half used to offer a file and nothing else while the
+      destination half offered four routes — so a Digitone 1 sitting on the desk had to be
+      exported to disk by hand before this page would look at it.
+    -->
     <div class="bar">
-      <label class="btn filebtn">Digitone 1 project…<input type="file" id="sourceFile" accept=".dnprj"></label>
+      <span class="lbl">Source</span>
+      <label class="btn filebtn">From file…<input type="file" id="sourceFile" accept=".dnprj"></label>
+      <button class="btn" id="connectSource">Connect a Digitone 1…</button>
+      <button class="btn" id="browseSource" disabled>Browse its +Drive</button>
+      <select id="sourceProjects" hidden title="Projects stored on the Digitone 1, by slot"></select>
+      <button class="btn" id="openSource" hidden disabled>Open slot</button>
       <span class="sep"></span>
       <span class="lbl">Destination</span>
       <button class="btn" id="fromBlank">Blank</button>
