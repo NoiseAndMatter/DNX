@@ -22,7 +22,7 @@
  */
 
 import { escapeHtml } from "../../../src/sheet/html.js";
-import { sharedPrefix } from "../devicelink.js";
+import { bestPair as guessPair } from "../devicelink.js";
 
 /** How many ports of each kind were offered, so the caller can enable its own controls. */
 export interface PortCounts {
@@ -90,23 +90,4 @@ function options(ports: (MIDIInput | MIDIOutput)[]): string {
     .join("");
 }
 
-/**
- * The pair whose names agree the most, or `undefined` when none of them agree at all.
- *
- * **No shared prefix means no guess.** Picking the first of each would be a guess dressed as a
- * decision, and on an interface with four identical-looking ports it would be wrong three times in
- * four while looking exactly as confident as a right answer.
- */
-function guessPair(
-  inputs: MIDIInput[],
-  outputs: MIDIOutput[],
-): { input: MIDIInput; output: MIDIOutput } | undefined {
-  let best: { input: MIDIInput; output: MIDIOutput; score: number } | undefined;
-  for (const output of outputs) {
-    for (const input of inputs) {
-      const score = sharedPrefix(input.name ?? "", output.name ?? "");
-      if (score > 0 && (!best || score > best.score)) best = { input, output, score };
-    }
-  }
-  return best && { input: best.input, output: best.output };
-}
+

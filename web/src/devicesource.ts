@@ -49,7 +49,7 @@ import {
 } from "../../src/device/drive.js";
 import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
-import { DeviceLink, bestPair } from "./devicelink.js";
+import { DeviceLink, candidatePairs } from "./devicelink.js";
 import { DeviceSession } from "../../src/device/session.js";
 import { dumpProductFor } from "../../src/device/dumprequest.js";
 import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
@@ -76,15 +76,38 @@ export interface ConnectedDevice {
   close(): void;
 }
 
+export interface ConnectOptions {
+  /**
+   * The instrument wanted, as a **dump-protocol** `ProductId`.
+   *
+   * Omit to take whichever Digitone answers first. Supply it when the page needs a *particular*
+   * one — which the expander always does, because "the Digitone 1" and "the Digitone II" are two
+   * different roles on the same page and picking the wrong one is not a recoverable mistake.
+   */
+  want?: number;
+}
+
 /**
  * Find a Digitone on the MIDI ports and confirm what it is.
  *
- * Pairs input and output by longest shared name prefix, the same guess the probe makes and for the
- * same reason: nothing in Web MIDI says which ports belong together. Unlike the probe there is no
- * chooser here yet — see the handover note. A wrong pair fails loudly at the `Device` request
- * rather than silently later.
+ * ## Why this asks around rather than guessing once
+ *
+ * Nothing in Web MIDI says which ports belong together, or what is behind them. Port names are the
+ * only clue and they are an OS convention, not a protocol — so pairing is a guess, and **the only
+ * authority on what an instrument is, is its own `Device` reply**.
+ *
+ * This used to take the single best-named pair and fail if it was wrong. That is fine with one
+ * instrument connected and useless with two: the expander's whole premise is a Digitone 1 to read
+ * from and a Digitone II to write to, at the same time, and one guess cannot address both.
+ *
+ * So every candidate pair is tried in order of confidence, each is asked who it is, and the first
+ * that matches wins. With one device that is exactly one request, as before. With two it is what
+ * makes "connect the Digitone 1" mean what it says.
+ *
+ * Pairs that answer but are the wrong instrument are **closed on the way past**, so probing leaves
+ * no listeners behind on ports the page is not using.
  */
-export async function connectDevice(): Promise<ConnectedDevice> {
+export async function connectDevice(options: ConnectOptions = {}): Promise<ConnectedDevice> {
   if (!navigator.requestMIDIAccess) {
     throw new DeviceSourceError(
       "This browser has no Web MIDI. Chrome or Edge — Safari and Firefox cannot do this.",
@@ -98,7 +121,45 @@ export async function connectDevice(): Promise<ConnectedDevice> {
     throw new DeviceSourceError("No MIDI ports. Connect the instrument over USB and try again.");
   }
 
-  const pair = bestPair(inputs, outputs);
+  const candidates = candidatePairs(inputs, outputs);
+  /** What answered, so a failure can say what *is* there rather than only what is not. */
+  const answered: string[] = [];
+  let lastError: unknown;
+
+  for (const pair of candidates) {
+    let device: ConnectedDevice;
+    try {
+      device = await identify(pair);
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+
+    if (options.want === undefined || device.productId === options.want) return device;
+
+    // The right kind of instrument, on the wrong port pair for this role. Let go of it cleanly —
+    // a probe that leaves listeners on every port it touched is a probe that changes the thing it
+    // is measuring.
+    answered.push(device.name);
+    device.close();
+  }
+
+  if (options.want !== undefined) {
+    const wanted = PRODUCT_NAMES[options.want] ?? `product ${options.want}`;
+    throw new DeviceSourceError(
+      answered.length > 0
+        ? `No ${wanted} on the MIDI ports. Found: ${[...new Set(answered)].join(", ")}.`
+        : `No ${wanted} answered on any of the ${candidates.length} port pair(s) tried. ` +
+          `Connect it over USB, and check no other application is holding it.`,
+    );
+  }
+  throw lastError instanceof DeviceSourceError
+    ? lastError
+    : new DeviceSourceError(`No Digitone answered on any MIDI port pair: ${String(lastError)}`);
+}
+
+/** Open one pair, ask what is behind it, and describe it. Closes itself on every failure. */
+async function identify(pair: { input: MIDIInput; output: MIDIOutput }): Promise<ConnectedDevice> {
   // Explicitly, because `addEventListener` does not open a MIDI input — only assigning
   // `onmidimessage` does, and a closed port delivers nothing while looking like a silent device.
   await Promise.all([pair.input.open(), pair.output.open()]);

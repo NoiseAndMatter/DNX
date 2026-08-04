@@ -28,9 +28,12 @@ import {
   type DeviceProjectHandle,
   DeviceSourceError,
   connectDevice,
+  listDeviceProjects,
+  openDeviceProject,
   readProject,
   writeBack,
 } from "./devicesource.js";
+import { type DriveProject } from "../../src/device/drive.js";
 import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
 import {
   MergeRefused,
@@ -47,7 +50,7 @@ import {
   renderBanks,
   renderGrid as renderSlots,
 } from "./grid.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../../src/librarian/device.js";
+import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../src/librarian/device.js";
 
 /** Both families hold 128 patterns; the constants are named so the grids read as intended. */
 const DN1_PATTERN_COUNT = 128;
@@ -63,8 +66,26 @@ import { ProductId } from "../../src/sysex/devices.js";
  */
 const status = statusBar();
 
+/**
+ * The Digitone 1 project being expanded — **an image and what to call it, and nothing else.**
+ *
+ * It was typed as a whole `LoadedProject`, and every one of the fourteen places that touched it
+ * used `.image`. That extra requirement was not free: it meant a source had to arrive with a
+ * manifest and a payload, which a file has and **an instrument does not** — the +Drive sends no
+ * `manifest.json` at all. So the type was quietly the reason you could not expand from a connected
+ * Digitone 1, and narrowing it to what is actually read is most of what made that possible.
+ *
+ * The destination keeps its full project, because that one really is written back out and its
+ * manifest really is used.
+ */
+interface SourceProject {
+  image: Uint8Array;
+  /** For the top bar: a file name, or the slot it was read from. */
+  label: string;
+}
+
 interface State {
-  source?: LoadedProject;
+  source?: SourceProject;
   template?: LoadedProject;
   plan?: ExpansionPlan;
 }
@@ -238,12 +259,23 @@ function renderReport(): void {
 
 async function loadSource(file: File): Promise<void> {
   status(`Reading ${file.name}…`);
-  state.source = await openProject(file);
-  const name = readProjectName(state.source.image);
+  const loaded = await openProject(file);
+  setSource({ image: loaded.image, label: file.name });
+}
+
+/**
+ * Adopt a Digitone 1 project, however it arrived.
+ *
+ * One function for both routes deliberately. A file and a +Drive slot produce the same thing — an
+ * image — and everything downstream of here already treats them identically; two setters would be
+ * two chances for one route to forget to replan.
+ */
+function setSource(source: SourceProject): void {
+  state.source = source;
   replan();
   $("sourceInfo").hidden = false;
-  $("sourceInfo").textContent = `${name} · ${file.name}`;
-  status(`Loaded ${file.name}. Pick a destination, then drag patterns onto it.`);
+  $("sourceInfo").textContent = `${readProjectName(source.image)} · ${source.label}`;
+  status(`Loaded ${source.label}. Pick a destination, then drag patterns onto it.`);
 }
 
 async function loadTemplate(file: File): Promise<void> {
@@ -337,6 +369,18 @@ void adoptServedTemplate();
 // expansion is a transplant: a field nobody writes inherits the destination's value, so the
 // destination has to be the real one.
 
+
+$("connectSource").addEventListener("click", () => {
+  connectSource().catch(reportDeviceError);
+});
+
+$("browseSource").addEventListener("click", () => {
+  browseSourceDrive().catch(reportDeviceError);
+});
+
+$("openSource").addEventListener("click", () => {
+  openSourceSlot().catch(reportDeviceError);
+});
 
 $("connect").addEventListener("click", () => {
   connect().catch(reportDeviceError);
@@ -600,22 +644,91 @@ function reportDeviceError(error: unknown): void {
 }
 
 async function connect(): Promise<void> {
-  status("Looking for an instrument…");
-  const connected = await connectDevice();
-
-  // Refused rather than attempted. Expansion targets a Digitone II — a DN1 cannot receive one —
-  // and finding that out after a minute of reading is worse than being told now.
-  if (connected.productId !== ProductId.DN2) {
-    connected.close();
-    throw new DeviceSourceError(
-      `${connected.name} is not a Digitone II. Expansion writes DN2 patterns, so a Digitone 1 ` +
-        `cannot be the destination.`,
-    );
-  }
+  status("Looking for a Digitone II…");
+  // Asked for by name rather than found and then vetted. With both instruments plugged in — which
+  // is this page's whole premise — "the best pair" is a coin toss, and refusing the Digitone 1
+  // afterwards would refuse the one that happened to be enumerated first rather than the wrong one.
+  const connected = await connectDevice({ want: ProductId.DN2 });
 
   device.connected = connected;
   $<HTMLButtonElement>("fromDevice").disabled = false;
   status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
+}
+
+// --- a connected Digitone 1 as the source -------------------------------------------------------
+
+/**
+ * The instrument being read *from*, kept apart from the one being written *to*.
+ *
+ * Two connections at once, on the same page, doing opposite jobs. One shared field would make
+ * "connect" mean whichever button was pressed last — and the failure would be silent, because both
+ * roles look identical until something is written.
+ */
+const sourceDevice: { connected?: ConnectedDevice; projects?: DriveProject[] } = {};
+
+async function connectSource(): Promise<void> {
+  status("Looking for a Digitone 1…");
+  sourceDevice.connected = await connectDevice({ want: ProductId.DN1 });
+  $<HTMLButtonElement>("browseSource").disabled = false;
+  status(`${sourceDevice.connected.name} connected. Browse its +Drive to pick a project.`);
+}
+
+/**
+ * List the Digitone 1's stored projects.
+ *
+ * **The +Drive, not the dump protocol.** Reading the *active* project record by record needs a
+ * donor for the ~0.49% no dump carries, and for a Digitone 1 that donor would have to be a Digitone
+ * 1 project — which this page cannot produce, and which is exactly why the manager refuses that
+ * route. The stored file needs no donor at all: every byte is there, any slot, and the read is
+ * verified byte-for-byte against Elektron's own export.
+ *
+ * The DN1 advertises the whole storage band (`0x53`–`0x5c`), so this is the same conversation the
+ * manager already has with a Digitone II.
+ */
+async function browseSourceDrive(): Promise<void> {
+  const connected = sourceDevice.connected;
+  if (!connected) throw new DeviceSourceError("connect a Digitone 1 first");
+
+  status(`Listing projects on ${connected.name}…`);
+  const projects = await listDeviceProjects(connected);
+  sourceDevice.projects = projects;
+
+  const select = $<HTMLSelectElement>("sourceProjects");
+  select.innerHTML = projects
+    .map((p) => `<option value="${p.index}">${escapeHtml(`${p.index}. ${p.name}`)}</option>`)
+    .join("");
+  select.hidden = projects.length === 0;
+  $("openSource").hidden = projects.length === 0;
+  $<HTMLButtonElement>("openSource").disabled = projects.length === 0;
+
+  status(
+    projects.length === 0
+      ? `${connected.name} reports no stored projects.`
+      : `${projects.length} project(s) on ${connected.name}. Pick one and open it.`,
+  );
+}
+
+async function openSourceSlot(): Promise<void> {
+  const connected = sourceDevice.connected;
+  const index = Number($<HTMLSelectElement>("sourceProjects").value);
+  const project = sourceDevice.projects?.find((p) => p.index === index);
+  if (!connected || !project) throw new DeviceSourceError("browse the +Drive again — that listing is stale");
+
+  status(`Reading ${project.name} from slot ${project.index}…`);
+  const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
+    if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
+  });
+
+  // Checked after the read rather than before, because the +Drive listing does not say what family
+  // a stored project is — only the payload does. A DN2 project on a DN1's +Drive should be
+  // impossible, and "should be impossible" is not the same as "cannot happen".
+  if (deviceFor(opened.image).kind !== "dn1") {
+    throw new DeviceSourceError(
+      `Slot ${project.index} holds a Digitone II project, which this page expands *to* rather than from.`,
+    );
+  }
+
+  setSource({ image: opened.image, label: `${project.name} · slot ${project.index}` });
 }
 
 /**

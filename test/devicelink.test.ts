@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DeviceLink, bestPair, matchApiFrame, sharedPrefix } from "../web/src/devicelink.js";
+import { DeviceLink, bestPair, candidatePairs, matchApiFrame, sharedPrefix } from "../web/src/devicelink.js";
 
 /**
  * A MIDI input that hands out whatever we feed it, and counts its listeners.
@@ -275,12 +275,34 @@ test("matchApiFrame refuses anything that is not an API message", () => {
   assert.equal(matchApiFrame(Uint8Array.of(0x90, 0x40, 0x7f), () => true), undefined);
 });
 
+const port = (name: string) => ({ name }) as unknown as MIDIInput & MIDIOutput;
+
 test("ports are paired by the longest shared name", () => {
-  const port = (name: string) => ({ name }) as unknown as MIDIInput & MIDIOutput;
   const inputs = [port("Launchpad"), port("Digitone II MIDI 1")];
   const outputs = [port("Digitone II MIDI 1"), port("Launchpad")];
-  assert.equal(bestPair(inputs, outputs).input.name, "Digitone II MIDI 1");
+  assert.equal(bestPair(inputs, outputs)?.input.name, "Digitone II MIDI 1");
   assert.equal(sharedPrefix("Digitone II", "Digitone 1"), 9);
+});
+
+test("no shared prefix means no guess, rather than a guess dressed as a fact", () => {
+  // Four identical-looking ports on one interface: picking the first of each would be wrong three
+  // times in four and look exactly as confident as a right answer.
+  assert.equal(bestPair([port("MIDIIN1")], [port("out A")]), undefined);
+});
+
+test("both instruments are offered when both are plugged in, best guess first", () => {
+  // The reason `candidatePairs` exists. The expander needs a Digitone 1 to read from and a
+  // Digitone II to write to at the same time, so an answer that names one pair cannot serve it —
+  // the caller has to be able to ask each one who it is.
+  const inputs = [port("Digitone II MIDI 1"), port("Digitone MIDI 1")];
+  const outputs = [port("Digitone MIDI 1"), port("Digitone II MIDI 1")];
+
+  const pairs = candidatePairs(inputs, outputs);
+  assert.equal(pairs.length, 2, "one candidate per output, so every instrument is reachable");
+  // Each output found its own twin rather than the other instrument, which shares a prefix with it.
+  for (const pair of pairs) assert.equal(pair.input.name, pair.output.name);
+  // "Digitone II MIDI 1" agrees with itself over more characters, so it is tried first.
+  assert.equal(pairs[0]!.output.name, "Digitone II MIDI 1");
 });
 
 test("a timeout that fired impossibly late re-arms instead of declaring silence", async () => {
