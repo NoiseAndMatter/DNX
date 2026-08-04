@@ -51,6 +51,7 @@ import {
   renderGrid as renderSlots,
 } from "./grid.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../src/librarian/device.js";
+import { type LandingMode, describeLanding, landingSlotsFor } from "../../src/expand/landing.js";
 
 /** Both families hold 128 patterns; the constants are named so the grids read as intended. */
 const DN1_PATTERN_COUNT = 128;
@@ -336,7 +337,7 @@ function wireFilePicker(inputId: string, load: (file: File) => Promise<void>): v
 
 wireFilePicker("sourceFile", loadSource);
 wireFilePicker("templateFile", loadTemplate);
-for (const id of ["compact", "freeMidi", "rules", "aggregate"]) $(id).addEventListener("change", replan);
+for (const id of ["compact", "freeMidi", "rules", "aggregate", "contiguous"]) $(id).addEventListener("change", replan);
 for (const id of ["modeWhole", "modeSelect"]) $(id).addEventListener("change", syncMode);
 
 syncMode();
@@ -771,6 +772,7 @@ function planMerge(destination: Uint8Array): Described {
     patterns: selection,
     destination,
     landing,
+    landingMode: landingMode(),
     // Scoped to the selection, **not** `state.plan`. That one is the whole-project plan, and
     // handing it over made the merge allocate tracks against 128 patterns of competition — the
     // layout it produced was not the one the panel above described, and not the one asked for.
@@ -805,7 +807,7 @@ Go ahead anyway?`)) {
   // list; repeating it in the bar made the bar look like a leftover rather than a prompt.
   status(
     `Planned — press Apply to fold ${plan.landingSlots.length} pattern(s) into ` +
-      `${plan.landingSlots.map(patternName).join(", ")}.`,
+      `${plan.landingSlots.map(patternName).join(", ")}, ${describeLanding(landingMode())}.`,
   );
   return { lines: describeMerge(plan), notes: plan.notes };
 }
@@ -852,17 +854,20 @@ const drag = new GridDrag({
     if (from.grid !== "source" || grid !== "destination" || from.indices.length === 0) return undefined;
     if (!destination) return undefined;
 
-    const last = index + from.indices.length - 1;
-    if (last >= DN2_PATTERN_COUNT) {
-      return undefined;
-    }
+    // The real destinations, not a contiguous run from the cursor. With relative landing the two
+    // are different sets, and counting the run would report the untouched slots *between* the
+    // patterns as about to be overwritten — a warning about work that is not going to happen.
+    const slots = landingSlotsFor(from.indices, index, landingMode());
+    // Refused rather than drawn as a partial drop: the merge refuses the whole landing, so a hint
+    // offering it would be promising something Apply will not do.
+    if (slots.some((slot) => slot >= DN2_PATTERN_COUNT)) return undefined;
 
-    const occupied = occupiedInRange(index, last);
+    const occupied = slots.filter(occupiedAt).length;
     return {
       action: "move",
       label: occupied > 0 ? `MERGE · ${occupied} occupied` : "MERGE",
       status:
-        `${from.indices.length} pattern(s) → ${patternName(index)}…${patternName(last)}` +
+        `${from.indices.length} pattern(s) → ${describeSlots(slots)}` +
         (occupied > 0 ? ` · ${occupied} slot(s) already hold a pattern` : " · all empty"),
     };
   },
@@ -876,11 +881,10 @@ const drag = new GridDrag({
     // indistinguishable from broken — and was reported as exactly that.
     renderDestinationGrid();
     replanForDevice();
-    const last = index + Math.max(0, selection.length - 1);
+    const slots = landingSlotsFor(selection, index, landingMode());
     status(
-      `${selection.length} pattern(s) will land in ${patternName(index)}` +
-        (selection.length > 1 ? `…${patternName(last)}` : "") +
-        `. Press Apply to write them.`,
+      `${selection.length} pattern(s) will land in ${describeSlots(slots)}, ` +
+        `${describeLanding(landingMode())}. Press Apply to write them.`,
     );
   },
 
@@ -892,13 +896,26 @@ const drag = new GridDrag({
 /** Where the selection would land. Set by a drop, never typed. */
 let landing = 0;
 
-function occupiedInRange(from: number, to: number): number {
-  if (!destination) return 0;
-  let n = 0;
-  for (let slot = from; slot <= to; slot++) {
-    if (DN2_DEVICE.summarise(destination.image, slot).occupied) n++;
-  }
-  return n;
+function occupiedAt(slot: number): boolean {
+  return destination !== undefined && DN2_DEVICE.summarise(destination.image, slot).occupied === true;
+}
+
+/**
+ * Name a set of destination slots without pretending it is a range.
+ *
+ * `A1…A3` is the honest description of three consecutive slots and a lie about A1, A9, A10 — it
+ * claims eight slots are involved that are not. Consecutive runs still read as a range because
+ * that is genuinely shorter; anything else is listed.
+ */
+function describeSlots(slots: readonly number[]): string {
+  if (slots.length === 0) return "nothing";
+  if (slots.length === 1) return patternName(slots[0]!);
+  const sorted = [...slots].sort((a, b) => a - b);
+  const consecutive = sorted.every((slot, i) => i === 0 || slot === sorted[i - 1]! + 1);
+  if (consecutive) return `${patternName(sorted[0]!)}…${patternName(sorted[sorted.length - 1]!)}`;
+  // Capped, because a selection can be large and a status bar cannot.
+  const shown = sorted.slice(0, 6).map(patternName).join(", ");
+  return sorted.length > 6 ? `${shown} and ${sorted.length - 6} more` : shown;
 }
 
 /**
@@ -1029,32 +1046,37 @@ function incomingSlotView(index: number, image: Uint8Array): Omit<SlotView, "ind
   };
 }
 
+/** How the drop positions the selection: keep their spacing, or pack them from the anchor. */
+function landingMode(): LandingMode {
+  return $<HTMLInputElement>("contiguous").checked ? "contiguous" : "relative";
+}
+
 /**
  * Which source pattern is destined for which destination slot.
  *
- * Keyed by destination so a renderer can ask about one cell. Contiguous from the landing slot for
- * now — when relative placement lands (ROADMAP 6c) this and `landingSlots` are the two places that
- * have to learn it, and they should learn it together.
+ * Keyed by destination so a renderer can ask about one cell. **The same computation the merge
+ * itself runs** — `landingSlotsFor` is shared with `merge.ts` rather than reproduced here, because a
+ * preview worked out separately from the write is a preview that can be wrong about it, and this
+ * page draws that preview into the cell as if it were fact.
  */
 function pendingSources(): Map<number, number> {
   const pending = new Map<number, number>();
-  if (!merging()) return pending;
+  if (!merging() || selection.length === 0) return pending;
+  const slots = landingSlotsFor(selection, landing, landingMode());
   selection.forEach((from, i) => {
-    const to = landing + i;
+    const to = slots[i]!;
+    // Out-of-range slots are dropped from the *preview* only. The merge refuses the whole
+    // landing rather than trimming it, and `renderReport` says so — marking nothing here is what
+    // makes the missing cells visible.
     if (to < DN2_PATTERN_COUNT) pending.set(to, from);
   });
   return pending;
 }
 
-/**
- * Every destination slot the pending merge would write to.
- *
- * Contiguous from the landing slot for now, because that is what the merge does today. When
- * relative placement lands (ROADMAP 6c) this is the one place that has to learn about it, and the
- * grid will follow — which is the reason it is a function rather than a marked index.
- */
+/** Every destination slot the pending merge would write to, in the order they were picked. */
 function landingSlots(): number[] {
-  return selection.map((_, i) => landing + i).filter((slot) => slot < DN2_PATTERN_COUNT);
+  if (selection.length === 0) return [];
+  return landingSlotsFor(selection, landing, landingMode()).filter((slot) => slot < DN2_PATTERN_COUNT);
 }
 
 /** Anchor for shift-ranges in the source grid. */

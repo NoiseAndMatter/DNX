@@ -1785,7 +1785,7 @@ Fixed, and made unmistakable rather than merely visible:
 
 Apply stays the commit. That separation is deliberate — choosing must not be the same act as
 writing — and the bug was never that the drop failed to commit, only that it said nothing.
-### 6c. Merged patterns must keep their relative positions
+### 6c. Merged patterns must keep their relative positions — DONE 2026-08-04
 
 **Current behaviour, and it is wrong as a default:** selecting A1, A9, A10 and dropping on A1 writes
 them to **A1, A2, A3** — contiguous from the landing slot, discarding the spacing the musician chose.
@@ -1808,11 +1808,31 @@ nowhere to go, so the whole placement is **refused before anything is written** 
 not clamped onto H16. The refusal should name which patterns would fall off the end, since the fix
 is usually to pick an earlier anchor.
 
-Relative placement also changes *which* slots are written, so the occupancy warning and
-`confirmOverwrite` must be computed from the real target list rather than a contiguous run — with
-gaps, the patterns in between are untouched and must not be reported as overwritten.
+Relative landing also changes *which* slots are written, so the occupancy warning and
+`confirmOverwrite` are computed from the real target list rather than a contiguous run — with gaps,
+the patterns in between are untouched and are not reported as overwritten.
 
-The landing slot stops being a start and becomes an **anchor**, which the UI should say.
+The landing slot stopped being a start and became an **anchor**, and the page says so.
+
+#### What it took
+
+**The rule had been written three times** — once in `merge.ts` to decide what gets written, twice
+in the page to decide what the grid previews and which cells it marks. Three copies of a rule that
+must agree is a preview that can lie about what Apply will do. It lives in `src/expand/landing.ts`
+now, and all three call it, so the preview is the same computation as the write.
+
+**Called `landing`, not `placement`.** `src/expand/` already uses *placement* for which **track** a
+sound gets — `PlacementRule`, `matchRule`, `placement.test.ts`. A second meaning in the same folder
+is a trap for whoever reads it next, and *landing* was already the vocabulary for this question:
+`landing`, `landingSlots`, `landingSlotsFor`.
+
+**The overflow check could not stay as arithmetic.** `landing + patterns.length` is only the end of
+the run in contiguous mode; three patterns spanning ten slots need ten. The check now runs on the
+real destinations, so it neither misses real overflows nor invents ones that are not there.
+
+**The hover hint had the same bug as the write.** It described the drop as `A1…A3` and counted
+occupancy across that run — which, with gaps, warns about slots nothing is going to touch. It now
+lists the actual destinations, and only calls it a range when it genuinely is one.
 
 ### 6d. Navigation between tools, in the title — DECIDED 2026-08-01
 

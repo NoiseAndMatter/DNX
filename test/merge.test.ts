@@ -201,10 +201,18 @@ test("occupied destination slots are refused unless confirmed", { skip }, () => 
 });
 
 test("a selection running past the last slot is refused, not truncated", { skip }, () => {
-  // Quietly dropping the tail is the kind of helpfulness discovered three patterns later.
+  // Quietly dropping the tail is the kind of helpfulness discovered three patterns later. Not
+  // wrapped round to bank A either, and not clamped onto H16 — both would put a pattern somewhere
+  // nobody chose.
   assert.throws(
     () => planPatternMerge({ source: source(), patterns: [0, 1, 2], destination: destination(), landing: 126, confirmOverwrite: true }),
-    /would run past/,
+    (error: Error) => {
+      assert.match(error.message, /would land past H16/);
+      // Names the one that falls off, because the fix is to anchor earlier and that is easier to
+      // judge when you can see which pattern is the problem.
+      assert.match(error.message, /A3/);
+      return true;
+    },
   );
 });
 
