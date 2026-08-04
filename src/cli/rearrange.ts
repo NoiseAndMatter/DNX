@@ -32,7 +32,7 @@
 
 import { writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
 import { type Device } from "../librarian/device.js";
 import {
@@ -40,7 +40,7 @@ import {
   type Provenance,
   describeProvenance,
   openProject,
-} from "../librarian/open.js";
+} from "../node/open.js";
 import { applyRearrange, planRearrange } from "../librarian/rearrange.js";
 import { clear, copyMany, keepOnly, moveMany, swap } from "../librarian/shuffle.js";
 

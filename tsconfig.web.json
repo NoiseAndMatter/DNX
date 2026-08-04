@@ -17,11 +17,13 @@
     "src/**/*.ts",
     "web/src/**/*.ts"
   ],
+  // Two directories, not a list of files. The three Node-only modules used to be named here one
+  // by one, so adding a fourth meant remembering to come back — and forgetting would have dragged
+  // `node:zlib` into the browser bundle, which fails at page load with an unhelpful error.
+  // `test/web.test.ts` enforces the same boundary from the other side.
   "exclude": [
     "src/cli/**/*.ts",
-    "test/**/*.ts",
-    "src/project/projectfile.ts",
-    "src/project/zip.ts",
-    "src/librarian/open.ts"
+    "src/node/**/*.ts",
+    "test/**/*.ts"
   ]
 }

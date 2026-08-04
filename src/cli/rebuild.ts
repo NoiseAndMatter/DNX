@@ -26,9 +26,9 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { parseFile } from "../sysex/container.js";
 import { PRODUCT_NAMES } from "../sysex/devices.js";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { projectName, writeProjectName } from "../project/dn2image.js";
-import { OpenError, findTemplate, openProject } from "../librarian/open.js";
+import { OpenError, findTemplate, openProject } from "../node/open.js";
 import {
   type Dn1Sounds,
   RebuildError,

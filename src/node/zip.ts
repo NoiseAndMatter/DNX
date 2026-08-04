@@ -6,7 +6,18 @@
  *
  * Hand-rolled rather than pulled from npm so the eventual browser build carries no
  * Node-only archive dependency. The one Node import here (`zlib`) is swappable for
- * CompressionStream in a browser build.
+ * CompressionStream in a browser build — `web/src/zip.ts` is that swap, and `test/web.test.ts`
+ * checks the two agree.
+ *
+ * ## Why this is in `src/node/`
+ *
+ * Everything else under `src/` is platform-free and shared byte for byte with the browser. This is
+ * not: it imports `node:zlib`. That used to be expressed as a filename in `tsconfig.web.json`'s
+ * exclude list, which is a boundary somebody has to remember — and forgetting would drag Node into
+ * the browser bundle, where it fails at page load with an unhelpful error.
+ *
+ * The directory *is* the boundary now. `tsconfig.web.json` excludes `src/node/**`, and
+ * `test/web.test.ts` fails if anything outside `src/node/` or `src/cli/` imports a `node:` module.
  */
 
 import { crc32, deflateRawSync } from "node:zlib";

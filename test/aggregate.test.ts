@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { readPattern } from "../src/project/dn1.js";
 import { groupByName, groupCandidate, nameKey } from "../src/expand/aggregate.js";
 import { planExpansion } from "../src/expand/plan.js";

@@ -11,9 +11,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { applyPatternCopy, freePoolSlots, planPatternCopy } from "../librarian/copy.js";
 

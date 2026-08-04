@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { readProjectName } from "../project/dn1.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";

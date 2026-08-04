@@ -27,7 +27,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { escapeHtml } from "../sheet/html.js";
 import { basename, join } from "node:path";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
 import { readDn2Pattern } from "../project/dn2pattern.js";
 import { describePlock } from "../project/plockparams.js";
@@ -43,7 +43,7 @@ import {
 } from "../sheet/resultsform.js";
 import { renderSheetPage } from "../sheet/page.js";
 import { type Device } from "../librarian/device.js";
-import { OpenError, openProject } from "../librarian/open.js";
+import { OpenError, openProject } from "../node/open.js";
 import { applyRearrange } from "../librarian/rearrange.js";
 import { copyMany, keepOnly } from "../librarian/shuffle.js";
 import { applyTrackMove, verifyTrackMove } from "../librarian/trackmove.js";
