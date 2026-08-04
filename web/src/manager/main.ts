@@ -47,10 +47,10 @@ import { patternName } from "../../../src/sheet/naming.js";
 import {
   buildProjectBlob,
   download,
-  fetchServedTemplate,
   openProject,
   type LoadedProject,
 } from "../project.js";
+import { describeDonor, loadDonor } from "../donor.js";
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -819,50 +819,55 @@ async function loadFromDevice(): Promise<void> {
     return;
   }
 
-  // The donor supplies the 0.49% no dump carries — header, song table, slot array. A
-  // device-authored blank is the right one: it contributes an *empty* song table.
-  const template = await fetchServedTemplate();
-  if (!template) {
+  // **Checked first, because it depends on nothing.** Every donor this page can produce is a
+  // Digitone II blank, so a Digitone 1 cannot be read here whether or not a template turns up —
+  // and asking for one first is how a DN1 user came to be told "No template available" while the
+  // server was sitting there serving one. An error names what is actually wrong; ordering the
+  // checks by what they depend on is what makes that possible.
+  //
+  // And for a Digitone 1 the answer is not a better donor. **Browse +Drive needs none at all**: it
+  // reads the complete stored project, any slot, verified byte-for-byte against Elektron's own
+  // export. So this points there rather than apologising.
+  if (connected.productId === ProductId.DN1) {
     connected.close();
     status(
-      "No template available, and a device read needs one for the parts no dump carries — the " +
-        "header, the song table and the slot array. Open a project file first, or run the local " +
-        "server so it can serve EMPTY.dn2prj.",
+      `${connected.name} is a Digitone 1, and reading one here needs a Digitone 1 project to ` +
+        `supply the bytes no dump carries — which this page cannot produce. Use Browse +Drive ` +
+        `instead: it reads the whole stored project and needs no donor at all.`,
       "error",
     );
     return;
   }
 
-  // **Checked before the read, not after it.** The served template is a Digitone II blank, so
-  // connecting a Digitone 1 and pressing this used to spend a minute reading 257 records and then
-  // fail on the donor — the one arrangement where a check costs nothing and its absence costs
-  // everything.
-  //
-  // And for a Digitone 1 the answer is not a better donor. **Browse +Drive needs none at all**: it
-  // reads the complete stored project, any slot, verified byte-for-byte against Elektron's own
-  // export. So this points there rather than apologising.
-  const donorKind = deviceFor(template.image).kind;
-  const connectedKind = connected.productId === ProductId.DN1 ? "dn1" : "dn2";
-  if (donorKind !== connectedKind) {
+  // The donor supplies the 0.49% no dump carries — header, song table, slot array. A
+  // device-authored blank is the right one: it contributes an *empty* song table. There is always
+  // one, so this can no longer refuse — see `donor.ts` for the order it tries.
+  const donor = await loadDonor({ onProblem: (message) => status(message, "warn") });
+
+  // Belt and braces: a picked or served template could be anything, and a DN1 donor for a DN2 read
+  // would produce an image that is neither.
+  const donorKind = deviceFor(donor.project.image).kind;
+  if (donorKind !== "dn2") {
     connected.close();
     status(
-      `${connected.name} is a ${connectedKind.toUpperCase()} and the only donor available is a ` +
-        `${donorKind.toUpperCase()} project, which cannot fill in for it. Use Browse +Drive ` +
-        `instead — it reads the whole stored project and needs no donor at all.`,
+      `The donor available is a ${donorKind.toUpperCase()} project and ${connected.name} needs a ` +
+        `Digitone II one. Open a Digitone II project file first.`,
       "error",
     );
     return;
   }
 
   try {
-    status(`Reading ${connected.name} — this takes about a minute…`);
-    const { image, handle } = await readProject(connected, template.image, (done, total, label) => {
+    status(`Reading ${connected.name} with ${describeDonor(donor)} as the donor — this takes about a minute…`);
+    const { image, handle } = await readProject(connected, donor.project.image, (done, total, label) => {
       // Every object, because a minute of silence is indistinguishable from a stall.
       if (done % 8 === 0 || done === total) status(`Reading ${connected.name}: ${done}/${total} — ${label}`);
     });
 
     const device = deviceFor(image);
-    state.file = template;
+    // The donor's manifest is what an export writes out, so the project that supplied the bytes is
+    // the one that has to carry the file's identity too.
+    state.file = donor.project;
     state.device = device;
     state.session = new Session(image);
     state.selection = [];

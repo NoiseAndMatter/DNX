@@ -16,10 +16,9 @@ import {
   download,
   fetchServedTemplate,
   openProject,
-  readProjectFile,
   type LoadedProject,
 } from "./project.js";
-import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
+import { describeDonor, loadDonor } from "./donor.js";
 import { renderPlan } from "./render.js";
 import { $, escapeHtml } from "./dom.js";
 import { countOccupiedIn, patternSlotView } from "./slotview.js";
@@ -275,7 +274,19 @@ function useTemplate(template: LoadedProject, asDestination: boolean): void {
  * below it stays the way in — no build-time switch, one page either way.
  */
 async function adoptServedTemplate(): Promise<void> {
-  const served = await fetchServedTemplate();
+  let served: LoadedProject | undefined;
+  try {
+    served = await fetchServedTemplate();
+  } catch (error) {
+    // A template that is there but unreadable is worth one sentence on load. Silence here is what
+    // let a broken donor look like a missing one for a whole session.
+    status(
+      `The local server offered a template that could not be read: ` +
+        `${error instanceof Error ? error.message : String(error)}. Pick one by hand.`,
+      "warn",
+    );
+    return;
+  }
   if (!served) return;
   // Found on the server: the donor, not a destination. Choosing a destination stays deliberate.
   useTemplate(served, false);
@@ -363,31 +374,19 @@ $("writeDevice").addEventListener("click", () => {
  * project's. Same reasoning the device read uses it for.
  */
 async function fillFromBlank(): Promise<void> {
-  // The embedded blank first, so this works on a fresh clone with no corpus and no file picked —
-  // which is what "blank" should mean. A template found on the server or picked by hand is
-  // preferred when there is one, because it is *this* user's device's idea of empty rather than
-  // the one that happened to be captured.
-  const picked = state.template ?? (await fetchServedTemplate());
-  const blank = picked ?? (await loadEmbeddedBlank());
-  if (!picked) state.template = blank;
+  const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
+  // Remembered so the export at the end of this journey carries the manifest of the very project
+  // the destination was built from, rather than asking for a donor a second time.
+  state.template = donor.project;
 
-  setDestination({ image: Uint8Array.from(blank.image), origin: "blank", label: blank.fileName, merged: [] });
-  status(`Destination: a blank project from ${blank.fileName}. Merge into it, then export.`);
+  setDestination({
+    image: Uint8Array.from(donor.project.image),
+    origin: "blank",
+    label: donor.project.fileName,
+    merged: [],
+  });
+  status(`Destination: a blank project from ${describeDonor(donor)}. Merge into it, then export.`);
 }
-
-/**
- * The blank project that ships with the code.
- *
- * `src/librarian/blankproject.ts` carries a device-initialised `.dn2prj` — 7,805 bytes, verified to
- * hold no occupied pattern and no named pool slot before it was embedded. It is the blank
- * destination, the donor a device read needs for the parts no dump carries, and the manifest an
- * export writes out: one artefact doing all three, which is why the file is embedded rather than
- * the image.
- */
-async function loadEmbeddedBlank(): Promise<LoadedProject> {
-  return readProjectFile("blank.dn2prj", blankDn2ProjectFile());
-}
-
 
 function setDestination(next: Destination): void {
   destination = next;
@@ -429,19 +428,13 @@ function renderDestination(): void {
 async function readDestination(): Promise<void> {
   if (!device.connected) throw new DeviceSourceError("connect a Digitone II first");
 
-  // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Required, and
-  // honestly so: without it there is no image, only most of one.
-  const donor = state.template ?? (await fetchServedTemplate());
-  if (!donor) {
-    throw new DeviceSourceError(
-      "reading a device needs a Digitone II project for the parts no dump carries — the header, " +
-        "the song table and the slot array. Pick a template file above.",
-    );
-  }
+  // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Without it
+  // there is no image, only most of one. There is always one, so this no longer refuses.
+  const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
 
   const connected = device.connected;
-  status(`Reading ${connected.name} — this takes about a minute…`);
-  const { image, handle } = await readProject(connected, donor.image, (done, total, label) => {
+  status(`Reading ${connected.name} with ${describeDonor(donor)} as the donor — this takes about a minute…`);
+  const { image, handle } = await readProject(connected, donor.project.image, (done, total, label) => {
     if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
   });
 
@@ -545,8 +538,10 @@ function undoApply(): void {
  */
 async function exportDestination(): Promise<void> {
   if (!destination) return;
-  const template = state.template ?? (await fetchServedTemplate());
-  if (!template) throw new DeviceSourceError("exporting needs a Digitone II project to carry the manifest");
+  // Only the manifest is wanted here — the firmware version, payload entry name and device
+  // signature a `.dn2prj` must carry. Any Digitone II project supplies it, so the built-in blank
+  // is a perfectly good last resort and an export can no longer be refused for want of a file.
+  const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
 
   const image = Uint8Array.from(destination.image);
   // A project authored here is a new project and gets its own identity rather than inheriting the
@@ -557,7 +552,7 @@ async function exportDestination(): Promise<void> {
   if (named) writeProjectName(image, stampedName(named));
 
   const base = projectName(image) || "EXPANDED";
-  download(await buildProjectBlob(template, image), `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`);
+  download(await buildProjectBlob(donor.project, image), `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`);
   status(`Exported ${base}.`);
 }
 
