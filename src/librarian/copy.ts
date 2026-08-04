@@ -25,7 +25,6 @@ import {
   KIT,
   PATTERN,
   SYNTH_TRACK_COUNT,
-  SOUND_SIZE,
   TRACK,
   readPattern,
   readSoundPool,
@@ -256,4 +255,3 @@ export function freePoolSlots(image: Uint8Array): number[] {
     .filter((i) => i >= 0);
 }
 
-export { SOUND_SIZE };

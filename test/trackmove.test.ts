@@ -7,14 +7,17 @@ import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn
 import { readDn2Pattern, readLockTable, readMidiTrackMask } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, deviceFor } from "../src/librarian/device.js";
 import {
-  DN2_TRACK_COUNT,
   applyTrackMove,
-  lockCounts,
   planTrackMove,
-  trackMachines,
-  trigCounts,
   verifyTrackMove,
 } from "../src/librarian/trackmove.js";
+import {
+  lockCounts,
+  summariseTracks,
+  trackMachines,
+  trigCounts,
+} from "../src/librarian/tracksummary.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "../src/project/dn2pattern.js";
 import { clear, copyMany, moveMany, swap } from "../src/librarian/shuffle.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
@@ -444,8 +447,10 @@ test("the track level follows the whole track and nothing less", { skip }, () =>
   const device = deviceFor(img);
   const { index, tracks } = busyPattern(img);
   const [from, to] = tracks as [number, number];
-  const level = (bytes: Uint8Array, track: number) =>
-    kitRecord(bytes, index, DN2_LAYOUT)[0x1c + track * 2];
+  // Read through the surface a user sees, not by reaching for the offset. The hand-rolled version
+  // was a third copy of `0x1c` — and it took only the low byte of a u16le, so a level above 255
+  // would have compared equal while being wrong.
+  const level = (bytes: Uint8Array, track: number) => summariseTracks(bytes, index)[track]!.level;
 
   const preset = applyTrackMove(img, device, index, moveMany([from], to), {
     ...CONFIRM,
