@@ -9,18 +9,13 @@
  * and for most people the +Drive is the only copy of that work.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { cliArgs, readProjectFile } from "./args.js";
 import { basename } from "node:path";
-import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { applyPatternCopy, freePoolSlots, planPatternCopy } from "../librarian/copy.js";
 
-function load(path: string) {
-  const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return { manifest, payload, image: decodeProjectImage(payload.raw).image };
-}
 
 /** Bank letter and 1-based position, the way the device labels patterns. */
 function label(index: number): string {
@@ -28,18 +23,14 @@ function label(index: number): string {
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag } = cliArgs();
 
   const fromPath = arg("from");
   const toPath = arg("to");
   const pattern = Number(arg("pattern"));
   const slot = Number(arg("slot"));
-  const apply = argv.includes("--apply");
-  const force = argv.includes("--force");
+  const apply = flag("apply");
+  const force = flag("force");
   const outPath = arg("out");
 
   if (!fromPath || !toPath || Number.isNaN(pattern) || Number.isNaN(slot)) {
@@ -54,8 +45,8 @@ function main(): void {
     process.exit(1);
   }
 
-  const src = load(fromPath);
-  const dst = load(toPath);
+  const src = readProjectFile(fromPath);
+  const dst = readProjectFile(toPath);
   const plan = planPatternCopy(src.image, pattern, dst.image, slot);
 
   console.log(

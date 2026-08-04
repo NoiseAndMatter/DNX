@@ -17,10 +17,10 @@
  * repository. `99_HardwareTest/` is gitignored for exactly this.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { cliArgs, readProjectFile } from "./args.js";
 import { join } from "node:path";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile, parseProject } from "../node/projectfile.js";
+import { buildProjectFile, } from "../node/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
 import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
 import { escapeHtml } from "../sheet/html.js";
@@ -51,10 +51,6 @@ import {
 
 const CONFIRM = { confirmOverwrite: true } as const;
 
-function load(path: string) {
-  const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return { manifest, payload, image: decodeProjectImage(payload.raw).image };
-}
 
 /**
  * One row per *slot*, not per operation.
@@ -244,11 +240,7 @@ under the wrong name.</p>
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, list } = cliArgs();
 
   const projectPath = arg("project");
   const outDir = arg("out");
@@ -259,15 +251,9 @@ function main(): void {
     process.exit(1);
   }
 
-  const keepAt = argv.indexOf("--keep");
-  const keepTokens: string[] = [];
-  if (keepAt !== -1) {
-    for (let i = keepAt + 1; i < argv.length && !argv[i]!.startsWith("--"); i++) {
-      keepTokens.push(argv[i]!);
-    }
-  }
+  const keepTokens = list("keep");
 
-  const project = load(projectPath);
+  const project = readProjectFile(projectPath);
   const device = deviceFor(project.image);
   const stamp = hhmm();
 

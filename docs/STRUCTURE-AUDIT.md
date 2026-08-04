@@ -210,9 +210,30 @@ Ranked by what the codebase most needs. Each is one PR.
 | 5 | ~~Move the three Node-only modules to `src/node/`~~ **DONE 2026-08-04.** Config excludes a directory; 40 files' imports rewritten; `test/web.test.ts` now *enforces* the boundary across all of `src/`, verified by planting a violation; 757 pass | shipped |
 | 6 | ~~Share the grid view-model between the two pages~~ **DONE 2026-08-01.** `web/src/slotview.ts` — DOM-free, so it is testable — owns `SlotView`, `BANK_SIZE`, `patternSlotView` and `countOccupiedIn`. Three copies of the mapping gone; the expander's source grid keeps its one real difference as a `live` argument. `test/slotview.test.ts` added, 9 tests | shipped |
 | 7 | ~~Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`~~ **DONE 2026-08-01, and the proposed destination was wrong.** They went to a new DOM-free `web/src/dropaction.ts`: `dragrules.ts` is type-checked by the root config, which has no DOM library, so pointing it at `grid.ts` failed immediately on `NodeListOf` having no iterator. `grid.ts` now types its `action` as `DropAction` rather than `string`, and the stylesheet guard reads the union from its real home | shipped |
-| 8 | Add `src/cli/args.ts` (`arg`, `flag`, `fail`, `readProjectImage`) and route the eleven CLIs through it | low, but eleven untested entry points — ship with a smoke script |
+| 8 | ~~Add `src/cli/args.ts`~~ **DONE 2026-08-04.** `cliArgs`, `fail`, `readProjectFile`, `readProjectImage`; ten commands rewired, nine `arg` closures and four `fail`s gone; **the shared `arg` fixes a bug all nine copies had**; `test/clismoke.test.ts` runs all seventeen commands as subprocesses and `test/cliargs.test.ts` covers the parser; 785 pass | shipped |
 | 9 | ~~Move the track counters out of the mover~~ **DONE 2026-08-04.** Geometry to `dn2pattern.ts`, counters to `tracksummary.ts`, so the mover exports only plan/apply/verify; duplicate track-count constant collapsed; dead `SOUND_SIZE` re-export deleted; the `0x1c` reimplementation in the tests replaced by `summariseTracks` | shipped |
 | 10 | **Throws DONE 2026-08-04** — `requireCorpusFile`/`requireCorpusFiles` in `test/corpus.ts`, all seven sites converted, `test/corpus.test.ts` added; 744 pass. **Still open:** `api`/`route`/`shuffle`/`grid` tests, and the six colliding test names | shipped in part |
+
+## The bug nine copies shared — found 2026-08-04
+
+Every command built its own `arg`:
+
+```ts
+const i = argv.indexOf(`--${name}`);
+return i === -1 ? undefined : argv[i + 1];
+```
+
+So `npm run convert -- --from --expand` read `"--expand"` as the filename and died with a raw
+`node:fs` stack trace — no usage text, nothing naming the argument actually left out. **A missing
+value is the one case where the usage message is the entire answer.**
+
+The shared version refuses a `--`-prefixed token as a value. That is safe here because nothing this
+tool takes as a value begins with `--`: they are paths, slot names like `A1`, track numbers and
+project names.
+
+The smoke test was written **before** the refactor, so there was a baseline to change against — and
+its first version proved nothing, because it aimed at `project`, which parses positionally and never
+had the bug. Pointed at `convert` it failed, which is what made it worth having.
 
 ## Checked and found healthy
 

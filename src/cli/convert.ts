@@ -15,10 +15,9 @@
  * tracks.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { cliArgs, readProjectFile } from "./args.js";
 import { basename } from "node:path";
-import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { mintProjectId, writeProjectId } from "../project/dn2image.js";
@@ -27,10 +26,6 @@ import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
 import { stampedProjectName } from "../sheet/naming.js";
 
-function load(path: string) {
-  const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return { manifest, payload, image: decodeProjectImage(payload.raw).image };
-}
 
 /**
  * Stamp a build time into the project name, so the name shown on the device says which
@@ -43,23 +38,19 @@ function load(path: string) {
 
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag } = cliArgs();
 
   const fromPath = arg("from");
   const templatePath = arg("template");
   const outPath = arg("out");
-  const expand = argv.includes("--expand");
-  const useRules = argv.includes("--rules");
-  const freeMidi = argv.includes("--free-midi");
-  const compact = argv.includes("--compact");
-  const aggregate = argv.includes("--aggregate");
-  const dryRun = argv.includes("--dry-run") || outPath === undefined;
+  const expand = flag("expand");
+  const useRules = flag("rules");
+  const freeMidi = flag("free-midi");
+  const compact = flag("compact");
+  const aggregate = flag("aggregate");
+  const dryRun = flag("dry-run") || outPath === undefined;
   const nameOverride = arg("name");
-  const stamp = argv.includes("--stamp");
+  const stamp = flag("stamp");
 
   if (!fromPath) {
     console.error(
@@ -87,8 +78,8 @@ function main(): void {
     process.exit(1);
   }
 
-  const source = load(fromPath);
-  const template = load(resolvedTemplate);
+  const source = readProjectFile(fromPath);
+  const template = readProjectFile(resolvedTemplate);
 
   const plan = expand
     ? planExpansion(source.image, {
