@@ -282,27 +282,71 @@ const SCOPE_HINTS: Readonly<Record<TrackScope, string>> = {
   preset: "The device's PRESET copy — [TRK] + [REC]/[STOP]/[PLAY]. The trigs stay. Level stays.",
 };
 
+/**
+ * Walk the session to the point a history row names.
+ *
+ * `undo:n` means "undo n steps", so the clicked action becomes the most recent thing that
+ * happened. `redo:n` means "redo n steps", which is how a step that was undone comes back.
+ * Clicking the row you are already at is `undo:0` and does nothing, which is the right answer to
+ * asking to go where you are.
+ */
+function goToHistoryPoint(step: string): void {
+  const [direction, countText] = step.split(":");
+  const count = Number(countText);
+  if (!Number.isFinite(count) || count <= 0) return;
+
+  let last: string | undefined;
+  for (let i = 0; i < count; i++) {
+    const label = direction === "redo" ? state.session?.redo() : state.session?.undo();
+    // Stop the moment the session says there is nothing left, rather than counting into thin air.
+    if (!label) break;
+    last = label;
+  }
+
+  if (last) {
+    status(
+      count === 1
+        ? `${direction === "redo" ? "Redid" : "Undid"} ${last}.`
+        : `${direction === "redo" ? "Redid" : "Undid"} ${count} steps, back to ${last}.`,
+    );
+  }
+  state.selection = [];
+  render();
+}
+
 function renderHistory(): void {
   const list = $("history");
   const session = state.session;
   const entries = session?.history() ?? [];
 
-  if (entries.length === 0) {
+  // Undone steps sit above the current position, so the list reads as one timeline: what would
+  // happen again at the top, what has happened below, and the line between them is where you are.
+  const future = session?.future() ?? [];
+
+  if (entries.length === 0 && future.length === 0) {
     list.innerHTML = `<li class="hint">Nothing done yet.</li>`;
   } else {
-    list.innerHTML = entries
-      .slice(0, 12)
-      .map(
-        (e) =>
-          `<li>${escapeHtml(e.label)}<span class="b">${(e.bytes / 1024).toFixed(0)} KB</span></li>`,
-      )
-      .join("");
+    const row = (e: { label: string; bytes: number }, cls: string, step: string): string =>
+      `<li class="${cls}" data-step="${step}" tabindex="0" role="button" ` +
+      `title="Go to this point">${escapeHtml(e.label)}` +
+      `<span class="b">${(e.bytes / 1024).toFixed(0)} KB</span></li>`;
+
+    list.innerHTML = [
+      ...future.map((e, i) => row(e, "ahead", `redo:${future.length - i}`)),
+      ...entries.slice(0, 12).map((e, i) => row(e, "", `undo:${i}`)),
+    ].join("");
   }
 
   $<HTMLButtonElement>("undo").disabled = !session?.canUndo;
   $<HTMLButtonElement>("redo").disabled = !session?.canRedo;
-  $<HTMLButtonElement>("undo").textContent = session?.undoLabel ? `Undo ${session.undoLabel}` : "Undo";
-  $<HTMLButtonElement>("redo").textContent = session?.redoLabel ? `Redo ${session.redoLabel}` : "Redo";
+  // **The label goes in the tooltip, not on the button.** Putting the action name on the control
+  // made it as wide as the longest operation name, which wrapped the top bar onto a second line and
+  // moved every other control down — a toolbar that changes height as you work is worse than one
+  // that says less. The name is still there for anyone who wants it, on hover.
+  const undo = $<HTMLButtonElement>("undo");
+  const redo = $<HTMLButtonElement>("redo");
+  undo.title = session?.undoLabel ? `Undo ${session.undoLabel}` : "Nothing to undo";
+  redo.title = session?.redoLabel ? `Redo ${session.redoLabel}` : "Nothing to redo";
 }
 
 function render(): void {
@@ -628,6 +672,34 @@ function wireOperations(): void {
     if (label) status(`Redid ${label}.`);
     state.selection = [];
     render();
+  });
+
+  /**
+   * Click a point in the history to go there.
+   *
+   * **Stepping, not seeking.** The session stores patches rather than snapshots, so there is no
+   * state to jump to — reaching a point means applying every step between here and it. Doing that
+   * in a loop is honest about the cost and reuses the two operations that are already correct;
+   * a `goTo` on the session would be a third path through the same patches, and the one most
+   * likely to disagree with the other two.
+   *
+   * Delegated from the list rather than bound per row, because the rows are rebuilt on every
+   * render and listeners on replaced elements are how a control quietly stops working.
+   */
+  $("history").addEventListener("click", (event) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-step]");
+    if (!row) return;
+    goToHistoryPoint(row.dataset.step ?? "");
+  });
+
+  // The rows are focusable and announce themselves as buttons, so they have to answer a keyboard
+  // like one.
+  $("history").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-step]");
+    if (!row) return;
+    event.preventDefault();
+    goToHistoryPoint(row.dataset.step ?? "");
   });
 
   $("export").addEventListener("click", () => {
