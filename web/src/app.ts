@@ -202,8 +202,9 @@ function replan(): void {
   // stopped being live.
   renderReport();
   // The options changed what would be written, so any plan already on screen is now describing
-  // something else. Recomputed locally — nothing is sent.
-  replanForDevice();
+  // something else — and so is the grid, because `Contiguous` changes where patterns land and the
+  // pruning above can change which ones there are. Recomputed locally; nothing is sent.
+  landingChanged();
 }
 
 /**
@@ -441,8 +442,7 @@ async function fillFromBlank(): Promise<void> {
 function setDestination(next: Destination): void {
   destination = next;
   renderDestination();
-  renderDestinationGrid();
-  replanForDevice();
+  landingChanged();
 }
 
 function renderDestination(): void {
@@ -564,8 +564,7 @@ function applyToDestination(): void {
   // The plan described a change *from* the old destination. Now that it is the destination, the
   // same plan is a no-op — so it is recomputed rather than left saying something untrue.
   renderDestination();
-  renderDestinationGrid();
-  replanForDevice();
+  landingChanged();
   renderReport();
   status(`Applied. ${more}`);
 }
@@ -574,8 +573,7 @@ function undoApply(): void {
   if (!destination?.previous) return;
   destination = { ...destination, image: destination.previous, previous: undefined };
   renderDestination();
-  renderDestinationGrid();
-  replanForDevice();
+  landingChanged();
   renderReport();
   status("Undone — back to the destination as it was before the last apply.");
 }
@@ -884,8 +882,7 @@ const drag = new GridDrag({
     // marker moved; dropping on one did not, so the only visible effect of a drag was a line of
     // text far down the page. The gesture worked and looked like it had done nothing, which is
     // indistinguishable from broken — and was reported as exactly that.
-    renderDestinationGrid();
-    replanForDevice();
+    landingChanged();
     const slots = landingSlotsFor(selection, index, landingMode());
     status(
       `${selection.length} pattern(s) will land in ${describeSlots(slots)}, ` +
@@ -967,7 +964,11 @@ function renderSource(): void {
         anchor = next.anchor;
         renderSource();
         renderReport();
-        replanForDevice();
+        // The destination too. The selection is what `landingSlots` and `pendingSources` are
+        // computed from, so adding a pattern to it adds a landing mark — and this path updated the
+        // plan while leaving the grid drawing the marks for the previous selection. The same bug as
+        // the Contiguous toggle, through a different door, found by the test written for that one.
+        landingChanged();
       },
       drag: { controller: drag, grid: "source" },
     },
@@ -977,6 +978,27 @@ function renderSource(): void {
     selection.length === 0
       ? `— ${live.size} live`
       : `— ${selection.length} selected: ${selection.map(patternName).join(" ")}`;
+}
+
+/**
+ * **What lands where has changed.** Recompute the plan and repaint the grid — together, always.
+ *
+ * These two had been written side by side at three call sites and omitted at a fourth. `replan`
+ * recomputed and did not repaint, so ticking **Contiguous** updated the plan panel while the grid
+ * above it went on drawing the previous positions: two views of one operation, disagreeing, until
+ * you dropped the patterns again.
+ *
+ * That is the failure the shared `landingSlotsFor` was introduced to prevent, arriving by the other
+ * door. **Giving a rule one home does not give its invalidation one** — the rule cannot disagree
+ * with itself, but a view that never re-asks it can still be wrong, and nothing about a shared
+ * function makes anyone remember to repaint.
+ *
+ * So the pair has a name. Anything that changes the selection, the anchor or the landing mode calls
+ * this, and the next option added inherits the fix instead of rediscovering the bug.
+ */
+function landingChanged(): void {
+  renderDestinationGrid();
+  replanForDevice();
 }
 
 /** The destination grid: the working project, whatever it was filled from. */
@@ -1013,8 +1035,7 @@ function renderDestinationGrid(): void {
       ...(merging() ? { opened: landing, landing: landingSlots() } : {}),
       onClick: (index) => {
         landing = index;
-        renderDestinationGrid();
-        replanForDevice();
+        landingChanged();
       },
       drag: { controller: drag, grid: "destination" },
     },
@@ -1089,7 +1110,6 @@ let anchor: number | undefined;
 
 function syncMode(): void {
   renderSource();
-  renderDestinationGrid();
-  replanForDevice();
+  landingChanged();
   renderReport();
 }
