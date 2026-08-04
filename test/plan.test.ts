@@ -12,7 +12,11 @@ import { DN1_INIT_SOUND_FINGERPRINT, soundFingerprint } from "../src/expand/sour
 const DIR = NO_CORPUS ? "" : corpusPath(DN1_PROJECTS);
 
 function projects(): { name: string; image: Uint8Array }[] {
-  if (!existsSync(DIR)) return [];
+  if (NO_CORPUS) return [];
+  // A corpus that exists but holds none of these is a broken corpus, not a reason to pass: a
+  // loop over an empty list completes successfully and looks identical to one that checked
+  // every file.
+  if (!existsSync(DIR)) throw new Error(`${DIR} is not in the corpus — nothing would be planned`);
   return readdirSync(DIR)
     .filter((f) => f.toLowerCase().endsWith(".dnprj"))
     .map((f) => {

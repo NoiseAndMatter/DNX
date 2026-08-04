@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
+import { CORPUS, NO_CORPUS, SKIP_REASON, requireCorpusFile } from "./corpus.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -96,9 +96,10 @@ function soundPairs(dn1File: string, dn2File: string, label: string): SoundPair[
 function heldOutPairs(): SoundPair[] {
   const out: SoundPair[] = [];
   for (const pair of HELD_OUT_PAIRS) {
-    const dn1File = join(EXAMPLES, "01_DN1/01_Projects", pair.dn1);
-    const dn2File = join(EXAMPLES, "02_DN2/01_Projects", pair.dn2);
-    if (!existsSync(dn1File) || !existsSync(dn2File)) continue;
+    // Required, not skipped past. These pairs are the *held-out* half of the mapping evidence —
+    // quietly dropping one shrinks the validation set while the test still reports success.
+    const dn1File = requireCorpusFile("01_DN1/01_Projects", pair.dn1);
+    const dn2File = requireCorpusFile("02_DN2/01_Projects", pair.dn2);
     out.push(...soundPairs(dn1File, dn2File, pair.name));
   }
   return out;
