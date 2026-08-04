@@ -17,13 +17,17 @@
  * The deployed static build has no server, that request 404s, and the picker stays as the
  * fallback. Same page either way, no build-time switch.
  *
- * **Why the template is still not bundled into the repository.** It would make the tool
- * self-contained and it is tempting. It is wrong for a reason that outlives the convenience:
- * a template must match the **storage version the device writes**, and ours is version 3 from
- * firmware 1.10E. Shipping one would quietly make it *the* template for every user on every
- * firmware, which is the versioning problem elk-herd solves by keeping a blank per version and
- * refusing when it has none. Reading the user's own device-authored `EMPTY.dn2prj` sidesteps
- * it entirely: their file is by definition the right version for their device.
+ * **Why this endpoint still matters now that a blank ships with the code.**
+ * `src/librarian/blankproject.ts` does carry a device-authored `.dn2prj`, and `web/src/donor.ts`
+ * falls back to it so no page is ever left with nothing. That does not retire this route, because
+ * the objection to bundling was never about convenience: a template must match the **storage
+ * version the device writes**, and the embedded one is version 3 from firmware 1.10E. Shipping it
+ * as *the* template would quietly impose that version on every user on every firmware — the
+ * problem elk-herd solves by keeping a blank per version and refusing when it has none.
+ *
+ * So the order is: the user's own `EMPTY.dn2prj` when this server can find it, because their file
+ * is by definition the right version for their device; the embedded blank only as a floor, and it
+ * says which firmware it came from when it is used.
  */
 
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
