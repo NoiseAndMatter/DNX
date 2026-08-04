@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { TOOLS } from "../web/src/toolnav.js";
+import { TOOLS, indexOfTool, stepFrom } from "../web/src/toolnav.js";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "../web");
 
@@ -79,4 +79,27 @@ test("the shortcut is discoverable from the row itself", () => {
   const source = readFileSync(resolve(WEB, "src/toolnav.ts"), "utf8");
   assert.match(source, /link\.title = /, "the links must carry their shortcut in a title");
   assert.match(source, /Ctrl\+Alt\+/, "the tooltip must name the actual combination");
+});
+
+test("the row does not wrap at either end", () => {
+  // Reported from the hardware: at the rightmost tool the right arrow cycled round to the leftmost.
+  // The rule was three lines inside a keydown listener where nothing could reach it; it is a
+  // function now, and this is the assertion that was missing.
+  const last = TOOLS.length - 1;
+  assert.equal(stepFrom(last, 1), undefined, "there is nothing to the right of the last tool");
+  assert.equal(stepFrom(0, -1), undefined, "there is nothing to the left of the first");
+});
+
+test("stepping inside the row moves exactly one place", () => {
+  assert.equal(stepFrom(0, 1), 1);
+  assert.equal(stepFrom(1, 1), 2);
+  assert.equal(stepFrom(2, -1), 1);
+});
+
+test("an unknown tool throws rather than reading as position -1", () => {
+  // **This is the only mechanism that could produce the reported wrap.** `findIndex` answers -1 for
+  // an id not in the row, and -1 + 1 is 0 — so "next" from an unknown position lands on the
+  // leftmost tool, which is indistinguishable from cycling. Now it says so instead.
+  assert.throws(() => indexOfTool("nosuchtool" as never), /not one of expander, manager, probe/);
+  for (const tool of TOOLS) assert.equal(TOOLS[indexOfTool(tool.id)]!.id, tool.id);
 });

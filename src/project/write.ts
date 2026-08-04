@@ -25,6 +25,19 @@ import { encodeBlockChain } from "./lz4encode.js";
 
 const FOOTER_MAGIC = Uint8Array.of(0xaa, 0xa1, 0xda, 0xaa);
 
+/**
+ * The header byte that says whether the body is compressed.
+ *
+ * **Named from evidence, not from a specification.** All 79 project files in the corpus — both
+ * families, every firmware present — carry `0x01` here, and the one payload known to be
+ * uncompressed, a project read straight off the +Drive, carries `0x00`. That correlation is
+ * unanimous across 80 samples; what the byte is *called* remains unknown, and it does not need to
+ * be. What matters is that every file a device has written says `0x01`, and everything this
+ * function emits is compressed.
+ */
+const COMPRESSED_FLAG_OFFSET = 29;
+const COMPRESSED = 0x01;
+
 export class ProjectWriteError extends Error {}
 
 /**
@@ -44,6 +57,13 @@ export function buildPayload(sourcePayload: Uint8Array, image: Uint8Array): Uint
   const out = new Uint8Array(total);
 
   out.set(sourcePayload.subarray(0, BLOCK_CHAIN_START), 0);
+  // **The header must describe what we actually wrote.** Copying it verbatim is right for every
+  // byte but this one: a payload read off the +Drive carries an *uncompressed* body and says so
+  // here, and what goes out below is always an LZ4 chain. Copying the 0 through produced a file
+  // claiming to be uncompressed with compressed contents — which our own reader survives, because
+  // it measures rather than trusting the flag, and Elektron Transfer does not: it stopped at
+  // "Calculating Checksum" and crashed.
+  out[COMPRESSED_FLAG_OFFSET] = COMPRESSED;
   out.set(chain, BLOCK_CHAIN_START);
 
   const view = new DataView(out.buffer);
