@@ -229,32 +229,6 @@ export function renderGrid(
   }
 }
 
-/**
- * Extend a selection the way every list in every application does.
- *
- * Shared because getting it subtly different in two tools is worse than either behaviour: shift
- * takes a range from the anchor, ctrl or meta toggles one, and a plain click replaces.
- */
-export function nextSelection(
-  selection: readonly number[],
-  anchor: number | undefined,
-  index: number,
-  modifiers: GridModifiers,
-): { selection: number[]; anchor: number } {
-  if (modifiers.shiftKey && anchor !== undefined) {
-    const [lo, hi] = anchor <= index ? [anchor, index] : [index, anchor];
-    const range: number[] = [];
-    for (let i = lo; i <= hi; i++) range.push(i);
-    return { selection: range, anchor };
-  }
-  if (modifiers.ctrlKey || modifiers.metaKey) {
-    const at = selection.indexOf(index);
-    const next = at >= 0 ? selection.filter((i) => i !== index) : [...selection, index];
-    return { selection: next, anchor: index };
-  }
-  return { selection: [index], anchor: index };
-}
-
 /** Decorate the hovered cell, or clear it when the drop would be refused. */
 function paint(cell: HTMLElement, hint: GridDropHint | undefined): void {
   clear(cell);
