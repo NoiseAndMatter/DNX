@@ -137,6 +137,49 @@ Until then the working route to the instrument is unchanged: **Write to device**
 patterns to the *active* project over the dump protocol, and SAVE PROJECT on the front panel commits
 them. That route is proven on hardware; the +Drive one has never been performed.
 
+## The grid drew one landing while the panel described another — FIXED 2026-08-04
+
+Reported: *"if you tick/untick contiguous, the distribution of patterns already dropped doesn't
+match the new toggle state — you have to re-drop for it to affect the preview."*
+
+`replan()` called `renderSource()`, `renderReport()` and `replanForDevice()`, and **not**
+`renderDestinationGrid()`. So ticking **Contiguous**:
+
+- updated the plan panel and status line, because `replanForDevice` passes the new mode straight
+  through to `planMerge`;
+- left the grid drawing the previous `landingSlots()` marks and `pendingSources()` names, because
+  nothing repainted it.
+
+`onDrop` repaints explicitly, which is why re-dropping appeared to fix it.
+
+### The interesting part
+
+This is the failure `src/expand/landing.ts` was written to prevent, arriving through the other door.
+That change gave the placement **rule** one home so the preview could not disagree with the write —
+and it worked: both still called the same function. What it did not give one home to was
+**invalidation**.
+
+> **Giving a rule one home does not give its invalidation one.** A shared function cannot disagree
+> with itself, but a view that never re-asks it can still be wrong, and nothing about sharing makes
+> anyone remember to repaint.
+
+So the pair — recompute, repaint — has a name: `landingChanged()`. Everything that changes the
+selection, the anchor or the landing mode goes through it.
+
+### The guard found a second live instance
+
+`test/expanderwiring.test.ts` asserts that `replanForDevice` has exactly one caller. Written to pin
+the reported bug, it immediately failed on four others — and **one of them was the same defect,
+unreported**: clicking in the *source* grid changed the selection, recomputed the plan, and did not
+repaint the destination. The selection is precisely what `landingSlots()` and `pendingSources()` are
+computed from, so ctrl-clicking a fifth pattern updated the panel while the grid went on showing
+marks for four.
+
+The remaining three (`setDestination`, `applyMerge`, `undoApply`) already did both halves and now
+say so in one word.
+
+> A guard written for one instance of a bug is the cheapest way to find the others.
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.
