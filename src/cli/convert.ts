@@ -25,6 +25,7 @@ import { mintProjectId, writeProjectId } from "../project/dn2image.js";
 import { findTemplate, templateSearchPaths } from "../librarian/open.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
+import { stampedProjectName } from "../sheet/naming.js";
 
 function load(path: string) {
   const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
@@ -39,11 +40,7 @@ function load(path: string) {
  * hardware, and a hardware test that validates the wrong build is worse than no test. The
  * name field holds 15 characters, so the base name is truncated to leave room for " HHMM".
  */
-function stampName(name: string, when = new Date()): string {
-  const hhmm = `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
-  const room = 15 - (hhmm.length + 1);
-  return `${name.slice(0, room).trimEnd()} ${hhmm}`;
-}
+
 
 function main(): void {
   const argv = process.argv.slice(2);
@@ -103,7 +100,7 @@ function main(): void {
     : undefined;
 
   const base = nameOverride ?? readProjectName(source.image);
-  const projectName = stamp ? stampName(base) : nameOverride;
+  const projectName = stamp ? stampedProjectName(base) : nameOverride;
 
   const { image, report } = convertProject(source.image, template.image, {
     ...(plan ? { plan } : {}),

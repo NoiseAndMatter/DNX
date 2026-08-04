@@ -22,20 +22,18 @@ import { join } from "node:path";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { buildProjectFile, parseProject } from "../project/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
-import { patternIndex, patternName } from "../sheet/naming.js";
+import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
 import { escapeHtml } from "../sheet/html.js";
 import {
   type ExportRow,
   type ExportSpec,
-  RESULTS_FORM_CSS,
   checkItem,
-  exportBar,
   metaField,
   noteCell,
   observationsField,
-  resultsFormScript,
   verdictCell,
 } from "../sheet/resultsform.js";
+import { renderSheetPage } from "../sheet/page.js";
 import { deviceFor } from "../librarian/device.js";
 import { applyRearrange } from "../librarian/rearrange.js";
 import { copyMany, keepOnly } from "../librarian/shuffle.js";
@@ -52,10 +50,6 @@ import {
 } from "../librarian/hardwaretest.js";
 
 const CONFIRM = { confirmOverwrite: true } as const;
-
-function hhmm(when = new Date()): string {
-  return `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
-}
 
 function load(path: string) {
   const { manifest, payload } = parseProject(new Uint8Array(readFileSync(path)));
@@ -161,57 +155,13 @@ function renderSheet(
 
   const quiet = QUIET_FAILURES.map((q, i) => checkItem(`q${i}`, q)).join("\n    ");
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNX hardware test ${stamp} — pattern rearrangement</title>
-<style>
-  :root { color-scheme: light dark;
-    --bg:#fff; --fg:#16181d; --muted:#6b7280; --line:#e4e6ea; --accent:#6d4aff;
-    --card:#f8f9fb; --bad:#b3261e; }
-  @media (prefers-color-scheme: dark) { :root {
-    --bg:#131519; --fg:#e7e9ed; --muted:#98a0ac; --line:#2a2e35; --accent:#b5a2ff;
-    --card:#191c21; --bad:#ff8a80; } }
-  * { box-sizing: border-box; }
-  body { background:var(--bg); color:var(--fg); margin:0 auto; padding:2rem 1.25rem 4rem;
-    max-width:62rem; font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  h1 { font-size:1.5rem; margin:0 0 .2rem; letter-spacing:-.02em; }
-  h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
-    margin:2.2rem 0 .6rem; }
-  .lede { color:var(--muted); margin:0 0 1.2rem; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
-    padding:.9rem 1.1rem; margin:.8rem 0; }
-  .card strong { color:var(--accent); }
-  .scroll { overflow-x:auto; }
-  table { border-collapse:collapse; width:100%; font-size:.88rem; min-width:44rem; }
-  th, td { text-align:left; padding:.45rem .55rem; border-bottom:1px solid var(--line);
-    vertical-align:top; }
-  th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase;
-    letter-spacing:.05em; }
-  td.n { font-weight:700; width:2rem; }
-  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; }
-  td.tick { width:3.5rem; }
-  td.tick::before { content:"☐ ☐"; letter-spacing:.4rem; color:var(--muted); }
-  td.note { width:12rem; border-bottom:1px solid var(--line); }
-  tr.grp td { border-top:2px solid var(--line); }
-  .nm { background:var(--card); border:1px solid var(--line); border-radius:4px;
-    padding:.05rem .3rem; font-weight:600; }
-  .empty { color:var(--muted); font-style:italic; }
-  .hint { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
-  ul { padding-left:1.1rem; }
-  li { margin:.35rem 0; }
-  .warn { border-left:3px solid var(--bad); padding-left:.9rem; }
-  .warn strong { color:var(--bad); }
-  @media print { body { max-width:none; padding:0; } .card { break-inside:avoid; } }
-${RESULTS_FORM_CSS}</style>
-</head>
-<body>
-
-<h1>Pattern rearrangement — hardware test</h1>
-<p class="lede">Build <span class="mono">${stamp}</span> &middot; ${escapeHtml(layout)} &middot;
-seeded from ${escapeHtml(sourceName)}</p>
+  return renderSheetPage({
+    documentTitle: `DNX hardware test ${stamp} — pattern rearrangement`,
+    heading: "Pattern rearrangement — hardware test",
+    lede: `Build <span class="mono">${stamp}</span> &middot; ${escapeHtml(layout)} &middot;
+seeded from ${escapeHtml(sourceName)}`,
+    spec,
+    body: `
 
 <div class="card">
   <strong>Load <span class="mono">HWTEST_BASE_${stamp}</span> first.</strong>
@@ -289,13 +239,8 @@ under the wrong name.</p>
   checked against songs. Patterns are referenced by slot, so rearranging them could desync a
   song we cannot see.
 </div>
-
-${exportBar()}
-${resultsFormScript(spec)}
-
-</body>
-</html>
-`;
+`,
+  });
 }
 
 function main(): void {

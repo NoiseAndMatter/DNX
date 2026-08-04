@@ -43,7 +43,7 @@ import {
   type MergeNote,
   type MergePlan,
 } from "../../src/expand/merge.js";
-import { patternName } from "../../src/sheet/naming.js";
+import { patternName, stampedProjectName as stampedName } from "../../src/sheet/naming.js";
 import {
   GridDrag,
   bankSlots,
@@ -180,12 +180,7 @@ function options() {
   };
 }
 
-/** Build a name the device can show, ending in the build time so a loaded file is identifiable. */
-function stampedName(base: string): string {
-  const now = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
-  return `${base.slice(0, 15 - hhmm.length - 1).trimEnd()} ${hhmm}`;
-}
+
 
 function replan(): void {
   if (!state.source) return;
