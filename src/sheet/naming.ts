@@ -60,3 +60,40 @@ export function stepsByPage(steps: readonly number[]): string {
   }
   return [...pages].map(([page, list]) => `p${page}: ${list.join(", ")}`).join(" · ");
 }
+
+/**
+ * The build time, `HHMM`, for stamping into a project name.
+ *
+ * **This is how you know which build is on the instrument.** A project loaded from the +Drive shows
+ * only its name, so without the stamp a fix and the bug it fixes are the same fifteen characters —
+ * and an hour was once spent testing a build that had never been rebuilt.
+ *
+ * Five copies of this line existed: both hardware-test CLIs, `cli/convert.ts`, `device/capture.ts`
+ * and `web/src/app.ts`. Local time on purpose: the person reading it is standing next to the
+ * device, and UTC would make them do arithmetic to answer "is this the one I just made".
+ */
+export function hhmm(when = new Date()): string {
+  return `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * How much of a project name is kept when the build time is stamped onto the end.
+ *
+ * **One character short of `NAME_SIZE`, which is 16.** Both copies of this stamping logic said 15
+ * and neither said why; the field really is sixteen wide (`rename.ts` truncates there and calls it
+ * "the width of the field"). Preserved rather than corrected, because a name that overruns on
+ * hardware is a worse outcome than a name one character shorter than it could be, and nothing here
+ * establishes which is right. Worth one look at the device before changing.
+ */
+export const STAMPED_NAME_SIZE = 15;
+
+/**
+ * A project name with the build time on the end, trimmed to fit the device field.
+ *
+ * `MORNING JAM` becomes `MORNING JA 1640`. Two copies of this existed — one in the converter, one
+ * in the expander page — each carrying the width limit separately.
+ */
+export function stampedProjectName(base: string, when = new Date()): string {
+  const stamp = hhmm(when);
+  return `${base.slice(0, STAMPED_NAME_SIZE - stamp.length - 1).trimEnd()} ${stamp}`;
+}

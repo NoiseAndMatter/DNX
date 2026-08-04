@@ -31,19 +31,17 @@ import { buildProjectFile } from "../project/projectfile.js";
 import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
 import { readDn2Pattern } from "../project/dn2pattern.js";
 import { describePlock } from "../project/plockparams.js";
-import { patternIndex, patternName } from "../sheet/naming.js";
+import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
 import {
   type ExportRow,
   type ExportSpec,
-  RESULTS_FORM_CSS,
   checkItem,
-  exportBar,
   metaField,
   noteCell,
   observationsField,
-  resultsFormScript,
   verdictCell,
 } from "../sheet/resultsform.js";
+import { renderSheetPage } from "../sheet/page.js";
 import { type Device } from "../librarian/device.js";
 import { OpenError, openProject } from "../librarian/open.js";
 import { applyRearrange } from "../librarian/rearrange.js";
@@ -67,10 +65,6 @@ const CONFIRM = { confirmOverwrite: true } as const;
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
-}
-
-function hhmm(when = new Date()): string {
-  return `${String(when.getHours()).padStart(2, "0")}${String(when.getMinutes()).padStart(2, "0")}`;
 }
 
 /**
@@ -316,60 +310,15 @@ function renderSheet(
   <ul>${caveats.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
 </div>`;
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNX hardware test ${stamp} — track operations</title>
-<style>
-  :root { color-scheme: light dark;
-    --bg:#fff; --fg:#16181d; --muted:#6b7280; --line:#e4e6ea; --accent:#6d4aff;
-    --card:#f8f9fb; --bad:#b3261e; }
-  @media (prefers-color-scheme: dark) { :root {
-    --bg:#131519; --fg:#e7e9ed; --muted:#98a0ac; --line:#2a2e35; --accent:#b5a2ff;
-    --card:#191c21; --bad:#ff8a80; } }
-  * { box-sizing: border-box; }
-  body { background:var(--bg); color:var(--fg); margin:0 auto; padding:2rem 1.25rem 4rem;
-    max-width:72rem; font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  h1 { font-size:1.5rem; margin:0 0 .2rem; letter-spacing:-.02em; }
-  h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
-    margin:2.2rem 0 .6rem; }
-  .lede { color:var(--muted); margin:0 0 1.2rem; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
-    padding:.9rem 1.1rem; margin:.8rem 0; }
-  .card strong { color:var(--accent); }
-  .scroll { overflow-x:auto; }
-  table { border-collapse:collapse; width:100%; font-size:.88rem; min-width:52rem; }
-  th, td { text-align:left; padding:.45rem .55rem; border-bottom:1px solid var(--line);
-    vertical-align:top; }
-  th { color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase;
-    letter-spacing:.05em; }
-  td.n { font-weight:700; width:2rem; }
-  td.num { text-align:right; }
-  th.num { text-align:right; }
-  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; }
-  td.tick { width:3.5rem; }
-  td.tick::before { content:"\\2610 \\2610"; letter-spacing:.4rem; color:var(--muted); }
-  td.note { width:11rem; }
-  tr.grp td { border-top:2px solid var(--line); }
-  .nm { background:var(--card); border:1px solid var(--line); border-radius:4px;
-    padding:.05rem .3rem; font-weight:600; }
-  .empty { color:var(--muted); font-style:italic; }
-  .hint { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
-  .scope { color:var(--accent); font-size:.78rem; margin-top:.2rem; }
-  ul { padding-left:1.1rem; }
-  li { margin:.35rem 0; }
-  .warn { border-left:3px solid var(--bad); padding-left:.9rem; }
-  .warn strong { color:var(--bad); }
-  @media print { body { max-width:none; padding:0; } .card { break-inside:avoid; } }
-${RESULTS_FORM_CSS}</style>
-</head>
-<body>
-
-<h1>Track operations — hardware test</h1>
-<p class="lede">Build <span class="mono">${stamp}</span> &middot; Digitone II &middot;
-seeded from ${escapeHtml(sourceName)} ${escapeHtml(sourcePattern)}</p>
+  return renderSheetPage({
+    documentTitle: `DNX hardware test ${stamp} — track operations`,
+    heading: "Track operations — hardware test",
+    lede: `Build <span class="mono">${stamp}</span> &middot; Digitone II &middot;
+seeded from ${escapeHtml(sourceName)} ${escapeHtml(sourcePattern)}`,
+    maxWidth: "72rem",
+    tableMinWidth: "52rem",
+    spec,
+    body: `
 
 <div class="card">
   <strong>Nothing at track level has ever been near a device.</strong> Two of the operations
@@ -459,13 +408,8 @@ under the wrong name.</p>
   Rebuild with <span class="mono">--only &lt;n&gt;</span> to get a project carrying one
   operation, and work down the list until the one that breaks the load is identified.
 </div>
-
-${exportBar()}
-${resultsFormScript(spec)}
-
-</body>
-</html>
-`;
+`,
+  });
 }
 
 /**
