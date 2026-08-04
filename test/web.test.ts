@@ -8,12 +8,12 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { NO_CORPUS, corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,56 @@ for (const [name, entry] of ENTRIES) {
     );
   });
 }
+
+/**
+ * The Node boundary, checked from the other side.
+ *
+ * The walk above asks "does this page reach Node?", which is the question that matters at runtime.
+ * This asks "does anything in `src/` depend on Node where it should not?", which is the question
+ * that matters *while writing code* — a new `node:fs` import in `src/librarian/` is a mistake the
+ * moment it is typed, not when a page fails to load a week later.
+ *
+ * Three modules used to be named one by one in `tsconfig.web.json`, so the boundary was a list
+ * somebody had to remember to update. They are in `src/node/` now, the config excludes the
+ * directory, and this makes the rule enforceable rather than remembered.
+ */
+test("only src/node and src/cli may depend on Node", () => {
+  const SRC = resolve(HERE, "../src");
+  const allowed = ["node", "cli"];
+  const offenders: string[] = [];
+
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!allowed.includes(entry.name) || dirname(path) !== SRC) walk(path);
+        continue;
+      }
+      if (!entry.name.endsWith(".ts")) continue;
+      for (const match of readFileSync(path, "utf8").matchAll(/from\s+"(node:[^"]+)"/g)) {
+        offenders.push(`${relative(SRC, path).split(sep).join("/")} -> ${match[1]}`);
+      }
+    }
+  };
+  walk(SRC);
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "these are shared with the browser and must stay platform-free. Move the module to src/node/ " +
+      `and give it a path-free counterpart, or take the dependency out:\n  ${offenders.join("\n  ")}`,
+  );
+});
+
+test("the three Node-only modules are where the config says they are", () => {
+  // The move is only worth anything while the config and the directory agree. A file put back
+  // under src/project/ would compile, ship to the browser, and fail at page load.
+  const config = readFileSync(resolve(HERE, "../tsconfig.web.json"), "utf8");
+  assert.match(config, /"src\/node\/\*\*\/\*\.ts"/, "tsconfig.web.json must exclude the directory");
+  for (const file of ["zip.ts", "projectfile.ts", "open.ts"]) {
+    assert.ok(existsSync(resolve(HERE, "../src/node", file)), `src/node/${file} is missing`);
+  }
+});
 
 /** Every module reachable from an entry point, as file paths — the graph, not just its edges. */
 function reachableFiles(entry: string): string[] {

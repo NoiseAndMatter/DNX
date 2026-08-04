@@ -20,7 +20,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile, parseProject } from "../project/projectfile.js";
+import { buildProjectFile, parseProject } from "../node/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
 import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
 import { escapeHtml } from "../sheet/html.js";

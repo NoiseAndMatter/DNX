@@ -3,7 +3,7 @@ import { NO_CORPUS, corpusPath, DN1_PROJECTS } from "./corpus.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { collectSoundUsage, midiTrackDestination, planExpansion } from "../src/expand/plan.js";
 import { SYNTH_TRACK_COUNT, readKit, readPattern } from "../src/project/dn1.js";

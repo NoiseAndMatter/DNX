@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import {
   PROJECT_ID_OFFSET,
   mintProjectId,
   projectId,
   writeProjectId,
 } from "../src/project/dn2image.js";
-import { OpenError, findTemplate, openProject, templateSearchPaths } from "../src/librarian/open.js";
+import { OpenError, findTemplate, openProject, templateSearchPaths } from "../src/node/open.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

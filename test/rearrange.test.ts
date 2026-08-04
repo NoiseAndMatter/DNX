@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, corpusPath } from "./corpus.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { kitRecord, patternRecord } from "../src/project/dn2image.js";
 import { blankPatternKit } from "../src/librarian/blank.js";
 import { deviceFor } from "../src/librarian/device.js";

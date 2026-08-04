@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { Session, combiningTag, tag } from "../src/librarian/session.js";
 import { diffImages, isEmptyPatch, patchExtent, redoPatch, undoPatch } from "../src/librarian/patch.js";
 import { applyRearrange } from "../src/librarian/rearrange.js";

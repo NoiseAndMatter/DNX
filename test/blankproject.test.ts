@@ -14,7 +14,7 @@ import { blankDn2ProjectFile } from "../src/librarian/blankproject.js";
 import { DN2_DEVICE } from "../src/librarian/device.js";
 import { DN2_LAYOUT } from "../src/project/dn2image.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../src/project/soundmap.js";
 
 const DN2_SOUND_SIZE = 359;

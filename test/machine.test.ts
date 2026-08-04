@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { kitRecord, DN2_LAYOUT } from "../src/project/dn2image.js";
 import { MACHINE, SOUND_MACHINE_OFFSET, machineName, machineOf } from "../src/project/machine.js";

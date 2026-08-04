@@ -17,12 +17,12 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { mintProjectId, writeProjectId } from "../project/dn2image.js";
-import { findTemplate, templateSearchPaths } from "../librarian/open.js";
+import { findTemplate, templateSearchPaths } from "../node/open.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
 import { stampedProjectName } from "../sheet/naming.js";
