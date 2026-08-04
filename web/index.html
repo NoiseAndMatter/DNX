@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DNX — expander</title>
 <link rel="stylesheet" href="./dnx.css">
+<link rel="stylesheet" href="./toolnav.css">
 <style>
 /*
  * Page-specific layout only. Cells, tabs, buttons, panels and colours come from `dnx.css`.
@@ -44,7 +45,9 @@
 <body class="page">
 
 <div class="topbar">
-  <span class="brand"><span class="d">DNX</span> <span class="sub">expander</span></span>
+  <span class="brand"><span class="d">DNX</span></span>
+  <!-- The tool row is built by `toolnav.ts`, so all three pages cannot say different things. -->
+  <span id="toolnav"></span>
   <span class="spacer"></span>
   <span class="device" id="sourceInfo" hidden></span>
   <span class="device" id="destinationBadge" hidden></span>

@@ -113,9 +113,13 @@ select option { background: #1b2123; color: var(--fg); }
   display: flex; align-items: center; gap: 1rem; padding: .55rem .9rem;
   background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: baseline; gap: .45rem; font-weight: 700; letter-spacing: -.01em; }
-.brand .d { color: var(--teal); }
-.brand .sub { color: var(--muted); font-weight: 500; }
+/*
+ * The brand, the tool row and the page slide live in `toolnav.css`.
+ *
+ * Not here, because the probe does not link this file — it is a self-contained page with its own
+ * `<style>` — and a row that has to look identical on three pages cannot have two homes. Every page
+ * links that one.
+ */
 .device {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
   border: 1px solid var(--teal-dim); color: var(--teal);

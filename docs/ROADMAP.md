@@ -1834,7 +1834,7 @@ real destinations, so it neither misses real overflows nor invents ones that are
 occupancy across that run — which, with gaps, warns about slots nothing is going to touch. It now
 lists the actual destinations, and only calls it a range when it genuinely is one.
 
-### 6d. Navigation between tools, in the title — DECIDED 2026-08-01
+### 6d. Navigation between tools, in the title — DONE 2026-08-04
 
 The tool titles become the navigation. **Their order is fixed and never changes**; the current tool
 is highlighted, and the page slides.
@@ -1872,8 +1872,30 @@ direction so the shortcut and the animation say the same thing.
 Whatever is chosen, the shortcut must be **discoverable**: show it in each title's `title=`
 attribute, since a shortcut nobody can find is a shortcut nobody uses.
 
-This wants `web/dnx.css` and the shared page shell, so it lands after the structure work rather than
-before it.
+#### Built 2026-08-04
+
+`Ctrl`+`Alt`+`←`/`→` as recommended, plus `Ctrl`+`Alt`+`1`/`2`/`3`, both named in every link's
+tooltip. Previous/next **stops at the ends rather than wrapping**: the row is a fixed line of three,
+and a next that jumps from the last back to the first is how you land on the probe when you meant
+to leave the expander.
+
+**`Ctrl`+`Alt` is AltGr on Windows**, which the design note missed. On a Spanish, German or
+UK-extended layout `AltGr`+`2` types `@` and `AltGr`+`1` types `|` — so the digit shortcuts collide
+with ordinary typing on a page full of text fields. They are ignored while an editable element has
+focus, which costs nothing because nobody navigates mid-rename. The arrows need no guard:
+`AltGr`+arrow types nothing on any layout.
+
+**The slide animates the arrival only.** Animating the departure means holding navigation until a
+transition finishes, and a page left mid-transform when that goes wrong — a blocked navigation, a
+back-button restore out of the bfcache — looks broken in a way no user can fix. The browser already
+shows the old page until the new one paints, so the arrival alone produces the lateral displacement
+that was asked for and cannot strand anything. The direction crosses the navigation in
+`sessionStorage`; `prefers-reduced-motion` skips it entirely.
+
+**The rules went in `web/toolnav.css`, not `dnx.css`.** The probe does not link `dnx.css` — it is a
+self-contained page with its own `<style>` block — so putting them there would have meant a second
+copy on the one page that could then drift. All three link the new file; all three draw the row from
+`web/src/toolnav.ts` rather than writing it into their own markup.
 
 ## 7. From the hardware session — raised 2026-08-04
 

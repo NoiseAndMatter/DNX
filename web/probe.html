@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DNX — device probe</title>
+<link rel="stylesheet" href="./toolnav.css">
 <style>
 :root {
   /* Same reason as `manager.html`: the dropdown list, scrollbars and caret are painted by the
@@ -100,6 +101,10 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
 <body>
 
 <header>
+  <!-- The tool row is built by `toolnav.ts`, so all three pages cannot say different things. -->
+  <span class="brand"><span class="d">DNX</span></span>
+  <span id="toolnav"></span>
+  <span class="sep"></span>
   <!--
     The build time sits beside the title, not only in the tab. The tab is where nobody looks, and
     the entire point of the stamp is answering "am I running the fix?" at a glance.
