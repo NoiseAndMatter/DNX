@@ -212,7 +212,36 @@ Ranked by what the codebase most needs. Each is one PR.
 | 7 | ~~Move `DropAction`/`actionFor`/`Modifiers` up into `grid.ts`~~ **DONE 2026-08-01, and the proposed destination was wrong.** They went to a new DOM-free `web/src/dropaction.ts`: `dragrules.ts` is type-checked by the root config, which has no DOM library, so pointing it at `grid.ts` failed immediately on `NodeListOf` having no iterator. `grid.ts` now types its `action` as `DropAction` rather than `string`, and the stylesheet guard reads the union from its real home | shipped |
 | 8 | ~~Add `src/cli/args.ts`~~ **DONE 2026-08-04.** `cliArgs`, `fail`, `readProjectFile`, `readProjectImage`; ten commands rewired, nine `arg` closures and four `fail`s gone; **the shared `arg` fixes a bug all nine copies had**; `test/clismoke.test.ts` runs all seventeen commands as subprocesses and `test/cliargs.test.ts` covers the parser; 785 pass | shipped |
 | 9 | ~~Move the track counters out of the mover~~ **DONE 2026-08-04.** Geometry to `dn2pattern.ts`, counters to `tracksummary.ts`, so the mover exports only plan/apply/verify; duplicate track-count constant collapsed; dead `SOUND_SIZE` re-export deleted; the `0x1c` reimplementation in the tests replaced by `summariseTracks` | shipped |
-| 10 | **Throws DONE 2026-08-04** — `requireCorpusFile`/`requireCorpusFiles` in `test/corpus.ts`, all seven sites converted, `test/corpus.test.ts` added; 744 pass. **Still open:** `api`/`route`/`shuffle`/`grid` tests, and the six colliding test names | shipped in part |
+| 10 | ~~Silent skips, missing tests, colliding names~~ **DONE 2026-08-04.** Throws in #136; `shuffle` (17), `nextSelection` (9) and the four uncovered `api.ts` readers (12) added; `nextSelection` moved to a DOM-free `selection.ts` to be testable; names resolved by a documented convention rather than a rename. 823 pass | shipped |
+
+## Item 10 finished — 2026-08-04
+
+**New tests for the untested subjects the audit named:**
+
+- **`shuffle.ts`** (17) — where every slot operation's meaning originates, and covered only
+  *indirectly* before, through tests that apply a shuffle to a real project and check bytes. A wrong
+  semantic and a wrong writer were indistinguishable, and both needed the corpus to notice.
+- **`nextSelection`** (9) — pure, shared by both pages, and the only thing making the two tools
+  behave alike was that they call the same function.
+- **`api.ts` response readers** (12) — the four `deviceapi.test.ts` does not reach. Fixtures are
+  built rather than captured, which is what allows the cases no working device would ever send: an
+  empty listing, a value above 2^53, a chunk whose declared length disagrees with its payload.
+
+**`nextSelection` had to move to be testable at all.** It lived in `grid.ts`, which draws cells, so
+importing it needs `DOM.Iterable` — which the root config does not have. That is the same wall
+item 7 hit, and the same answer: `web/src/selection.ts`, DOM-free, imported directly rather than
+re-exported through `grid.ts`. **A pure thing inside a DOM module is a pure thing nobody can test.**
+
+**The six colliding names were resolved by convention rather than by renaming.** Every one of those
+tests covers the *domain* module, and the alternative — `librarianhardwaretest.test.ts` — is worse
+to read than what it replaces. `CLAUDE.md` now states the rule: the unprefixed name means the domain
+module, a `cli` prefix would mean the command, and the commands are covered collectively by
+`clismoke.test.ts` so no per-command file is expected.
+
+**Observed and left alone:** `test/rename.test.ts` carries literal `NUL` and `BEL` bytes as test
+data, so tools report it as binary. The data is deliberate and the tests pass; escaping it is
+cosmetic and something in the toolchain reverts the edit, so it is recorded here rather than
+half-done.
 
 ## The bug nine copies shared — found 2026-08-04
 
