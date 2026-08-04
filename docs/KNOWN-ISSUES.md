@@ -76,6 +76,67 @@ itself.
 
 > **"Not available" is a claim about the world. Make sure it is one you can support.**
 
+## Export did nothing for a project opened from the +Drive — FIXED 2026-08-04
+
+Reported as *"after you rename or do any action the export button doesn't seem to do anything."* It
+was not about renaming. **Every project opened from a +Drive slot exported to nothing**, and only
+those: `openFromDrive` set `state.device`, `state.session` and five other fields but never
+`state.file`, so `exportProject` returned at its first line —
+
+```ts
+if (!file || !session || !device) return;
+```
+
+— while the button sat enabled and the status line said *"export to a file"*. The one path with no
+other way out was the one path that could not take it.
+
+Three separate things had to be true for that to be invisible, and all three are fixed:
+
+- **The precondition returned silently.** It now says which of the three is missing.
+- **The click handler was `void exportProject()`** with no `.catch`, so a throw produced no
+  download and no message either.
+- **The button was enabled before anything checked it could work.** It is now enabled from the same
+  condition the export tests.
+
+> **A control that is enabled and does nothing is not a missing feature, it is a lie.** Enable it
+> from the same condition the action checks, or the two will disagree.
+
+**Nothing was missing from the library.** `manifestFor` — which rebuilds the `manifest.json` the
++Drive does not send, every field read off the payload or off the device — had existed and been
+tested since the +Drive read was written, and had **no production caller at all**. `connectDevice`
+now asks for `Version` while its session is open so the manifest's `FirmwareVersion` is the
+instrument's own; when the device does not answer, there is no manifest and the export says so
+rather than inventing a version.
+
+The trap underneath it is worth keeping: **a stored project and a downloaded one are not the same
+bytes.** A `.dnprj` holds its image LZ4-compressed and the +Drive sends it uncompressed, so building
+a file from a +Drive payload means keeping its 31-byte container header — device signature, project
+slot — and compressing the image behind it. `test/driveexport.test.ts` round-trips the real
+2,781,743-byte capture through the export and back, checks the result decodes to the identical
+image, and checks it is actually compressed rather than the raw bytes passed through.
+
+### SAVE to the device is blocked, and one experiment unblocks it
+
+The other half of this report — *"we need SAVE so the changes can be committed to the project in the
+device"* — cannot be built yet, and the reason is specific rather than general.
+
+Writing a project to the +Drive needs `0x57`/`0x58`/`0x59`, which are decoded, and a **checksum
+whose algorithm is unknown** (`docs/device-storage.md` §7). We can write back bytes the device
+itself gave us a checksum for, and nothing else — which excludes every edited project by
+definition.
+
+**The experiment that settles it is already built** and sits in the probe: read a file, write the
+identical bytes to an *empty* slot with the device's own checksum, then repeat with **Corrupt the
+checksum** ticked.
+
+- **Refused** → the field is validated, and the algorithm has to be fitted from the pairs we already
+  hold before SAVE is possible at all.
+- **Accepted** → the field is not enforced, and writing arbitrary content is unblocked outright.
+
+Until then the working route to the instrument is unchanged: **Write to device** sends changed
+patterns to the *active* project over the dump protocol, and SAVE PROJECT on the front panel commits
+them. That route is proven on hardware; the +Drive one has never been performed.
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.

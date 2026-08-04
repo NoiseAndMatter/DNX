@@ -702,8 +702,13 @@ function wireOperations(): void {
     goToHistoryPoint(row.dataset.step ?? "");
   });
 
+  // Caught, not `void`ed. An export that throws — a payload too short to carry a header, a ZIP the
+  // browser refused to build — used to produce no download and no message, which reads to the user
+  // as a dead button rather than as a failure.
   $("export").addEventListener("click", () => {
-    void exportProject();
+    exportProject().catch((error: unknown) => {
+      status(`Export failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+    });
   });
 
   $("opendevice").addEventListener("click", () => {
@@ -802,6 +807,14 @@ async function openFromDrive(): Promise<void> {
     state.selection = [];
     state.bank = 0;
     state.trackFor = undefined;
+    // **What makes this project exportable.** The stored file is complete — its own container
+    // header, its own payload — so the export needs no donor and inherits nothing from another
+    // project. Leaving this unset is what made Export do nothing at all: the button was enabled,
+    // the status line said "export to a file", and `exportProject` returned at its first line
+    // because there was no file to build one from.
+    state.file = opened.manifest
+      ? { fileName: `${project.name}.dn2prj`, manifest: opened.manifest, payload: opened.payload, image: opened.image }
+      : undefined;
     // No write handle: this is not the project the instrument has open, so there is nothing here
     // that could be written back safely.
     deviceHandle = undefined;
@@ -809,16 +822,21 @@ async function openFromDrive(): Promise<void> {
     $("device").hidden = false;
     $("device").textContent = `${device.name} (+Drive slot ${project.index})`;
     $("projname").textContent = device.projectName(opened.image);
-    $<HTMLButtonElement>("export").disabled = false;
+    // Disabled when there is no manifest, because a control that is enabled and does nothing is
+    // the bug this whole change exists for.
+    $<HTMLButtonElement>("export").disabled = state.file === undefined;
     $("reopen").hidden = false;
     $("writedevice").hidden = true;
     render();
 
+    const route = state.file
+      ? "Read-only: export to a file, because a write would go to whichever project the instrument currently has loaded."
+      : "Export is unavailable: the device did not answer with its firmware version, and a project " +
+        "file's manifest has to carry a real one. Reconnect and open the slot again.";
     status(
       `${project.name} open from slot ${project.index} — ${opened.bytes.length.toLocaleString()} ` +
-        `bytes, the complete stored project with no donor. Read-only: export to a file, because a ` +
-        `write would go to whichever project the instrument currently has loaded.`,
-      "ok",
+        `bytes, the complete stored project with no donor. ${route}`,
+      state.file ? "ok" : "warn",
     );
   } catch (error) {
     status(
@@ -1014,14 +1032,37 @@ async function writeToDevice(): Promise<void> {
   }
 }
 
+/**
+ * Write the working image out as a project file.
+ *
+ * **Nothing here returns quietly.** The old first line was `if (!file || !session || !device)
+ * return;`, and a project opened from the +Drive hit it every time — so the button was enabled,
+ * the status line invited you to press it, and pressing it did nothing at all. A precondition that
+ * fails silently is indistinguishable from a broken feature, and was reported as one.
+ */
 async function exportProject(): Promise<void> {
   const { file, session, device } = state;
-  if (!file || !session || !device) return;
+  if (!session || !device) {
+    status("Nothing is open to export.", "warn");
+    return;
+  }
+  if (!file) {
+    status(
+      "This project has no file to build from — it came off the device without a manifest. " +
+        "Open it again, or open a project file.",
+      "warn",
+    );
+    return;
+  }
 
+  status("Building the project file…");
   const blob = await buildProjectBlob(file, session.image);
   const base = device.projectName(session.image).replace(/[^\w -]/g, "_") || "PROJECT";
   download(blob, `${base}${device.kind === "dn2" ? ".dn2prj" : ".dnprj"}`);
-  status(`Exported ${base}. The original file is untouched.`, "ok");
+  status(
+    `Exported ${base} — ${blob.size.toLocaleString()} bytes. Nothing on the device was touched.`,
+    "ok",
+  );
 }
 
 // --- wiring -------------------------------------------------------------------------------
