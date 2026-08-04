@@ -32,24 +32,29 @@
  * same way the test corpus is — `DN_TEMPLATE`, then `DN_CORPUS`, then a sibling checkout.
  * Failing to find one is an error with a route out of it, never a guess.
  *
- * ## Node-only, and listed in `tsconfig.web.json`
+ * ## Why this is in `src/node/`
  *
- * This module reads files, so it sits on the Node side of the split that lets the browser
- * share every byte of format knowledge with the CLI — `container.ts` is platform-free,
- * `projectfile.ts` is not. Anything here that the UI eventually needs has to move down into a
- * platform-free module first, taking a `Uint8Array` instead of a path.
+ * This module reads files, so it sits on the Node side of the split that lets the browser share
+ * every byte of format knowledge with the CLI — `project/container.ts` is platform-free, this is
+ * not. Anything here that the UI eventually needs has to move down into a platform-free module
+ * first, taking a `Uint8Array` instead of a path.
+ *
+ * That used to be a filename in `tsconfig.web.json`'s exclude list, which is a boundary somebody
+ * has to remember. The directory is the boundary now: `tsconfig.web.json` excludes `src/node/**`,
+ * and `test/web.test.ts` fails if anything outside `src/node/` or `src/cli/` imports a `node:`
+ * module.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "./projectfile.js";
 import type { ProjectManifest, ProjectPayload } from "../project/container.js";
 import { mintProjectId, writeProjectId } from "../project/dn2image.js";
 import { readProjectName } from "../project/dn1.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
-import { type Device, deviceFor } from "./device.js";
+import { type Device, deviceFor } from "../librarian/device.js";
 
 export interface OpenOptions {
   /** Convert a DN1 project to DN2 on the way in. Ignored for a project that is already DN2. */

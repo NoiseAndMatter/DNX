@@ -6,7 +6,17 @@
  * past the payload bytes — the container header, the LZ4 chain, the check field — is pure and
  * stays in `container.ts`, so both platforms share it.
  *
- * If you are looking for the payload format itself, it is next door.
+ * If you are looking for the payload format itself, it is in `project/container.ts`.
+ *
+ * ## Why this is in `src/node/`
+ *
+ * Everything else under `src/` is platform-free and shared byte for byte with the browser. This is
+ * not: it imports `node:zlib`. That used to be expressed as a filename in `tsconfig.web.json`'s
+ * exclude list, which is a boundary somebody has to remember — and forgetting would drag Node into
+ * the browser bundle, where it fails at page load with an unhelpful error.
+ *
+ * The directory *is* the boundary now. `tsconfig.web.json` excludes `src/node/**`, and
+ * `test/web.test.ts` fails if anything outside `src/node/` or `src/cli/` imports a `node:` module.
  */
 
 import { inflateRawSync } from "node:zlib";
@@ -15,8 +25,8 @@ import {
   parsePayload,
   type Project,
   type ProjectManifest,
-} from "./container.js";
-import { buildPayload } from "./write.js";
+} from "../project/container.js";
+import { buildPayload } from "../project/write.js";
 import { buildZip } from "./zip.js";
 
 function readZipEntries(data: Uint8Array): Map<string, Uint8Array> {

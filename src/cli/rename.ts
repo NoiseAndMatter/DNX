@@ -17,9 +17,9 @@
 
 import { writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { buildProjectFile } from "../project/projectfile.js";
+import { buildProjectFile } from "../node/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
-import { OpenError, openProject } from "../librarian/open.js";
+import { OpenError, openProject } from "../node/open.js";
 import {
   NAME_SIZE,
   applyRename,

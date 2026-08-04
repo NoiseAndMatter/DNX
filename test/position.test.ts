@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { deviceFor } from "../src/librarian/device.js";
 import { applyRearrange } from "../src/librarian/rearrange.js";
 import { keepOnly } from "../src/librarian/shuffle.js";

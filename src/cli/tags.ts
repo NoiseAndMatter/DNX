@@ -11,7 +11,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { readKit, readProjectName, readSoundPool, type Dn1Sound } from "../project/dn1.js";
 import { TAG_NAMES, decodeTags, soundCharacter, type TagName } from "../project/tags.js";

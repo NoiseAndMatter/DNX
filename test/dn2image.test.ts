@@ -22,7 +22,7 @@ import {
 } from "../src/project/dn2image.js";
 import { DN2_SOUND_SIZE } from "../src/project/soundmap.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { parseProject } from "../src/project/projectfile.js";
+import { parseProject } from "../src/node/projectfile.js";
 import { blankDn2ProjectFile } from "../src/librarian/blankproject.js";
 import { NO_CORPUS, SKIP_REASON, corpusFiles } from "./corpus.js";
 

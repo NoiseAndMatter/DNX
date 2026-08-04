@@ -24,7 +24,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { parseProject } from "../project/projectfile.js";
+import { parseProject } from "../node/projectfile.js";
 import { type ImageLayout, kitRecord, patternRecord } from "../project/dn2image.js";
 import { deviceFor } from "../librarian/device.js";
 import { rleEncode, toBase64 } from "../librarian/rle.js";
