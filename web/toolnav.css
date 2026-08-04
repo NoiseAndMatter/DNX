@@ -1,0 +1,68 @@
+/*
+ * The tool row, and the slide that arrives with it.
+ *
+ * ## Why this is not in `dnx.css`
+ *
+ * The probe does not link `dnx.css`. It is a self-contained page with its own `<style>` block and
+ * always has been, so the choice was between copying these rules into it — a second home for a
+ * thing that must look identical on three pages — and giving them a file of their own. Every page
+ * links this one; nobody copies anything.
+ *
+ * It leans on four custom properties (`--teal`, `--muted`, `--fg`, `--line`) that all three pages
+ * already declare with the same values, and falls back where one is missing: `--focus` exists in
+ * `dnx.css` and not on the probe, so the outline names a colour after it.
+ *
+ * ## What the design is for
+ *
+ * The order of the row is fixed on every page, so each tool is a permanent screen position and
+ * therefore muscle memory. Only the highlight moves — a row that reorders is a row you have to read
+ * every time instead of aim at.
+ *
+ * The underline is a pseudo-element rather than a `border-bottom`, so appearing and disappearing
+ * cannot change the element's height and the header cannot twitch as you navigate between tools.
+ */
+
+.brand { display: flex; align-items: baseline; gap: .45rem; font-weight: 700; letter-spacing: -.01em; }
+.brand .d { color: var(--teal); }
+.brand .sub { color: var(--muted); font-weight: 500; }
+
+.toolnav { display: flex; align-items: baseline; gap: .9rem; }
+.toolnav .tool {
+  position: relative; color: var(--muted); text-decoration: none; font-weight: 500;
+  padding: .1rem 0; transition: color .12s ease;
+}
+.toolnav .tool::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -.15rem; height: 2px;
+  background: var(--teal); border-radius: 2px; opacity: 0;
+  transform: scaleX(.4); transform-origin: center; transition: opacity .16s ease, transform .16s ease;
+}
+.toolnav .tool:hover { color: var(--fg); }
+.toolnav .tool[aria-current="page"] { color: var(--teal); font-weight: 700; }
+.toolnav .tool[aria-current="page"]::after { opacity: 1; transform: scaleX(1); }
+.toolnav .tool:focus-visible {
+  outline: 2px solid var(--focus, var(--teal)); outline-offset: 3px; border-radius: 2px;
+}
+
+/*
+ * The arrival slide.
+ *
+ * On `body` rather than on `main`, so the header travels with the page and the whole tool reads as
+ * one card moving sideways. `overflow-x: hidden` on the root stops the offset start state from
+ * producing a horizontal scrollbar for the one frame it exists.
+ *
+ * **None of this is required for the page to work.** With reduced motion, with `sessionStorage`
+ * unavailable, or if the transition never fires because the tab was in the background, these
+ * classes are simply absent and the page sits exactly where it always did.
+ */
+html { overflow-x: hidden; }
+body.slide-from-right { transform: translateX(3.5rem); opacity: 0; }
+body.slide-from-left { transform: translateX(-3.5rem); opacity: 0; }
+body.sliding {
+  transform: translateX(0); opacity: 1;
+  transition: transform .22s cubic-bezier(.22, .8, .3, 1), opacity .18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.slide-from-right, body.slide-from-left, body.sliding {
+    transform: none; opacity: 1; transition: none;
+  }
+}

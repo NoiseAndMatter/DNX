@@ -99,6 +99,10 @@ import {
 } from "./dumpio.js";
 
 const status = statusBar();
+
+// Drawn rather than written into the HTML, so the row cannot say different things on different
+// pages. Immediately, because a navigation control that appears late is one you click through.
+renderToolNav($("toolnav"), "probe");
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -108,6 +112,7 @@ import {
   describeMessages,
   hex,
 } from "../../../src/device/capabilities.js";
+import { renderToolNav } from "../toolnav.js";
 
 let access: MIDIAccess | undefined;
 
