@@ -36,6 +36,46 @@ filed as housekeeping.
 
 > **A tool that cannot tell whether it spoke has no business drawing conclusions from silence.**
 
+## "No template available" while the server was serving one — FIXED 2026-08-04
+
+Reported at the hardware: **Open Device on the manager refused with *"No template available"*, with a
+Digitone 1 connected, the local server running, and Browse +Drive working on the same page.** Three
+separate faults stacked up behind that one sentence, and each is worth keeping.
+
+**1. The check that needed nothing ran last.** A device read needs a donor for the ~0.49% no dump
+carries — header, song table, slot array — and every donor this page can produce is a Digitone II
+project. So a Digitone 1 cannot be read here *whatever* the donor situation is, and that verdict was
+available the instant the port opened. Asking for a template first meant a DN1 user was told about a
+missing template instead of about their device.
+
+> **Order the checks by what they depend on.** A check that depends on nothing cannot be wrong
+> about anything else, so it goes first. The code already knew this — its own comment says
+> *"checked before the read, not after it"* — and stopped one step short.
+
+**2. A refusal for want of something the code already had.** `src/librarian/blankproject.ts` has
+carried a device-authored blank since the expander needed one. Only the expander's *blank
+destination* used it; the manager's device read, the expander's device read and the expander's
+export all gave up instead. Four callers, one question, four answers — now `web/src/donor.ts`, which
+tries a picked project, then the served `EMPTY.dn2prj`, then the embedded blank, and **cannot return
+nothing**.
+
+The embedded blank stays last on purpose. `src/cli/serve.ts` argues that a template must match the
+storage version the device writes and it is right; ours is version 3 from firmware 1.10E. So the
+fallback names its firmware in the status line rather than passing itself off as the user's own.
+
+**3. A template that was present but unreadable was reported as absent.** `fetchServedTemplate`
+wrapped its `fetch` *and* its parse in one `catch` returning `undefined`, and the callers rendered
+that as "no template" — sending the user to look for a file already sitting on the server. The
+swallow now stops at the network; a broken template throws, **with its own name in the message**,
+which meant naming it in `readProjectFile` too because `readZip` does not know what it is reading.
+
+Which of the three actually fired on the night is not established — the server serves the template
+correctly from this checkout, so the fetch failing there is unexplained. That is the point of fixing
+all three: after this, every one of them says something true, so the next occurrence identifies
+itself.
+
+> **"Not available" is a claim about the world. Make sure it is one you can support.**
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.
