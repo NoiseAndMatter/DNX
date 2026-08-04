@@ -21,10 +21,9 @@
  * defaults — `PRESET 1..16`, `MIDI 1..16`, `SOUND 1..4`, `MACRO0..7`, `UNTITLED`.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { cliArgs, readProjectImage } from "./args.js";
 import { basename } from "node:path";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { parseProject } from "../node/projectfile.js";
 import { type ImageLayout, kitRecord, patternRecord } from "../project/dn2image.js";
 import { deviceFor } from "../librarian/device.js";
 import { rleEncode, toBase64 } from "../librarian/rle.js";
@@ -32,10 +31,6 @@ import { rleEncode, toBase64 } from "../librarian/rle.js";
 const KIT_NAME_AT = 8;
 const KIT_NAME_SIZE = 16;
 
-function load(path: string): Uint8Array {
-  const { payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return decodeProjectImage(payload.raw).image;
-}
 
 /** The bytes that legitimately vary between two blanks in the same project. */
 function normalised(image: Uint8Array, slot: number, layout: ImageLayout): string {
@@ -58,7 +53,7 @@ interface Extracted {
 }
 
 function extract(path: string, slot: number, label: string): Extracted {
-  const image = load(path);
+  const image = readProjectImage(path);
   const device = deviceFor(image);
   const layout = device.layout;
 
@@ -171,11 +166,7 @@ export function decodeBlank(blank: BlankPatternKit): { pattern: Uint8Array; kit:
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg } = cliArgs();
 
   const dn2Path = arg("project");
   const dn2Slot = Number(arg("slot") ?? 5);

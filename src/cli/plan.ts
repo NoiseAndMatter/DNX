@@ -7,20 +7,14 @@
  *                                               corresponding DN1 MIDI track is empty
  */
 
-import { readFileSync } from "node:fs";
+import { readProjectImage } from "./args.js";
 import { basename } from "node:path";
-import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
 import { readProjectName } from "../project/dn1.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
 
-function load(path: string): Uint8Array {
-  const { payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return decodeProjectImage(payload.raw).image;
-}
 
 function report(path: string, useFreedMidiTracks: boolean, useRules: boolean): void {
-  const image = load(path);
+  const image = readProjectImage(path);
   const plan = planExpansion(image, {
     useFreedMidiTracks,
     ...(useRules ? { rules: PERCUSSION_LOW_RULES } : {}),
@@ -68,7 +62,7 @@ function summary(paths: string[], useFreedMidiTracks: boolean): void {
   );
   let fitting = 0;
   for (const path of paths) {
-    const plan = planExpansion(load(path), { useFreedMidiTracks });
+    const plan = planExpansion(readProjectImage(path), { useFreedMidiTracks });
     const total = plan.assignments.length + plan.overflow.length;
     if (plan.overflow.length === 0) fitting++;
     console.log(
