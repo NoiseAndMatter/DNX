@@ -61,7 +61,15 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
    *
    * The allocator never learns that groups exist: it is handed one candidate standing for
    * the whole family, and the track it returns is given back to every member. That is why
-   * aggregation needs no changes to placement rules, pinning or ranking.
+   * aggregation needs no changes to placement rules or pinning.
+   *
+   * **It does need a change to ranking, and that was missed.** Ranking asks "which promotion frees
+   * the most trigs", so once several sounds share a track the answer is their *total* — two
+   * two-trig hi-hats that merge are worth four, and beat a single sound worth two. `groupCandidate`
+   * has always summed the counts; what it did not do was reorder, so the groups reached the
+   * allocator in the order their *leaders* had been ranked individually and a four-trig group could
+   * sit behind four two-trig singles. Reported from the instrument: `HH TINNY` and `HH NOISY` stayed
+   * locked while `PUSH WEIGHT` took the last track with half their trigs.
    */
   const allocateFor = (candidates: readonly SoundUsage[]) => {
     const ranked = rank(candidates, byTrigCount(sourceTrackOrder));
@@ -73,9 +81,15 @@ export function planExpansion(image: Uint8Array, options: PlanOptions = {}): Exp
     };
     if (!options.aggregateByName) return allocate({ ranked, ...common });
 
+    // Grouped from the ranked list, so each group's leader — whose tags decide its placement
+    // character — is its highest-ranked member. Then ranked **again**, because grouping changed the
+    // trig counts and the first ranking answered a question about sounds rather than about tracks.
     const groups = groupByName(ranked);
     const byCandidate = new Map(groups.map((g) => [groupCandidate(g), g]));
-    const result = allocate({ ranked: [...byCandidate.keys()], ...common });
+    const result = allocate({
+      ranked: rank([...byCandidate.keys()], byTrigCount(sourceTrackOrder)),
+      ...common,
+    });
 
     return {
       assignments: result.assignments.map((a) => {
