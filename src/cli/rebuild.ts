@@ -22,6 +22,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { cliArgs, fail } from "./args.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { parseFile } from "../sysex/container.js";
@@ -38,20 +39,12 @@ import {
   verifyRebuild,
 } from "../project/rebuild.js";
 
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag } = cliArgs();
 
   const capturePath = arg("capture");
-  const apply = argv.includes("--apply");
+  const apply = flag("apply");
   const outPath = arg("out");
 
   if (!capturePath) {

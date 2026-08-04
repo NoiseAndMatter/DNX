@@ -16,6 +16,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { cliArgs, fail } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
@@ -29,10 +30,6 @@ import {
   verifyRename,
 } from "../librarian/rename.js";
 
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
 
 /**
  * Every pattern worth listing, so a rename can be aimed without opening the device.
@@ -75,14 +72,10 @@ function printNames(image: Uint8Array, device: ReturnType<typeof openProject>["d
 const DEFAULT_NAME = "UNTITLED";
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag } = cliArgs();
 
   const projectPath = arg("project");
-  const apply = argv.includes("--apply");
+  const apply = flag("apply");
   const outPath = arg("out");
 
   if (!projectPath) {
@@ -96,7 +89,7 @@ function main(): void {
   let project;
   try {
     project = openProject(projectPath, {
-      asDn2: argv.includes("--as-dn2"),
+      asDn2: flag("as-dn2"),
       ...(arg("template") === undefined ? {} : { template: arg("template")! }),
     });
   } catch (e) {

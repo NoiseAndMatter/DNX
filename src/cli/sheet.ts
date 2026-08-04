@@ -12,23 +12,15 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { cliArgs, readProjectImage } from "./args.js";
 import { basename } from "node:path";
-import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
 import { projectName } from "../project/dn2image.js";
 import { collectSheet } from "../sheet/collect.js";
 import { renderSheet } from "../sheet/render.js";
 
-function load(path: string): Uint8Array {
-  return decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
-}
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg } = cliArgs();
 
   const fromPath = arg("from");
   const filePath = arg("file");
@@ -40,8 +32,8 @@ function main(): void {
     process.exit(1);
   }
 
-  const dn1Image = load(fromPath);
-  const outImage = load(filePath);
+  const dn1Image = readProjectImage(fromPath);
+  const outImage = readProjectImage(filePath);
   const sheets = collectSheet(outImage, dn1Image);
 
   const callouts = noteFile ? JSON.parse(readFileSync(noteFile, "utf8")) : undefined;

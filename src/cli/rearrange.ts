@@ -31,6 +31,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { cliArgs } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
 import { patternIndex, patternName } from "../sheet/naming.js";
@@ -76,15 +77,11 @@ function printGrid(project: { image: Uint8Array; device: Device; provenance: Pro
 }
 
 function main(): void {
-  const argv = process.argv.slice(2);
-  const arg = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  const { arg, flag, argv } = cliArgs();
 
   const projectPath = arg("project");
-  const apply = argv.includes("--apply");
-  const confirm = argv.includes("--confirm");
+  const apply = flag("apply");
+  const confirm = flag("confirm");
   const outPath = arg("out");
 
   if (!projectPath) {
@@ -102,12 +99,12 @@ function main(): void {
   let project;
   try {
     project = openProject(projectPath, {
-      asDn2: argv.includes("--as-dn2"),
-      expand: argv.includes("--expand"),
-      compact: argv.includes("--compact"),
-      aggregateByName: argv.includes("--aggregate"),
-      rules: argv.includes("--rules"),
-      freeMidi: argv.includes("--free-midi"),
+      asDn2: flag("as-dn2"),
+      expand: flag("expand"),
+      compact: flag("compact"),
+      aggregateByName: flag("aggregate"),
+      rules: flag("rules"),
+      freeMidi: flag("free-midi"),
       ...(arg("template") === undefined ? {} : { template: arg("template")! }),
     });
   } catch (e) {
@@ -119,7 +116,7 @@ function main(): void {
   }
   const device = project.device;
 
-  if (argv.includes("--expand") && !argv.includes("--as-dn2")) {
+  if (flag("expand") && !flag("as-dn2")) {
     console.error("--expand only means something with --as-dn2, which does the conversion.");
     process.exit(1);
   }

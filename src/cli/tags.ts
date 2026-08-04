@@ -9,18 +9,13 @@
  *                                                (the ones the expander will place)
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { readProjectImage } from "./args.js";
 import { basename, join } from "node:path";
-import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
 import { readKit, readProjectName, readSoundPool, type Dn1Sound } from "../project/dn1.js";
 import { TAG_NAMES, decodeTags, soundCharacter, type TagName } from "../project/tags.js";
 import { collectSoundUsage } from "../expand/plan.js";
 
-function load(path: string): Uint8Array {
-  const { payload } = parseProject(new Uint8Array(readFileSync(path)));
-  return decodeProjectImage(payload.raw).image;
-}
 
 interface Entry {
   sound: Dn1Sound;
@@ -121,7 +116,7 @@ function main(): void {
     const all: Entry[] = [];
     const seen = new Set<string>();
     for (const f of files) {
-      for (const e of usedSounds(load(f), lockedOnly)) {
+      for (const e of usedSounds(readProjectImage(f), lockedOnly)) {
         if (seen.has(e.sound.name)) continue;
         seen.add(e.sound.name);
         all.push(e);
@@ -137,7 +132,7 @@ function main(): void {
   }
 
   for (const path of paths) {
-    const image = load(path);
+    const image = readProjectImage(path);
     const entries = usedSounds(image, lockedOnly);
     console.log(
       `\n${basename(path)} "${readProjectName(image)}" — ${entries.length} distinct sound(s)` +
@@ -151,7 +146,7 @@ function main(): void {
   }
 
   const unseen = TAG_NAMES.filter(
-    (t) => !paths.some((p) => usedSounds(load(p), lockedOnly).some((e) => decodeTags(e.sound.tagBits).includes(t))),
+    (t) => !paths.some((p) => usedSounds(readProjectImage(p), lockedOnly).some((e) => decodeTags(e.sound.tagBits).includes(t))),
   );
   if (paths.length === 1 && unseen.length) {
     console.log(`\n  tags not present here: ${unseen.join(" ")}`);
