@@ -74,8 +74,13 @@ import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } fr
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import { renderToolNav } from "../toolnav.js";
 
 const status = statusBar();
+
+// Drawn rather than written into the HTML, so the row cannot say different things on different
+// pages. Immediately, because a navigation control that appears late is one you click through.
+renderToolNav($("toolnav"), "manager");
 
 interface State {
   file?: LoadedProject;

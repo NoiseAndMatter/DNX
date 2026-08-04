@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DNX Manager</title>
 <link rel="stylesheet" href="./dnx.css">
+<link rel="stylesheet" href="./toolnav.css">
 </head>
 <body class="app">
 
 <div class="topbar">
-  <div class="brand"><span class="d">DNX</span> <span class="sub">/ Manager</span></div>
+  <div class="brand"><span class="d">DNX</span></div>
+  <!-- The tool row is built by `toolnav.ts`, so all three pages cannot say different things. -->
+  <span id="toolnav"></span>
   <span class="device" id="device" hidden></span>
   <span class="projname" id="projname"></span>
   <span class="spacer"></span>
