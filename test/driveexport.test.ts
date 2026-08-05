@@ -28,6 +28,7 @@ import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 import { imageFrom, manifestFor } from "../src/device/drive.js";
 import { parsePayload } from "../src/project/container.js";
 import { buildProjectBlob, readProjectFile } from "../web/src/project.js";
+import { readZip } from "../web/src/zip.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 
@@ -91,4 +92,27 @@ test("an image edited after the read is what lands in the exported file", { skip
 
   assert.deepEqual(reopened.image, edited);
   assert.notDeepEqual(reopened.image, image, "the export re-emitted the original instead of the edit");
+});
+
+test("the exported file says it is compressed, because it is", { skip }, async () => {
+  // **The bug this suite missed.** A payload read off the +Drive carries an uncompressed body and
+  // a header byte saying so; `buildPayload` copies that header and then writes an LZ4 chain. The
+  // round trip above still passed, because our reader measures the body rather than trusting the
+  // flag — and Elektron Transfer does trust it: it stopped at "Calculating Checksum" and crashed.
+  //
+  // 0x01 is what all 79 corpus project files carry, both families. 0x00 appears only in the
+  // uncompressed +Drive stream.
+  const raw = deviceRead();
+  const payload = parsePayload(raw);
+  assert.equal(payload.raw[29], 0x00, "the +Drive stream is the uncompressed one");
+
+  const image = imageFrom(payload);
+  const blob = await buildProjectBlob(
+    { fileName: "x.dnprj", manifest: manifestFor(payload, "x", "1.42A"), payload, image },
+    image,
+  );
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const entries = await readZip(bytes);
+  const written = entries.get("x")!;
+  assert.equal(written[29], 0x01, "an exported project must say compressed, like every real one");
 });
