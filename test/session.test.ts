@@ -297,3 +297,34 @@ test("a new action after undoing drops the future", { skip }, () => {
   assert.deepEqual(session.future(), [], "the abandoned branch must not stay clickable");
   assert.deepEqual(session.history().map((e) => e.label), ["instead", "first"]);
 });
+
+test("undoing every recorded step returns the image to what it was opened with", { skip }, () => {
+  // What the manager's new "as opened" row promises. It offers a single click that undoes
+  // `history().length` times, so the claim it rests on is that doing exactly that lands back on the
+  // original bytes — and that claim belongs here, not in a page.
+  const original = corpusImage();
+  const session = new Session(Uint8Array.from(original));
+
+  applyReal(session, tag("one"), (img) => applyRearrange(img, swap(0, 1), CONFIRM).image);
+  applyReal(session, tag("two"), (img) => applyRearrange(img, moveMany([3], 40), CONFIRM).image);
+  applyReal(session, tag("three"), (img) => applyRearrange(img, swap(5, 9), CONFIRM).image);
+  assert.notDeepEqual(session.image, original, "the setup has to actually change something");
+
+  const steps = session.history().length;
+  assert.equal(steps, 3);
+  for (let i = 0; i < steps; i++) session.undo();
+
+  assert.deepEqual(session.image, original, "undoing every step must reach the opened project");
+  assert.equal(session.canUndo, false, "and there must be nothing left behind it");
+});
+
+test("a session that dropped steps says so, because the original is then unreachable", { skip }, () => {
+  // The manager offers the "as opened" row only when `trimmedSteps` is zero. Once the budget has
+  // dropped a step the original genuinely cannot be reached, and a row promising it would be a lie
+  // the session cannot keep — so the flag it depends on has to mean what it says.
+  const session = new Session(corpusImage(), { budgetBytes: 1 });
+  applyReal(session, tag("one"), (img) => applyRearrange(img, swap(0, 1), CONFIRM).image);
+  applyReal(session, tag("two"), (img) => applyRearrange(img, moveMany([3], 40), CONFIRM).image);
+
+  assert.ok(session.trimmedSteps > 0, "a one-byte budget must drop something");
+});
