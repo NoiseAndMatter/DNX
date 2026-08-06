@@ -253,6 +253,41 @@ was invisible to us and fatal to Transfer.
 
 A test now asserts the emitted byte is `0x01`.
 
+## Sound locks were read from steps that have no trig — FIXED 2026-08-07
+
+Found by looking at what the new pool audit *said*, not by a failing test. Every project in the
+corpus reported the same two things:
+
+```
+slot 161 is outside the pool entirely, locked by 128 pattern(s)
+slot   0 ... 128 locks across 128 pattern(s)
+```
+
+**All 128 patterns locking the same two slots is not music.** It is unset memory: a step with no
+trig still has a byte in the sound-lock array, and that byte is not `0xFF`.
+
+`STEP_FLAG.trig` is verified across 1,571 pattern records, in both directions, with zero
+exceptions — so gating the walk on it is not a guess. With the gate, `008 JAM` reads 119 of 128
+slots occupied with plausible lock counts, and slot 161 disappears completely.
+
+### It was not only the audit
+
+`merge.ts` had its own private copy of the same walk, and it decides **which pool slots an incoming
+merge needs**. So every merge has been over-reserving, and this is almost certainly the origin of a
+note in `device-storage.md` recording dangling locks as *"ordinary in real projects"* — the
+evidence for that was slot 161, which now looks like this bug rather than anybody's untidiness.
+
+> **A finding that survives only because nobody looked at the output is not a finding.** The tests
+> passed before and after; what caught it was printing an audit of three real projects and reading
+> the numbers.
+
+The reader lives in `project/dn2pattern.ts` now, beside the trig and lock tables, with `merge.ts`
+and the audit both calling it.
+
+**`reroute` is deliberately not gated.** It *writes*, the reader's gate is the change just made, and
+altering both on the same inference is how a wrong assumption gets twice as far. Gating it would
+send fewer bytes to a device and is worth revisiting with a round trip.
+
 ## The probe misread another application's traffic as an answer — OPEN 2026-07-30
 
 **Elektron Transfer was running during the unknown-code sweep**, polling the Digitone continuously.

@@ -702,6 +702,38 @@ export function checkDn2Pattern(
 }
 
 /**
+ * Every preset-pool slot referenced by a sound lock in one pattern record.
+ *
+ * **A preset lock and a parameter lock are different things**, and this project has already had to
+ * keep them apart: the manual calls only the first a *preset lock*, and it lives in the trig's own
+ * record rather than the 80-entry parameter table.
+ *
+ * Lifted out of `expand/merge.ts`, which had it private, when the pool audit needed the same walk.
+ * A second copy of a byte offset is how a reader and a writer come to disagree — the same reason
+ * the trig and lock tables live here rather than in the mover.
+ */
+export function soundLockedSlots(pattern: Uint8Array): Set<number> {
+  const slots = new Set<number>();
+  for (let t = 0; t < TRACK_COUNT; t++) {
+    const at = PATTERN.trackOffset + t * PATTERN.trackSize;
+    const track = pattern.subarray(at, at + PATTERN.trackSize);
+    for (let step = 0; step < STEP_COUNT; step++) {
+      // **Only steps that actually hold a trig.** A step with no trig still has a byte in the
+      // sound-lock array, and it is not 0xFF — reading every step reported slot 0 and slot 161
+      // locked by all 128 patterns of every project in the corpus, which is unset memory rather
+      // than music. `STEP_FLAG.trig` is verified across 1,571 pattern records in both directions.
+      if ((stepFlags(track, step) & STEP_FLAG.trig) === 0) continue;
+      const slot = track[TRACK.soundLockOffset + step]!;
+      if (slot !== NO_SOUND_LOCK) slots.add(slot);
+    }
+  }
+  return slots;
+}
+
+/** What a step carries when no preset is locked to it. */
+export const NO_SOUND_LOCK = 0xff;
+
+/**
  * Trig and lock records, addressed the same way.
  *
  * Both tables are a run of fixed-size records with a header that marks the unused ones and a byte

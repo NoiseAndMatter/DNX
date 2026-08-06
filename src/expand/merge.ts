@@ -40,7 +40,7 @@ import {
   landingRefusal,
 } from "./landing.js";
 import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
-import { PATTERN, TRACK, TRACK_COUNT } from "../project/dn2pattern.js";
+import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "../project/dn2pattern.js";
 import {
   DN2_POOL_OFFSET,
   DN2_SOUND_SIZE,
@@ -209,7 +209,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   // sounds nothing points at.
   const seen = new Set<number>();
   for (const p of patterns) {
-    for (const slot of lockedSlots(patternRecord(converted, p, DN2_LAYOUT))) seen.add(slot);
+    for (const slot of soundLockedSlots(patternRecord(converted, p, DN2_LAYOUT))) seen.add(slot);
   }
 
   // **A lock can point at a slot that is not there.** Found by the round-trip test: merging the
@@ -367,20 +367,19 @@ export function describeMerge(plan: MergePlan): string[] {
 
 // --- pattern and pool access ----------------------------------------------------------------------
 
-/** Every pool slot this pattern's trigs are locked to. */
-function lockedSlots(pattern: Uint8Array): Set<number> {
-  const slots = new Set<number>();
-  for (let t = 0; t < TRACK_COUNT; t++) {
-    const at = PATTERN.trackOffset + t * PATTERN.trackSize;
-    for (let step = 0; step < 128; step++) {
-      const slot = pattern[at + TRACK.soundLockOffset + step]!;
-      if (slot !== NO_LOCK) slots.add(slot);
-    }
-  }
-  return slots;
-}
-
-/** Re-point every lock through the map. Locks with no entry are left alone. */
+/**
+ * Re-point every lock through the map. Locks with no entry are left alone.
+ *
+ * **Deliberately not gated on `STEP_FLAG.trig`, unlike the reader.** `soundLockedSlots` now counts
+ * a lock only where a trig exists, because reading every step reported slot 0 and slot 161 locked
+ * by all 128 patterns of every corpus project — unset memory, not music. This writer still visits
+ * every step.
+ *
+ * The asymmetry is intentional for now. Gating it would touch fewer bytes and make the diff sent to
+ * a device smaller, which is worth having; but it is a **write**, the reader's gate is the change
+ * that has just been made, and altering both at once on the same inference is how a wrong
+ * assumption gets twice as far. Worth revisiting with a round trip against the instrument.
+ */
 function reroute(pattern: Uint8Array, remap: Map<number, number>): number {
   let changed = 0;
   for (let t = 0; t < TRACK_COUNT; t++) {
