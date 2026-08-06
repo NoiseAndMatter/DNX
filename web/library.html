@@ -56,6 +56,12 @@
         <option value="kit">Kits</option>
       </select>
       <button class="btn" id="browse" disabled>Browse</button>
+      <span class="spacer"></span>
+      <!--
+        The only way out. Presets dragged into the pool change the project in this page and nothing
+        else — the instrument is untouched, and the file on disk is untouched until this is pressed.
+      -->
+      <button class="btn primary" id="export" disabled>Export project</button>
     </div>
   </section>
 
@@ -82,7 +88,8 @@
       <span><i class="sw occupied"></i>holds a preset or kit</span>
       <span><i class="sw sel"></i>selected</span>
       <span>a locked preset shows how many trigs reach it</span>
-      <span><b>read-only for now</b> — writing to the +Drive waits on one hardware check</span>
+      <span>drag a preset from the library onto a pool slot</span>
+      <span><b>the instrument is never written to</b> — export the project instead</span>
     </div>
   </section>
 

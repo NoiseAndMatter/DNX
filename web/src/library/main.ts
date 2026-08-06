@@ -11,15 +11,18 @@
  * Every operation anyone wants here crosses that line: add a preset to the pool, keep one back,
  * load a kit into a pattern. **A tool showing one side could describe the work but never do it.**
  *
- * ## Read-only, and honestly so
+ * ## What it writes, and what it does not
  *
- * Nothing here writes. Writing to the +Drive needs a checksum the device validates; the algorithm is
- * solved and reproduces the instrument's own numbers, but **the device has not yet accepted one we
- * computed for bytes it has never seen** — one hardware check, T26. Until it passes, offering a
- * button that saves would be offering something that may not work.
+ * Dragging a preset from the library into the pool **edits the project held in this page**. The
+ * instrument is not written to at all, and the file on disk is untouched until *Export project* is
+ * pressed — so a mistake costs a reload, not a recording.
  *
- * The pool side has a second reason to wait: `auditPool` reads Digitone II patterns, so a DN1's pool
- * is not shown at all rather than shown wrongly.
+ * That split is deliberate rather than temporary. Writing a *project* back to the +Drive is a
+ * different operation from reading a preset out of it, and the two should not arrive together in a
+ * page whose whole job is moving things between collections.
+ *
+ * `auditPool` reads Digitone II patterns, so a DN1 project is refused rather than shown with DN2
+ * offsets over DN1 bytes.
  */
 
 import { auditPool, describePoolAudit, type PoolAudit } from "../../../src/librarian/poolaudit.js";
@@ -28,11 +31,18 @@ import {
   type LibraryBank,
   type LibraryKind,
   listLibraryBank,
+  readLibraryObject,
 } from "../../../src/device/library.js";
+import {
+  applyAddPreset,
+  describeAddPreset,
+  planAddPreset,
+} from "../../../src/librarian/poolwrite.js";
+import { buildProjectBlob, download } from "../project.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
-import { renderGrid, type SlotView } from "../grid.js";
+import { GridDrag, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
@@ -111,7 +121,11 @@ function renderPool(): void {
   renderGrid(
     grid,
     audit.slots.map((s) => ({ index: s.index, ...poolSlotView(s.index) })),
-    { selected: [], onClick: (index) => describeSlot(index) },
+    {
+      selected: [],
+      onClick: (index) => describeSlot(index),
+      drag: { controller: drag, grid: "pool" },
+    },
   );
 
   const lines = describePoolAudit(audit).slice(1);
@@ -204,6 +218,7 @@ function renderLibrary(): void {
     })),
     {
       selected: [],
+      drag: { controller: drag, grid: "library" },
       onClick: (index) => {
         const entry = bank.entries.find((e) => e.index === index);
         status(
@@ -214,6 +229,104 @@ function renderLibrary(): void {
       },
     },
   );
+}
+
+/**
+ * Dragging a preset out of the library and into the pool.
+ *
+ * **One direction only, for now.** Library → pool is what the device calls *ADD TO PRESET POOL*, and
+ * it is the operation that makes a preset lockable. Pool → library is a genuine operation too, but
+ * it writes to the instrument, and nothing here writes to the instrument yet.
+ *
+ * The drop lands the preset in the slot it was dropped on — not "the first free slot" — because the
+ * gesture chose a place and quietly using a different one would be the tool disagreeing with the
+ * hand that made it.
+ */
+const drag = new GridDrag({
+  onDragStart(grid, index) {
+    // Only occupied library slots are worth dragging; an empty one has nothing to give.
+    if (grid !== "library") return [];
+    const entry = state.bank?.entries.find((e) => e.index === index);
+    return entry?.occupied ? [index] : [];
+  },
+
+  hintFor(from, grid, index) {
+    if (from.grid !== "library" || grid !== "pool" || !state.audit) return undefined;
+    if (state.bank?.kind !== "preset") return undefined;
+
+    const slot = state.audit.slots[index];
+    if (!slot) return undefined;
+    return {
+      action: "copy",
+      label: slot.occupied ? `REPLACE${slot.lockCount ? ` · ${slot.lockCount} locks` : ""}` : "ADD",
+      status: slot.occupied
+        ? `${slot.name || "unnamed"} is in slot ${index}` +
+          (slot.lockCount ? ` and ${slot.lockCount} trig(s) lock it` : ", locked by nothing")
+        : `slot ${index} is free`,
+    };
+  },
+
+  onDrop(from, grid, index) {
+    if (from.grid !== "library" || grid !== "pool") return;
+    const source = from.indices[0];
+    if (source !== undefined) addToPool(source, index).catch(report);
+  },
+
+  onStatus: (message) => {
+    if (message) status(message);
+  },
+});
+
+/**
+ * Read one preset off the instrument and put it in the pool.
+ *
+ * Reads on every drop rather than caching the bank's bytes. A listing is names and sizes; the object
+ * itself is a separate conversation, and 2,048 presets is not something to fetch speculatively.
+ */
+async function addToPool(index: number, slot: number): Promise<void> {
+  const { device, bank, project } = state;
+  if (!device || !bank || !project || !state.audit) return;
+  if (bank.kind !== "preset") {
+    status("Kits go into a pattern, not the pool — that operation is not built yet.", "warn");
+    return;
+  }
+
+  const entry = bank.entries.find((e) => e.index === index);
+  status(`Reading ${bank.path}/${index}…`);
+  const { body } = await readLibraryObject(apiTransport(device), "preset", bank.bank, index);
+
+  const projectDevice = deviceFor(project.image);
+  // Planned before anything is written, so a refusal — a MIDI preset, an occupied slot with locks —
+  // is something you read rather than something you undo.
+  const preview = planAddPreset(project.image, projectDevice, body, { slot });
+  if (preview.replaces && !window.confirm(`${describeAddPreset(preview)}
+
+Go ahead?`)) {
+    status("Not added.");
+    return;
+  }
+
+  const { image, plan } = applyAddPreset(project.image, projectDevice, body, {
+    slot,
+    confirmOverwrite: true,
+  });
+  state.project = { ...project, image };
+  state.audit = auditPool(image, projectDevice);
+  renderPool();
+  status(
+    `${entry?.name || "preset"} → slot ${plan.slot}. ${plan.freeAfter} free. ` +
+      `Export the project to keep this — nothing has been written to the instrument.`,
+    "ok",
+  );
+  $<HTMLButtonElement>("export").disabled = false;
+}
+
+async function exportProject(): Promise<void> {
+  const project = state.project;
+  if (!project) return;
+  const blob = await buildProjectBlob(project, project.image);
+  download(blob, project.fileName);
+  status(`Exported ${project.fileName}. The original file is untouched.`, "ok");
 }
 
 function report(error: unknown): void {
@@ -233,6 +346,10 @@ $("connect").addEventListener("click", () => {
 
 $("browse").addEventListener("click", () => {
   browse().catch(report);
+});
+
+$("export").addEventListener("click", () => {
+  exportProject().catch(report);
 });
 
 $("kind").addEventListener("change", () => {
