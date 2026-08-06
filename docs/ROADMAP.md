@@ -1948,6 +1948,52 @@ writing, and that separation earns its keep as soon as a write can reach an inst
 The same item as 6a, recorded twice because it was hit twice in use. Fixed there; see that entry
 for what it took, which was mostly not what it looked like.
 
+## 8. From the 2026-08-06 hardware session
+
+Thirteen tests passed, including the first end-to-end proof that a project can be read off a +Drive,
+edited, exported and loaded back onto the instrument. Three things came out of it as work.
+
+### 8a. The manager cannot choose between two connected devices
+
+**Reported:** *"I'm having an issue with the manager and both devices connected, I have no way to
+select what device to load/use."*
+
+`connectDevice({ want })` already exists — the expander uses it to tell a Digitone 1 from a
+Digitone II, added in #133. The manager still calls `connectDevice()` bare and takes whichever
+answers first. It needs the same treatment, and probably a visible choice rather than a guess, since
+unlike the expander the manager has no fixed role for each device: either one is a legitimate
+subject.
+
+### 8b. The expander offers +Drive browsing for the DN1 and not the DN2
+
+**Reported:** *"it feels that we should have the same options in the expander for DN1 and DN2
+projects. DN2 only offers Connect a Digitone II with no browse its +Drive option."*
+
+The asymmetry is real and the reason for it is not symmetric, which is why this needs a decision
+rather than a patch. The DN1 is a **source**, so any stored project will do and the +Drive is the
+better route — no donor, any slot. The DN2 is a **destination**, and *Read its project* deliberately
+reads the **active** one because that is the only project a write can go back to. A project browsed
+off the DN2's +Drive could be merged into and exported, but **not written back** — the manager marks
+exactly that case read-only for the same reason.
+
+So the option is worth having, and it must arrive with the write button disabled and a line saying
+why. Adding it as a peer of *Read its project* without that would offer a destination the user
+cannot send anywhere.
+
+### 8c. The probe's tool row is a different size from the other two
+
+**Reported:** *"In probe the text of the page names seems bigger than in the other 2."* The probe
+does not link `dnx.css` — it is self-styled — so it inherits its own base font size while
+`toolnav.css` sets none of its own. One rule in `toolnav.css` fixes it; worth doing while the
+stylesheet is the shared one.
+
+### Confirmed working, and worth not re-litigating
+
+**The AltGr guard does what it was built to do.** Reported as *"in probe, cursor in PATH,
+Ctrl+Alt+2 doesn't navigate, the arrows do"* — which is the designed behaviour exactly:
+`Ctrl`+`Alt` is `AltGr`, the digits are how several layouts type `@` and `|`, so they are ignored
+while an editable element has focus. The arrows need no such guard and keep working.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop

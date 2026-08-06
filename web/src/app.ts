@@ -727,7 +727,15 @@ async function openSourceSlot(): Promise<void> {
     );
   }
 
-  setSource({ image: opened.image, label: `${project.name} · slot ${project.index}` });
+  // **The drive name appears only when it disagrees with the project name.**
+  //
+  // They are two different things that are usually the same string: the +Drive entry is the file's
+  // name on the drive, and the project name lives inside the image at offset 8. Renaming on one
+  // side does not necessarily touch the other, and anything this tool stamps a build time into
+  // changes the second and not the first — so when they differ, that difference is worth seeing.
+  // When they agree, printing it twice is noise, which is how it was reported.
+  const stored = readProjectName(opened.image) === project.name ? "" : `${project.name} · `;
+  setSource({ image: opened.image, label: `${stored}slot ${project.index}` });
 }
 
 /**
