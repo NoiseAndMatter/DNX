@@ -208,11 +208,30 @@ which is already read fluently, and the same `grid.ts` drawing both.
 - **Library** — connect a Digitone II, choose presets or kits, browse a bank. Occupied slots show
   whether the instrument has protected them.
 
+### Library → pool works — 2026-08-07
+
+Drag a preset from a library bank onto a pool slot. `planAddPreset` refuses first and the refusals
+are the substance:
+
+- **a MIDI preset**, because the manual says the pool cannot hold one and a preset lock cannot reach
+  it;
+- **a whole stored file** rather than its body — 43 bytes of container would write past the slot
+  into its neighbour;
+- **an occupied slot**, naming what is there *and how many trigs lock it*, because replacing a
+  locked preset changes what those trigs play;
+- **a full pool**, pointing at the presets nothing locks as the place to make room.
+
+The bytes need no conversion: a stored preset's body is byte-for-byte a pool slot, so
+`readLibraryObject` unwraps the container once and everything downstream sees an object.
+
 ### What it deliberately does not do
 
-**Nothing writes.** The +Drive checksum is solved and reproduces the instrument's own numbers, but
-the device has not yet accepted one *we* computed for bytes it has never seen — T26. Offering a save
-button before that is offering something that may not work.
+**It never writes to the instrument.** Dropping a preset edits the project held in the page; the
+file on disk is untouched until *Export project*. A mistake costs a reload, not a recording.
+
+That split is deliberate rather than temporary. Writing a *project* back to the +Drive is a
+different operation from reading a preset out of it, and the two should not arrive together in a
+page whose whole job is moving things between collections.
 
 A DN1 project is **refused rather than shown**, because `auditPool` reads Digitone II patterns and
 DN1 bytes under DN2 offsets would produce names and counts that are all invented.
