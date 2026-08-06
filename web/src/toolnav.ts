@@ -36,10 +36,18 @@
  * changing tools. The arrows need no such guard: `AltGr`+arrow types nothing on any layout.
  */
 
-/** Fixed order. Changing it changes where every tool lives on screen, so it changes muscle memory. */
+/**
+ * Fixed order. Changing it changes where every tool lives on screen, so it changes muscle memory.
+ *
+ * `library` sits third, before `probe`: the first three are tools for making music with, and the
+ * probe is the one you open when something is wrong. Appending it to the end would have been less
+ * disruptive to anyone's habits — but it would put an instrument-debugging tool in the middle of the
+ * musical ones, and the row is meant to read as an order of work.
+ */
 export const TOOLS = [
   { id: "expander", href: "index.html", label: "expander" },
   { id: "manager", href: "manager.html", label: "manager" },
+  { id: "library", href: "library.html", label: "library" },
   { id: "probe", href: "probe.html", label: "probe" },
 ] as const;
 

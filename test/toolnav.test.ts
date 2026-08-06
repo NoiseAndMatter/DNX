@@ -37,9 +37,12 @@ const PAGES: [string, string][] = [
 test("the row order is fixed, and it is the order that was chosen", () => {
   // Settled against a most-recently-used ordering: MRU turns the row into a history stack, so a
   // tool's position depends on where you have been and the thing you just clicked moves.
+  //
+  // `library` sits before `probe` because the first three are tools for making music with and the
+  // probe is the one you open when something is wrong — the row reads as an order of work.
   assert.deepEqual(
     TOOLS.map((tool) => tool.id),
-    ["expander", "manager", "probe"],
+    ["expander", "manager", "library", "probe"],
   );
 });
 
@@ -100,6 +103,6 @@ test("an unknown tool throws rather than reading as position -1", () => {
   // **This is the only mechanism that could produce the reported wrap.** `findIndex` answers -1 for
   // an id not in the row, and -1 + 1 is 0 — so "next" from an unknown position lands on the
   // leftmost tool, which is indistinguishable from cycling. Now it says so instead.
-  assert.throws(() => indexOfTool("nosuchtool" as never), /not one of expander, manager, probe/);
+  assert.throws(() => indexOfTool("nosuchtool" as never), /not one of expander, manager, library, probe/);
   for (const tool of TOOLS) assert.equal(TOOLS[indexOfTool(tool.id)]!.id, tool.id);
 });

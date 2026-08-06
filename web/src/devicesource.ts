@@ -299,7 +299,7 @@ export async function writeBack(
  * id — because the probe page needed exactly the same thing and had written its own, differing in
  * the part that matters. All this adds is the error the +Drive code expects on silence.
  */
-function apiTransport(device: ConnectedDevice): ApiTransport {
+export function apiTransport(device: ConnectedDevice): ApiTransport {
   return new DeviceLink(device.input, device.output).transport({
     timeoutError: (msgId, ms) => new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${ms}ms`),
   });
