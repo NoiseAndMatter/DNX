@@ -201,6 +201,14 @@ body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem);
 .slot.occupied .tc { color: var(--teal); opacity: .8; }
 .slot.unsupported { border-style: dashed; border-color: var(--amber); }
 .slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
+/*
+ * A preset that is in the pool and locked by nothing.
+ *
+ * Not an error and not empty — it holds real work, it is simply costing one of 128 places for no
+ * reason. Dimmed rather than coloured, because the finding is an absence.
+ */
+.slot.unused .nm { color: var(--muted); }
+.slot.unused .tc { color: var(--dim); font-style: italic; }
 
 /*
  * ---- the track grid ------------------------------------------------------------------
