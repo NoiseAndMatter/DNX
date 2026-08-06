@@ -35,6 +35,7 @@
  */
 
 import { ApiError, encodeMessage } from "./api.js";
+import { crc32ZeroInit } from "../project/checksum.js";
 
 /** Request codes, each paired with the response `+0x80` that was observed. */
 export const StorageCode = {
@@ -801,6 +802,29 @@ const SHORT = 0x01;
 const LONG = 0x02;
 
 /** A big-endian u32. Exported because `storagewrite.ts` had an identical private copy. */
+/**
+ * The checksum a +Drive write must carry — **solved 2026-08-06**.
+ *
+ * It is `crc32ZeroInit`: CRC-32 with the ordinary polynomial and final inversion, but seeded with
+ * **zero** rather than all-ones. The same function this codebase already used for the project
+ * payload's check field, which is why the answer was in the repository the whole time and not
+ * recognised — the eleven forms tried against it were tried as *whole* algorithms, and the one that
+ * fits differs from `zlib.crc32` in a single parameter.
+ *
+ * **Derived from a matched pair off the instrument.** `/soundbanks/A/1` read 345 bytes and the
+ * device reported `e48ff54e`; `crc32ZeroInit` over exactly those bytes is `e48ff54e`. A 32-bit
+ * agreement on 345 bytes is not a coincidence worth entertaining.
+ *
+ * **Still one sample, and the decisive test is different in kind.** Matching a checksum the device
+ * gave us proves we can reproduce its arithmetic. What it does not yet prove is that the device
+ * *accepts* a checksum we computed for bytes it has never seen — and that is the whole point of
+ * having it. That experiment writes edited content to an empty slot and reads the verdict off the
+ * instrument; until it passes, this is verified against a capture and not against a write.
+ */
+export function driveChecksum(bytes: Uint8Array): number {
+  return crc32ZeroInit(bytes);
+}
+
 export function u32(b: Uint8Array, at: number): number {
   return ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0;
 }
