@@ -606,6 +606,35 @@ Arithmetic checks out both times: `0x57` declared `0x4690` = 18,064 and the `0x5
 > `/soundbanks/C/29` declared `cb 49 92 19`, and reading that sound back reported `cb 49 92 19`.
 > Two sides of one value — which identifies the field and not the function.
 
+### The checksum — SOLVED 2026-08-06
+
+It is **`crc32ZeroInit`**: ordinary CRC-32, ordinary polynomial `0x04C11DB7`, reflected, final
+inversion — seeded with **zero** instead of all-ones.
+
+```
+/soundbanks/A/1   345 bytes
+device reported   e48ff54e
+crc32ZeroInit     e48ff54e
+```
+
+**The function was in this repository the whole time.** `src/project/checksum.ts` has used it for
+the project payload's check field since the format was decoded. It went unrecognised because the
+eleven forms tried against this field were tried as *whole algorithms* — and the one that fits
+differs from `zlib.crc32` in a single parameter.
+
+> Two fields in the same product, checksummed the same way, decoded eighteen months apart. When a
+> device reuses arithmetic, look at what you have already implemented for it before looking
+> outward.
+
+Derived from a matched pair in `99_HardwareTest/API_17msg_2251.syx` — the same capture that carries
+the first write. The bytes are kept as `99_HardwareTest/soundbank_A1_345B_e48ff54e.bin` and
+`test/drivechecksum.test.ts` asserts against them.
+
+**What this does not yet establish.** Matching a checksum the device *gave* us proves we reproduce
+its arithmetic. It does not prove the device *accepts* a checksum we computed for bytes it has
+never seen — which is the entire point of having it. That experiment writes edited content to an
+empty slot; until it passes, this is verified against a capture and not against a write.
+
 ### The first write to a Digitone's +Drive — 2026-08-04, on a Digitone 1
 
 Both halves of the experiment were run, and both answered.
