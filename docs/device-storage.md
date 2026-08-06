@@ -501,10 +501,29 @@ was imaginary and the device paid for it.
 
 | Path | Entries | Notes |
 |---|---|---|
-| `/` | 2 | `projects` (128 children), `soundbanks` (8) |
+| `/` **on a Digitone 1** | 2 | `projects` (128 children), `soundbanks` (8) |
+| `/` **on a Digitone II** | **3** | `projects` (128), `soundbanks` (8), **`kits` (8)** |
 | `/projects` | 128 | names, 1-based ids, **4,194,304 B each** |
 | `/soundbanks` | 8 | `A`–`H`, **262,144 B each** |
 | `/soundbanks/A` | 256 | sound names, ids, **302 B each** |
+
+### The two families do not have the same root — confirmed 2026-08-06
+
+A Digitone II answers `/` with **three** directories. The third is `kits`, with 8 banks — and its
+absence on the Digitone 1 is not a difference in the storage API but a difference in the
+instrument: **the DN1 has no kits at all.** Every listing this project took before today was from a
+DN1, so the root looked like the whole story and was half of it.
+
+That also confirms what the manual says the +Drive holds — *projects, kits and presets* — against
+the wire, and settles the last thing blocking a kit manager. `/soundbanks` is the **preset**
+library: 8 banks × 256 = 2,048, exactly the figure in the manual.
+
+> **A capability absent on one device in a family is not evidence about the other.** The DN1 and
+> the DN2 share a protocol and not a data model.
+
+**Still unknown: how many kits a bank holds.** A preset bank holds 256 and a kit is 10,752 bytes
+against a preset's few hundred, so the number is unlikely to be the same. One `List` of `/kits/A`
+answers it.
 
 **Those sizes are allocations, not contents.** A DN1 image is 2,781,700 bytes and a `.dnprj` is
 ~25 KB compressed, yet every project reads 4 MiB; 256 sounds of 302 bytes is 77,312, yet every bank
