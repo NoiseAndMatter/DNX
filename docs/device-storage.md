@@ -857,6 +857,43 @@ Writing the other way wraps the object in the same container. `buildPayload` alr
 header and trailer; note that it also LZ4-compresses, which these objects are not, so exporting a
 preset to the library needs the uncompressed path rather than the project one.
 
+## The kit file corroborates the checksum, on a different object and a different device
+
+`/kits/A/1` ends:
+
+```
+74 8c 1a e5   00 00 2a 00   aa a1 da aa
+  check         10,752         footer
+```
+
+`748c1ae5` is `driveChecksum` over the payload body — **the same function derived the day before
+from a 345-byte preset on a Digitone 1**, now accounting for a 10,795-byte kit on a Digitone II.
+
+> A function fitted to one sample is a guess with good odds. The same function explaining an object
+> of a different kind, from the other instrument, in a field nobody was looking at, is the sample
+> that makes it a finding.
+
+The container is internally consistent throughout: check field over the body, declared length
+10,752, footer `aa a1 da aa` — the same trailer `buildPayload` writes.
+
+### The metadata reply's two words are still unidentified
+
+Opening a stored file answers a read chunk of length zero, whose header carries two words this
+project has never named. For `/kits/A/1`:
+
+```
+40 17 3f de   44 62 67 80   00   ff ff ff ff   00 00 00 00
+   word A        word B     last   checksum      length 0
+```
+
+Neither is the file's checksum, the body's checksum, or anything in the directory entry — all
+checked. **One sample cannot identify a field**, and this project has already paid for reading two
+samples as one 16-bit tag when they were two independent bytes.
+
+**The cheap next step is a second metadata reply.** Read `/kits/A/2` — `VERB` — and compare. If the
+words differ, they derive from the file; if they are identical, they belong to the device or the
+session. Either answer halves the search.
+
 ### Moving, copying, deleting
 
 ```
