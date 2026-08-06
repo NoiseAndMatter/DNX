@@ -733,6 +733,82 @@ So `302` is what a DN1 sound *slot* measures, not what a sound measures, and the
 whether the slot holds anything or not. Occupancy is read from the name and the permission mask, as
 `Entry.occupied` already does; `size` must not be used for it.
 
+## Kits on the +Drive — listed 2026-08-06
+
+`/kits/1` answers **128 entries**, so the library is **8 banks × 128 = 1,024 kit slots** —
+against 2,048 presets in banks of 256. A kit is a far larger object, so a smaller bank is what one
+would expect.
+
+### The device's own listing confirms our kit geometry
+
+Every entry reads **10,752 bytes**, and `DN2_KIT.kitSize` is **10,752** — derived from the corpus,
+months before anyone listed a kit bank.
+
+> Two independent routes to the same number: differential analysis of fourteen project pairs, and
+> the instrument's own directory listing. That is the strongest kind of agreement this project
+> gets, and it did not require a single new byte to be decoded.
+
+**It is the object's size, not the file's** — settled the same evening by a bank holding real kits.
+All 128 entries read 10,752 whether occupied or empty:
+
+```
+1:SOLID  2:VERB  3:SINES  4:ICE  5:SLÖ  6:DARKWOODS  7:RIDERS
+8:ACOUSTIC  9:ICKY  10:BROWN  11:TINY  12:CAVEDIVER  13:TENSE  14:WOOL
+```
+
+14 occupied, 114 empty, **one distinct size across all of them**. A number that does not move when
+the content does is not measuring the content.
+
+### Which suggests what a stored file actually is
+
+The same pattern holds for presets, and gives the two halves of a hypothesis:
+
+| | listed | read off the drive |
+|---|---|---|
+| DN1 preset | 302 | **345** |
+| DN2 kit | 10,752 | ? |
+
+302 is the DN1 preset's size in a project pool; 10,752 is `DN2_KIT.kitSize`. So **the listing
+reports the object as the project holds it, and the stored file wraps that object in something
+else** — 43 bytes of it, for a preset.
+
+If the wrapper is a constant, a kit file is **10,795 bytes**. That is a prediction with a number in
+it, and reading one kit tests it — which is worth doing before any code assumes a relationship
+between a stored file and a pool or kit slot.
+
+### Banks are addressed by number here, and by letter under `/soundbanks`
+
+`/kits/1` works. `/soundbanks/A` and `/soundbanks/H` work. **Neither form has been tried against
+the other directory**, so this is two observations rather than a rule — worth one probe before any
+code assumes either.
+
+### Occupancy reads correctly on kits
+
+An empty slot carries the trailer `00 7e 00 01` — permissions `0x007e`, occupancy pair `00 01`. An
+occupied one carries `01 01` and a name. `Entry.occupied` decodes both without change, which is one
+more thing the kit directory did not need.
+
+**A kit bank answers to both a letter and an index.** `/kits/A` and `/kits/1` each return the same
+128 entries — probed deliberately, so this is a rule rather than a coincidence of two captures.
+`/kits` itself answers 8 entries named `A`–`H` at 4,194,304 bytes each, the same flat allocation a
+project slot gets.
+
+### The permission mask reads occupancy on kits too
+
+```
+occupied   SOLID  10,752 B  [00 12 01 01]
+empty             10,752 B  [00 7e 00 01]
+```
+
+`WRITABLE_BITS` is `0x7e & ~0x12` = `0x6c`, decoded on 2026-07-30 from sound slots. Against these:
+`0x7e & 0x6c == 0x6c` so an empty kit slot is **writable**, and `0x12 & 0x6c == 0` so an occupied
+one is **not**.
+
+That is the mask working unchanged on a directory it was never derived from — and it means the
+instrument marks a saved kit as protected. `writeStoredFile` refuses an occupied target anyway, so
+the two agree; **replacing** a kit in place will need that permission understood rather than
+assumed.
+
 ### Moving, copying, deleting
 
 ```
