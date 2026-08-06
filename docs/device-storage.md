@@ -809,6 +809,54 @@ instrument marks a saved kit as protected. `writeStoredFile` refuses an occupied
 the two agree; **replacing** a kit in place will need that permission understood rather than
 assumed.
 
+## A stored preset or kit is a container around the object — 2026-08-06
+
+**The relationship between a file on the +Drive and the thing a project holds is: strip 43 bytes.**
+That is not a wrapper anyone had to reverse-engineer; it is the container this codebase has parsed
+since the project format was decoded.
+
+```
+kits/A/1     10,795 bytes on the drive   ->  parsePayload: kind 15, declares 10,752
+soundbanks/A/1  345 bytes on the drive   ->  parsePayload: kind  9, declares    302
+```
+
+`BLOCK_CHAIN_START` is 31 and `TRAILER_SIZE` is 12. **31 + 12 = 43**, for both, which is why the
+difference looked like a constant: it is a header and a trailer, not padding.
+
+Both files begin `ac 11 d3 03 02 00 05 00` — the same magic a project payload carries. **They are
+the same container**, holding a different object.
+
+### The listing's size is the payload's declared length
+
+| | listed | payload declares | file |
+|---|---|---|---|
+| DN1 preset | 302 | **302** | 345 |
+| DN2 kit | 10,752 | **10,752** | 10,795 |
+
+So the directory reports the object, the file adds the container, and the two numbers were never in
+conflict — we were comparing a length against a length-plus-container and calling it a puzzle.
+
+### The body is the object, uncompressed
+
+`storedLength === computedLength` on both, and reading the body directly with the project's own
+constants works:
+
+```
+body[SOUND_NAME_OFFSET]      (12) -> "DIGIT-ONE"
+body[SOUND_MACHINE_OFFSET]  (244) -> FM TONE
+```
+
+No LZ4, no per-object framing. **A stored preset's body is byte-for-byte what sits in a pool slot**,
+and a stored kit's body is what sits in a pattern's kit record.
+
+> This is the whole of what the preset pool manager and the kit manager needed to know about the
+> format, and none of it required new decoding. Reading a preset into a pool is `parsePayload`,
+> take the body, write it to a free slot — all of which exists.
+
+Writing the other way wraps the object in the same container. `buildPayload` already emits the
+header and trailer; note that it also LZ4-compresses, which these objects are not, so exporting a
+preset to the library needs the uncompressed path rather than the project one.
+
 ### Moving, copying, deleting
 
 ```
