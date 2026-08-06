@@ -1948,6 +1948,23 @@ writing, and that separation earns its keep as soon as a write can reach an inst
 The same item as 6a, recorded twice because it was hit twice in use. Fixed there; see that entry
 for what it took, which was mostly not what it looked like.
 
+## 9. Preset pool manager and kit manager — PLANNED 2026-08-06
+
+`docs/SOUND-AND-KIT-PLAN.md` has the design. Three things it settled that are worth knowing without
+reading it:
+
+**`/soundbanks` is the +Drive preset library.** Eight banks of 256 is 2,048, exactly the number the
+manual gives. What we have been listing and reading all along *is* the library — we had the
+device's name for it wrong.
+
+**Our vocabulary drifted from the hardware's.** The device says *preset*, *preset pool*, *preset
+lock*, *+Drive preset library*. This codebase says *sound* throughout. New surfaces should say
+preset; renaming the existing ones is its own job.
+
+**Kits are on the +Drive, in banks, saved to named slots** — the manual is explicit, and its list of
+what a kit contains matches `DN2_KIT` byte for byte. The only thing missing is the storage API's
+path for them, which one `List /` on a Digitone II answers.
+
 ## 8. From the 2026-08-06 hardware session
 
 Thirteen tests passed, including the first end-to-end proof that a project can be read off a +Drive,
