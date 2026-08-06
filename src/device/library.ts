@@ -27,7 +27,8 @@
  * pattern's kit record, with no conversion at all.
  */
 
-import { type ApiTransport } from "./storagesession.js";
+import { type ApiTransport, readStoredFile } from "./storagesession.js";
+import { parsePayload } from "../project/container.js";
 import { type Entry, StorageCode, listRequest, parseListing } from "./storage.js";
 import { type ApiFrame, RESPONSE_BIT } from "./api.js";
 
@@ -147,3 +148,41 @@ export function describeBank(bank: LibraryBank): string {
     ? `${bank.bank} — empty`
     : `${bank.bank} — ${bank.used} of ${bank.entries.length}`;
 }
+
+/**
+ * Read one library object and hand back the part a project holds.
+ *
+ * A stored file is the object inside the ordinary container — 31-byte header, body, 12-byte
+ * trailer — and **the body is byte-for-byte what sits in a pool slot or a pattern's kit record**.
+ * So the unwrapping happens once, here, and callers never see a file length where they expect an
+ * object length. That distinction has already cost this project one bug: 302 against 345 looked
+ * like a mystery until the container was recognised.
+ */
+export async function readLibraryObject(
+  transport: ApiTransport,
+  kind: LibraryKind,
+  bank: string,
+  index: number,
+  options: ListLibraryOptions = {},
+): Promise<{ body: Uint8Array; declared: number; fileBytes: number }> {
+  const path = slotPath(kind, bank, index);
+  const file = await readStoredFile(path, {
+    transport,
+    ...(options.msgId === undefined ? {} : { msgId: options.msgId }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  });
+
+  const payload = parsePayload(file.bytes);
+  const body = file.bytes.subarray(HEADER_SIZE, HEADER_SIZE + payload.storedLength);
+  // Checked rather than assumed: the declared length and what is actually there are two
+  // independent statements, and a short body written into a slot would corrupt its neighbour.
+  if (body.length !== payload.storedLength) {
+    throw new Error(
+      `${path} declares ${payload.storedLength} bytes of object and carries ${body.length}`,
+    );
+  }
+  return { body, declared: payload.storedLength, fileBytes: file.bytes.length };
+}
+
+/** Where the container header ends and the object begins. */
+const HEADER_SIZE = 31;
