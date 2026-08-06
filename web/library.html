@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX — library</title>
+<link rel="stylesheet" href="./dnx.css">
+<link rel="stylesheet" href="./toolnav.css">
+<!-- Classic, not a module: it has to still be standing when the module is not. -->
+<script src="./boot.js"></script>
+<style>
+/*
+ * Two collections side by side, because the job is moving between them.
+ *
+ * The pool belongs to a project and the library belongs to the instrument, and every operation
+ * anyone wants here crosses that line — add a preset to the pool, save one back, load a kit into a
+ * pattern. A tool showing one side could describe the work but never do it.
+ *
+ * Same two-grid shape as the expander, for the same reason: it is the layout that makes a drag from
+ * one collection to another an obvious gesture rather than a feature to explain.
+ */
+.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .9rem; }
+@media (max-width: 68rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
+
+.pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
+.pane .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Findings sit under the pool they describe, never beside the library. */
+#findings { margin-top: .8rem; }
+#findings li { margin: .2rem 0; }
+#findings .none { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body class="page">
+
+<div class="topbar">
+  <span class="brand"><span class="d">DNX</span></span>
+  <span id="toolnav"></span>
+  <span class="spacer"></span>
+  <span class="device" id="poolInfo" hidden></span>
+  <span class="device" id="deviceInfo" hidden></span>
+</div>
+
+<main>
+
+  <section class="section">
+    <h2>In</h2>
+    <div class="bar">
+      <span class="lbl">Project</span>
+      <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
+      <span class="sep"></span>
+      <span class="lbl">Instrument</span>
+      <button class="btn" id="connect">Connect a Digitone II…</button>
+      <select id="kind" disabled title="Which library to browse">
+        <option value="preset">Presets</option>
+        <option value="kit">Kits</option>
+      </select>
+      <button class="btn" id="browse" disabled>Browse</button>
+    </div>
+  </section>
+
+  <div class="panes">
+
+    <!-- The project's own 128 presets: the only ones a trig can lock to. -->
+    <section class="section pane">
+      <h2>Preset pool <span class="count" id="poolSub">— open a Digitone II project</span></h2>
+      <div class="grid" id="poolGrid" hidden></div>
+      <div class="plan hint" id="findings">Open a project to audit its pool.</div>
+    </section>
+
+    <!-- The instrument's library: 2,048 presets or 1,024 kits, shared by every project. -->
+    <section class="section pane">
+      <h2>+Drive library <span class="count" id="librarySub">— connect an instrument</span></h2>
+      <div class="tabs" id="libraryTabs" hidden></div>
+      <div class="grid" id="libraryGrid" hidden></div>
+    </section>
+
+  </div>
+
+  <section class="section">
+    <div class="legend">
+      <span><i class="sw occupied"></i>holds a preset or kit</span>
+      <span><i class="sw sel"></i>selected</span>
+      <span>a locked preset shows how many trigs reach it</span>
+      <span><b>read-only for now</b> — writing to the +Drive waits on one hardware check</span>
+    </div>
+  </section>
+
+</main>
+
+<div class="status" id="status">Open a Digitone II project, or connect one.</div>
+
+<script type="module" src="./dist/web/src/library/main.js"></script>
+</body>
+</html>

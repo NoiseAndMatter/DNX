@@ -94,14 +94,15 @@ The device's own kit operations, which are the ones worth mirroring:
 | **MANAGE (KIT)** | the library |
 | *sorting* | ADD TO PRESET POOL — adds the kit's 16 presets to the pool |
 
-### The one thing still unknown
+### Where they live — answered 2026-08-06
 
-**The +Drive path.** Every listing this project has taken was from a Digitone 1, whose root has only
-`projects` and `soundbanks` — and the DN1 has no kits, so that tells us nothing about the DN2.
+**`/kits/<bank>`, 8 banks of 128 = 1,024 slots.** A bank answers to a letter or an index, so
+`/kits/A` and `/kits/1` are the same directory.
 
-The manual says the +Drive holds kits; it does not say what the storage API calls the directory.
-**One `List` of `/` on the Digitone II gives it**, and it is the only fact missing before the kit
-manager can be specified in detail. On the check sheet as **T27**.
+Every entry lists **10,752 bytes**, which is `DN2_KIT.kitSize` derived from the corpus months
+earlier — the instrument's own directory confirming geometry we had already worked out. The size is
+the *object's* and does not change when a slot is occupied, so occupancy comes from the name and the
+permission mask. An occupied kit reads as **not writable**: the device protects saved work.
 
 ---
 
@@ -142,14 +143,19 @@ read-edit-export, and this plan should be revisited rather than followed.
    being theoretical."*
 4. **Export a slot to the library**, so a preset outlives its project.
 
-### The unknown that blocks step 2
+### The stored-file relationship — answered 2026-08-06
 
-**A stored preset file and a pool slot are not the same bytes.** A DN1 preset on the +Drive read
-**345** bytes; a DN1 pool entry is **302**. Presumably a wrapper — but *presumably* is not a format
-claim, and writing 345 bytes into a 302-byte slot would corrupt the pool.
+**A stored file is the object wrapped in the ordinary container**: 31-byte header, body, 12-byte
+trailer. 31 + 12 = 43, which is why 302 → 345 and 10,752 → 10,795 looked like the same mysterious
+constant. Both files parse with `parsePayload` unchanged, and the body reads with the project's own
+constants — the captured preset's name sits at `SOUND_NAME_OFFSET` and its machine at
+`SOUND_MACHINE_OFFSET`.
 
-Cheap to settle, and **no hardware needed**: take the captured 345-byte preset and look for its 302
-bytes verbatim inside a project's pool. If they are there, the wrapper is an offset and a length.
+So **a stored preset's body drops straight into a pool slot with no conversion at all**, and a kit's
+into a pattern's kit record. Step 2 needs no new format work — only the ability to write.
+
+One trap for the reverse direction: `buildPayload` emits the right header and trailer but also
+LZ4-compresses, which these objects are not.
 
 ---
 
@@ -180,6 +186,43 @@ like a pattern bank. `drive.ts` lists and reads; `storagewrite.ts` writes.
 composition.
 
 ---
+
+## Built 2026-08-07: the browser, and where it lives
+
+**A fourth tool, `library`, not a tab inside the manager.** The row now reads
+*expander · manager · library · probe* — the first three are tools for making music with, and the
+probe is the one you open when something is wrong.
+
+The reasoning against a manager tab: the manager is a **project** tool and the +Drive library is a
+**device-wide** collection. Nesting one inside the other makes *what am I looking at* ambiguous in
+exactly the way the expander's two labelled grids avoid.
+
+**But the pool is on the page too**, on the left, because the job is moving between the two and a
+tool showing one side could describe the work and never do it. Same two-grid shape as the expander,
+which is already read fluently, and the same `grid.ts` drawing both.
+
+### What it does now
+
+- **Pool** — open a `.dn2prj`, see all 128 slots with what locks each one, and the audit's findings
+  underneath. A preset nothing locks is dimmed, because that finding is an absence.
+- **Library** — connect a Digitone II, choose presets or kits, browse a bank. Occupied slots show
+  whether the instrument has protected them.
+
+### What it deliberately does not do
+
+**Nothing writes.** The +Drive checksum is solved and reproduces the instrument's own numbers, but
+the device has not yet accepted one *we* computed for bytes it has never seen — T26. Offering a save
+button before that is offering something that may not work.
+
+A DN1 project is **refused rather than shown**, because `auditPool` reads Digitone II patterns and
+DN1 bytes under DN2 offsets would produce names and counts that are all invented.
+
+### The obvious next steps, in the shape the page already has
+
+Dragging library → pool is the operation the layout exists for, and it needs T26 plus nothing else:
+a stored preset's body drops straight into a pool slot with no conversion. Drilling into a slot from
+either side is where a preset editor would live, and preview-on-device belongs in the same panel —
+a preset you can select is a preset you can audition.
 
 ## Order
 
