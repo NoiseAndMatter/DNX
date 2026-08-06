@@ -5,8 +5,10 @@
  *
  * Nothing has ever been written to a Digitone's +Drive by this code. The protocol came off a USB
  * capture of Elektron Transfer hours ago (`docs/device-storage.md` §7), and the one field we cannot
- * produce is the checksum: its algorithm matches no CRC-32 in eleven forms, chained, cumulative or
- * byte-swapped.
+ * produce was the checksum — **solved 2026-08-06**. It is `crc32ZeroInit`, the same function the
+ * project payload's check field uses: ordinary CRC-32 seeded with zero instead of all-ones. The
+ * eleven forms tried against it were tried as whole algorithms, and the one that fits differs from
+ * `zlib.crc32` in a single parameter.
  *
  * That does not have to be solved to make the first write. **Write back exactly what was read**, and
  * the device has already told us the answer for those bytes — `Chunk.checksum` is the same field a
@@ -38,6 +40,7 @@ import { type ApiTransport } from "./storagesession.js";
 import { RESPONSE_BIT } from "./api.js";
 import {
   type Entry,
+  driveChecksum,
   ListingError,
   StorageCode,
   u32,
@@ -113,9 +116,15 @@ export function refuseUnlessEmpty(target: Entry, path: string): void {
 export async function writeStoredFile(
   path: string,
   bytes: Uint8Array,
-  checksum: number,
+  /**
+   * The checksum to declare. **Omit it and it is computed**, which is what a caller writing edited
+   * content wants; pass one to write a value deliberately, which is how the field was proved to be
+   * enforced in the first place.
+   */
+  checksum: number | undefined,
   options: WriteStoredFileOptions,
 ): Promise<WriteResult> {
+  const declared = checksum ?? driveChecksum(bytes);
   const {
     transport,
     target,
@@ -147,7 +156,7 @@ export async function writeStoredFile(
     // repeats it, or checksums each chunk, is unknown — which is a reason to write things that fit
     // in one chunk until somebody captures a large upload.
     const reply = await transport.request(
-      writeChunkRequest(chunkId, handle, written, checksum, bytes.length, slice),
+      writeChunkRequest(chunkId, handle, written, declared, bytes.length, slice),
       chunkId,
       timeoutMs,
     );
