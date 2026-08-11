@@ -22,6 +22,33 @@
  * cannot change the element's height and the header cannot twitch as you navigate between tools.
  */
 
+/*
+ * ## The bar itself lives here too, and that is the point
+ *
+ * `.topbar` used to live in `dnx.css` while the probe built a bespoke `<header>` beside it — and
+ * the comment in `dnx.css` already made the argument against that: *a row that has to look
+ * identical on every page cannot have two homes.* It had three. The brand and the tool row moved
+ * here; the bar containing them did not, so they drifted anyway.
+ *
+ * **The leading edge is fixed on every page.** `dnx.css` indents `body.page > .status` to line up
+ * with the centred 78rem column, and `.topbar` was indented with it. That put the brand and the
+ * tool row roughly 330px further right on the expander than on the manager at 1920px, so switching
+ * tools moved the control you were aiming at. The status line keeps its indent — it is the page's
+ * own commentary and belongs with the content — but the chrome does not. Chrome spans the app,
+ * starts at the app's edge, and does not move when the thing underneath it changes shape.
+ *
+ * `flex-wrap` is here for the probe, which carries far more controls than the others and would
+ * otherwise overflow its row. It costs the other pages nothing: their `.spacer` takes up the slack
+ * long before anything needs to wrap.
+ */
+.topbar {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .55rem .9rem;
+  background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
+}
+
+/** Pushes everything after it to the right — the one layout primitive the bar needs. */
+.spacer { flex: 1; }
+
 .brand { display: flex; align-items: baseline; gap: .45rem; font-weight: 700; letter-spacing: -.01em; }
 .brand .d { color: var(--teal); }
 .brand .sub { color: var(--muted); font-weight: 500; }

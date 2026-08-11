@@ -161,6 +161,50 @@ for (const [name, entry, html] of PAGES) {
   });
 }
 
+/**
+ * The chrome bar is the same bar on every page, and only `toolnav.css` describes it.
+ *
+ * Reported as *"the DNX title and the tools navigation buttons move depending on the tool
+ * selected"*. Three causes, one shape: `.topbar` lived in `dnx.css`, the probe built its own
+ * `<header>`, and `dnx.css` indented `body.page > .topbar` to match a centred content column — so
+ * the brand and the tool row sat ~330px further right on the expander than on the manager at
+ * 1920px, and switching tools moved the thing you were aiming at.
+ *
+ * The row's whole design is that each tool is a permanent screen position. A guard on the size
+ * already exists; this one guards the position, which is the other half of the same promise.
+ */
+for (const [name, , html] of PAGES) {
+  test(`the ${name}'s chrome bar is the shared one`, () => {
+    const source = readFileSync(html, "utf8");
+    const bar = /<(\w+)([^>]*\bclass="topbar"[^>]*)>/.exec(source);
+
+    assert.ok(bar, `${name} must carry the shared .topbar, not a bar of its own`);
+    // The brand and the tool row have to be inside it, or they are positioned by something else.
+    const after = source.slice(bar.index);
+    assert.match(after.slice(0, 400), /class="brand"/, `${name}'s brand belongs in the bar`);
+    assert.match(after.slice(0, 400), /id="toolnav"/, `${name}'s tool row belongs in the bar`);
+  });
+
+  test(`the ${name} does not restyle the chrome bar`, () => {
+    // A page with its own `<style>` may lay out its own content freely. The bar is not its content
+    // — it is the same object on four pages, and a second rule for it is how they drift apart.
+    const style = /<style>([\s\S]*?)<\/style>/.exec(readFileSync(html, "utf8"))?.[1] ?? "";
+    for (const selector of [/^\s*\.topbar\s*[,{]/m, /^\s*header\s*[,{]/m, /^\s*\.spacer\s*[,{]/m]) {
+      assert.doesNotMatch(style, selector, `${name} restyles the shared bar; ${"toolnav.css"} owns it`);
+    }
+  });
+}
+
+test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
+  const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
+  const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");
+
+  assert.match(nav, /^\.topbar\s*\{/m, "toolnav.css is the bar's home");
+  assert.doesNotMatch(dnx, /^\.topbar\s*\{/m, "dnx.css must not define the bar as well");
+  // The status line keeps its indent — it is the page's own commentary. The bar must not have it.
+  assert.doesNotMatch(dnx, /body\.page\s*>\s*\.topbar/, "indenting the bar is what moved it");
+});
+
 for (const [name, entry, html] of PAGES) {
   test(`the ${name}'s status bar is a status bar`, () => {
     // `statusbar.ts` styles everything off the `status` class: panel background, top border, and on
