@@ -113,8 +113,18 @@ body.sliding {
   transform: translateX(0); opacity: 1;
   transition: transform .22s cubic-bezier(.22, .8, .3, 1), opacity .18s ease-out;
 }
-@media (prefers-reduced-motion: reduce) {
-  body.slide-from-right, body.slide-from-left, body.sliding {
-    transform: none; opacity: 1; transition: none;
-  }
-}
+/*
+ * **The motion decision is not here, and must not be.**
+ *
+ * This block used to read `@media (prefers-reduced-motion: reduce)` and flatten the transition.
+ * That was right while the system had the only say, and it became wrong the moment the preference
+ * could be overridden: it would have cancelled the animation in CSS after `arrival.js` had decided
+ * to play it, and the opt-in would have looked broken with nothing to point at.
+ *
+ * Two places deciding one thing is how this row has failed three times already — its size, its
+ * position, its height. `arrival.js` decides, and it decides once. If it did not stamp the root,
+ * these rules never match and nothing animates; the media query was doing that job twice.
+ *
+ * It also named `body.slide-from-*`, which moved to `html.slide-from-*` when the stamp had to
+ * happen before `<body>` existed. Dead selectors, quietly.
+ */
