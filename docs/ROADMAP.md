@@ -2078,7 +2078,10 @@ three findings worth carrying:
    `body.page`, both of which already exist — and making the probe one of them rather than a third
    unnamed variant.
 
-`test/web.test.ts` now budgets the overlap at 18 and fails if it grows, because a study in a
+**Steps 1–3 are done (2026-08-12): the probe links `dnx.css`, is a `body.app`, and the overlap
+budget is now 0.**
+
+`test/web.test.ts` budgeted the overlap at 18 and failed if it grew, because a study in a
 document is re-read never and a budget in a test is checked on every run.
 
 The study should decide **one** content width rule and whether the probe joins `dnx.css`, and it is
