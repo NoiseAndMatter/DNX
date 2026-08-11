@@ -295,6 +295,13 @@ nothing with finer resolution was tested. For a parameter with fine resolution i
 `u16le` read turns an LFO depth of `-1.00` into 32,575. Read the two bytes as `u16be` and split
 them; `src/project/lockvalue.ts` does this and is the only place that should.
 
+**The DN1 slot has the same shape, and conversion has to copy the pair rather than re-encode it.**
+It did not: `expand/convert.ts` read the DN1 value with `getUint16(…, true)` and wrote it back
+with `setUint16(…, false)`, swapping the two bytes of every lock it converted — 15,569 wrong bytes
+across the nine matched pairs. Coarse went to zero, which for a **bipolar** parameter is the
+bottom of the range rather than a small error: a pan-locked trig arrived on the Digitone II panned
+hard left. Reported from hardware and fixed 2026-08-07; see `docs/KNOWN-ISSUES.md`.
+
 Swept across a 16-bit LFO depth of range -128 to +127.98 — pattern A3 of `DATA_CAPTURE.dn2prj`,
 lock record 1, track 3, parameter 29:
 

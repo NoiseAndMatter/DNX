@@ -368,7 +368,13 @@ function writeLockTable(
     const byDestination = new Map<number, Map<number, number>>();
 
     for (let step = 0; step < 64; step++) {
-      const value = dn1View.getUint16(from + 2 + step * 2, true);
+      // **u16be, matching the write below.** A lock slot is a coarse byte then a fine one on
+      // both families (`lockvalue.ts`), so the pair has to be read the way it is written or the
+      // two bytes swap. Reading little-endian and writing big-endian put every lock's value into
+      // its fine byte and left coarse at zero — and for a bipolar parameter zero is not a small
+      // error, it is the bottom of the range. AMP PAN is where that finally became audible:
+      // every pan-locked trig of a converted project played hard left.
+      const value = dn1View.getUint16(from + 2 + step * 2, false);
       if (value === NO_WORD) continue;
       const destination = destinationOf(sourceTrack, step);
       const bucket = byDestination.get(destination);
