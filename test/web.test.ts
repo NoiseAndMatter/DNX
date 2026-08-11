@@ -261,6 +261,38 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+test("the slide never transforms an ancestor of the fixed status bar", () => {
+  /*
+   * A transformed element becomes the containing block for every `position: fixed` descendant, so
+   * transforming the body re-anchored the status bar to the body box: it arrived mid-screen and
+   * snapped to the bottom when the transform came off. Visible on the expander and the library —
+   * the two pages that fix their status bar — and invisible on the other two, which is exactly the
+   * kind of "works on my page" difference a guard is for.
+   *
+   * The coupling is between two stylesheets, so the assertion checks both halves: `dnx.css` still
+   * fixes the bar, and `toolnav.css` still excludes it from everything it moves.
+   */
+  const strip = (path: string) =>
+    readFileSync(resolve(HERE, path), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const nav = strip("../web/toolnav.css");
+  const dnx = strip("../web/dnx.css");
+
+  const fixesStatus = /\.status\s*\{[^}]*position:\s*fixed/.test(dnx);
+  assert.ok(fixesStatus, "dnx.css is expected to fix the status bar; if that changed, re-read this");
+
+  const moving = [...nav.matchAll(/^(.*(?:slide-from-|sliding).*)\{[^}]*transform:/gm)].map(
+    (m) => m[1]!.trim(),
+  );
+  assert.ok(moving.length >= 3, `expected the slide rules, found ${moving.length}`);
+  for (const selector of moving) {
+    assert.match(
+      selector,
+      /:not\(\.status\)/,
+      `"${selector}" transforms an ancestor of the fixed status bar, which re-anchors it`,
+    );
+  }
+});
+
 test("only one thing decides whether the page animates", () => {
   // `arrival.js` weighs the stored preference against the system's and decides once. A CSS media
   // query that also flattened the transition would cancel that decision *after* it was made, and
