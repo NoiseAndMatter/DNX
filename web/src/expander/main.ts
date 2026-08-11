@@ -20,6 +20,7 @@ import {
 } from "../project.js";
 import { describeDonor, loadDonor } from "../donor.js";
 import { Source } from "./source.js";
+import { Destination, describeOrigin } from "./destination.js";
 import { sourceBadge } from "./sourcename.js";
 import { renderPlan } from "../render.js";
 import { $, escapeHtml } from "../dom.js";
@@ -125,44 +126,17 @@ interface DeviceState {
 
 const device: DeviceState = {};
 
-interface Destination {
-  /** The project as it stands, including every merge applied so far. */
-  image: Uint8Array;
-  /**
-   * What it was filled from, so the page can say so.
-   *
-   * `device` and `drive` are both "off the instrument" and are **not** interchangeable. `device` is
-   * the project the musician has *loaded*, and it is the only one a write can go back to, because a
-   * write goes to the active project. `drive` is any of the 128 stored ones — complete, no donor
-   * needed, and unwritable for exactly that reason.
-   */
-  origin: "blank" | "file" | "device" | "drive";
-  label: string;
-  /**
-   * The instrument this came from, when it came from one.
-   *
-   * Carries `original` — the baseline a write diffs against — so accumulated merges all reach the
-   * device rather than only the most recent.
-   */
-  handle?: DeviceProjectHandle;
-  /**
-   * The image as it was before the last apply.
-   *
-   * **One step, deliberately.** A full history belongs to the manager's session, which has undo,
-   * redo and a log; here the mistake worth covering is the last drop, and a second stack that
-   * behaved almost like the manager's would be worse than none.
-   */
-  previous?: Uint8Array;
-  /**
-   * Source patterns merged into this destination so far, in the order they landed.
-   *
-   * The expansion report is about **what is in this project**, not what the source could offer, so
-   * it needs to know what actually went in — and nothing else records that.
-   */
-  merged: number[];
-}
-
-let destination: Destination | undefined;
+/**
+ * The Digitone II being expanded into.
+ *
+ * `destination.ts` owns what it is and what may be done to it — including that origin decides
+ * whether a write may go back at all. The page owns drawing it, and the two device reads that
+ * produce one, which need a connection.
+ */
+const destination = new Destination<DeviceProjectHandle>(() => {
+  renderDestination();
+  landingChanged();
+});
 
 
 /** The options panel, read off the page. The only planning input this page owns. */
@@ -204,7 +178,7 @@ function renderReport(): void {
 
   const { patterns, heading } = reportScope({
     merging: merging(),
-    merged: destination?.merged ?? [],
+    merged: destination.merged,
     selection,
   });
   $("reportScope").textContent = heading;
@@ -278,7 +252,7 @@ async function loadTemplate(file: File): Promise<void> {
 function useTemplate(template: LoadedProject, asDestination: boolean): void {
   state.template = template;
   if (asDestination) {
-    setDestination({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [] });
+    destination.fill({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [] });
   }
 }
 
@@ -415,7 +389,7 @@ async function fillFromBlank(): Promise<void> {
   // the destination was built from, rather than asking for a donor a second time.
   state.template = donor.project;
 
-  setDestination({
+  destination.fill({
     image: Uint8Array.from(donor.project.image),
     origin: "blank",
     label: donor.project.fileName,
@@ -424,40 +398,27 @@ async function fillFromBlank(): Promise<void> {
   status(`Destination: a blank project from ${describeDonor(donor)}. Merge into it, then export.`);
 }
 
-function setDestination(next: Destination): void {
-  destination = next;
-  renderDestination();
-  landingChanged();
-}
-
+/** Draw the destination. The *meaning* of an origin lives in `destination.ts`. */
 function renderDestination(): void {
+  const open = destination.open;
   const info = $("destinationInfo");
-  if (!destination) {
+
+  if (!open) {
     info.textContent = "— no destination yet";
   } else {
-    const where =
-      destination.origin === "device"
-        ? "read from the instrument — a write goes back to its ACTIVE project"
-        : destination.origin === "drive"
-          // Said here rather than only on a disabled button, because the button being grey is a
-          // fact and this is the reason. The two are not the same thing to read.
-          ? "read from the +Drive — export it as a file; a write would land in the ACTIVE project"
-          : destination.origin === "blank"
-            ? "a blank project — export it as a file when you are done"
-            : "a project file";
-    info.textContent = `— ${projectName(destination.image)} · ${where}`;
+    info.textContent = `— ${projectName(open.image)} · ${describeOrigin(open.origin)}`;
     const badge = $("destinationBadge");
     badge.hidden = false;
+    // The label for the two that came off an instrument; otherwise just what kind it is.
     badge.textContent =
-      destination.origin === "device" || destination.origin === "drive"
-        ? destination.label
-        : destination.origin;
+      open.origin === "device" || open.origin === "drive" ? open.label : open.origin;
   }
-  $<HTMLButtonElement>("exportDestination").disabled = destination === undefined;
-  $<HTMLButtonElement>("undoApply").disabled = destination?.previous === undefined;
-  // Writing needs a device baseline. A blank or a file has none, and the button says so by being
-  // unavailable rather than by failing at the point of sending.
-  $<HTMLButtonElement>("writeDevice").disabled = destination?.handle === undefined;
+
+  $<HTMLButtonElement>("exportDestination").disabled = open === undefined;
+  $<HTMLButtonElement>("undoApply").disabled = !destination.canUndo;
+  // Writing needs a device baseline. A blank, a file or a +Drive project has none, and the button
+  // says so by being unavailable rather than by failing at the point of sending.
+  $<HTMLButtonElement>("writeDevice").disabled = !destination.writable;
 }
 
 /**
@@ -480,7 +441,7 @@ async function readDestination(): Promise<void> {
     if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
   });
 
-  setDestination({ image, origin: "device", label: connected.name, handle, merged: [] });
+  destination.fill({ image, origin: "device", label: connected.name, handle, merged: [] });
   status(
     handle.problems.length > 0
       ? `Read with problems: ${handle.problems.join("; ")}. Read again before writing.`
@@ -496,14 +457,14 @@ async function readDestination(): Promise<void> {
  * worse than no plan at all.
  */
 function replanForDevice(): void {
-  if (!destination || !source.image) return;
+  if (!destination.open || !source.image) return;
 
   let outcome: PlanOutcome;
   try {
     outcome = merging()
       ? planSelected({
           source: source.image,
-          destination: destination.image,
+          destination: destination.open.image,
           selection,
           landing,
           landingMode: landingMode(),
@@ -512,7 +473,7 @@ function replanForDevice(): void {
         })
       : planWhole({
           source: source.image,
-          destination: destination.image,
+          destination: destination.open.image,
           ...(state.plan === undefined ? {} : { plan: state.plan }),
         });
   } catch (error) {
@@ -540,27 +501,22 @@ function replanForDevice(): void {
  * indistinguishable from committing.
  */
 function applyToDestination(): void {
-  if (!destination || !device.image) return;
-  destination = {
-    ...destination,
-    previous: destination.image,
-    image: device.image,
-    merged: merging() ? [...destination.merged, ...selection] : [...(state.plan?.livePatterns ?? [])],
-  };
-  const more = destination.origin === "device" ? "Write it back, or merge more first." : "Merge more, or export.";
-  // The plan described a change *from* the old destination. Now that it is the destination, the
-  // same plan is a no-op — so it is recomputed rather than left saying something untrue.
-  renderDestination();
-  landingChanged();
+  if (!destination.open || !device.image) return;
+  // The plan described a change *from* the old destination. Once it *is* the destination, the same
+  // plan is a no-op — so applying recomputes rather than leaving something untrue on screen, which
+  // `Destination`'s onChange does for the first two and this does for the report.
+  destination.apply(
+    device.image,
+    merging() ? selection : (state.plan?.livePatterns ?? []),
+    merging() ? "merge" : "whole",
+  );
   renderReport();
-  status(`Applied. ${more}`);
+  status(`Applied. ${destination.whatNext()}`);
 }
 
 function undoApply(): void {
-  if (!destination?.previous) return;
-  destination = { ...destination, image: destination.previous, previous: undefined };
-  renderDestination();
-  landingChanged();
+  if (!destination.canUndo) return;
+  destination.undo();
   renderReport();
   status("Undone — back to the destination as it was before the last apply.");
 }
@@ -572,13 +528,13 @@ function undoApply(): void {
  * take a file away.
  */
 async function exportDestination(): Promise<void> {
-  if (!destination) return;
+  if (!destination.open) return;
   // Only the manifest is wanted here — the firmware version, payload entry name and device
   // signature a `.dn2prj` must carry. Any Digitone II project supplies it, so the built-in blank
   // is a perfectly good last resort and an export can no longer be refused for want of a file.
   const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
 
-  const image = Uint8Array.from(destination.image);
+  const image = Uint8Array.from(destination.open.image);
   // A project authored here is a new project and gets its own identity rather than inheriting the
   // template's — otherwise every file exported claims to be the template.
   writeProjectId(image, mintProjectId());
@@ -592,8 +548,9 @@ async function exportDestination(): Promise<void> {
 }
 
 async function writeToDevice(): Promise<void> {
-  const handle = destination?.handle;
-  if (!handle || !destination) return;
+  const open = destination.open;
+  if (!open?.handle) return;
+  const handle = open.handle;
 
   // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
   // most people the instrument holds the only copy.
@@ -611,7 +568,7 @@ async function writeToDevice(): Promise<void> {
   try {
     // Diffed against what the instrument gave us, not against the last merge — so every change
     // accumulated in the working project is sent, however many applies went into it.
-    const outcome = await writeBack(handle, destination.image, (done, total, label) => {
+    const outcome = await writeBack(handle, open.image, (done, total, label) => {
       status(`Writing ${done}/${total} — ${label}`);
     });
     status(
@@ -722,7 +679,7 @@ async function openDestinationSlot(): Promise<void> {
   // absence is what keeps *Write to instrument* unavailable. Encoding the read-onlyness as a
   // missing baseline rather than as a flag means there is no state where the button is live and
   // there is nothing to send.
-  setDestination({
+  destination.fill({
     image: opened.image,
     origin: "drive",
     label: `${connected.name} · ${project.index}. ${project.name}`,
@@ -825,7 +782,8 @@ const drag = new GridDrag({
 let landing = 0;
 
 function occupiedAt(slot: number): boolean {
-  return destination !== undefined && DN2_DEVICE.summarise(destination.image, slot).occupied === true;
+  const open = destination.open;
+  return open !== undefined && DN2_DEVICE.summarise(open.image, slot).occupied === true;
 }
 
 /**
@@ -931,7 +889,8 @@ function landingChanged(): void {
 function renderDestinationGrid(): void {
   const grid = $("destinationGrid");
   const tabs = $("destinationTabs");
-  if (!destination) {
+  const open = destination.open;
+  if (!open) {
     grid.hidden = true;
     tabs.hidden = true;
     return;
@@ -939,7 +898,7 @@ function renderDestinationGrid(): void {
   grid.hidden = false;
   $("legend").hidden = false;
 
-  const image = destination.image;
+  const image = open.image;
   renderBanks(tabs, {
     patternCount: DN2_PATTERN_COUNT,
     current: destinationBank,
