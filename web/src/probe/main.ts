@@ -42,6 +42,7 @@ import {
   queryRequest,
   versionRequest,
 } from "../../../src/device/api.js";
+import { MessageIdBands } from "./messageids.js";
 import {
   answerIsNews,
   describeAnswerChange,
@@ -1726,7 +1727,7 @@ async function readFile(): Promise<void> {
       transport: apiTransport(output),
       // A band of its own, never from 1. Ids that restart per session collide with the previous
       // session's — and with Transfer's, which numbers from the low hundreds.
-      msgId: readIdBase(),
+      msgId: readIds.base(),
       onProgress: (chunks, bytes) => {
         status(`Reading ${path}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
       },
@@ -1767,7 +1768,7 @@ async function readFile(): Promise<void> {
   } finally {
     // Whatever happened, the handle is released by now and the next press is safe. Moving to the
     // next band is what stops this run's ids coming round again on the following one.
-    readBand++;
+    readIds.advance();
     readingFile = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
   }
@@ -1776,27 +1777,8 @@ async function readFile(): Promise<void> {
 /** True while a read owns a device handle. See the guard in `readFile`. */
 let readingFile = false;
 
-/**
- * Which block of message ids the next read gets.
- *
- * A read can consume thousands of ids — one per chunk — and **`msgId` is a u16**, so a counter that
- * simply advanced would run out of range in three presses and `encodeMessage` would start throwing.
- * So the space is divided into bands wide enough for a whole read, and this cycles through them.
- *
- * Cycling is not the same as reusing: by the time a band comes round again, several complete reads
- * have finished and closed. What it rules out is the collision we actually saw — two sessions both
- * numbering from 1, each answering the other's requests.
- *
- * The bands start at 8,192 to stay clear of Elektron Transfer, which numbers from the low hundreds.
- */
-let readBand = 0;
-const READ_ID_BASE = 8_192;
-const READ_ID_SPAN = 8_192;
-const READ_ID_BANDS = 6; // 8,192 … 49,152, all inside a u16
-
-function readIdBase(): number {
-  return READ_ID_BASE + (readBand % READ_ID_BANDS) * READ_ID_SPAN;
-}
+/** The bands a long read draws its message ids from. See `messageids.ts` for why. */
+const readIds = new MessageIdBands();
 
 /**
  * **The first write to a Digitone's +Drive**, and the experiment that unblocks the rest.
@@ -1859,8 +1841,8 @@ async function readThenWrite(): Promise<void> {
       throw new Error(`${target} is not in ${directory} — that listing has ${listing.length} entries`);
     }
 
-    const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIdBase() });
-    readBand++;
+    const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIds.base() });
+    readIds.advance();
     const chunk = file.checksum;
     if (chunk === undefined) throw new Error("the read gave no checksum, so there is nothing to write with");
 
@@ -1868,7 +1850,7 @@ async function readThenWrite(): Promise<void> {
     const result = await writeStoredFile(target, file.bytes, checksum, {
       transport: apiTransport(output),
       target: entry,
-      msgId: readIdBase(),
+      msgId: readIds.base(),
       onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
     });
 
@@ -1905,7 +1887,7 @@ async function readThenWrite(): Promise<void> {
     ]);
     status(alive ? `Refused: ${String(error)}` : "The device stopped answering.", alive ? "warn" : "error");
   } finally {
-    readBand++;
+    readIds.advance();
     readingFile = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
   }
