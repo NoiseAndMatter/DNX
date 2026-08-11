@@ -152,8 +152,23 @@ select option { background: #1b2123; color: var(--fg); }
 .tab[aria-selected="true"] .n { color: var(--teal); }
 
 /* ---- layout ------------------------------------------------------------------------- */
-body.app > main { flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 20rem; gap: .7rem;
+/*
+ * A full-height tool's main region: fills the window, scrolls inside itself, one column.
+ *
+ * **The two-column workspace is opted into, not assumed.** This rule used to carry
+ * `grid-template-columns: minmax(0,1fr) 20rem`, which is the *manager's* layout — content beside a
+ * side panel — and every `body.app` got it. When the probe became a `body.app` it inherited a grid
+ * it has no side panel for: its three children landed in cells, row stretching blew a paragraph up
+ * to 3,108px, and the results were pushed 3,400px down a 876px screen. It looked fine until
+ * something arrived in the results, which is why a first glance missed it.
+ *
+ * A page that wants the workspace asks for it by name.
+ */
+body.app > main { flex: 1; display: flex; flex-direction: column; gap: .7rem;
   padding: .7rem .9rem 0; min-height: 0; }
+
+/** The manager's workspace: the grid beside a fixed side panel. */
+body.app > main.split { display: grid; grid-template-columns: minmax(0,1fr) 20rem; }
 /* A flowing page keeps one column and a comfortable measure at any width. */
 body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 auto; }
 
