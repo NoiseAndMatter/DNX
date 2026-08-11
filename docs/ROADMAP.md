@@ -1970,16 +1970,26 @@ path for them, which one `List /` on a Digitone II answers.
 Thirteen tests passed, including the first end-to-end proof that a project can be read off a +Drive,
 edited, exported and loaded back onto the instrument. Three things came out of it as work.
 
-### 8a. The manager cannot choose between two connected devices
+### 8a. The manager cannot choose between two connected devices — DONE 2026-08-07
 
 **Reported:** *"I'm having an issue with the manager and both devices connected, I have no way to
 select what device to load/use."*
 
-`connectDevice({ want })` already exists — the expander uses it to tell a Digitone 1 from a
-Digitone II, added in #133. The manager still calls `connectDevice()` bare and takes whichever
-answers first. It needs the same treatment, and probably a visible choice rather than a guess, since
-unlike the expander the manager has no fixed role for each device: either one is a legitimate
-subject.
+**A visible choice, not a smarter guess.** `connectDevice({ want })` was the wrong tool: it names a
+*kind* of instrument, which is all the expander needs because its two devices have fixed roles. The
+manager has no such asymmetry — either instrument is a legitimate subject, and two Digitone IIs is
+not an exotic thing to own — so `want` cannot address one of them.
+
+- `listDevices()` identifies every Digitone on the ports and **closes every one of them**. A picker
+  nobody chooses from must not leave two ports claimed.
+- `ConnectOptions.port` addresses one instrument by its MIDI input port, which is the only thing
+  that separates two of the same model.
+- With **one** device connected nothing changes: it is found, used, and no picker appears. With
+  **two**, the picker appears with an **empty first option** and every device operation refuses
+  until something is chosen. That emptiness is the whole design — a select defaulting to its first
+  entry would quietly reintroduce the guess this exists to remove.
+- Changing the picker drops the cached +Drive listing and closes the old connection. Slot names
+  from one instrument beside bytes read off another is precisely the confusion being fixed.
 
 ### 8b. The expander offers +Drive browsing for the DN1 and not the DN2
 
