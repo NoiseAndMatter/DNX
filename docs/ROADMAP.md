@@ -1991,7 +1991,7 @@ not an exotic thing to own — so `want` cannot address one of them.
 - Changing the picker drops the cached +Drive listing and closes the old connection. Slot names
   from one instrument beside bytes read off another is precisely the confusion being fixed.
 
-### 8b. The expander offers +Drive browsing for the DN1 and not the DN2
+### 8b. The expander offers +Drive browsing for the DN1 and not the DN2 — DONE 2026-08-07
 
 **Reported:** *"it feels that we should have the same options in the expander for DN1 and DN2
 projects. DN2 only offers Connect a Digitone II with no browse its +Drive option."*
@@ -2006,6 +2006,16 @@ exactly that case read-only for the same reason.
 So the option is worth having, and it must arrive with the write button disabled and a line saying
 why. Adding it as a peer of *Read its project* without that would offer a destination the user
 cannot send anywhere.
+
+**Built that way.** A fourth destination origin, `drive`, beside `blank`, `file` and `device`. The
+read-onlyness is **not a flag**: a write diffs against `handle`, the drive path never sets one, and
+the button is already gated on its absence — so there is no state where it is live with nothing to
+send. The destination line says *"read from the +Drive — export it as a file; a write would land in
+the ACTIVE project"*, because a grey button is a fact and this is the reason, and the two are not
+the same thing to read.
+
+The family check happens **after** the read on both sides, source and destination, because the
+listing does not say what family a stored project is — only the payload does.
 
 ### 8c. The probe's tool row is a different size from the other two — DONE 2026-08-07
 
