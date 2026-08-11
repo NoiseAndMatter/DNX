@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "firefox-devtools": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@mozilla/firefox-devtools-mcp@latest",
+        "--headless",
+        "--viewport",
+        "1600x900",
+        "--toolPreset",
+        "developer"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--viewport",
+        "1600x900"
+      ]
+    }
+  }
+}
