@@ -776,6 +776,37 @@ If the wrapper is a constant, a kit file is **10,795 bytes**. That is a predicti
 it, and reading one kit tests it — which is worth doing before any code assumes a relationship
 between a stored file and a pool or kit slot.
 
+**Confirmed**: `/kits/A/1` read **10,795 bytes**. The 43-byte wrapper is constant across both.
+
+### A Digitone II preset bank has never been listed — OPEN, found 2026-08-07
+
+Note which device each row of that table came from. **The preset row is a Digitone 1** — the
+captured file declares container kind **9** and format **`"0097"`**, the DN1 project signature, and
+carries a 302-byte body, which is the DN1's sound-object size. The kit row is a DN2.
+
+So the 302 that `src/device/library.ts` records for a preset slot is a **DN1 measurement**, and
+what a Digitone II's `/soundbanks` holds is unmeasured. Two possibilities, both coherent:
+
+| | preset object | consequence |
+|---|---|---|
+| DN2 stores its native sound | **359** | drops into a DN2 pool unchanged |
+| the +Drive preset format is shared across the family | **302** | it is a DN1 sound, and converts |
+
+**One `List` of `/soundbanks/A` on a Digitone II answers it** — the listing reports the object
+size, occupied or not. Nothing else does, and no amount of reasoning about the DN2's larger
+parameter set settles it, because the drive could be storing either representation.
+
+Nothing depends on the answer any more: `readLibraryObject` reports the declared length rather than
+asserting one, and `librarian/poolwrite.ts` accepts either — converting a 302-byte body on its way
+into a DN2 pool with `convertDn1SoundToDn2`, which is the same conversion the expander rests on and
+which runs clean on the captured preset. The DN2 → DN1 direction is refused, because no such
+conversion exists.
+
+> **A capability measured on one device in a family is not a measurement of the other.** The same
+> lesson the root listing taught when the DN2 turned out to have a third directory — reached again
+> by a different route, and this time the wrong number had already been written into a constant's
+> doc comment as though it were general.
+
 ### Banks are addressed by number here, and by letter under `/soundbanks`
 
 `/kits/1` works. `/soundbanks/A` and `/soundbanks/H` work. **Neither form has been tried against

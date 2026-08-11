@@ -24,7 +24,23 @@
  *
  * A stored file is that object wrapped in the ordinary container: 31-byte header, body, 12-byte
  * trailer. So reading one and taking `payload` gives bytes that drop straight into a pool slot or a
- * pattern's kit record, with no conversion at all.
+ * pattern's kit record.
+ *
+ * ## The 302 above came off a **Digitone 1**, and no preset bank has been listed on a DN2
+ *
+ * 302 is the DN1's sound-object size; the DN2's is 359. Every `/soundbanks` listing this project
+ * has taken, and the one preset it has read off a drive, came from a Digitone 1 — that file
+ * declares container kind 9 and format `"0097"`, which is the DN1 project signature. The kit
+ * figures, by contrast, were measured on a DN2.
+ *
+ * So **what a Digitone II's own preset library holds is genuinely unknown**: 359 if it stores its
+ * native sound, 302 if the +Drive preset format is shared across the family. One `List` of
+ * `/soundbanks/A` on a DN2 settles it and nothing else does.
+ *
+ * Nothing here depends on the answer — `readLibraryObject` returns whatever length the file
+ * declares, and `librarian/poolwrite.ts` fits either into a pool, converting a DN1 preset on the
+ * way into a DN2 project. The point of writing it down is that the number is *assumed*, and a
+ * reader who found `302` beside a DN2 heading would have no way to tell.
  */
 
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
@@ -153,10 +169,14 @@ export function describeBank(bank: LibraryBank): string {
  * Read one library object and hand back the part a project holds.
  *
  * A stored file is the object inside the ordinary container — 31-byte header, body, 12-byte
- * trailer — and **the body is byte-for-byte what sits in a pool slot or a pattern's kit record**.
- * So the unwrapping happens once, here, and callers never see a file length where they expect an
- * object length. That distinction has already cost this project one bug: 302 against 345 looked
- * like a mystery until the container was recognised.
+ * trailer — and **the body is byte-for-byte what sits in a pool slot or a pattern's kit record of
+ * the same family**. So the unwrapping happens once, here, and callers never see a file length
+ * where they expect an object length. That distinction has already cost this project one bug: 302
+ * against 345 looked like a mystery until the container was recognised.
+ *
+ * **The length is reported, not asserted.** It is the caller's business whether a 302-byte body
+ * belongs where it is going — see the note at the top of this file about which device that 302 was
+ * measured on, and `librarian/poolwrite.ts` for what happens when the families differ.
  */
 export async function readLibraryObject(
   transport: ApiTransport,

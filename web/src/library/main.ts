@@ -313,8 +313,11 @@ Go ahead?`)) {
   state.project = { ...project, image };
   state.audit = auditPool(image, projectDevice);
   renderPool();
+  // Named when it happened. A Digitone 1 preset in a Digitone II pool is a very good likeness
+  // rather than the same object, and that is worth one clause of a sentence.
+  const converted = plan.converted ? `Converted from a ${plan.converted.from} preset. ` : "";
   status(
-    `${entry?.name || "preset"} → slot ${plan.slot}. ${plan.freeAfter} free. ` +
+    `${converted}${entry?.name || "preset"} → slot ${plan.slot}. ${plan.freeAfter} free. ` +
       `Export the project to keep this — nothing has been written to the instrument.`,
     "ok",
   );
