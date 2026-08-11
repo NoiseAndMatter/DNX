@@ -21,22 +21,14 @@ import {
 import { describeDonor, loadDonor } from "../donor.js";
 import { Source } from "./source.js";
 import { Destination, describeOrigin } from "./destination.js";
+import { Instrument } from "./instrument.js";
 import { sourceBadge } from "./sourcename.js";
 import { renderPlan } from "../render.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
 import { renderToolNav } from "../toolnav.js";
-import {
-  type ConnectedDevice,
-  type DeviceProjectHandle,
-  DeviceSourceError,
-  connectDevice,
-  listDeviceProjects,
-  openDeviceProject,
-  readProject,
-  writeBack,
-} from "../devicesource.js";
+import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
 import {
   type ExpanderOptions,
@@ -108,23 +100,21 @@ function merging(): boolean {
   return $<HTMLInputElement>("modeSelect").checked;
 }
 
-interface DeviceState {
-  connected?: ConnectedDevice;
-  handle?: DeviceProjectHandle;
-  /**
-   * The image to write, whichever mode produced it.
-   *
-   * One field rather than one per mode: `writeChangedRecords` diffs it against what the device gave
-   * us and sends the difference, so a whole conversion and a four-pattern merge are the same
-   * operation by the time they reach the wire. Undefined means there is nothing to send — which is
-   * also how the write button knows to stay disabled.
-   */
-  image?: Uint8Array;
-  /** The +Drive listing, when one has been asked for. Stale listings are refused, not guessed at. */
-  projects?: DriveProject[];
-}
+/** The Digitone II this page talks to. Its counterpart for the Digitone 1 is `source`. */
+const instrument = new Instrument({ onStatus: (message) => status(message) });
 
-const device: DeviceState = {};
+/**
+ * The bytes a plan produced, waiting for **Apply**.
+ *
+ * One field rather than one per mode: `writeChangedRecords` diffs it against what the device gave
+ * us and sends the difference, so a whole conversion and a four-pattern merge are the same
+ * operation by the time they reach the wire. `undefined` means there is nothing to apply, which is
+ * how the button knows to stay disabled.
+ *
+ * It used to sit on the device state as `planned`, which read as something the instrument
+ * holds. It is not: it is planning's output, and the instrument may not even be connected.
+ */
+let planned: Uint8Array | undefined;
 
 /**
  * The Digitone II being expanded into.
@@ -155,7 +145,7 @@ function replan(): void {
   if (!source.image) return;
   state.plan = planExpansion(source.image, options());
   // The device path needs a source too, and a project can be loaded either side of connecting.
-  $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
+  $<HTMLButtonElement>("fromDevice").disabled = !instrument.connected;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
   // are no longer live are dropped rather than silently planned.
   for (let i = selection.length - 1; i >= 0; i--) {
@@ -429,33 +419,23 @@ function renderDestination(): void {
  * blind and paying a minute to discover the answer is the wrong way round.
  */
 async function readDestination(): Promise<void> {
-  if (!device.connected) throw new DeviceSourceError("connect a Digitone II first");
-
-  // The donor supplies the ~0.49% no dump carries — header, song table, slot array. Without it
-  // there is no image, only most of one. There is always one, so this no longer refuses.
-  const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
-
-  const connected = device.connected;
-  status(`Reading ${connected.name} with ${describeDonor(donor)} as the donor — this takes about a minute…`);
-  const { image, handle } = await readProject(connected, donor.project.image, (done, total, label) => {
-    if (done % 8 === 0 || done === total) status(`Reading: ${done}/${total} — ${label}`);
+  const donor = await loadDonor({
+    picked: state.template,
+    onProblem: (message) => status(message, "warn"),
   });
+  const { image, handle, name } = await instrument.readActive(
+    donor.project.image,
+    describeDonor(donor),
+  );
 
-  destination.fill({ image, origin: "device", label: connected.name, handle, merged: [] });
+  destination.fill({ image, origin: "device", label: name, handle, merged: [] });
   status(
     handle.problems.length > 0
       ? `Read with problems: ${handle.problems.join("; ")}. Read again before writing.`
-      : `${connected.name} read. Merge into it, then write it back.`,
+      : `${name} read. Merge into it, then write it back.`,
   );
 }
 
-/**
- * Recompute the plan against the working destination. **Sends nothing.**
- *
- * Called whenever anything it depends on changes — the mode, the selection, the landing slot, the
- * options, the destination itself — because a plan shown beside a control that has since moved is
- * worse than no plan at all.
- */
 function replanForDevice(): void {
   if (!destination.open || !source.image) return;
 
@@ -479,7 +459,7 @@ function replanForDevice(): void {
   } catch (error) {
     // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
     // where the plan would have been, and the apply button has to go with it.
-    device.image = undefined;
+    planned = undefined;
     $<HTMLButtonElement>("applyMerge").disabled = true;
     const message = error instanceof Error ? error.message : String(error);
     $("devicePlan").innerHTML = `<p class="bad">${escapeHtml(message)}</p>`;
@@ -487,9 +467,9 @@ function replanForDevice(): void {
     return;
   }
 
-  device.image = outcome.image;
+  planned = outcome.image;
   $("devicePlan").innerHTML = renderDescribed(outcome.described);
-  $<HTMLButtonElement>("applyMerge").disabled = device.image === undefined;
+  $<HTMLButtonElement>("applyMerge").disabled = planned === undefined;
   status(outcome.message, outcome.level);
 }
 
@@ -501,12 +481,12 @@ function replanForDevice(): void {
  * indistinguishable from committing.
  */
 function applyToDestination(): void {
-  if (!destination.open || !device.image) return;
+  if (!destination.open || !planned) return;
   // The plan described a change *from* the old destination. Once it *is* the destination, the same
   // plan is a no-op — so applying recomputes rather than leaving something untrue on screen, which
   // `Destination`'s onChange does for the first two and this does for the report.
   destination.apply(
-    device.image,
+    planned,
     merging() ? selection : (state.plan?.livePatterns ?? []),
     merging() ? "merge" : "whole",
   );
@@ -568,9 +548,7 @@ async function writeToDevice(): Promise<void> {
   try {
     // Diffed against what the instrument gave us, not against the last merge — so every change
     // accumulated in the working project is sent, however many applies went into it.
-    const outcome = await writeBack(handle, open.image, (done, total, label) => {
-      status(`Writing ${done}/${total} — ${label}`);
-    });
+    const outcome = await instrument.write(handle, open.image);
     status(
       `Wrote ${outcome.written} record(s), ${outcome.bytes.toLocaleString()} bytes. ` +
         `Press SAVE PROJECT on the device to keep it.` +
@@ -592,49 +570,16 @@ function reportDeviceError(error: unknown): void {
 }
 
 async function connect(): Promise<void> {
-  status("Looking for a Digitone II…");
-  // Asked for by name rather than found and then vetted. With both instruments plugged in — which
-  // is this page's whole premise — "the best pair" is a coin toss, and refusing the Digitone 1
-  // afterwards would refuse the one that happened to be enumerated first rather than the wrong one.
-  const connected = await connectDevice({ want: ProductId.DN2 });
-
-  device.connected = connected;
+  const name = await instrument.connect();
   $<HTMLButtonElement>("fromDevice").disabled = false;
   // Browsing needs only the connection — unlike reading the active project, which is what the
   // expansion goes into and therefore waits for a source.
   $<HTMLButtonElement>("browseDestination").disabled = false;
-  status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
+  status(`${name} connected. Load a Digitone 1 project, then plan.`);
 }
 
-// --- a connected Digitone 1 as the source -------------------------------------------------------
-
-/**
- * List the Digitone II's stored projects, so one of them can be the destination.
- *
- * ## Why this exists, and why it is not simply the mirror of *Read its project*
- *
- * Reported as an asymmetry: *"it feels that we should have the same options in the expander for
- * DN1 and DN2 projects."* It is a real one, and the reason for it is **not** symmetric.
- *
- * The Digitone 1 is a **source**, so any stored project will do and the +Drive is the better route
- * — no donor, every byte, any slot. The Digitone II is a **destination**, and *Read its project*
- * deliberately reads the **active** one, because that is the only project a write can go back to.
- *
- * So a project browsed off the DN2's +Drive can be merged into and exported, and **never written
- * back**: a write goes to whatever is loaded, so edits meant for slot 47 would land in slot 3.
- * `setDestination` gives it no `handle`, and the write button is already gated on that.
- *
- * (This function spent two releases under the Digitone *1*'s doc comment, which arrived above it
- * when it was inserted and stayed there. Restoring that block during the source extraction is what
- * finally made the mismatch visible.)
- */
 async function browseDestinationDrive(): Promise<void> {
-  const connected = device.connected;
-  if (!connected) throw new DeviceSourceError("connect a Digitone II first");
-
-  status(`Listing projects on ${connected.name}…`);
-  const projects = await listDeviceProjects(connected);
-  device.projects = projects;
+  const projects = await instrument.listProjects();
 
   const select = $<HTMLSelectElement>("destinationProjects");
   select.innerHTML = projects
@@ -646,49 +591,22 @@ async function browseDestinationDrive(): Promise<void> {
 
   status(
     projects.length === 0
-      ? `${connected.name} reports no stored projects.`
-      : `${projects.length} project(s) on ${connected.name}. Pick one — it becomes the destination, ` +
-        `and you export it rather than writing it back.`,
+      ? "That instrument reports no stored projects."
+      : `${projects.length} project(s). Pick one — it becomes the destination, and you export it ` +
+        `rather than writing it back.`,
   );
 }
 
 async function openDestinationSlot(): Promise<void> {
-  const connected = device.connected;
-  const index = Number($<HTMLSelectElement>("destinationProjects").value);
-  const project = device.projects?.find((p) => p.index === index);
-  if (!connected || !project) {
-    throw new DeviceSourceError("browse the +Drive again — that listing is stale");
-  }
-
-  status(`Reading ${project.name} from slot ${project.index}…`);
-  const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-    if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
-  });
-
-  // Checked after the read, because the listing does not say what family a stored project is —
-  // only the payload does. The mirror of the check on the source side, and for the same reason:
-  // "should be impossible" is not the same as "cannot happen".
-  if (deviceFor(opened.image).kind !== "dn2") {
-    throw new DeviceSourceError(
-      `Slot ${project.index} holds a Digitone 1 project. This page expands *to* a Digitone II — ` +
-        `open that one as the source instead.`,
-    );
-  }
-
-  // **No handle, deliberately.** `handle` carries the baseline a write diffs against, and its
-  // absence is what keeps *Write to instrument* unavailable. Encoding the read-onlyness as a
-  // missing baseline rather than as a flag means there is no state where the button is live and
-  // there is nothing to send.
-  destination.fill({
-    image: opened.image,
-    origin: "drive",
-    label: `${connected.name} · ${project.index}. ${project.name}`,
-    merged: [],
-  });
+  const { image, label, slot } = await instrument.openSlot(
+    Number($<HTMLSelectElement>("destinationProjects").value),
+  );
+  // **No handle, deliberately.** `Destination.writable` is the handle's presence and nothing else,
+  // so withholding it here is what keeps a write from landing in the instrument's active project.
+  destination.fill({ image, origin: "drive", label, merged: [] });
   status(
-    `${project.name} open as the destination. Merge into it and export — a write would go to the ` +
-      `instrument's active project, not back to slot ${project.index}.`,
-    "ok",
+    `Open as the destination. Merge into it and export — a write would go to the instrument's ` +
+      `active project, not back to slot ${slot}.`,
   );
 }
 
