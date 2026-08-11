@@ -261,6 +261,26 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+test("only one thing decides whether the page animates", () => {
+  // `arrival.js` weighs the stored preference against the system's and decides once. A CSS media
+  // query that also flattened the transition would cancel that decision *after* it was made, and
+  // the opt-in would look broken with nothing to point at — the same two-places-decide-one-thing
+  // failure this row has already had over its size, its position and its height.
+  // Comments stripped first: the file *explains* why the media query was removed, and an assertion
+  // that cannot tell a rule from prose about that rule fails on its own documentation.
+  const css = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const arrival = readFileSync(resolve(HERE, "../web/arrival.js"), "utf8");
+
+  assert.doesNotMatch(
+    css,
+    /@media[^{]*prefers-reduced-motion/,
+    "the stylesheet must not overrule the decision arrival.js already made",
+  );
+  assert.match(arrival, /prefers-reduced-motion/, "arrival.js is where the system is consulted");
+  // Honouring the system stays the default; the stored preference is what outranks it.
+  assert.match(arrival, /dnx-motion/, "the override has to be readable before paint, so: storage");
+});
+
 test("the slide's start state is stamped where it can be stamped early", () => {
   // `arrival.js` runs before `<body>` exists, so `documentElement` is the only thing it can mark.
   // A rule written against `body.slide-from-*` would silently never match.
