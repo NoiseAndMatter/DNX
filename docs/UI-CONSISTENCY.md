@@ -130,12 +130,35 @@ about. Leave it.
 
 ## 6. Order
 
-| | | why |
-|---|---|---|
-| 1 | the probe links `dnx.css`, keeps its 28 own rules | removes ten disagreements at a stroke |
-| 2 | the probe adopts `body.app` | kills the third unnamed layout |
-| 3 | a guard: no page's `<style>` may re-declare a `dnx.css` selector | this drifted back once already |
-| 4 | split `probe/main.ts`, still 2,358 lines | easier once its stylesheet is small |
+| | | why | |
+|---|---|---|---|
+| 1 | the probe links `dnx.css`, keeps its 28 own rules | removes ten disagreements at a stroke | **done 2026-08-12** |
+| 2 | the probe adopts `body.app` | kills the third unnamed layout | **done 2026-08-12** |
+| 3 | a guard: no page's `<style>` may re-declare a `dnx.css` selector | this drifted back once already | **done — budget is 0** |
+| 4 | split `probe/main.ts`, still 2,156 lines | easier once its stylesheet is small | started |
+
+## 7. What steps 1–3 actually did — 2026-08-12
+
+The probe's `<style>` went from **19 duplicated rules to none**, and from 14px to the shared 13px.
+Its own 28 selectors are untouched: `.card`, `.row`, `.crow`, `.controls`, `.note`, `.mono`,
+`.num`, `.read`, `.write`, `.unknown`, `.build`, `.danger-card`.
+
+`body.app` was almost free — the probe was already declaring `height: 100%; display: flex;
+flex-direction: column`, which is `body.app` written out by hand. `html, body { height: 100% }`
+went too: `dnx.css` says `html:has(body.app), body.app { height: 100% }`, which is the same rule
+now that the probe *is* one.
+
+**Measured in Firefox, not reasoned about.** The probe and the library now report the same
+chrome bar to two decimal places — height **40.8**, tool row **22.2**, nav left **58.37** — and the
+probe's `main` scrolls with the status bar pinned at the viewport foot, exactly as the manager's
+does.
+
+A caution about the earlier figures in this document: the "40 against 41" reading that started
+this was `Math.round` on sub-pixel values, and looked more precise than it was. The two-decimal
+comparison above is the one to trust.
+
+**Still true:** there is no single content width, and there should not be. `body.app` and
+`body.page` remain two named modes; the probe is now an `app` rather than a third unnamed thing.
 
 Step 3 is the one that makes this stick. The measurement in §2 is a script
 (`web/dnx.css` against each page's `<style>`) and it belongs in `test/web.test.ts` rather than in a
