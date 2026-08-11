@@ -67,10 +67,15 @@
 
   <div class="panes">
 
-    <!-- The project's own 128 presets: the only ones a trig can lock to. -->
+    <!--
+      The destination, and it changes with what you are browsing. A preset goes into the project's
+      pool — the only 128 a trig can lock to. A kit goes into a pattern, because a pattern owns
+      exactly one. Showing the wrong one of those would be offering a drop that cannot happen.
+    -->
     <section class="section pane">
-      <h2>Preset pool <span class="count" id="poolSub">— open a Digitone II project</span></h2>
+      <h2><span id="leftTitle">Preset pool</span> <span class="count" id="poolSub">— open a Digitone II project</span></h2>
       <div class="grid" id="poolGrid" hidden></div>
+      <div class="grid" id="patternGrid" hidden></div>
       <div class="plan hint" id="findings">Open a project to audit its pool.</div>
     </section>
 
