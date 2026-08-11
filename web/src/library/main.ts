@@ -38,11 +38,19 @@ import {
   describeAddPreset,
   planAddPreset,
 } from "../../../src/librarian/poolwrite.js";
+import {
+  applyLoadKit,
+  describeLoadKit,
+  planLoadKit,
+} from "../../../src/librarian/kitwrite.js";
+import { summariseTracks } from "../../../src/librarian/tracksummary.js";
+import { patternName } from "../../../src/sheet/naming.js";
+import { patternSlotView } from "../slotview.js";
 import { buildProjectBlob, download } from "../project.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
-import { GridDrag, renderGrid, type SlotView } from "../grid.js";
+import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
@@ -86,7 +94,7 @@ async function loadProject(file: File): Promise<void> {
   state.audit = auditPool(loaded.image, device);
   $("poolInfo").hidden = false;
   $("poolInfo").textContent = file.name;
-  renderPool();
+  renderDestination();
   status(`${file.name} open. ${describePoolAudit(state.audit)[0]}`, "ok");
 }
 
@@ -109,11 +117,66 @@ function poolSlotView(index: number): Omit<SlotView, "index"> {
   };
 }
 
+/**
+ * Show whichever destination the current library selection can actually be dropped on.
+ *
+ * A preset goes into the pool and a kit goes into a pattern. Leaving the pool on screen while
+ * kits are being browsed would offer a drop that has no meaning, and the hint would have to spend
+ * its one line explaining why nothing happens.
+ */
+function renderDestination(): void {
+  if (!state.project) return;
+  if (kind() === "kit") renderPatterns();
+  else renderPool();
+}
+
+function renderPatterns(): void {
+  const project = state.project;
+  if (!project) return;
+  const device = deviceFor(project.image);
+
+  $("poolGrid").hidden = true;
+  $("patternGrid").hidden = false;
+  $("leftTitle").textContent = "Patterns";
+  $("poolSub").textContent = "— a kit goes into a pattern; a pattern owns exactly one";
+
+  renderGrid(
+    $("patternGrid"),
+    Array.from({ length: 128 }, (_, index) => ({
+      index,
+      ...patternSlotView(device, project.image, index),
+    })),
+    {
+      selected: [],
+      onClick: (index) => describePattern(index),
+      drag: { controller: drag, grid: "patterns" },
+    },
+  );
+
+  $("findings").innerHTML =
+    `<p class="none">Drop a kit on a pattern to see what it would change, track by track. ` +
+    `The trigs stay where they are — a kit is the sound, not the sequence.</p>`;
+}
+
+function describePattern(index: number): void {
+  const project = state.project;
+  if (!project) return;
+  const tracks = summariseTracks(project.image, index).filter((t) => !t.empty);
+  status(
+    tracks.length === 0
+      ? `${patternName(index)} is empty.`
+      : `${patternName(index)}: ${tracks.length} track(s) — ` +
+        tracks.map((t) => `${t.label} ${t.presetName || "unnamed"}`).join(", "),
+  );
+}
+
 function renderPool(): void {
   const audit = state.audit;
   if (!audit) return;
   const grid = $("poolGrid");
+  $("patternGrid").hidden = true;
   grid.hidden = false;
+  $("leftTitle").textContent = "Preset pool";
 
   const occupied = audit.slots.filter((s) => s.occupied).length;
   $("poolSub").textContent = `— ${occupied} of ${audit.slots.length} used, ${audit.free.length} free`;
@@ -171,6 +234,7 @@ async function browse(): Promise<void> {
   status(`Listing ${kind()}s in bank ${state.bankLetter}…`);
   state.bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter);
   renderLibrary();
+  renderDestination();
   status(
     `Bank ${state.bank.bank}: ${state.bank.used} of ${state.bank.entries.length} ${kind()}(s).`,
     "ok",
@@ -251,8 +315,10 @@ const drag = new GridDrag({
   },
 
   hintFor(from, grid, index) {
-    if (from.grid !== "library" || grid !== "pool" || !state.audit) return undefined;
-    if (state.bank?.kind !== "preset") return undefined;
+    if (from.grid !== "library") return undefined;
+
+    if (grid === "patterns" && state.bank?.kind === "kit") return kitHint(from.indices[0], index);
+    if (grid !== "pool" || !state.audit || state.bank?.kind !== "preset") return undefined;
 
     const slot = state.audit.slots[index];
     if (!slot) return undefined;
@@ -267,15 +333,83 @@ const drag = new GridDrag({
   },
 
   onDrop(from, grid, index) {
-    if (from.grid !== "library" || grid !== "pool") return;
+    if (from.grid !== "library") return;
     const source = from.indices[0];
-    if (source !== undefined) addToPool(source, index).catch(report);
+    if (source === undefined) return;
+    if (grid === "pool") addToPool(source, index).catch(report);
+    if (grid === "patterns") loadKit(source, index).catch(report);
   },
 
   onStatus: (message) => {
     if (message) status(message);
   },
 });
+
+/**
+ * What dropping a kit on this pattern would cost, in the one line a hover has room for.
+ *
+ * Deliberately **not** a preview of the change: that needs the kit's bytes, which means reading
+ * 10,795 of them off the instrument, and doing that on hover would fire a read for every pattern
+ * the pointer crosses. So the hint says what is *there* — the thing that would be replaced — and
+ * the per-track before/after arrives on the drop, before anything is written.
+ */
+function kitHint(source: number | undefined, index: number): GridDropHint | undefined {
+  const project = state.project;
+  if (source === undefined || !project) return undefined;
+  const tracks = summariseTracks(project.image, index).filter((t) => !t.empty);
+  const trigs = tracks.reduce((n, t) => n + t.trigCount, 0);
+
+  return {
+    action: "copy",
+    label: tracks.length === 0 ? "EMPTY" : `LOAD KIT · ${tracks.length} tracks`,
+    status:
+      tracks.length === 0
+        ? `${patternName(index)} is empty — a kit there changes nothing you can hear`
+        : `${patternName(index)} plays ${trigs} trig(s) on ${tracks.length} track(s). ` +
+          `The trigs stay; what they play is replaced.`,
+  };
+}
+
+/**
+ * Read one kit off the instrument and load it into a pattern.
+ *
+ * **Always asks**, unlike a preset going into a free pool slot. There is no such thing as an empty
+ * kit to drop onto — a pattern always has one — so every drop replaces sixteen presets, and the
+ * per-track before/after is the whole reason this is safe to offer at all.
+ */
+async function loadKit(index: number, pattern: number): Promise<void> {
+  const { device, bank, project } = state;
+  if (!device || !bank || !project) return;
+
+  status(`Reading ${bank.path}/${index}…`);
+  const { body } = await readLibraryObject(apiTransport(device), "kit", bank.bank, index);
+
+  const projectDevice = deviceFor(project.image);
+  const preview = planLoadKit(project.image, projectDevice, body, { pattern });
+  const lines = describeLoadKit(preview);
+
+  if (preview.changedTracks.length === 0) {
+    status(lines[0]!, "warn");
+    return;
+  }
+  if (!window.confirm(`${lines.join("\n")}\n\nGo ahead?`)) {
+    status("Not loaded.");
+    return;
+  }
+
+  const { image, plan } = applyLoadKit(project.image, projectDevice, body, { pattern });
+  state.project = { ...project, image };
+  state.audit = auditPool(image, projectDevice);
+  renderPatterns();
+  $("findings").innerHTML = `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
+  status(
+    `${plan.name || bank.entries.find((e) => e.index === index)?.name || "kit"} → ` +
+      `${patternName(pattern)}. ${plan.changedTracks.length} track(s) changed. ` +
+      `Export the project to keep this — nothing has been written to the instrument.`,
+    "ok",
+  );
+  $<HTMLButtonElement>("export").disabled = false;
+}
 
 /**
  * Read one preset off the instrument and put it in the pool.
