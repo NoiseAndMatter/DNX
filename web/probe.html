@@ -82,10 +82,19 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
  */
 .controls {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
-  gap: .7rem; padding: .7rem .9rem 0;
+  /* `start`, or the grid stretches every card to the tallest and the two short ones carry ~230px
+     of dead space each. Seen in a browser; the rule reads fine without it. */
+  gap: .7rem; padding: .7rem .9rem 0; align-items: start;
 }
 .controls .card { padding: .6rem .7rem; }
 .crow { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; padding: .3rem 0; }
+/*
+ * **A path has to be readable, so `size` wins here.** The blanket `input[type=text] { width: 4.5rem }`
+ * above clipped `/soundbanks/H/256` to `/soundbar` and `/projects/1` to `/projects/'` — 72px, with
+ * the value scrolled out of sight. It was doing that in the old bar too; moving these controls into
+ * a card is what made it visible.
+ */
+.crow input[type=text] { width: auto; min-width: 4.5rem; }
 .crow + .crow { border-top: 1px solid var(--line-soft); }
 /* The group name, wider than the inline field labels so the rows line up down the card. */
 .crow > .lbl:first-child { min-width: 6.5rem; color: var(--teal); }
