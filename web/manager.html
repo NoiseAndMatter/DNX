@@ -33,6 +33,12 @@
     Read-only on purpose. A write goes to the device's *active* project, so writing edits made to
     slot 47 would land them in slot 3. Export to a file instead.
   -->
+  <!--
+    Only appears when there is a genuine choice to make. With one instrument connected this page
+    behaves exactly as it did; with two it stops picking for you, because unlike the expander it has
+    no fixed role for either device — both are legitimate subjects.
+  -->
+  <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
   <button class="btn" id="browsedrive">Browse +Drive…</button>
   <select id="driveprojects" hidden title="Projects stored on the device, by slot"></select>
   <button class="btn" id="opendrive" hidden disabled>Open slot</button>
