@@ -1965,6 +1965,55 @@ preset; renaming the existing ones is its own job.
 what a kit contains matches `DN2_KIT` byte for byte. The only thing missing is the storage API's
 path for them, which one `List /` on a Digitone II answers.
 
+## 10. Making the four tools look like one app — raised 2026-08-11
+
+### 10a. The chrome moved between tools — DONE 2026-08-11
+
+**Reported:** *"the DNX title and the tools navigation buttons move depending on the tool
+selected."*
+
+Three causes, one shape. `.topbar` lived in `dnx.css`, the probe built a bespoke `<header>`
+beside it, and `dnx.css` indented `body.page > .topbar` to line up with the centred 78rem column —
+so at 1920px the brand and the tool row sat roughly **330px** further right on the expander and the
+library than on the manager and the probe. Switching tools moved the control you were aiming at.
+
+`dnx.css` already carried the argument against this: *a row that has to look identical on every page
+cannot have two homes.* It had three. The brand and the tool row had been moved to `toolnav.css` —
+the only stylesheet every page links — and the bar containing them had not, so they drifted anyway.
+
+The whole bar now lives in `toolnav.css`. The status line keeps its indent, because it is the
+page's own commentary and belongs with the content; the chrome does not, because it spans the app
+and must not move when the thing underneath it changes shape. Guarded by four tests: every page
+carries the shared bar with the brand and tool row inside it, no page restyles it, and `dnx.css`
+does not define or indent it. Checked by reintroducing the indent and watching the guard fail.
+
+### 10b. A consistency study across the four tools — NOT STARTED
+
+**Raised by the user in the same breath, and deliberately kept separate**, because it is a design
+question rather than a defect:
+
+> *"Later in the development we will need to do a consistency study to try to unify all tools width
+> so they look part of the same app and not disconnected utilities."*
+
+What is already known to differ, from fixing 10a and 8c:
+
+| | expander | manager | library | probe |
+|---|---|---|---|---|
+| body class | `page` | `app` | `page` | its own |
+| content width | 78rem, centred | full-width grid, `1fr / 20rem` | 78rem, centred | full-width |
+| base font | 13px | 13px | 13px | **14px** |
+| stylesheets | `dnx.css` + `toolnav.css` | same | same | **`toolnav.css` only, plus its own `<style>`** |
+
+**The probe is the outlier and the reason is historical**: it was built first, as a self-contained
+diagnostic page, before there was a shared stylesheet to link. It now re-declares buttons, selects,
+labels and inputs that `dnx.css` already describes — which is why the tool row needed its size
+stating twice before it stopped moving.
+
+The study should decide **one** content width rule and whether the probe joins `dnx.css`, and it is
+worth doing as measurement first: list every duplicated declaration between `probe.html`'s `<style>`
+and `dnx.css`, and every place the two disagree. Those disagreements are the app looking like four
+utilities. Do not start it by picking a width.
+
 ## 8. From the 2026-08-06 hardware session
 
 Thirteen tests passed, including the first end-to-end proof that a project can be read off a +Drive,

@@ -109,16 +109,13 @@ select option { background: #1b2123; color: var(--fg); }
 [hidden] { display: none !important; }
 
 /* ---- top bar ------------------------------------------------------------------------ */
-.topbar {
-  display: flex; align-items: center; gap: 1rem; padding: .55rem .9rem;
-  background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
-}
 /*
- * The brand, the tool row and the page slide live in `toolnav.css`.
+ * **The whole bar lives in `toolnav.css`** — `.topbar`, `.spacer`, the brand, the tool row and the
+ * page slide. Not here, because the probe does not link this file: it is a self-contained page with
+ * its own `<style>`, and every page links that one.
  *
- * Not here, because the probe does not link this file — it is a self-contained page with its own
- * `<style>` — and a row that has to look identical on three pages cannot have two homes. Every page
- * links that one.
+ * `.topbar` used to be the exception, which is how the bar came to look different on the probe and
+ * to sit in a different place on the manager. Only what a *page* puts inside the bar stays here.
  */
 .device {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
@@ -126,7 +123,6 @@ select option { background: #1b2123; color: var(--fg); }
   padding: .12rem .45rem; border-radius: 3px;
 }
 .projname { color: var(--fg); font-weight: 600; }
-.spacer { flex: 1; }
 
 /* ---- generic panel ------------------------------------------------------------------ */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
@@ -169,7 +165,11 @@ body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 a
  * window, under content that begins several centimetres to its right, and read as something left
  * over from another layout rather than as this page's own status.
  */
-body.page > .topbar,
+/*
+ * **The status line only.** `.topbar` was indented by this same rule and must not be: it is chrome,
+ * it spans the app, and indenting it moved the brand and the tool row when the page underneath
+ * changed shape. See `toolnav.css`.
+ */
 body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem); padding-right: calc((100% - min(78rem, 100%)) / 2 + .9rem); }
 .side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
 
