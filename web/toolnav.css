@@ -54,6 +54,18 @@
    * stretches. `test/web.test.ts` keeps commands out of the bar, which is what makes it hold.
    */
   min-height: 2.35rem; box-sizing: border-box;
+  /*
+   * **The bar states its own typography, so nothing in it inherits the page's.**
+   *
+   * Stating it on `.toolnav` alone was not enough, and the browser said so: with the probe's 14px
+   * body the *brand* rendered wider, so the tool row started at x=61 there against x=58 on the
+   * other three. The row was the same size and in the wrong place — which is the same complaint as
+   * §8c and §10a arriving a fourth time, through the one element nobody had stated a size for.
+   *
+   * On the bar rather than on each child, because the next thing added to it would inherit the page
+   * again otherwise. `--*`-sized children are unaffected: they use `rem`, which is root-relative.
+   */
+  font-size: 13px;
 }
 
 /** Pushes everything after it to the right — the one layout primitive the bar needs. */
@@ -73,7 +85,18 @@
  * Absolute rather than `rem` for the same reason: `rem` would still track a root size that any one
  * page could change, and this row must not.
  */
-.toolnav { display: flex; align-items: baseline; gap: .9rem; font-size: 13px; }
+/*
+ * `line-height` as well as `font-size`, and for the same reason one level up.
+ *
+ * §8c stated the size here and the row still came out a pixel taller on the probe: the `<span
+ * id="toolnav">` *wrapper* is page markup and inherits the page's body font — 14px on the probe,
+ * 13px everywhere else — and with `align-items: baseline` the wrapper's line box is what the
+ * baseline is measured against. Setting the size on the nav alone left the strut inherited.
+ *
+ * Measured in a browser rather than reasoned about: 23px on the probe against 22px on the other
+ * three, brand and nav otherwise identical at x=14 and x=58.
+ */
+.toolnav { display: flex; align-items: baseline; gap: .9rem; font-size: 13px; line-height: 19px; }
 .toolnav .tool {
   position: relative; color: var(--muted); text-decoration: none; font-weight: 500;
   padding: .1rem 0; transition: color .12s ease;
