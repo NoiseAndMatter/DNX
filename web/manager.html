@@ -18,6 +18,20 @@
   <span class="device" id="device" hidden></span>
   <span class="projname" id="projname"></span>
   <span class="spacer"></span>
+</div>
+
+<!--
+  **Commands are not chrome.** The bar above carries identity and navigation, and nothing else, so
+  that the brand and the tool row sit at the same height on every page. Buttons are taller than
+  badges, and a bar sized by whatever a page happens to put in it is a bar that changes height as
+  you move between tools. The expander and the library already worked this way; this row is the
+  manager saying the same thing.
+
+  Grouped by what you are doing, in the order the work happens: get a project in, change your mind
+  about a change, send it somewhere.
+-->
+<div class="bar toolbar">
+  <span class="lbl">Open</span>
   <label class="btn file" id="reopen" hidden>Open another…<input type="file" id="file2" accept=".dnprj,.dn2prj"></label>
   <!--
     A device is a source alongside files, not a mode. What comes back is an ordinary image, so
@@ -42,8 +56,12 @@
   <button class="btn" id="browsedrive">Browse +Drive…</button>
   <select id="driveprojects" hidden title="Projects stored on the device, by slot"></select>
   <button class="btn" id="opendrive" hidden disabled>Open slot</button>
+  <span class="sep"></span>
+  <span class="lbl">History</span>
   <button class="btn" id="undo" disabled>Undo</button>
   <button class="btn" id="redo" disabled>Redo</button>
+  <span class="sep"></span>
+  <span class="lbl">Out</span>
   <button class="btn primary" id="export" disabled>Export…</button>
   <!-- The only control here that changes an instrument, and it looks unlike the others. -->
   <button class="btn danger" id="writedevice" hidden disabled>Write to device</button>
