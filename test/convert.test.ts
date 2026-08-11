@@ -14,7 +14,8 @@
  *    which is what we write.
  *  - **Unused parameter-lock records.** Same story: a mixture of 0xFF and 0x00 depending on
  *    what previously occupied the record. Since an unused record is identified by its 0xFF
- *    parameter id, the remaining bytes are inert.
+ *    parameter id, the remaining bytes are inert — and *only* those records are exempt. The
+ *    used ones are compared in full, which is what catches a wrong value in a real lock.
  *
  * Those regions are covered by reading the result back instead: every trig, note and sound
  * lock must agree with the DN1 source.
@@ -30,9 +31,16 @@ import {
   checkDn2PatternRecord,
   PATTERN,
   readDn2PatternRecord,
+  readLockTable,
   TRACK,
 } from "../src/project/dn2pattern.js";
-import { readPattern, readProjectName } from "../src/project/dn1.js";
+import {
+  patternRecord as dn1PatternRecord,
+  readLockTable as dn1ReadLockTable,
+  readPattern,
+  readProjectName,
+} from "../src/project/dn1.js";
+import { isLockSet, lockCoarse, lockFine } from "../src/project/lockvalue.js";
 import { convertProject } from "../src/expand/convert.js";
 import { knownParameterIds, knownTrigConditions } from "../src/expand/translate.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
@@ -61,11 +69,28 @@ function pair(dn1: string, dn2: string) {
   return { source, elektron, ...convertProject(source, elektron) };
 }
 
-/** True when a byte sits in a region whose content is residue rather than data. */
-function isResidue(offset: number): boolean {
+/**
+ * True when a byte sits in a region whose content is residue rather than data.
+ *
+ * **The lock table is exempt one record at a time, not wholesale.** It used to be excluded as a
+ * block, on the reasoning that unused records hold residue — and it does not follow that the used
+ * ones do. That over-broad exemption hid a real bug for months: the two bytes of every lock slot
+ * were written swapped, so a locked AMP PAN played hard left, and 15,569 wrong bytes across this
+ * corpus sat inside the allowance. Now a record is skipped only when *Elektron's* copy of it is
+ * unused, which leaves all 392 used records compared byte for byte.
+ *
+ * Trigger slots stay exempt as a block: there the residue really is unbounded, and the reading
+ * test below covers every trig, note and sound lock independently.
+ */
+function isResidue(offset: number, elektron: Uint8Array): boolean {
   if (offset < DN2_LAYOUT.headerSize || offset >= DN2_LAYOUT.kitBase) return false;
   const within = (offset - DN2_LAYOUT.headerSize) % DN2_LAYOUT.patternSize;
-  return within >= 0x4a34 && within < 0x15ad4;
+  if (within >= PATTERN.trigOffset && within < PATTERN.lockOffset) return true;
+  if (within < PATTERN.lockOffset || within >= PATTERN.metaOffset) return false;
+
+  // Inside the lock table: find the record this byte belongs to and ask whether Elektron uses it.
+  const recordStart = offset - ((within - PATTERN.lockOffset) % PATTERN.lockSize);
+  return elektron[recordStart] === 0xff && elektron[recordStart + 1] === 0xff;
 }
 
 /**
@@ -98,6 +123,33 @@ test("translation tables cover what the corpus exercises", () => {
   assert.ok(knownParameterIds().includes(67));
 });
 
+/**
+ * True when the difference is Elektron's importer rescaling a lock value we carry verbatim.
+ *
+ * Six bytes across the whole corpus, all of them the **coarse** half of a lock slot, all on two
+ * parameter ids: `17 -> 25` and `43 -> 51` on id 14 (MOD 2 DEST), `71 -> 89` on the same id, and
+ * `1 -> 0` on id 73. `dn2pattern.ts` records the same four value changes from the other
+ * direction, comparing Elektron's DN1 and DN2 originals — so this is the importer adjusting a
+ * parameter whose range moved between the families, not a conversion error.
+ *
+ * We keep the DN1's value, which the lock-slot test asserts against the source directly. Listed
+ * by value pair rather than by offset so that a *seventh* one — a case the corpus has not shown
+ * us — fails the test instead of quietly joining the allowance.
+ */
+const IMPORTER_RESCALES = new Set(["14:17:25", "14:43:51", "14:71:89", "73:1:0"]);
+
+function isImporterRescale(offset: number, ours: number, theirs: number, elektron: Uint8Array): boolean {
+  if (offset < DN2_LAYOUT.headerSize || offset >= DN2_LAYOUT.kitBase) return false;
+  const within = (offset - DN2_LAYOUT.headerSize) % DN2_LAYOUT.patternSize;
+  if (within < PATTERN.lockOffset || within >= PATTERN.metaOffset) return false;
+
+  const inRecord = (within - PATTERN.lockOffset) % PATTERN.lockSize;
+  // The coarse byte of a value slot: the header is two bytes, then coarse/fine pairs.
+  if (inRecord < 2 || inRecord % 2 !== 0) return false;
+  const parameter = elektron[offset - inRecord]!;
+  return IMPORTER_RESCALES.has(`${parameter}:${ours}:${theirs}`);
+}
+
 test("conversion is byte-identical outside the residue regions", { skip }, () => {
   for (const [dn1, dn2] of PAIRS) {
     const { image: ours, elektron } = pair(dn1, dn2);
@@ -105,16 +157,22 @@ test("conversion is byte-identical outside the residue regions", { skip }, () =>
 
     let differing = 0;
     let parityOnly = 0;
+    let rescaled = 0;
     let firstAt = -1;
     for (let i = 0; i < ours.length; i++) {
-      if (ours[i] === elektron[i] || isResidue(i)) continue;
+      if (ours[i] === elektron[i] || isResidue(i, elektron)) continue;
       if (isParityOnly(i, ours[i]!, elektron[i]!)) {
         parityOnly++;
+        continue;
+      }
+      if (isImporterRescale(i, ours[i]!, elektron[i]!, elektron)) {
+        rescaled++;
         continue;
       }
       differing++;
       if (firstAt < 0) firstAt = i;
     }
+    assert.ok(rescaled <= 4, `${dn1}: importer rescalings grew to ${rescaled}`);
     assert.equal(
       differing,
       0,
@@ -298,6 +356,61 @@ test("every trig, note and sound lock survives the conversion", { skip }, () => 
   assert.ok(trigs > 7_000, `expected the corpus to exercise thousands of trigs, saw ${trigs}`);
   assert.ok(locks > 2_000, `expected thousands of sound locks, saw ${locks}`);
 });
+
+/**
+ * A lock slot is a coarse byte then a fine one, and conversion must not swap them.
+ *
+ * The byte diff above covers this now, but only as one term in a total. This asserts the thing
+ * itself, in the vocabulary of the format, because the failure it guards against is not subtle in
+ * its effect and was invisible in its cause: reading the DN1 pair little-endian and writing it
+ * big-endian moved every value into the fine byte and left coarse at zero. For AMP PAN — bipolar,
+ * centred at 64 — that is hard left on every pan-locked trig.
+ *
+ * Compared as a sorted multiset of `track:step:coarse.fine`, so it does not depend on records
+ * keeping their order or on the parameter-id translation. Three values legitimately differ:
+ * Elektron rescales a parameter whose range changed, and the DN1 side is the one being read here,
+ * so the comparison is against the *source*, not against Elektron's output.
+ */
+test("parameter-lock values keep their coarse and fine bytes in order", { skip }, () => {
+  let slots = 0;
+
+  for (const [dn1, dn2] of PAIRS) {
+    const { image: ours, source } = pair(dn1, dn2);
+
+    for (let p = 0; p < 128; p++) {
+      const want = dn1LockSlots(source, p);
+      const have = dn2LockSlots(ours, p);
+      slots += want.length;
+      assert.deepEqual(have, want, `${dn1} pattern ${p}: lock slot values differ from the DN1`);
+    }
+  }
+
+  assert.ok(slots > 5_000, `expected the corpus to exercise thousands of lock slots, saw ${slots}`);
+});
+
+function dn1LockSlots(image: Uint8Array, pattern: number): string[] {
+  return describeSlots(
+    dn1ReadLockTable(dn1PatternRecord(image, pattern)).map((r) => ({ track: r.track, values: r.values })),
+  );
+}
+
+function dn2LockSlots(image: Uint8Array, pattern: number): string[] {
+  return describeSlots(
+    readLockTable(patternRecord(image, pattern)).map((r) => ({ track: r.track, values: r.values })),
+  );
+}
+
+/** `track:step:coarse.fine` for every set slot, sorted — a multiset that ignores record order. */
+function describeSlots(records: { track: number; values: number[] }[]): string[] {
+  const out: string[] = [];
+  for (const record of records) {
+    record.values.forEach((raw, step) => {
+      if (!isLockSet(raw)) return;
+      out.push(`${record.track}:${step}:${lockCoarse(raw)}.${lockFine(raw)}`);
+    });
+  }
+  return out.sort();
+}
 
 test("converted patterns pass the DN2 structural check", { skip }, () => {
   for (const [dn1, dn2] of PAIRS) {

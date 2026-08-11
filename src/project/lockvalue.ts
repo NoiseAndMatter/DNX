@@ -16,9 +16,16 @@
  * module offers the readings and leaves the choice to the caller. `lockCoarse` is the one
  * that is always meaningful.
  *
- * The DN1 uses the same slot layout. That is inferred rather than measured — no DN1 sweep
- * was captured — but nothing rests on it: conversion transfers both bytes together, so a
- * wrong reading here could not corrupt a converted project.
+ * The DN1 uses the same slot layout. That is inferred rather than measured — no DN1 sweep was
+ * captured — and the reassurance that used to sit here, that "conversion transfers both bytes
+ * together, so a wrong reading could not corrupt a converted project", was wrong twice over.
+ * Conversion did **not** transfer them together: `expand/convert.ts` read the DN1 pair as a
+ * little-endian integer and wrote it back big-endian, swapping the two bytes of every lock it
+ * converted. Coarse became zero, and for a bipolar parameter zero is not a near-miss but the
+ * bottom of the range — a pan-locked trig played hard left, on hardware, for months.
+ *
+ * **Read and write a slot the same way round, or copy the two bytes. Never let one end name an
+ * endianness the other end does not.**
  */
 
 /** Slot value meaning "this step is not locked". Also marks an unused record header. */
