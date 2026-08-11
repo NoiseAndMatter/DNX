@@ -85,6 +85,86 @@ export interface ConnectOptions {
    * different roles on the same page and picking the wrong one is not a recoverable mistake.
    */
   want?: number;
+  /**
+   * The MIDI **input port name** to connect through, as `listDevices` reports it.
+   *
+   * `want` names a *kind* of instrument, and that is all the expander needs — its two roles are two
+   * different products. It is not enough for the manager, where either device is a legitimate
+   * subject and owning two Digitone IIs is not exotic. A port name addresses one instrument rather
+   * than one model.
+   */
+  port?: string;
+}
+
+/** One instrument found on the ports, described well enough to choose between. */
+export interface DeviceChoice {
+  /** Dump-protocol product id, so a `want` can be built from it. */
+  productId: number;
+  /** What the instrument called itself. */
+  name: string;
+  /** Its MIDI input port — the only thing that separates two of the same model. */
+  port: string;
+  /** Absent when the device did not answer the version request; see `firmwareVersion` above. */
+  firmwareVersion?: string;
+}
+
+/**
+ * Every Digitone on the MIDI ports, identified and then **let go of**.
+ *
+ * The manager needs this and the expander does not. On the expander each device has a fixed role,
+ * so `connectDevice({ want })` says everything: the Digitone 1 is the source and the Digitone II is
+ * the destination. The manager has no such asymmetry — either instrument is a legitimate subject —
+ * so it cannot pick for you, and taking whichever answered first is what it was doing wrong.
+ *
+ * **Nothing is left open.** Every device identified here is closed before returning, and the caller
+ * reconnects to the one it wants. That costs a second `Device` request, the cheapest thing on the
+ * wire, and it means a picker nobody chooses from has not quietly claimed two ports.
+ */
+export async function listDevices(): Promise<DeviceChoice[]> {
+  const { inputs, outputs } = await ports();
+  const found: DeviceChoice[] = [];
+
+  for (const pair of candidatePairs(inputs, outputs)) {
+    let device: ConnectedDevice;
+    try {
+      device = await identify(pair);
+    } catch {
+      // A pair that does not answer is not an error here. Enumerating is allowed to come up empty,
+      // and the caller's own message about that is better than one assembled from several failures.
+      continue;
+    }
+    found.push({
+      productId: device.productId,
+      name: device.name,
+      port: pair.input.name ?? "",
+      ...(device.firmwareVersion === undefined ? {} : { firmwareVersion: device.firmwareVersion }),
+    });
+    device.close();
+  }
+  return found;
+}
+
+/** One line naming an instrument, for a picker. The port disambiguates, so it is always shown. */
+export function describeChoice(choice: DeviceChoice): string {
+  return (
+    `${choice.name}${choice.firmwareVersion ? ` · ${choice.firmwareVersion}` : ""}` +
+    `${choice.port ? ` · ${choice.port}` : ""}`
+  );
+}
+
+async function ports(): Promise<{ inputs: MIDIInput[]; outputs: MIDIOutput[] }> {
+  if (!navigator.requestMIDIAccess) {
+    throw new DeviceSourceError(
+      "This browser has no Web MIDI. Chrome or Edge — Safari and Firefox cannot do this.",
+    );
+  }
+  const access = await navigator.requestMIDIAccess({ sysex: true });
+  const inputs = [...access.inputs.values()];
+  const outputs = [...access.outputs.values()];
+  if (inputs.length === 0 || outputs.length === 0) {
+    throw new DeviceSourceError("No MIDI ports. Connect the instrument over USB and try again.");
+  }
+  return { inputs, outputs };
 }
 
 /**
@@ -108,20 +188,19 @@ export interface ConnectOptions {
  * no listeners behind on ports the page is not using.
  */
 export async function connectDevice(options: ConnectOptions = {}): Promise<ConnectedDevice> {
-  if (!navigator.requestMIDIAccess) {
+  const { inputs, outputs } = await ports();
+
+  const all = candidatePairs(inputs, outputs);
+  const candidates =
+    options.port === undefined ? all : all.filter((p) => (p.input.name ?? "") === options.port);
+  // A named port that is not there is its own failure, and a different one from "nothing answered":
+  // the instrument was unplugged, or the picker is showing a list from before it was.
+  if (candidates.length === 0 && options.port !== undefined) {
     throw new DeviceSourceError(
-      "This browser has no Web MIDI. Chrome or Edge — Safari and Firefox cannot do this.",
+      `No MIDI port called "${options.port}". It may have been unplugged since the list was made — ` +
+        `look again.`,
     );
   }
-
-  const access = await navigator.requestMIDIAccess({ sysex: true });
-  const inputs = [...access.inputs.values()];
-  const outputs = [...access.outputs.values()];
-  if (inputs.length === 0 || outputs.length === 0) {
-    throw new DeviceSourceError("No MIDI ports. Connect the instrument over USB and try again.");
-  }
-
-  const candidates = candidatePairs(inputs, outputs);
   /** What answered, so a failure can say what *is* there rather than only what is not. */
   const answered: string[] = [];
   let lastError: unknown;
