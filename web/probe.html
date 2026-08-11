@@ -68,6 +68,30 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
   margin: 0 0 .5rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
   color: var(--teal); font-weight: 600;
 }
+/*
+ * The control cards.
+ *
+ * A grid so the three sit side by side where there is room and stack where there is not: the probe
+ * is used on a laptop beside an instrument as often as on a desk, and three columns of controls on
+ * a narrow window would be worse than the bar they replaced.
+ */
+/*
+ * **Outside `main`, so it does not scroll away.** A probe is used by pressing something and then
+ * reading a long result; controls that scroll out of reach as the output grows would mean scrolling
+ * back up to press the next one. `main` keeps `overflow: auto` and this band stays put.
+ */
+.controls {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: .7rem; padding: .7rem .9rem 0;
+}
+.controls .card { padding: .6rem .7rem; }
+.crow { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; padding: .3rem 0; }
+.crow + .crow { border-top: 1px solid var(--line-soft); }
+/* The group name, wider than the inline field labels so the rows line up down the card. */
+.crow > .lbl:first-child { min-width: 6.5rem; color: var(--teal); }
+/* Named for what it does, not for how it looks: everything in here changes the instrument. */
+.danger-card { border-color: var(--salmon); }
+.danger-card h2 { color: var(--salmon); }
 .row { display: flex; gap: .8rem; padding: .18rem 0; border-bottom: 1px solid var(--line-soft); }
 .row:last-child { border-bottom: none; }
 .row .k { color: var(--muted); min-width: 12rem; font-size: .78rem; }
@@ -109,88 +133,134 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
     The build time sits beside the title, not only in the tab. The tab is where nobody looks, and
     the entire point of the stamp is answering "am I running the fix?" at a glance.
   -->
-  <h1>Device probe <span class="build" id="buildStamp" title="When the code running this page was compiled">build —</span></h1>
-  <label class="lbl" for="output">Out</label>
-  <select id="output"></select>
-  <label class="lbl" for="input">In</label>
-  <select id="input"></select>
-  <button class="btn" id="rescan">Rescan</button>
-  <button class="btn primary" id="probe" disabled>Probe</button>
-  <button class="btn" id="listen" disabled>Listen</button>
-  <button class="btn" id="save" disabled>Save capture</button>
-  <select id="reqWhat" disabled></select>
-  <label class="lbl" for="reqObj">obj</label>
-  <input id="reqObj" type="number" min="0" max="127" value="0" disabled>
-  <button class="btn" id="request" disabled>Request</button>
-  <button class="btn" id="readProject" disabled>Read project</button>
-  <button class="btn danger" id="writeBack" disabled title="Send a captured record back to the slot it came from">Write back</button>
-  <select id="writeFrom" disabled title="Which captured pattern to send"></select>
-  <label class="lbl" for="writeTo">to</label>
-  <input id="writeTo" type="text" value="H16" size="4" disabled title="Destination slot, e.g. H16">
-  <button class="btn danger" id="writeSlot" disabled title="Copy a captured pattern into another slot on the device">Write to slot</button>
-  <!--
-    One unidentified request per press, deliberately. There is no sweep-all: `device-probing.md`
-    rule 4 is one message per run on something expendable, and the whole value of this control is
-    knowing which code produced what.
-  -->
-  <select id="probeCode" disabled title="An unidentified request code"></select>
-  <label class="lbl" for="probeObj">obj</label>
-  <input id="probeObj" type="number" min="0" max="127" value="0" size="3" disabled>
-  <button class="btn" id="probeSend" disabled>Try code</button>
-  <!--
-    `Try code` builds `0x6n` *dump* requests only, so the API's own information codes were
-    unreachable — `0x03` above all, the one Elektron Transfer polls continuously and nobody has
-    explained. We nearly built a content-fingerprinting workaround while it sat unsent.
+  <h1>Device probe <span class="build" id="buildStamp" title="When the code running this page was compiled">build &mdash;</span></h1>
+</div>
 
-    `Query` (`0x09`) is not here: the Probe button already sweeps it, with better-researched keys.
+<!--
+  **The controls used to live in the bar above.** About thirty of them, wrapping over three lines,
+  which made this page's chrome a different height from every other tool's and buried the one
+  dangerous button among twenty harmless ones.
 
-    Read-only by construction: the list is fixed. The API's other nibbles write, delete and open
-    handles, and one of those froze a Digitone 1 three times.
-  -->
-  <select id="askCode" disabled title="An API information code"></select>
-  <button class="btn" id="askSend" disabled>Ask</button>
+  Grouped by *when you use them* rather than by what they send. Ports and session are the things you
+  touch every time; requests are what you came for; the +Drive is its own card because every control
+  in it changes the instrument, and one of them froze a Digitone 1 three times.
+
+  Three columns where there is room, stacking where there is not — the probe is used on a laptop
+  beside an instrument as often as on a desk.
+-->
+<div class="controls">
+  <section class="card">
+    <h2>Ports and session</h2>
+    <div class="crow">
+      <span class="lbl">Ports</span>
+      <label class="lbl" for="output">Out</label>
+      <select id="output"></select>
+      <label class="lbl" for="input">In</label>
+      <select id="input"></select>
+      <button class="btn" id="rescan">Rescan</button>
+    </div>
+    <div class="crow">
+      <span class="lbl">Session</span>
+      <button class="btn primary" id="probe" disabled>Probe</button>
+      <button class="btn" id="listen" disabled>Listen</button>
+      <button class="btn" id="save" disabled>Save capture</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Requests</h2>
+    <div class="crow">
+      <span class="lbl">Dump</span>
+      <select id="reqWhat" disabled></select>
+      <label class="lbl" for="reqObj">obj</label>
+      <input id="reqObj" type="number" min="0" max="127" value="0" disabled>
+      <button class="btn" id="request" disabled>Request</button>
+      <button class="btn" id="readProject" disabled>Read project</button>
+    </div>
+    <!--
+      One unidentified request per press, deliberately. There is no sweep-all: `device-probing.md`
+      rule 4 is one message per run on something expendable, and the whole value of this control is
+      knowing which code produced what.
+
+      `Try code` builds `0x6n` *dump* requests only, so the API's own information codes were
+      unreachable &mdash; `0x03` above all, the one Elektron Transfer polls continuously and nobody has
+      explained. We nearly built a content-fingerprinting workaround while it sat unsent.
+
+      `Query` (`0x09`) is not here: the Probe button already sweeps it, with better-researched keys.
+
+      Read-only by construction: both lists are fixed. The API's other nibbles write, delete and
+      open handles, and one of those froze a Digitone 1 three times.
+    -->
+    <div class="crow">
+      <span class="lbl">Unidentified</span>
+      <select id="probeCode" disabled title="An unidentified request code"></select>
+      <label class="lbl" for="probeObj">obj</label>
+      <input id="probeObj" type="number" min="0" max="127" value="0" size="3" disabled>
+      <button class="btn" id="probeSend" disabled>Try code</button>
+      <select id="askCode" disabled title="An API information code"></select>
+      <button class="btn" id="askSend" disabled>Ask</button>
+    </div>
+  </section>
+
   <!--
-    Read-only, and the friendliest failure on the device: a wrong path is answered `Invalid path`
-    in as many words, so guessing costs a round trip.
+    Its own card because everything in it changes the instrument. Grouping by usage put the four
+    controls that can destroy work in one place, which is worth more than the tidiness: in the bar
+    they sat between a port selector and a listing path.
   -->
-  <label class="lbl" for="lsPath">path</label>
-  <input id="lsPath" type="text" value="/" size="12" disabled>
-  <label class="lbl" for="lsFrom">from</label>
-  <input id="lsFrom" type="number" min="0" value="0" size="3" disabled title="Page cursor. 0 asks for the whole listing.">
-  <label class="lbl" for="lsCount">count</label>
-  <input id="lsCount" type="number" min="0" value="0" size="3" disabled title="0 asks for the whole listing. A start without a count asks for nothing.">
-  <button class="btn" id="lsSend" disabled>List</button>
-  <!--
-    `0x54` froze a Digitone 1 three times, and every one of those bodies was a raw integer with no
-    NUL terminator. The only body it has ever answered is a NUL-terminated path, which is what this
-    now sends — the third hypothesis about this message, and still a hypothesis.
+  <section class="card danger-card">
+    <h2>Writing &mdash; changes the instrument</h2>
+    <div class="crow">
+      <span class="lbl">Patterns</span>
+      <button class="btn danger" id="writeBack" disabled title="Send a captured record back to the slot it came from">Write back</button>
+      <select id="writeFrom" disabled title="Which captured pattern to send"></select>
+      <label class="lbl" for="writeTo">to</label>
+      <input id="writeTo" type="text" value="H16" size="4" disabled title="Destination slot, e.g. H16">
+      <button class="btn danger" id="writeSlot" disabled title="Copy a captured pattern into another slot on the device">Write to slot</button>
+    </div>
+    <!--
+      Read-only, and the friendliest failure on the device: a wrong path is answered `Invalid path`
+      in as many words, so guessing costs a round trip.
+    -->
+    <div class="crow">
+      <span class="lbl">+Drive list</span>
+      <label class="lbl" for="lsPath">path</label>
+      <input id="lsPath" type="text" value="/" size="12" disabled>
+      <label class="lbl" for="lsFrom">from</label>
+      <input id="lsFrom" type="number" min="0" value="0" size="3" disabled title="Page cursor. 0 asks for the whole listing.">
+      <label class="lbl" for="lsCount">count</label>
+      <input id="lsCount" type="number" min="0" value="0" size="3" disabled title="0 asks for the whole listing. A start without a count asks for nothing.">
+      <button class="btn" id="lsSend" disabled>List</button>
+    </div>
+    <!--
+      `0x54` froze a Digitone 1 three times, and every one of those bodies was a raw integer with no
+      NUL terminator. The only body it has ever answered is a NUL-terminated path, which is what this
+      now sends &mdash; the third hypothesis about this message, and still a hypothesis.
 
-    The last segment is the **index**, not the name: `/projects/1`, not `/projects/PRESETS`. That
-    is what `invalid project id` had been saying all along — the device could not turn `PRESETS`
-    into an id — and it was read first as "the argument should be an id" and then as "the path is
-    wrong". It was neither: the path form was wrong in one segment.
-  -->
-  <label class="lbl" for="filePath">file</label>
-  <input id="filePath" type="text" value="/projects/1" size="20" disabled title="The index from a /projects listing, not the project name: /projects/1">
-  <button class="btn danger" id="fileRead" disabled title="Open, read and close a file on the +Drive. This froze a Digitone 1 three times.">Read file</button>
-  <!--
-    The first write to a Digitone's +Drive. It reads `file` and writes those exact bytes to `to`,
-    using the checksum the device itself reported on the read — so the one field whose algorithm we
-    cannot reproduce is supplied by the device.
+      The last segment is the **index**, not the name: `/projects/1`, not `/projects/PRESETS`. That
+      is what `invalid project id` had been saying all along.
+    -->
+    <div class="crow">
+      <span class="lbl">+Drive read</span>
+      <label class="lbl" for="filePath">file</label>
+      <input id="filePath" type="text" value="/projects/1" size="20" disabled title="The index from a /projects listing, not the project name: /projects/1">
+      <button class="btn danger" id="fileRead" disabled title="Open, read and close a file on the +Drive. This froze a Digitone 1 three times.">Read file</button>
+    </div>
+    <!--
+      The first write to a Digitone's +Drive. It reads `file` and writes those exact bytes to `to`,
+      using the checksum the device itself reported on the read.
 
-    `corrupt` is the experiment worth having: flip a bit in that checksum and see whether the write
-    is refused. Refused means the field is validated and we need the algorithm. Accepted means it
-    is decorative, and writing arbitrary content is unblocked.
-
-    **Empty slots only, refused not warned.** The listing says which slots are empty; there are 73
-    on this instrument, so there is no reason for the first write ever attempted to be able to
-    overwrite anything.
-  -->
-  <label class="lbl" for="writeTarget">to</label>
-  <input id="writeTarget" type="text" value="/soundbanks/H/256" size="18" disabled title="Destination — must be an empty slot">
-  <label class="lbl" for="corruptSum">corrupt</label>
-  <input id="corruptSum" type="checkbox" disabled title="Flip a bit in the checksum, to find out whether it is enforced">
-  <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read → write</button>
+      **Empty slots only, refused not warned.** The listing says which slots are empty; there are 73
+      on this instrument, so there is no reason for a write to be able to overwrite anything.
+    -->
+    <div class="crow">
+      <span class="lbl">+Drive write</span>
+      <label class="lbl" for="writeTarget">to</label>
+      <input id="writeTarget" type="text" value="/soundbanks/H/256" size="18" disabled title="Destination &mdash; must be an empty slot">
+      <label class="lbl" for="corruptSum">corrupt</label>
+      <input id="corruptSum" type="checkbox" disabled title="Flip a bit in the checksum, to find out whether it is enforced">
+      <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read &rarr; write</button>
+    </div>
+  </section>
 </div>
 
 <main>
