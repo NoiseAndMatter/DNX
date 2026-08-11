@@ -186,34 +186,42 @@ function isEditable(target: EventTarget | null): boolean {
 }
 
 /**
- * Slide the arriving page in from whichever side it came.
+ * Release the offset `arrival.js` applied, so the page settles into place.
  *
- * The class is removed on a timer as well as on `transitionend`, because a `transitionend` that
- * never arrives — the tab was in the background when the page loaded, so nothing animated — would
- * otherwise leave the body permanently offset. **An animation must not be able to break the page it
- * decorates.**
+ * **Only the second half of the slide lives here.** The first half — arriving offset — has to
+ * happen before the browser's first paint, and a module script cannot: modules are deferred, so
+ * this code runs after the page may already have been drawn at rest. That is why the slide never
+ * appeared, and why `arrival.js` is a classic script in the head.
+ *
+ * `sessionStorage` is cleared here rather than there, because a direction that has been *used* is
+ * what should be forgotten — clearing it before the release would lose the state if this never ran.
+ *
+ * The class is removed on a timer as well, because a `transitionend` that never arrives — the tab
+ * was in the background when the page loaded, so nothing animated — would otherwise leave the body
+ * permanently offset. **An animation must not be able to break the page it decorates.**
  */
 function slideIn(): void {
-  let direction: string | null = null;
+  const root = document.documentElement;
+  const from = root.classList.contains("slide-from-right")
+    ? "slide-from-right"
+    : root.classList.contains("slide-from-left")
+      ? "slide-from-left"
+      : undefined;
+
   try {
-    direction = sessionStorage.getItem(DIRECTION_KEY);
     sessionStorage.removeItem(DIRECTION_KEY);
   } catch {
-    return;
+    // Nothing to clean up, and nothing that stops the release below.
   }
-  if (direction !== "left" && direction !== "right") return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-  const body = document.body;
-  body.classList.add(direction === "right" ? "slide-from-right" : "slide-from-left");
+  if (!from) return;
 
   // Two frames: one for the browser to paint the offset start state, one to remove it so the
   // transition has something to interpolate. Removing it in the same frame is a no-op.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      body.classList.add("sliding");
-      body.classList.remove("slide-from-right", "slide-from-left");
-      setTimeout(() => body.classList.remove("sliding"), SLIDE_MS + 60);
+      document.body.classList.add("sliding");
+      root.classList.remove(from);
+      setTimeout(() => document.body.classList.remove("sliding"), SLIDE_MS + 60);
     });
   });
 }

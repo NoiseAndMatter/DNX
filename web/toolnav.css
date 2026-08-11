@@ -102,8 +102,13 @@
  * classes are simply absent and the page sits exactly where it always did.
  */
 html { overflow-x: hidden; }
-body.slide-from-right { transform: translateX(3.5rem); opacity: 0; }
-body.slide-from-left { transform: translateX(-3.5rem); opacity: 0; }
+/*
+ * **Stamped on `<html>`, applied to `<body>`.** `arrival.js` runs in the head, before `<body>`
+ * exists, so `documentElement` is the only thing it can mark. The transform still belongs on the
+ * body, so that the header travels with the page.
+ */
+html.slide-from-right > body { transform: translateX(3.5rem); opacity: 0; }
+html.slide-from-left > body { transform: translateX(-3.5rem); opacity: 0; }
 body.sliding {
   transform: translateX(0); opacity: 1;
   transition: transform .22s cubic-bezier(.22, .8, .3, 1), opacity .18s ease-out;
