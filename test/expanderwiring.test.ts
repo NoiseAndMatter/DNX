@@ -28,7 +28,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const APP = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), "../web/src/app.ts"),
+  resolve(dirname(fileURLToPath(import.meta.url)), "../web/src/expander/main.ts"),
   "utf8",
 );
 

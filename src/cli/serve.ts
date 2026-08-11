@@ -65,7 +65,7 @@ const TEMPLATE_ROUTE = "/template.dn2prj";
  * never let someone test a build without knowing which build it is.
  */
 function warnIfStale(): void {
-  const built = join(ROOT, "dist", "web", "src", "app.js");
+  const built = join(ROOT, "dist", "web", "src", "expander", "main.js");
   if (!existsSync(built)) return;
 
   const builtAt = statSync(built).mtimeMs;
