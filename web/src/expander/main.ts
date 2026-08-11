@@ -19,6 +19,8 @@ import {
   type LoadedProject,
 } from "../project.js";
 import { describeDonor, loadDonor } from "../donor.js";
+import { Source } from "./source.js";
+import { sourceBadge } from "./sourcename.js";
 import { renderPlan } from "../render.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
@@ -85,14 +87,7 @@ renderToolNav($("toolnav"), "expander");
  * The destination keeps its full project, because that one really is written back out and its
  * manifest really is used.
  */
-interface SourceProject {
-  image: Uint8Array;
-  /** For the top bar: a file name, or the slot it was read from. */
-  label: string;
-}
-
 interface State {
-  source?: SourceProject;
   template?: LoadedProject;
   plan?: ExpansionPlan;
 }
@@ -183,8 +178,8 @@ function options(): ExpanderOptions {
 
 
 function replan(): void {
-  if (!state.source) return;
-  state.plan = planExpansion(state.source.image, options());
+  if (!source.image) return;
+  state.plan = planExpansion(source.image, options());
   // The device path needs a source too, and a project can be loaded either side of connecting.
   $<HTMLButtonElement>("fromDevice").disabled = device.connected === undefined;
   // Which patterns are live depends on the options, so the picker follows them. Selections that
@@ -204,7 +199,7 @@ function replan(): void {
 
 /** Draw the sounds-on-tracks report. The *scope* decision lives in `planning.ts`. */
 function renderReport(): void {
-  const image = state.source?.image;
+  const image = source.image;
   if (!image) return;
 
   const { patterns, heading } = reportScope({
@@ -224,26 +219,48 @@ function renderReport(): void {
       `their sounds are laid out.</p>`;
 }
 
-async function loadSource(file: File): Promise<void> {
-  status(`Reading ${file.name}…`);
-  const loaded = await openProject(file);
-  setSource({ image: loaded.image, label: file.name });
+/**
+ * The Digitone 1 being expanded.
+ *
+ * The page owns the *reaction* to a source arriving — the badge, the replan, the grid — and
+ * `source.ts` owns everything about getting one. That split is why the family check, the stale
+ * listing and the slot-naming rule are not in this file.
+ */
+const source = new Source({
+  onChange(loaded) {
+    replan();
+    $("sourceInfo").hidden = false;
+    $("sourceInfo").textContent = sourceBadge(readProjectName(loaded.image), loaded.label);
+    status(`Loaded ${loaded.label}. Pick a destination, then drag patterns onto it.`);
+  },
+  onStatus: (message) => status(message),
+});
+
+async function connectSource(): Promise<void> {
+  await source.connect();
+  $<HTMLButtonElement>("browseSource").disabled = false;
 }
 
-/**
- * Adopt a Digitone 1 project, however it arrived.
- *
- * One function for both routes deliberately. A file and a +Drive slot produce the same thing — an
- * image — and everything downstream of here already treats them identically; two setters would be
- * two chances for one route to forget to replan.
- */
-function setSource(source: SourceProject): void {
-  state.source = source;
-  replan();
-  $("sourceInfo").hidden = false;
-  $("sourceInfo").textContent = `${readProjectName(source.image)} · ${source.label}`;
-  status(`Loaded ${source.label}. Pick a destination, then drag patterns onto it.`);
+async function browseSourceDrive(): Promise<void> {
+  const projects = await source.listProjects();
+
+  const select = $<HTMLSelectElement>("sourceProjects");
+  select.innerHTML = projects
+    .map((p) => `<option value="${p.index}">${escapeHtml(`${p.index}. ${p.name}`)}</option>`)
+    .join("");
+  select.hidden = projects.length === 0;
+  $("openSource").hidden = projects.length === 0;
+  $<HTMLButtonElement>("openSource").disabled = projects.length === 0;
+
+  status(
+    projects.length === 0
+      ? "That instrument reports no stored projects."
+      : `${projects.length} project(s). Pick one and open it.`,
+  );
 }
+
+const openSourceSlot = (): Promise<void> =>
+  source.openSlot(Number($<HTMLSelectElement>("sourceProjects").value));
 
 async function loadTemplate(file: File): Promise<void> {
   status(`Reading template ${file.name}…`);
@@ -301,7 +318,7 @@ function wireFilePicker(inputId: string, load: (file: File) => Promise<void>): v
   });
 }
 
-wireFilePicker("sourceFile", loadSource);
+wireFilePicker("sourceFile", (file) => source.fromFile(file));
 wireFilePicker("templateFile", loadTemplate);
 for (const id of ["compact", "freeMidi", "rules", "aggregate", "contiguous"]) $(id).addEventListener("change", replan);
 for (const id of ["modeWhole", "modeSelect"]) $(id).addEventListener("change", syncMode);
@@ -479,13 +496,13 @@ async function readDestination(): Promise<void> {
  * worse than no plan at all.
  */
 function replanForDevice(): void {
-  if (!destination || !state.source) return;
+  if (!destination || !source.image) return;
 
   let outcome: PlanOutcome;
   try {
     outcome = merging()
       ? planSelected({
-          source: state.source.image,
+          source: source.image,
           destination: destination.image,
           selection,
           landing,
@@ -494,7 +511,7 @@ function replanForDevice(): void {
           ask: (question) => window.confirm(question),
         })
       : planWhole({
-          source: state.source.image,
+          source: source.image,
           destination: destination.image,
           ...(state.plan === undefined ? {} : { plan: state.plan }),
         });
@@ -635,32 +652,24 @@ async function connect(): Promise<void> {
 // --- a connected Digitone 1 as the source -------------------------------------------------------
 
 /**
- * The instrument being read *from*, kept apart from the one being written *to*.
+ * List the Digitone II's stored projects, so one of them can be the destination.
  *
- * Two connections at once, on the same page, doing opposite jobs. One shared field would make
- * "connect" mean whichever button was pressed last — and the failure would be silent, because both
- * roles look identical until something is written.
- */
-const sourceDevice: { connected?: ConnectedDevice; projects?: DriveProject[] } = {};
-
-async function connectSource(): Promise<void> {
-  status("Looking for a Digitone 1…");
-  sourceDevice.connected = await connectDevice({ want: ProductId.DN1 });
-  $<HTMLButtonElement>("browseSource").disabled = false;
-  status(`${sourceDevice.connected.name} connected. Browse its +Drive to pick a project.`);
-}
-
-/**
- * List the Digitone 1's stored projects.
+ * ## Why this exists, and why it is not simply the mirror of *Read its project*
  *
- * **The +Drive, not the dump protocol.** Reading the *active* project record by record needs a
- * donor for the ~0.49% no dump carries, and for a Digitone 1 that donor would have to be a Digitone
- * 1 project — which this page cannot produce, and which is exactly why the manager refuses that
- * route. The stored file needs no donor at all: every byte is there, any slot, and the read is
- * verified byte-for-byte against Elektron's own export.
+ * Reported as an asymmetry: *"it feels that we should have the same options in the expander for
+ * DN1 and DN2 projects."* It is a real one, and the reason for it is **not** symmetric.
  *
- * The DN1 advertises the whole storage band (`0x53`–`0x5c`), so this is the same conversation the
- * manager already has with a Digitone II.
+ * The Digitone 1 is a **source**, so any stored project will do and the +Drive is the better route
+ * — no donor, every byte, any slot. The Digitone II is a **destination**, and *Read its project*
+ * deliberately reads the **active** one, because that is the only project a write can go back to.
+ *
+ * So a project browsed off the DN2's +Drive can be merged into and exported, and **never written
+ * back**: a write goes to whatever is loaded, so edits meant for slot 47 would land in slot 3.
+ * `setDestination` gives it no `handle`, and the write button is already gated on that.
+ *
+ * (This function spent two releases under the Digitone *1*'s doc comment, which arrived above it
+ * when it was inserted and stayed there. Restoring that block during the source extraction is what
+ * finally made the mismatch visible.)
  */
 async function browseDestinationDrive(): Promise<void> {
   const connected = device.connected;
@@ -724,60 +733,6 @@ async function openDestinationSlot(): Promise<void> {
       `instrument's active project, not back to slot ${project.index}.`,
     "ok",
   );
-}
-
-async function browseSourceDrive(): Promise<void> {
-  const connected = sourceDevice.connected;
-  if (!connected) throw new DeviceSourceError("connect a Digitone 1 first");
-
-  status(`Listing projects on ${connected.name}…`);
-  const projects = await listDeviceProjects(connected);
-  sourceDevice.projects = projects;
-
-  const select = $<HTMLSelectElement>("sourceProjects");
-  select.innerHTML = projects
-    .map((p) => `<option value="${p.index}">${escapeHtml(`${p.index}. ${p.name}`)}</option>`)
-    .join("");
-  select.hidden = projects.length === 0;
-  $("openSource").hidden = projects.length === 0;
-  $<HTMLButtonElement>("openSource").disabled = projects.length === 0;
-
-  status(
-    projects.length === 0
-      ? `${connected.name} reports no stored projects.`
-      : `${projects.length} project(s) on ${connected.name}. Pick one and open it.`,
-  );
-}
-
-async function openSourceSlot(): Promise<void> {
-  const connected = sourceDevice.connected;
-  const index = Number($<HTMLSelectElement>("sourceProjects").value);
-  const project = sourceDevice.projects?.find((p) => p.index === index);
-  if (!connected || !project) throw new DeviceSourceError("browse the +Drive again — that listing is stale");
-
-  status(`Reading ${project.name} from slot ${project.index}…`);
-  const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-    if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
-  });
-
-  // Checked after the read rather than before, because the +Drive listing does not say what family
-  // a stored project is — only the payload does. A DN2 project on a DN1's +Drive should be
-  // impossible, and "should be impossible" is not the same as "cannot happen".
-  if (deviceFor(opened.image).kind !== "dn1") {
-    throw new DeviceSourceError(
-      `Slot ${project.index} holds a Digitone II project, which this page expands *to* rather than from.`,
-    );
-  }
-
-  // **The drive name appears only when it disagrees with the project name.**
-  //
-  // They are two different things that are usually the same string: the +Drive entry is the file's
-  // name on the drive, and the project name lives inside the image at offset 8. Renaming on one
-  // side does not necessarily touch the other, and anything this tool stamps a build time into
-  // changes the second and not the first — so when they differ, that difference is worth seeing.
-  // When they agree, printing it twice is noise, which is how it was reported.
-  const stored = readProjectName(opened.image) === project.name ? "" : `${project.name} · `;
-  setSource({ image: opened.image, label: `${stored}slot ${project.index}` });
 }
 
 /**
@@ -899,7 +854,7 @@ function describeSlots(slots: readonly number[]): string {
  * the application uses, and without hiding the empty slots that make a bank legible.
  */
 function renderSource(): void {
-  const image = state.source?.image;
+  const image = source.image;
   const grid = $("sourceGrid");
   const tabs = $("sourceTabs");
   if (!image) {
@@ -1028,11 +983,11 @@ function renderDestinationGrid(): void {
  */
 function incomingSlotView(index: number, image: Uint8Array): Omit<SlotView, "index"> {
   const here = patternSlotView(DN2_DEVICE, image, index);
-  const source = state.source?.image;
+  const incoming = source.image;
   const from = pendingSources().get(index);
-  if (from === undefined || !source) return here;
+  if (from === undefined || !incoming) return here;
 
-  const arriving = patternSlotView(DN1_DEVICE, source, from);
+  const arriving = patternSlotView(DN1_DEVICE, incoming, from);
   return {
     ...arriving,
     // The cell keeps its own address: it is still H16, whatever is about to be in it.
