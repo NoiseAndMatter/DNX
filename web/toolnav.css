@@ -44,6 +44,16 @@
 .topbar {
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .55rem .9rem;
   background: linear-gradient(#22282a, #1b2022); border-bottom: 1px solid var(--line);
+  /*
+   * **Stated, so no page's contents can set it.** The bar carries identity and navigation; a page
+   * that put buttons in it made the bar taller than its neighbours, and the row moved vertically as
+   * you switched tools — the same complaint as the font size and the leading edge, arriving a third
+   * time by a third route.
+   *
+   * The value is the height of a badge row at this padding, so nothing is clipped and nothing
+   * stretches. `test/web.test.ts` keeps commands out of the bar, which is what makes it hold.
+   */
+  min-height: 2.35rem; box-sizing: border-box;
 }
 
 /** Pushes everything after it to the right — the one layout primitive the bar needs. */

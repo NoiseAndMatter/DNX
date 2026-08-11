@@ -1987,6 +1987,40 @@ and must not move when the thing underneath it changes shape. Guarded by four te
 carries the shared bar with the brand and tool row inside it, no page restyles it, and `dnx.css`
 does not define or indent it. Checked by reintroducing the indent and watching the guard fail.
 
+### 10c. The bar was a different height on each tool — DONE 2026-08-11
+
+**Reported:** *"the height of the navigation bar. Expander, manager and library should share the
+same height."*
+
+The third complaint about this row in as many days, after its font size (8c) and its leading edge
+(10a). Same shape every time: something a page controlled was allowed to move a thing that must not
+move. Here it was the **contents**. The expander and the library already kept commands out of the
+bar — their controls live in a `.bar` inside a section — while the manager had ten in it and the
+probe about twelve. A button is taller than a badge, so those bars were taller, and the brand and
+the tool row sat lower on them.
+
+The manager's controls moved into a `.bar.toolbar` directly beneath the chrome, grouped by what
+they are for and in the order the work happens: **Open**, **History**, **Out**. `.topbar` now
+states a `min-height`, but that only sets a floor — the rule that actually holds is a test: the
+chrome bar may contain no `button`, `select`, `input` or `label`. Checked by putting a button back
+and watching it fail.
+
+### 10d. The probe's bar is still a control panel — NOT STARTED
+
+The probe carries roughly twelve controls in its chrome bar — port selects, Rescan, Probe, Listen,
+Save capture, a request builder — and it is the one page still on the allowlist in
+`test/web.test.ts`.
+
+**The user's instruction is to relocate them into their own sections, grouped per usage**, rather
+than to shrink them. The natural grouping is visible in the bar already: *ports* (out, in, rescan),
+*session* (probe, listen, save), and *requests* (the object/slot builder and send). Those are three
+different activities that happen at three different times, which is why they read as clutter side
+by side.
+
+Worth doing with 10b rather than before it: the probe is also the page that re-declares buttons,
+selects and labels `dnx.css` already describes, and moving its controls is the moment to decide
+whether it links the shared stylesheet.
+
 ### 10b. A consistency study across the four tools — NOT STARTED
 
 **Raised by the user in the same breath, and deliberately kept separate**, because it is a design

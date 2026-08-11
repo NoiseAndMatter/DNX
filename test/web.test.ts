@@ -195,6 +195,45 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+/**
+ * **Commands are not chrome**, and this is what keeps them out.
+ *
+ * Reported as *"the height of the navigation bar"* differing between tools, which was the third
+ * complaint about this row in as many days — after its font size and its leading edge. Same shape
+ * every time: something a page controlled was allowed to move a thing that must not move. Here it
+ * was the contents. A button is taller than a badge, so a page that put ten buttons in the bar had
+ * a taller bar, and the brand and the tool row sat lower on it.
+ *
+ * `min-height` alone would not hold: it sets a floor, and content still raises the ceiling. The
+ * rule that actually holds is that the bar carries identity and navigation and nothing you can
+ * press. A comment saying so lasts until the next hurried addition; this does not.
+ */
+const COMMANDS_IN_BAR_ALLOWED = new Set([
+  // The probe's controls are being relocated into sections grouped by usage — ROADMAP 10d. It is
+  // the one page whose bar is still a control panel, and listing it here is the honest way to say
+  // "known, scheduled" rather than quietly widening the rule for everybody.
+  "probe",
+]);
+
+for (const [name, , html] of PAGES) {
+  test(`the ${name}'s chrome bar holds no commands`, () => {
+    const source = readFileSync(html, "utf8");
+    const open = source.indexOf('<div class="topbar">');
+    const bar = source.slice(open, source.indexOf("</div>", open));
+
+    const commands = [...bar.matchAll(/<(button|select|input|label)\b/g)].map((m) => m[1]!);
+    if (COMMANDS_IN_BAR_ALLOWED.has(name)) {
+      assert.ok(commands.length > 0, `${name} is on the allowlist but has already been cleaned up`);
+      return;
+    }
+    assert.deepEqual(
+      commands,
+      [],
+      `${name} puts ${commands.join(", ")} in the chrome bar; commands belong in a .bar below it`,
+    );
+  });
+}
+
 test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
   const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");
