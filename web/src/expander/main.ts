@@ -35,14 +35,15 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
-import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/deviceexpand.js";
 import {
-  MergeRefused,
-  describeMerge,
-  planPatternMerge,
-  type MergeNote,
-  type MergePlan,
-} from "../../../src/expand/merge.js";
+  type ExpanderOptions,
+  type PlanOutcome,
+  planFor,
+  planSelected,
+  planWhole,
+  renderDescribed,
+  reportScope,
+} from "./planning.js";
 import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
 import {
   GridDrag,
@@ -129,17 +130,6 @@ interface DeviceState {
 
 const device: DeviceState = {};
 
-/**
- * What a plan says about itself: the lines that matter, and the conversion notes if it has any.
- *
- * The two are separate all the way to the DOM. Merged into one list they were indistinguishable,
- * and the four lines somebody needs lost to the thousand they do not.
- */
-interface Described {
-  lines: string[];
-  notes?: MergeNote[];
-}
-
 interface Destination {
   /** The project as it stands, including every merge applied so far. */
   image: Uint8Array;
@@ -180,7 +170,8 @@ interface Destination {
 let destination: Destination | undefined;
 
 
-function options() {
+/** The options panel, read off the page. The only planning input this page owns. */
+function options(): ExpanderOptions {
   return {
     compactPerPattern: $<HTMLInputElement>("compact").checked,
     useFreedMidiTracks: $<HTMLInputElement>("freeMidi").checked,
@@ -211,61 +202,26 @@ function replan(): void {
   landingChanged();
 }
 
-/**
- * An expansion plan for these patterns and the options currently ticked.
- *
- * One helper, because the report and the merge must not disagree: a panel describing one layout
- * beside a button that produces another is worse than no panel.
- */
-function planFor(patterns: readonly number[]): ExpansionPlan {
-  return planExpansion(state.source!.image, {
-    ...options(),
-    patterns: [...patterns].sort((a, b) => a - b),
-  });
-}
-
-/**
- * The sounds-on-tracks report, for **what is actually going into the destination**.
- *
- * It used to render the whole-project plan unconditionally, so merging four patterns produced a
- * breakdown of all 128 — describing sounds that were never going anywhere near the destination.
- *
- * Now it follows the mode:
- *
- * - **whole project** — every live pattern, which is what that mode writes
- * - **selected patterns** — the patterns already merged in, plus the ones about to be, because
- *   between choosing and applying the interesting question is what the project is *becoming*
- *
- * The scope is a real planning input, not a filter over the output: expansion decides which sounds
- * get a track and which stay locked across everything in scope, so a report for four patterns has
- * to be planned for four patterns or it describes a layout the merge will not produce.
- */
+/** Draw the sounds-on-tracks report. The *scope* decision lives in `planning.ts`. */
 function renderReport(): void {
   const image = state.source?.image;
   if (!image) return;
 
-  const heading = $("reportScope");
+  const { patterns, heading } = reportScope({
+    merging: merging(),
+    merged: destination?.merged ?? [],
+    selection,
+  });
+  $("reportScope").textContent = heading;
+
   if (!merging()) {
     $("plan").innerHTML = renderPlan(state.plan ?? planExpansion(image, options()));
-    heading.textContent = "— the whole project";
     return;
   }
-
-  const scope = [...new Set([...(destination?.merged ?? []), ...selection])].sort((a, b) => a - b);
-  if (scope.length === 0) {
-    $("plan").innerHTML =
-      `<p class="hint">Select patterns and drag them onto the destination — this will show how ` +
+  $("plan").innerHTML = patterns
+    ? renderPlan(planFor(image, patterns, options()))
+    : `<p class="hint">Select patterns and drag them onto the destination — this will show how ` +
       `their sounds are laid out.</p>`;
-    heading.textContent = "";
-    return;
-  }
-
-  $("plan").innerHTML = renderPlan(planFor(scope));
-  const inPlace = destination?.merged.length ?? 0;
-  heading.textContent =
-    inPlace === scope.length
-      ? `— ${scope.length} pattern(s) merged: ${scope.map(patternName).join(" ")}`
-      : `— ${scope.map(patternName).join(" ")} (${scope.length - inPlace} not applied yet)`;
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -525,9 +481,23 @@ async function readDestination(): Promise<void> {
 function replanForDevice(): void {
   if (!destination || !state.source) return;
 
-  let described: Described;
+  let outcome: PlanOutcome;
   try {
-    described = merging() ? planMerge(destination.image) : planWhole(destination.image);
+    outcome = merging()
+      ? planSelected({
+          source: state.source.image,
+          destination: destination.image,
+          selection,
+          landing,
+          landingMode: landingMode(),
+          options: options(),
+          ask: (question) => window.confirm(question),
+        })
+      : planWhole({
+          source: state.source.image,
+          destination: destination.image,
+          ...(state.plan === undefined ? {} : { plan: state.plan }),
+        });
   } catch (error) {
     // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
     // where the plan would have been, and the apply button has to go with it.
@@ -539,29 +509,10 @@ function replanForDevice(): void {
     return;
   }
 
-  $("devicePlan").innerHTML =
-    `<ul>${described.lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>` + renderNotes(described.notes);
+  device.image = outcome.image;
+  $("devicePlan").innerHTML = renderDescribed(outcome.described);
   $<HTMLButtonElement>("applyMerge").disabled = device.image === undefined;
-}
-
-/**
- * Conversion notes, **folded away**.
- *
- * These used to be printed straight into this strip — over a thousand `<li>`s of "inferred at
- * DN1+173 -> DN2+229", which grew the sticky bar past the height of the page and drew the rest of
- * the tool underneath it. They are diagnostics about the field mapping, worth having and worth
- * nobody's whole screen, so they live behind a disclosure with their counts folded in.
- */
-function renderNotes(notes: readonly MergeNote[] | undefined): string {
-  if (!notes || notes.length === 0) return "";
-  const total = notes.reduce((n, note) => n + note.count, 0);
-  const items = notes
-    .map((n) => `<li>${escapeHtml(n.message)}${n.count > 1 ? ` <b>× ${n.count}</b>` : ""}</li>`)
-    .join("");
-  return (
-    `<details class="notes"><summary>${total} conversion note(s), ` +
-    `${notes.length} distinct</summary><ul>${items}</ul></details>`
-  );
+  status(outcome.message, outcome.level);
 }
 
 /**
@@ -835,80 +786,6 @@ async function openSourceSlot(): Promise<void> {
  * The destination is still read and used as the template — expansion is a transplant, and a field
  * nobody writes inherits the destination's value.
  */
-function planWhole(destination: Uint8Array): Described {
-  if (!state.source) return { lines: [] };
-  const plan = planDeviceExpand({
-    source: state.source.image,
-    destination,
-    ...(state.plan === undefined ? {} : { plan: state.plan }),
-    projectName: stampedName(readProjectName(state.source.image)),
-  });
-  device.image = plan.changedSlots.length > 0 ? plan.image : undefined;
-  status(
-    plan.changedSlots.length === 0
-      ? "The device already holds this conversion — nothing to write."
-      : `${plan.changedSlots.length} pattern slot(s) would change, about ${Math.round(plan.estimatedBytes / 1024)} kB.`,
-  );
-  return { lines: describeDeviceExpand(plan) };
-}
-
-/**
- * Merge the selected patterns into the loaded project, keeping its pool.
- *
- * Both refusals are surfaced as questions rather than swallowed: an occupied landing slot and a
- * pool with no room each stop the plan, and each is something only the person at the instrument can
- * answer. `planPatternMerge` is asked twice in that case — once to find out, once with the answer —
- * which costs milliseconds and keeps the consent explicit.
- */
-function planMerge(destination: Uint8Array): Described {
-  if (!state.source) return { lines: [] };
-  if (selection.length === 0) throw new DeviceSourceError("no patterns selected");
-
-  const base = {
-    source: state.source.image,
-    patterns: selection,
-    destination,
-    landing,
-    landingMode: landingMode(),
-    // Scoped to the selection, **not** `state.plan`. That one is the whole-project plan, and
-    // handing it over made the merge allocate tracks against 128 patterns of competition — the
-    // layout it produced was not the one the panel above described, and not the one asked for.
-    plan: planFor(selection),
-  };
-
-  let plan: MergePlan;
-  try {
-    plan = planPatternMerge(base);
-  } catch (error) {
-    if (!(error instanceof MergeRefused)) throw error;
-    // The two refusals worth asking about rather than reporting. Anything else stands.
-    const overwrite = /already hold a pattern/.test(error.message);
-    const overflow = /no room/.test(error.message);
-    if (!overwrite && !overflow) throw error;
-    if (!window.confirm(`${error.message}
-
-Go ahead anyway?`)) {
-      device.image = undefined;
-      status("Not planned.");
-      return { lines: [error.message, "Not planned."] };
-    }
-    plan = planPatternMerge({
-      ...base,
-      ...(overwrite ? { confirmOverwrite: true } : {}),
-      ...(overflow ? { allowPoolOverflow: true, confirmOverwrite: true } : {}),
-    });
-  }
-
-  device.image = plan.image;
-  // What to do next, not what the panel already says. The panel's first line is this same landing
-  // list; repeating it in the bar made the bar look like a leftover rather than a prompt.
-  status(
-    `Planned — press Apply to fold ${plan.landingSlots.length} pattern(s) into ` +
-      `${plan.landingSlots.map(patternName).join(", ")}, ${describeLanding(landingMode())}.`,
-  );
-  return { lines: describeMerge(plan), notes: plan.notes };
-}
-
 // --- the two grids ------------------------------------------------------------------------------
 //
 // Source on the left, destination on the right, and the same grid the manager uses for both.
