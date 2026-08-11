@@ -123,6 +123,8 @@ interface DeviceState {
    * also how the write button knows to stay disabled.
    */
   image?: Uint8Array;
+  /** The +Drive listing, when one has been asked for. Stale listings are refused, not guessed at. */
+  projects?: DriveProject[];
 }
 
 const device: DeviceState = {};
@@ -141,8 +143,15 @@ interface Described {
 interface Destination {
   /** The project as it stands, including every merge applied so far. */
   image: Uint8Array;
-  /** What it was filled from, so the page can say so. */
-  origin: "blank" | "file" | "device";
+  /**
+   * What it was filled from, so the page can say so.
+   *
+   * `device` and `drive` are both "off the instrument" and are **not** interchangeable. `device` is
+   * the project the musician has *loaded*, and it is the only one a write can go back to, because a
+   * write goes to the active project. `drive` is any of the 128 stored ones — complete, no donor
+   * needed, and unwritable for exactly that reason.
+   */
+  origin: "blank" | "file" | "device" | "drive";
   label: string;
   /**
    * The instrument this came from, when it came from one.
@@ -376,6 +385,14 @@ $("connectSource").addEventListener("click", () => {
   connectSource().catch(reportDeviceError);
 });
 
+$("browseDestination").addEventListener("click", () => {
+  browseDestinationDrive().catch(reportDeviceError);
+});
+
+$("openDestination").addEventListener("click", () => {
+  openDestinationSlot().catch(reportDeviceError);
+});
+
 $("browseSource").addEventListener("click", () => {
   browseSourceDrive().catch(reportDeviceError);
 });
@@ -448,13 +465,20 @@ function renderDestination(): void {
     const where =
       destination.origin === "device"
         ? "read from the instrument — a write goes back to its ACTIVE project"
-        : destination.origin === "blank"
-          ? "a blank project — export it as a file when you are done"
-          : "a project file";
+        : destination.origin === "drive"
+          // Said here rather than only on a disabled button, because the button being grey is a
+          // fact and this is the reason. The two are not the same thing to read.
+          ? "read from the +Drive — export it as a file; a write would land in the ACTIVE project"
+          : destination.origin === "blank"
+            ? "a blank project — export it as a file when you are done"
+            : "a project file";
     info.textContent = `— ${projectName(destination.image)} · ${where}`;
     const badge = $("destinationBadge");
     badge.hidden = false;
-    badge.textContent = destination.origin === "device" ? destination.label : destination.origin;
+    badge.textContent =
+      destination.origin === "device" || destination.origin === "drive"
+        ? destination.label
+        : destination.origin;
   }
   $<HTMLButtonElement>("exportDestination").disabled = destination === undefined;
   $<HTMLButtonElement>("undoApply").disabled = destination?.previous === undefined;
@@ -651,6 +675,9 @@ async function connect(): Promise<void> {
 
   device.connected = connected;
   $<HTMLButtonElement>("fromDevice").disabled = false;
+  // Browsing needs only the connection — unlike reading the active project, which is what the
+  // expansion goes into and therefore waits for a source.
+  $<HTMLButtonElement>("browseDestination").disabled = false;
   status(`${connected.name} connected. Load a Digitone 1 project, then plan.`);
 }
 
@@ -684,6 +711,70 @@ async function connectSource(): Promise<void> {
  * The DN1 advertises the whole storage band (`0x53`–`0x5c`), so this is the same conversation the
  * manager already has with a Digitone II.
  */
+async function browseDestinationDrive(): Promise<void> {
+  const connected = device.connected;
+  if (!connected) throw new DeviceSourceError("connect a Digitone II first");
+
+  status(`Listing projects on ${connected.name}…`);
+  const projects = await listDeviceProjects(connected);
+  device.projects = projects;
+
+  const select = $<HTMLSelectElement>("destinationProjects");
+  select.innerHTML = projects
+    .map((p) => `<option value="${p.index}">${escapeHtml(`${p.index}. ${p.name}`)}</option>`)
+    .join("");
+  select.hidden = projects.length === 0;
+  $("openDestination").hidden = projects.length === 0;
+  $<HTMLButtonElement>("openDestination").disabled = projects.length === 0;
+
+  status(
+    projects.length === 0
+      ? `${connected.name} reports no stored projects.`
+      : `${projects.length} project(s) on ${connected.name}. Pick one — it becomes the destination, ` +
+        `and you export it rather than writing it back.`,
+  );
+}
+
+async function openDestinationSlot(): Promise<void> {
+  const connected = device.connected;
+  const index = Number($<HTMLSelectElement>("destinationProjects").value);
+  const project = device.projects?.find((p) => p.index === index);
+  if (!connected || !project) {
+    throw new DeviceSourceError("browse the +Drive again — that listing is stale");
+  }
+
+  status(`Reading ${project.name} from slot ${project.index}…`);
+  const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
+    if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
+  });
+
+  // Checked after the read, because the listing does not say what family a stored project is —
+  // only the payload does. The mirror of the check on the source side, and for the same reason:
+  // "should be impossible" is not the same as "cannot happen".
+  if (deviceFor(opened.image).kind !== "dn2") {
+    throw new DeviceSourceError(
+      `Slot ${project.index} holds a Digitone 1 project. This page expands *to* a Digitone II — ` +
+        `open that one as the source instead.`,
+    );
+  }
+
+  // **No handle, deliberately.** `handle` carries the baseline a write diffs against, and its
+  // absence is what keeps *Write to instrument* unavailable. Encoding the read-onlyness as a
+  // missing baseline rather than as a flag means there is no state where the button is live and
+  // there is nothing to send.
+  setDestination({
+    image: opened.image,
+    origin: "drive",
+    label: `${connected.name} · ${project.index}. ${project.name}`,
+    merged: [],
+  });
+  status(
+    `${project.name} open as the destination. Merge into it and export — a write would go to the ` +
+      `instrument's active project, not back to slot ${project.index}.`,
+    "ok",
+  );
+}
+
 async function browseSourceDrive(): Promise<void> {
   const connected = sourceDevice.connected;
   if (!connected) throw new DeviceSourceError("connect a Digitone 1 first");

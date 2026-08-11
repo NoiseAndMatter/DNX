@@ -79,6 +79,14 @@
       <label class="btn filebtn">From file…<input type="file" id="templateFile" accept=".dn2prj"></label>
       <button class="btn" id="connect">Connect a Digitone II…</button>
       <button class="btn" id="fromDevice" disabled>Read its project</button>
+      <!--
+        The mirror of the Digitone 1's row, with one difference that has to be visible: a project
+        browsed off the +Drive can be merged into and exported, and never written back. A write goes
+        to the instrument's ACTIVE project, so edits made to slot 47 would land in slot 3.
+      -->
+      <button class="btn" id="browseDestination" disabled>Browse its +Drive</button>
+      <select id="destinationProjects" hidden title="Projects stored on the Digitone II, by slot"></select>
+      <button class="btn" id="openDestination" hidden disabled>Open slot</button>
     </div>
   </section>
 
