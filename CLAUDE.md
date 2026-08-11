@@ -145,6 +145,31 @@ For expansion, the invariant is not bytes but **every trig still plays the same 
 resolved by name through the pool or the kit on both sides. Where it plays is allowed to
 change; that is the point of the tool.
 
+## Look at the page yourself
+
+**Any change to a page — layout, CSS, a control moving, an animation — is checked in a real
+browser before the MR is raised.** The Firefox DevTools MCP is available for exactly this: start
+the dev server, open the page, and look at it. Do not describe a visual change you have not seen.
+
+The user checks too. That is not a substitute: *"always check yourself"*, and the reason is on the
+record. Four defects in the tool row shipped in a row — its font size, its leading edge, its
+height, and a status bar that jumped across the screen on arrival — and **every one of them passed
+`npm run verify`**, because none was a thing a type checker or a Node test can see. One of them
+was written down as a risk in my own reasoning and shipped anyway. A guard was added after each,
+which is right, and each guard was written only because a human had already had to notice.
+
+What to check, at minimum:
+
+- the page renders at all — a module that throws leaves a page that looks fine and does nothing,
+  which is what `web/boot.js` exists to shout about
+- the thing that changed, on **every page it touches**. The chrome bar is on four
+- the console, for anything thrown after load
+- for anything animated, that it actually animates. The tool-change slide did not, for two
+  releases, and was implemented the whole time
+
+`npm run web` serves at `http://localhost:8000`. If it is already running, the stale-build warning
+in `serve.ts` is a hint that it needs restarting, not a thing to read past.
+
 ## Repository layout
 
 ```
