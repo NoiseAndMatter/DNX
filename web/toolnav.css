@@ -103,13 +103,29 @@
  */
 html { overflow-x: hidden; }
 /*
- * **Stamped on `<html>`, applied to `<body>`.** `arrival.js` runs in the head, before `<body>`
- * exists, so `documentElement` is the only thing it can mark. The transform still belongs on the
- * body, so that the header travels with the page.
+ * **Stamped on `<html>`, applied to the body's children.** `arrival.js` runs in the head, before
+ * `<body>` exists, so `documentElement` is the only thing it can mark.
+ *
+ * ## Why the children and not the body itself
+ *
+ * **A transformed element becomes the containing block for every `position: fixed` descendant.**
+ * `dnx.css` fixes the status bar to the bottom of the viewport on the flowing pages
+ * (`body.page > .status`), so while the body carried the transform that bar anchored to the *body
+ * box* instead — appearing mid-screen on arrival and snapping to the bottom the moment the
+ * transform was removed. Reported on the expander and the library, which are exactly the two pages
+ * with a fixed status bar; the manager and the probe keep theirs in flow and never showed it.
+ *
+ * Transforming the children and excluding `.status` means nothing that contains a fixed element is
+ * transformed, so the bar keeps the viewport as its containing block throughout. It also happens to
+ * be the truer reading of the thing: **the status bar is a constant across all four tools, and a
+ * constant should not move when you change tool.**
+ *
+ * The header still travels with the page — it is one of the children being moved. The page reads as
+ * a card sliding sideways behind a status bar that stays where it is.
  */
-html.slide-from-right > body { transform: translateX(3.5rem); opacity: 0; }
-html.slide-from-left > body { transform: translateX(-3.5rem); opacity: 0; }
-body.sliding {
+html.slide-from-right > body > *:not(.status) { transform: translateX(3.5rem); opacity: 0; }
+html.slide-from-left > body > *:not(.status) { transform: translateX(-3.5rem); opacity: 0; }
+body.sliding > *:not(.status) {
   transform: translateX(0); opacity: 1;
   transition: transform .22s cubic-bezier(.22, .8, .3, 1), opacity .18s ease-out;
 }
