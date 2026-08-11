@@ -236,6 +236,36 @@ page whose whole job is moving things between collections.
 A DN1 project is **refused rather than shown**, because `auditPool` reads Digitone II patterns and
 DN1 bytes under DN2 offsets would produce names and counts that are all invented.
 
+### Library → pattern works, for kits — 2026-08-07
+
+Drag a kit from a library bank onto a pattern. **The destination pane switches with the picker**:
+presets go into the pool, kits go into a pattern, and showing the wrong one would offer a drop that
+has no meaning.
+
+A kit is sixteen presets, sixteen levels and the synth/MIDI mask — *how a pattern sounds*, and
+nothing about *what it plays*. The trigs, notes, conditions and parameter locks all live in the
+pattern record and are untouched. So loading one keeps the music and replaces the instruments,
+which is either exactly what somebody wants or a catastrophe, and the two look identical until it
+has happened.
+
+**Which is why the real output of `librarian/kitwrite.ts` is the per-track before/after**, not the
+sixteen presets it copies. Every drop asks, because there is no such thing as an empty kit slot to
+drop onto — a pattern always has one.
+
+The preview keeps three things apart that a cruder one would run together:
+
+- **tracks that will play something else** — the preset changed *and* the track has trigs that are
+  not preset-locked. The number that matters.
+- **tracks that changed where nothing will hear it** — no trigs, or every trig preset-locked. A
+  preset lock points at the *pool*, which a kit does not contain, so those trigs keep their sound.
+  On `012 TECNO_EXP` that is not a corner case: one track has 15 trigs of which 14 are locked.
+- **tracks that keep their preset and only change level** — calling those "will play something
+  else" would be false, and a preview that overstates gets ignored as fast as one that understates.
+
+Refusals: a stored **file** rather than its body (10,795 against 10,752), a pattern outside 0..127,
+and a **Digitone 1 project** — the DN1 has no kits at all, which is why its `/` listing has two
+directories where the DN2 has three.
+
 ### The obvious next steps, in the shape the page already has
 
 Dragging library → pool is the operation the layout exists for, and it needs T26 plus nothing else:
