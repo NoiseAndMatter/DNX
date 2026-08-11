@@ -32,10 +32,6 @@ body {
   display: flex; flex-direction: column;
 }
 
-header {
-  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
-  padding: .6rem .9rem; border-bottom: 1px solid var(--line); background: var(--panel);
-}
 h1 { font-size: .82rem; margin: 0 .6rem 0 0; text-transform: uppercase; letter-spacing: .12em;
   color: var(--teal); font-weight: 600; }
 /* Quiet, but readable without hunting: it is checked once per session and ignored the rest. */
@@ -102,11 +98,11 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
 </head>
 <body>
 
-<header>
-  <!-- The tool row is built by `toolnav.ts`, so all three pages cannot say different things. -->
+<div class="topbar">
+  <!-- The tool row is built by `toolnav.ts`, so no page can say something different. -->
   <span class="brand"><span class="d">DNX</span></span>
   <span id="toolnav"></span>
-  <span class="sep"></span>
+  <span class="spacer"></span>
   <!--
     The build time sits beside the title, not only in the tab. The tab is where nobody looks, and
     the entire point of the stamp is answering "am I running the fix?" at a glance.
@@ -193,7 +189,7 @@ th { color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: u
   <label class="lbl" for="corruptSum">corrupt</label>
   <input id="corruptSum" type="checkbox" disabled title="Flip a bit in the checksum, to find out whether it is enforced">
   <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read → write</button>
-</header>
+</div>
 
 <main>
   <div class="note">
