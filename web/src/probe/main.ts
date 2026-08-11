@@ -43,6 +43,11 @@ import {
   versionRequest,
 } from "../../../src/device/api.js";
 import {
+  answerIsNews,
+  describeAnswerChange,
+  describeListingChange,
+} from "./changes.js";
+import {
   hiddenRow,
   tickWhileWaiting,
   timeGoesRow,
@@ -1552,50 +1557,21 @@ async function listPath(): Promise<void> {
 }
 
 /**
- * Compare this listing against the last one of the same path, and say what moved.
+ * Compare this listing against the last one of the same path, and remember this one.
  *
- * ## The experiment this exists for
- *
- * **Which project is currently loaded on the device?** The name lives at image offset 8, in the
- * header — the one region no dump carries — so the dump protocol cannot answer it. But a
- * `/projects` listing carries four bytes per entry that we cannot explain and that are **not the
- * same for every project**: `PRESETS` reads `0012 0101` where `MORNING_JAM` and `AMBZ` read
- * `007e 0101`.
- *
- * If one of those tracks the loaded project, the answer is free — and the way to find out is not to
- * reason about it. **List, change the project on the device, list again, and read the diff.** The
- * device answers the question itself, which is the method that has worked every time on this
- * protocol and reasoning is the method that has not.
- *
- * Kept per path, so listing `/soundbanks` in between does not destroy the comparison.
+ * The comparison lives in `changes.ts` and takes both sides as arguments; the *remembering* is the
+ * page's, because it is per-session state rather than a rule. Kept per path, so listing
+ * `/soundbanks` in between does not destroy a `/projects` comparison.
  */
 function diffAgainstPrevious(path: string, entries: readonly Entry[]): string | undefined {
   const key = path || "/";
-  const now = new Map(entries.map((e) => [e.index, e]));
   const before = previousListings.get(key);
-  previousListings.set(key, now);
-  if (!before) return undefined;
-
-  const moved: string[] = [];
-  for (const [index, entry] of now) {
-    const was = before.get(index);
-    if (!was) {
-      moved.push(`${index} ${entry.name} appeared`);
-      continue;
-    }
-    if (was.name !== entry.name) moved.push(`${index} renamed ${was.name} → ${entry.name}`);
-    const from = was.trailer ? [...was.trailer].map(hex2).join(" ") : "—";
-    const to = entry.trailer ? [...entry.trailer].map(hex2).join(" ") : "—";
-    if (from !== to) moved.push(`${index} ${entry.name}: ${from} → ${to}`);
-  }
-  for (const index of before.keys()) if (!now.has(index)) moved.push(`${index} disappeared`);
-
-  if (moved.length === 0) return "nothing — every entry is byte-identical to the last listing";
-  return moved.join(" · ");
+  previousListings.set(key, [...entries]);
+  return describeListingChange(before, entries);
 }
 
 /** The last listing seen for each path, so two lists can be compared without saving a capture. */
-const previousListings = new Map<string, Map<number, Entry>>();
+const previousListings = new Map<string, Entry[]>();
 
 // --- asking the device about itself ---------------------------------------------------------------
 
@@ -1676,17 +1652,10 @@ async function askDevice(): Promise<void> {
     ...log,
     ["Reply", describeApiReply(frame)],
     ["Bytes", body],
-    [
-      "Since last ask",
-      previous === undefined
-        ? "first time — ask again after changing something on the device"
-        : previous === body
-          ? "IDENTICAL — whatever changed on the device is not in this answer"
-          : `CHANGED — was ${previous}`,
-    ],
+    ["Since last ask", describeAnswerChange(previous, body)],
   ]);
   status(
-    previous !== undefined && previous !== body
+    answerIsNews(previous, body)
       ? `0x${hex2(code)} CHANGED since the last ask.`
       : `0x${hex2(code)} answered ${frame.body.length} bytes.`,
     "ok",
