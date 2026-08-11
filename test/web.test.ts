@@ -208,12 +208,11 @@ for (const [name, , html] of PAGES) {
  * rule that actually holds is that the bar carries identity and navigation and nothing you can
  * press. A comment saying so lasts until the next hurried addition; this does not.
  */
-const COMMANDS_IN_BAR_ALLOWED = new Set([
-  // The probe's controls are being relocated into sections grouped by usage — ROADMAP 10d. It is
-  // the one page whose bar is still a control panel, and listing it here is the honest way to say
-  // "known, scheduled" rather than quietly widening the rule for everybody.
-  "probe",
-]);
+/*
+ * No allowlist any more. The probe was the last page with controls in its chrome bar — about thirty
+ * of them — and ROADMAP 10d moved them into cards grouped by usage. The exemption existed to say
+ * "known, scheduled" rather than to widen the rule, and it is gone because the work is done.
+ */
 
 for (const [name, , html] of PAGES) {
   test(`the ${name}'s chrome bar holds no commands`, () => {
@@ -222,10 +221,6 @@ for (const [name, , html] of PAGES) {
     const bar = source.slice(open, source.indexOf("</div>", open));
 
     const commands = [...bar.matchAll(/<(button|select|input|label)\b/g)].map((m) => m[1]!);
-    if (COMMANDS_IN_BAR_ALLOWED.has(name)) {
-      assert.ok(commands.length > 0, `${name} is on the allowlist but has already been cleaned up`);
-      return;
-    }
     assert.deepEqual(
       commands,
       [],

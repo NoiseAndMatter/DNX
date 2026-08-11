@@ -2005,7 +2005,7 @@ states a `min-height`, but that only sets a floor — the rule that actually hol
 chrome bar may contain no `button`, `select`, `input` or `label`. Checked by putting a button back
 and watching it fail.
 
-### 10d. The probe's bar is still a control panel — NOT STARTED
+### 10d. The probe's bar is still a control panel — DONE 2026-08-12
 
 The probe carries roughly twelve controls in its chrome bar — port selects, Rescan, Probe, Listen,
 Save capture, a request builder — and it is the one page still on the allowlist in
@@ -2016,6 +2016,26 @@ than to shrink them. The natural grouping is visible in the bar already: *ports*
 *session* (probe, listen, save), and *requests* (the object/slot builder and send). Those are three
 different activities that happen at three different times, which is why they read as clutter side
 by side.
+
+**Done.** Three cards, grouped by *when* a control is used rather than by what it sends:
+
+| card | holds |
+|---|---|
+| Ports and session | out, in, rescan · probe, listen, save capture |
+| Requests | the dump request builder and *Read project* · the two unidentified-code pickers |
+| **Writing** | pattern write-back, the +Drive list, read and write |
+
+The third is its own card because everything in it changes the instrument. In the bar those four
+controls sat between a port selector and a listing path; now they are together, under a heading that
+says what they do, in a card the stylesheet marks.
+
+The band sits **outside `main`** so it does not scroll away — a probe is used by pressing something
+and reading a long result, and controls that scrolled out of reach would mean scrolling back to
+press the next one.
+
+`test/web.test.ts` no longer has an allowlist: the probe was the only entry, and the rule that the
+chrome bar may contain no `button`, `select`, `input` or `label` now holds for all four pages
+without exception.
 
 Worth doing with 10b rather than before it: the probe is also the page that re-declares buttons,
 selects and labels `dnx.css` already describes, and moving its controls is the moment to decide
