@@ -5,6 +5,48 @@ converter.
 
 ---
 
+## Every converted parameter lock had its two value bytes swapped — FIXED 2026-08-07
+
+Reported from hardware: *"the expanded sounds showed a pan in the AMP page all the way to the
+left."*
+
+A lock slot is a **coarse** byte then a **fine** one (`lockvalue.ts`). `writeLockTable` read the
+DN1 pair as a little-endian integer and wrote it back big-endian:
+
+```ts
+const value = dn1View.getUint16(from + 2 + step * 2, true);   // [coarse, fine] -> fine<<8|coarse
+view.setUint16(to + 2 + step * 2, value, false);              // -> [fine, coarse]
+```
+
+So the value landed in the fine byte and **coarse became zero**. For an ordinary 0-127 parameter
+that reads as 0 — wrong, but quiet. For a **bipolar** one it is the bottom of the range, and AMP
+PAN is bipolar: every pan-locked trig of every converted project played hard left. 15,569 wrong
+bytes across the nine matched pairs; after the fix, **6**, all of them the documented cases where
+Elektron's own importer rescales a value (`17→25`, `43→51`, `71→89` on parameter 14, `1→0` on 73).
+
+### Why the test suite was blind to it
+
+`test/convert.test.ts` compares our conversion against Elektron's byte for byte, which is exactly
+the instrument that should have caught this. It exempted a region as *residue*:
+
+```ts
+return within >= 0x4a34 && within < 0x15ad4;   // trigger slots AND the whole lock table
+```
+
+The exemption was written for **unused** lock records, whose trailing bytes really are residue.
+It was implemented as the whole table. Every used record — all 392 of them — sat inside the
+allowance, and the swap hid there for months while the test reported byte-identical output.
+
+Now the lock table is exempt one record at a time, and only when *Elektron's* copy of that record
+is unused. A second test compares the slots against the **DN1 source** in the format's own
+vocabulary (`track:step:coarse.fine`), so the assertion says what it means. Both fail if the
+endianness flips back — checked by flipping it back.
+
+> **An exemption written for a subset must be implemented as that subset.** "Unused records hold
+> residue" is true; "the lock table is residue" is not, and the second is what the code said.
+
+---
+
 ## Silence proved nothing, and we kept treating it as evidence — FIXED 2026-07-30
 
 **`output.send()` does not throw when another application holds the MIDI output.** It returns
