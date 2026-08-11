@@ -316,6 +316,47 @@ test("the slide's start state is stamped where it can be stamped early", () => {
   assert.doesNotMatch(css, /^body\.slide-from-/m, "the body cannot be marked before it exists");
 });
 
+/**
+ * How much a page's own `<style>` re-declares from the shared stylesheet.
+ *
+ * `docs/UI-CONSISTENCY.md` measured this once and found the probe re-declaring **18** selectors
+ * that `dnx.css` already defines, **ten of which disagree** — 13px against 14px, `#232a2c` against
+ * `#232b2d`, `.3rem` against `.34rem`. None of those is a decision anybody made; they are what
+ * happens when one component is described twice, months apart.
+ *
+ * Bounded rather than forbidden, because the fix is a migration and this is not it. The number may
+ * fall and must not rise: a study in a document is re-read never, and a budget in a test is checked
+ * on every run. Same pattern as the parity allowance in `convert.test.ts`.
+ */
+test("no page's own stylesheet grows its overlap with the shared one", () => {
+  const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const selectors = (css: string): Set<string> => {
+    const found = new Set<string>();
+    for (const rule of strip(css).matchAll(/([^{}]+)\{[^{}]*\}/g)) {
+      const head = rule[1]!.trim();
+      if (!head || head.startsWith("@")) continue;
+      for (const one of head.split(",")) if (one.trim()) found.add(one.trim());
+    }
+    return found;
+  };
+
+  const shared = selectors(readFileSync(resolve(HERE, "../web/dnx.css"), "utf8"));
+  // The probe is the only page with a stylesheet of its own, and the only one not linking dnx.css.
+  const budgets: Record<string, number> = { probe: 18 };
+
+  for (const [name, , html] of PAGES) {
+    const own = /<style>([\s\S]*?)<\/style>/.exec(readFileSync(html, "utf8"))?.[1];
+    const overlap = own ? [...selectors(own)].filter((s) => shared.has(s)) : [];
+    const budget = budgets[name] ?? 0;
+
+    assert.ok(
+      overlap.length <= budget,
+      `the ${name} re-declares ${overlap.length} selector(s) dnx.css already defines, budget is ` +
+        `${budget}: ${overlap.join(", ")}`,
+    );
+  }
+});
+
 test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
   const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");

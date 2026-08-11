@@ -2041,7 +2041,7 @@ Worth doing with 10b rather than before it: the probe is also the page that re-d
 selects and labels `dnx.css` already describes, and moving its controls is the moment to decide
 whether it links the shared stylesheet.
 
-### 10b. A consistency study across the four tools — NOT STARTED
+### 10b. A consistency study across the four tools — MEASURED 2026-08-12, see `UI-CONSISTENCY.md`
 
 **Raised by the user in the same breath, and deliberately kept separate**, because it is a design
 question rather than a defect:
@@ -2062,6 +2062,24 @@ What is already known to differ, from fixing 10a and 8c:
 diagnostic page, before there was a shared stylesheet to link. It now re-declares buttons, selects,
 labels and inputs that `dnx.css` already describes — which is why the tool row needed its size
 stating twice before it stopped moving.
+
+**Done, and the measurement changed the answer.** `docs/UI-CONSISTENCY.md` has it in full; the
+three findings worth carrying:
+
+1. **The palette is already identical.** All 11 shared `:root` variables match exactly and the probe
+   defines no colour of its own. The tools do not look different because of colour, which is what
+   anybody would have reached for first.
+2. **They differ by size, in amounts nobody chose.** The probe re-declares 18 selectors `dnx.css`
+   already defines and 10 of them disagree — 13px against 14px, `#232a2c` against `#232b2d`,
+   `.3rem` against `.34rem`. Three of this week's chrome-bar defects were this same drift in a
+   place people happened to look.
+3. **There should not be one content width.** A full-height workspace and a flowing document are
+   different shapes for good reasons. The unification is two *named modes* — `body.app` and
+   `body.page`, both of which already exist — and making the probe one of them rather than a third
+   unnamed variant.
+
+`test/web.test.ts` now budgets the overlap at 18 and fails if it grows, because a study in a
+document is re-read never and a budget in a test is checked on every run.
 
 The study should decide **one** content width rule and whether the probe joins `dnx.css`, and it is
 worth doing as measurement first: list every duplicated declaration between `probe.html`'s `<style>`
