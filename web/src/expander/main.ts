@@ -48,7 +48,15 @@ import {
 } from "../grid.js";
 import { nextSelection } from "../selection.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../../src/librarian/device.js";
-import { type LandingMode, describeLanding, landingSlotsFor } from "../../../src/expand/landing.js";
+import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
+import {
+  type Landing,
+  allSlots,
+  describeSlots,
+  landingFits,
+  landingSlots,
+  pendingSources,
+} from "./drop.js";
 
 /** Both families hold 128 patterns; the constants are named so the grids read as intended. */
 const DN1_PATTERN_COUNT = 128;
@@ -661,10 +669,11 @@ const drag = new GridDrag({
     // The real destinations, not a contiguous run from the cursor. With relative landing the two
     // are different sets, and counting the run would report the untouched slots *between* the
     // patterns as about to be overwritten — a warning about work that is not going to happen.
-    const slots = landingSlotsFor(from.indices, index, landingMode());
+    const aimed: Landing = { selection: from.indices, landing: index, mode: landingMode() };
     // Refused rather than drawn as a partial drop: the merge refuses the whole landing, so a hint
     // offering it would be promising something Apply will not do.
-    if (slots.some((slot) => slot >= DN2_PATTERN_COUNT)) return undefined;
+    if (!landingFits(aimed)) return undefined;
+    const slots = allSlots(aimed);
 
     const occupied = slots.filter(occupiedAt).length;
     return {
@@ -684,7 +693,7 @@ const drag = new GridDrag({
     // text far down the page. The gesture worked and looked like it had done nothing, which is
     // indistinguishable from broken — and was reported as exactly that.
     landingChanged();
-    const slots = landingSlotsFor(selection, index, landingMode());
+    const slots = allSlots({ selection, landing: index, mode: landingMode() });
     status(
       `${selection.length} pattern(s) will land in ${describeSlots(slots)}, ` +
         `${describeLanding(landingMode())}. Press Apply to write them.`,
@@ -711,17 +720,6 @@ function occupiedAt(slot: number): boolean {
  * claims eight slots are involved that are not. Consecutive runs still read as a range because
  * that is genuinely shorter; anything else is listed.
  */
-function describeSlots(slots: readonly number[]): string {
-  if (slots.length === 0) return "nothing";
-  if (slots.length === 1) return patternName(slots[0]!);
-  const sorted = [...slots].sort((a, b) => a - b);
-  const consecutive = sorted.every((slot, i) => i === 0 || slot === sorted[i - 1]! + 1);
-  if (consecutive) return `${patternName(sorted[0]!)}…${patternName(sorted[sorted.length - 1]!)}`;
-  // Capped, because a selection can be large and a status bar cannot.
-  const shown = sorted.slice(0, 6).map(patternName).join(", ");
-  return sorted.length > 6 ? `${shown} and ${sorted.length - 6} more` : shown;
-}
-
 /**
  * The source grid: a Digitone 1's 128 patterns, in banks.
  *
@@ -835,7 +833,7 @@ function renderDestinationGrid(): void {
       // in this grid, and marking it says "this is where the drop went" without implying it can be
       // dragged from.
       selected: [],
-      ...(merging() ? { opened: landing, landing: landingSlots() } : {}),
+      ...(merging() ? { opened: landing, landing: landingSlots(currentLanding()) } : {}),
       onClick: (index) => {
         landing = index;
         landingChanged();
@@ -861,7 +859,7 @@ function renderDestinationGrid(): void {
 function incomingSlotView(index: number, image: Uint8Array): Omit<SlotView, "index"> {
   const here = patternSlotView(DN2_DEVICE, image, index);
   const incoming = source.image;
-  const from = pendingSources().get(index);
+  const from = pending().get(index);
   if (from === undefined || !incoming) return here;
 
   const arriving = patternSlotView(DN1_DEVICE, incoming, from);
@@ -881,31 +879,19 @@ function landingMode(): LandingMode {
 }
 
 /**
- * Which source pattern is destined for which destination slot.
+ * The page's current landing, as `drop.ts` wants it.
  *
- * Keyed by destination so a renderer can ask about one cell. **The same computation the merge
- * itself runs** — `landingSlotsFor` is shared with `merge.ts` rather than reproduced here, because a
- * preview worked out separately from the write is a preview that can be wrong about it, and this
- * page draws that preview into the cell as if it were fact.
+ * The four values it needs are spread across this module — two `let`s, a checkbox and a constant —
+ * so gathering them in one place is what lets the rules be functions of their arguments instead of
+ * of whatever the page happens to be showing.
  */
-function pendingSources(): Map<number, number> {
-  const pending = new Map<number, number>();
-  if (!merging() || selection.length === 0) return pending;
-  const slots = landingSlotsFor(selection, landing, landingMode());
-  selection.forEach((from, i) => {
-    const to = slots[i]!;
-    // Out-of-range slots are dropped from the *preview* only. The merge refuses the whole
-    // landing rather than trimming it, and `renderReport` says so — marking nothing here is what
-    // makes the missing cells visible.
-    if (to < DN2_PATTERN_COUNT) pending.set(to, from);
-  });
-  return pending;
+function currentLanding(): Landing {
+  return { selection, landing, mode: landingMode() };
 }
 
-/** Every destination slot the pending merge would write to, in the order they were picked. */
-function landingSlots(): number[] {
-  if (selection.length === 0) return [];
-  return landingSlotsFor(selection, landing, landingMode()).filter((slot) => slot < DN2_PATTERN_COUNT);
+/** Which source pattern is destined for which destination slot, or empty when not merging. */
+function pending(): Map<number, number> {
+  return merging() ? pendingSources(currentLanding()) : new Map();
 }
 
 /** Anchor for shift-ranges in the source grid. */
