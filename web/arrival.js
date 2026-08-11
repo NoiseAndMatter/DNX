@@ -18,15 +18,38 @@
  * before paint and the other after the body exists. The division is at least honest: **this file
  * says where the page arrives from, `toolnav.ts` says that it settles.**
  *
- * ## Why the class goes on `<html>`
+ * ## Motion: the system decides, unless you have said otherwise
  *
- * `document.body` does not exist yet. `documentElement` always does, so the state is stamped there
- * and `toolnav.css` reaches the body through it.
+ * `prefers-reduced-motion` is honoured by default, and that is the right default — an operating
+ * system asking applications not to animate is answering for someone who may have a reason. But it
+ * is a *default*, not a verdict, and it was silently costing this app its navigation animation for
+ * a user who wanted it. Windows ships **Animation effects** off often enough that "no slide, ever,
+ * and nothing says why" is a poor way to express a preference nobody set deliberately.
+ *
+ * So: `localStorage["dnx-motion"]` outranks the system when it is set.
+ *
+ * | value | meaning |
+ * |---|---|
+ * | `always` | animate, whatever the system says |
+ * | `never` | do not animate, whatever the system says |
+ * | `system` or unset | follow `prefers-reduced-motion` — the default |
+ *
+ * Settable from the URL — `?motion=always` — because there is no settings surface yet and a
+ * preference you can only change from a console is not a preference anybody has. The parameter is
+ * stored and then **removed from the address bar**, so it configures rather than decorating every
+ * link thereafter.
+ *
+ * ## Why the preference logic lives in this file
+ *
+ * It is a second responsibility and it would rather be its own module. It cannot be: a classic
+ * script cannot `import`, and this must stay classic to run before paint. Duplicating it into a
+ * second `<script>` tag would be two files that have to agree — the exact failure this row has
+ * already had three times. One file, and the constraint written down.
  *
  * ## It cannot break the page
  *
- * If `sessionStorage` throws, if nothing was stored, or if the value is not one of the two
- * directions, nothing is stamped and the page is exactly as it was. The offset is also released
+ * If storage throws, if nothing was stored, or if the value is not one of the two directions,
+ * nothing is stamped and the page is exactly as it was. The offset is also released
  * unconditionally by a timer in `toolnav.ts`, so a module that never runs cannot leave the page
  * permanently pushed off-screen. An animation must not be able to break the thing it decorates.
  */
@@ -34,25 +57,66 @@
 (function () {
   "use strict";
 
-  var KEY = "dnx-nav-direction";
-  var direction = null;
+  var DIRECTION_KEY = "dnx-nav-direction";
+  var MOTION_KEY = "dnx-motion";
 
+  /** `?motion=always` sets the preference, then leaves the address bar as it found it. */
+  function adoptFromUrl() {
+    var wanted;
+    try {
+      wanted = new URLSearchParams(location.search).get("motion");
+    } catch (error) {
+      return;
+    }
+    if (wanted !== "always" && wanted !== "never" && wanted !== "system") return;
+
+    try {
+      localStorage.setItem(MOTION_KEY, wanted);
+    } catch (error) {
+      // Storage refused. The parameter still applies to this page load, below.
+    }
+    try {
+      var url = new URL(location.href);
+      url.searchParams.delete("motion");
+      history.replaceState(null, "", url.toString());
+    } catch (error) {
+      // Leaving it in the address bar is untidy, not broken.
+    }
+    return wanted;
+  }
+
+  /** True when this page load should animate. */
+  function shouldAnimate(fromUrl) {
+    var setting = fromUrl;
+    if (!setting) {
+      try {
+        setting = localStorage.getItem(MOTION_KEY);
+      } catch (error) {
+        setting = null;
+      }
+    }
+    if (setting === "always") return true;
+    if (setting === "never") return false;
+
+    try {
+      return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  var fromUrl = adoptFromUrl();
+  if (!shouldAnimate(fromUrl)) return;
+
+  var direction = null;
   try {
-    direction = sessionStorage.getItem(KEY);
+    direction = sessionStorage.getItem(DIRECTION_KEY);
   } catch (error) {
     // Private mode, or storage disabled. The page still navigates; it simply arrives without the
     // slide, which is a missing flourish rather than a missing feature.
     return;
   }
   if (direction !== "left" && direction !== "right") return;
-
-  // Asked here rather than in the module, because by the time the module runs the offset would
-  // already have been painted — and honouring the preference has to mean never showing it at all.
-  try {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  } catch (error) {
-    return;
-  }
 
   document.documentElement.classList.add(
     direction === "right" ? "slide-from-right" : "slide-from-left",

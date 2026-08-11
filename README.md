@@ -141,6 +141,27 @@ npm test
 npm run verify
 ```
 
+## The tool-change animation
+
+Moving between the four tools slides the arriving page in from the side you came from. It follows
+the operating system's **reduced motion** setting by default, so on a machine asking applications
+not to animate there is no slide — which is correct, and was also confusing, because nothing said
+so.
+
+The system's answer is a default rather than a verdict. To override it, load any page once with:
+
+| | |
+|---|---|
+| `?motion=always` | animate, whatever the system says |
+| `?motion=never` | never animate |
+| `?motion=system` | back to following the system — the default |
+
+for example `http://localhost:8000/?motion=always`. The choice is stored in `localStorage` under
+`dnx-motion` and the parameter is removed from the address bar, so it configures once rather than
+having to be carried on every link.
+
+There is no settings surface yet, which is the only reason this is a URL parameter.
+
 ## Tests and the corpus
 
 Many tests validate against real Digitone projects. **Those files are not in this
