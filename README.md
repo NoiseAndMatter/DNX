@@ -134,6 +134,11 @@ npm run diff -- --chain --stride captures/
 npm run web
 
 npm test
+
+# Tests plus both typecheck passes -- what to run before pushing.
+# `npm test` alone does not typecheck: tsx strips types rather than checking them, so a
+# browser-only type reaching a Node test passes the suite and fails `tsc`. That has happened.
+npm run verify
 ```
 
 ## Tests and the corpus
