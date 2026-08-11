@@ -234,6 +234,41 @@ for (const [name, , html] of PAGES) {
   });
 }
 
+/**
+ * The arrival slide's first half must run before the browser paints.
+ *
+ * It did not, which is why the slide never appeared: `slideIn` lived in the page's module, and
+ * **module scripts are always deferred**, so the offset was applied to a page the browser had
+ * already drawn at rest. `arrival.js` is a classic script in the head for exactly this reason, and
+ * the ordering is the whole fix — so it is the thing worth asserting.
+ */
+for (const [name, , html] of PAGES) {
+  test(`the ${name} applies the arrival offset before its module runs`, () => {
+    const source = readFileSync(html, "utf8");
+    const arrival = source.indexOf("arrival.js");
+    const module = source.indexOf('type="module"');
+
+    assert.ok(arrival >= 0, `${name} must load arrival.js, or it cannot slide`);
+    assert.ok(module >= 0, `${name} should have a module entry point`);
+    assert.ok(arrival < module, `${name} loads arrival.js after its module — too late to be seen`);
+    // A classic script. `type="module"` on this one would defer it and reintroduce the bug in the
+    // one file whose entire purpose is to run early.
+    assert.doesNotMatch(
+      source.slice(arrival - 60, arrival + 20),
+      /type="module"/,
+      `${name} loads arrival.js as a module, which defers it`,
+    );
+  });
+}
+
+test("the slide's start state is stamped where it can be stamped early", () => {
+  // `arrival.js` runs before `<body>` exists, so `documentElement` is the only thing it can mark.
+  // A rule written against `body.slide-from-*` would silently never match.
+  const css = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");
+  assert.match(css, /html\.slide-from-right\s*>\s*body/);
+  assert.doesNotMatch(css, /^body\.slide-from-/m, "the body cannot be marked before it exists");
+});
+
 test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
   const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");

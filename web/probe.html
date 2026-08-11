@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="./toolnav.css">
 <!-- Classic, not a module: it has to still be standing when the module is not. -->
 <script src="./boot.js"></script>
+<!-- The arriving page starts offset; this must run before the first paint. See arrival.js. -->
+<script src="./arrival.js"></script>
 <style>
 :root {
   /* Same reason as `manager.html`: the dropdown list, scrollbars and caret are painted by the
