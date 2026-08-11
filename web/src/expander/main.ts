@@ -6,24 +6,24 @@
  * the page needs and connects the three.
  */
 
-import { convertProject } from "../../src/expand/convert.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../../src/expand/plan.js";
-import { mintProjectId, projectName, writeProjectId, writeProjectName } from "../../src/project/dn2image.js";
-import { readProjectName } from "../../src/project/dn1.js";
-import type { ExpansionPlan } from "../../src/expand/types.js";
+import { convertProject } from "../../../src/expand/convert.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "../../../src/expand/plan.js";
+import { mintProjectId, projectName, writeProjectId, writeProjectName } from "../../../src/project/dn2image.js";
+import { readProjectName } from "../../../src/project/dn1.js";
+import type { ExpansionPlan } from "../../../src/expand/types.js";
 import {
   buildProjectBlob,
   download,
   fetchServedTemplate,
   openProject,
   type LoadedProject,
-} from "./project.js";
-import { describeDonor, loadDonor } from "./donor.js";
-import { renderPlan } from "./render.js";
-import { $, escapeHtml } from "./dom.js";
-import { countOccupiedIn, patternSlotView, type SlotView } from "./slotview.js";
-import { statusBar } from "./statusbar.js";
-import { renderToolNav } from "./toolnav.js";
+} from "../project.js";
+import { describeDonor, loadDonor } from "../donor.js";
+import { renderPlan } from "../render.js";
+import { $, escapeHtml } from "../dom.js";
+import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
+import { statusBar } from "../statusbar.js";
+import { renderToolNav } from "../toolnav.js";
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -33,31 +33,31 @@ import {
   openDeviceProject,
   readProject,
   writeBack,
-} from "./devicesource.js";
-import { type DriveProject } from "../../src/device/drive.js";
-import { describeDeviceExpand, planDeviceExpand } from "../../src/expand/deviceexpand.js";
+} from "../devicesource.js";
+import { type DriveProject } from "../../../src/device/drive.js";
+import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/deviceexpand.js";
 import {
   MergeRefused,
   describeMerge,
   planPatternMerge,
   type MergeNote,
   type MergePlan,
-} from "../../src/expand/merge.js";
-import { patternName, stampedProjectName as stampedName } from "../../src/sheet/naming.js";
+} from "../../../src/expand/merge.js";
+import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
 import {
   GridDrag,
   bankSlots,
   renderBanks,
   renderGrid as renderSlots,
-} from "./grid.js";
-import { nextSelection } from "./selection.js";
-import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../src/librarian/device.js";
-import { type LandingMode, describeLanding, landingSlotsFor } from "../../src/expand/landing.js";
+} from "../grid.js";
+import { nextSelection } from "../selection.js";
+import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../../src/librarian/device.js";
+import { type LandingMode, describeLanding, landingSlotsFor } from "../../../src/expand/landing.js";
 
 /** Both families hold 128 patterns; the constants are named so the grids read as intended. */
 const DN1_PATTERN_COUNT = 128;
 const DN2_PATTERN_COUNT = 128;
-import { ProductId } from "../../src/sysex/devices.js";
+import { ProductId } from "../../../src/sysex/devices.js";
 
 /**
  * The page's status bar.
