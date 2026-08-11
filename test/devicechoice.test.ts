@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeChoice } from "../web/src/devicesource.js";
+import { describeChoice } from "../web/src/devicechoice.js";
 
 test("a choice always names its port, because that is what disambiguates", () => {
   // Two Digitone IIs on the same firmware: everything a person could go on is identical except

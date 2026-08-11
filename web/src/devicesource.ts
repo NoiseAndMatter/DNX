@@ -50,12 +50,17 @@ import {
 import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
 import { DeviceLink, candidatePairs } from "./devicelink.js";
+import { type DeviceChoice } from "./devicechoice.js";
 import { DeviceSession } from "../../src/device/session.js";
 import { dumpProductFor } from "../../src/device/dumprequest.js";
 import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
 import { layoutFor } from "../../src/project/dn2image.js";
 
 export class DeviceSourceError extends Error {}
+
+// Re-exported so a page importing "a device" gets its description from the same place. The
+// definition lives in `devicechoice.ts`, which needs no MIDI and therefore no browser.
+export { type DeviceChoice, describeChoice } from "./devicechoice.js";
 
 export interface ConnectedDevice {
   productId: number;
@@ -96,18 +101,6 @@ export interface ConnectOptions {
   port?: string;
 }
 
-/** One instrument found on the ports, described well enough to choose between. */
-export interface DeviceChoice {
-  /** Dump-protocol product id, so a `want` can be built from it. */
-  productId: number;
-  /** What the instrument called itself. */
-  name: string;
-  /** Its MIDI input port — the only thing that separates two of the same model. */
-  port: string;
-  /** Absent when the device did not answer the version request; see `firmwareVersion` above. */
-  firmwareVersion?: string;
-}
-
 /**
  * Every Digitone on the MIDI ports, identified and then **let go of**.
  *
@@ -142,14 +135,6 @@ export async function listDevices(): Promise<DeviceChoice[]> {
     device.close();
   }
   return found;
-}
-
-/** One line naming an instrument, for a picker. The port disambiguates, so it is always shown. */
-export function describeChoice(choice: DeviceChoice): string {
-  return (
-    `${choice.name}${choice.firmwareVersion ? ` · ${choice.firmwareVersion}` : ""}` +
-    `${choice.port ? ` · ${choice.port}` : ""}`
-  );
 }
 
 async function ports(): Promise<{ inputs: MIDIInput[]; outputs: MIDIOutput[] }> {
