@@ -714,20 +714,46 @@ export function checkDn2Pattern(
  */
 export function soundLockedSlots(pattern: Uint8Array): Set<number> {
   const slots = new Set<number>();
+  forEachSoundLock(pattern, (_track, _step, slot) => slots.add(slot));
+  return slots;
+}
+
+/**
+ * How many trigs on each track carry a preset lock. Indexed by track, always 16 long.
+ *
+ * What this answers is *"how much of this track would a kit swap actually change?"* — a preset lock
+ * points at the project's pool, which a kit does not touch, so a locked trig keeps playing the same
+ * preset when the track's preset is replaced. A track whose trigs are all locked hears nothing of a
+ * kit change; a track with none hears all of it.
+ */
+export function soundLockCountsByTrack(pattern: Uint8Array): number[] {
+  const counts = new Array<number>(TRACK_COUNT).fill(0);
+  forEachSoundLock(pattern, (track) => counts[track]!++);
+  return counts;
+}
+
+/**
+ * The one walk over the sound-lock arrays, which both readers above are built on.
+ *
+ * **Only steps that actually hold a trig.** A step with no trig still has a byte in the sound-lock
+ * array, and it is not 0xFF — reading every step reported slot 0 and slot 161 locked by all 128
+ * patterns of every project in the corpus, which is unset memory rather than music.
+ * `STEP_FLAG.trig` is verified across 1,571 pattern records in both directions, and keeping the
+ * gate in one place is what stops the next reader from rediscovering that the hard way.
+ */
+function forEachSoundLock(
+  pattern: Uint8Array,
+  visit: (track: number, step: number, slot: number) => void,
+): void {
   for (let t = 0; t < TRACK_COUNT; t++) {
     const at = PATTERN.trackOffset + t * PATTERN.trackSize;
     const track = pattern.subarray(at, at + PATTERN.trackSize);
     for (let step = 0; step < STEP_COUNT; step++) {
-      // **Only steps that actually hold a trig.** A step with no trig still has a byte in the
-      // sound-lock array, and it is not 0xFF — reading every step reported slot 0 and slot 161
-      // locked by all 128 patterns of every project in the corpus, which is unset memory rather
-      // than music. `STEP_FLAG.trig` is verified across 1,571 pattern records in both directions.
       if ((stepFlags(track, step) & STEP_FLAG.trig) === 0) continue;
       const slot = track[TRACK.soundLockOffset + step]!;
-      if (slot !== NO_SOUND_LOCK) slots.add(slot);
+      if (slot !== NO_SOUND_LOCK) visit(t, step, slot);
     }
   }
-  return slots;
 }
 
 /** What a step carries when no preset is locked to it. */
@@ -745,48 +771,48 @@ export const NO_SOUND_LOCK = 0xff;
  * import from the module that *moves* it. They are geometry, and geometry belongs beside
  * `DN2_PATTERN`, which is what they are built from.
  */
-export interface TrackTable {
-  offset: number;
-  size: number;
-  count: number;
-  /** Byte within a record that names the track. */
-  trackAt: number;
-  /** Header bytes that mark a record unused, written from offset 0. */
-  unused: readonly number[];
-}
-
-export const TRIG_TABLE: TrackTable = {
-  offset: PATTERN.trigOffset,
-  size: PATTERN.trigSize,
-  count: PATTERN.trigCount,
-  trackAt: 0,
-  unused: [0xff],
-};
-
-export const LOCK_TABLE: TrackTable = {
-  offset: PATTERN.lockOffset,
-  size: PATTERN.lockSize,
-  count: PATTERN.lockCount,
-  // Byte 1. Byte 0 is the parameter id, which ranges well past 15 — see the corpus check in
-  // `docs/dn2-pattern-format.md` §7.
-  trackAt: 1,
-  // Both header bytes, because `readLockTable` tests the pair as one u16 against 0xFFFF.
-  // Clearing only byte 0 would leave 0xFF<track>, which reads back as a live lock on
-  // parameter 255.
-  unused: [0xff, 0xff],
-};
-
-/** Live records of one table, as `(recordOffset, track)` pairs. */
-export function liveRecords(pattern: Uint8Array, table: TrackTable): { at: number; track: number }[] {
-  const out: { at: number; track: number }[] = [];
-  for (let i = 0; i < table.count; i++) {
-    const at = table.offset + i * table.size;
-    if (isUnused(pattern, at, table)) continue;
-    out.push({ at, track: pattern[at + table.trackAt]! });
-  }
-  return out;
-}
-
-function isUnused(record: Uint8Array, at: number, table: TrackTable): boolean {
-  return table.unused.every((byte, i) => record[at + i] === byte);
+export interface TrackTable {
+  offset: number;
+  size: number;
+  count: number;
+  /** Byte within a record that names the track. */
+  trackAt: number;
+  /** Header bytes that mark a record unused, written from offset 0. */
+  unused: readonly number[];
+}
+
+export const TRIG_TABLE: TrackTable = {
+  offset: PATTERN.trigOffset,
+  size: PATTERN.trigSize,
+  count: PATTERN.trigCount,
+  trackAt: 0,
+  unused: [0xff],
+};
+
+export const LOCK_TABLE: TrackTable = {
+  offset: PATTERN.lockOffset,
+  size: PATTERN.lockSize,
+  count: PATTERN.lockCount,
+  // Byte 1. Byte 0 is the parameter id, which ranges well past 15 — see the corpus check in
+  // `docs/dn2-pattern-format.md` §7.
+  trackAt: 1,
+  // Both header bytes, because `readLockTable` tests the pair as one u16 against 0xFFFF.
+  // Clearing only byte 0 would leave 0xFF<track>, which reads back as a live lock on
+  // parameter 255.
+  unused: [0xff, 0xff],
+};
+
+/** Live records of one table, as `(recordOffset, track)` pairs. */
+export function liveRecords(pattern: Uint8Array, table: TrackTable): { at: number; track: number }[] {
+  const out: { at: number; track: number }[] = [];
+  for (let i = 0; i < table.count; i++) {
+    const at = table.offset + i * table.size;
+    if (isUnused(pattern, at, table)) continue;
+    out.push({ at, track: pattern[at + table.trackAt]! });
+  }
+  return out;
+}
+
+function isUnused(record: Uint8Array, at: number, table: TrackTable): boolean {
+  return table.unused.every((byte, i) => record[at + i] === byte);
 }
