@@ -413,6 +413,18 @@ label.file input { display: none; }
 }
 .bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 .25rem; }
 
+/*
+ * A command row directly under the chrome bar, on a full-height app page.
+ *
+ * `.bar` on its own is a card inside a flowing section, which is right for the expander. Under the
+ * chrome it needs to read as another band of the same bar rather than a card that has floated up to
+ * the top, so it loses its radius and its side borders and keeps only the rule beneath it.
+ */
+.bar.toolbar {
+  border-radius: 0; border-left: 0; border-right: 0; border-top: 0;
+  background: var(--bg); padding-left: .9rem; padding-right: .9rem;
+}
+
 /* A file input dressed as a button, since the native control cannot be styled. */
 .filebtn { position: relative; overflow: hidden; display: inline-flex; }
 .filebtn input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
