@@ -26,7 +26,17 @@
 .brand .d { color: var(--teal); }
 .brand .sub { color: var(--muted); font-weight: 500; }
 
-.toolnav { display: flex; align-items: baseline; gap: .9rem; }
+/*
+ * **The size is stated, not inherited.** `dnx.css` sets a 13px body and the probe sets 14px in its
+ * own `<style>` block, so a row that inherited was a different size on the probe than on the other
+ * two — reported as "in probe the text of the page names seems bigger". A navigation control that
+ * is a permanent screen position has to *be* the same position on every page, and a font size that
+ * varies moves it.
+ *
+ * Absolute rather than `rem` for the same reason: `rem` would still track a root size that any one
+ * page could change, and this row must not.
+ */
+.toolnav { display: flex; align-items: baseline; gap: .9rem; font-size: 13px; }
 .toolnav .tool {
   position: relative; color: var(--muted); text-decoration: none; font-weight: 500;
   padding: .1rem 0; transition: color .12s ease;

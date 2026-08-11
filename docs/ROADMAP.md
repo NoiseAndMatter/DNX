@@ -1997,12 +1997,15 @@ So the option is worth having, and it must arrive with the write button disabled
 why. Adding it as a peer of *Read its project* without that would offer a destination the user
 cannot send anywhere.
 
-### 8c. The probe's tool row is a different size from the other two
+### 8c. The probe's tool row is a different size from the other two — DONE 2026-08-07
 
 **Reported:** *"In probe the text of the page names seems bigger than in the other 2."* The probe
-does not link `dnx.css` — it is self-styled — so it inherits its own base font size while
-`toolnav.css` sets none of its own. One rule in `toolnav.css` fixes it; worth doing while the
-stylesheet is the shared one.
+does not link `dnx.css` — it is self-styled — so it inherited its own base font size while
+`toolnav.css` set none of its own: 14px on the probe against 13px elsewhere.
+
+`.toolnav` now states its size. Absolute rather than `rem`, because `rem` would still track a root
+size any one page could change, and the point of the row is that each tool is a permanent screen
+position — a font size that varies moves it.
 
 ### Confirmed working, and worth not re-litigating
 
