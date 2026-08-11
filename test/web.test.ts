@@ -23,7 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * import added to either would fail at runtime in the browser and nowhere else.
  */
 const ENTRIES: [string, string][] = [
-  ["expander", resolve(HERE, "../web/src/app.ts")],
+  ["expander", resolve(HERE, "../web/src/expander/main.ts")],
   ["manager", resolve(HERE, "../web/src/manager/main.ts")],
   ["library", resolve(HERE, "../web/src/library/main.ts")],
   ["probe", resolve(HERE, "../web/src/probe/main.ts")],
@@ -135,7 +135,7 @@ function reachableFiles(entry: string): string[] {
 }
 
 const PAGES: [string, string, string][] = [
-  ["expander", resolve(HERE, "../web/src/app.ts"), resolve(HERE, "../web/index.html")],
+  ["expander", resolve(HERE, "../web/src/expander/main.ts"), resolve(HERE, "../web/index.html")],
   ["manager", resolve(HERE, "../web/src/manager/main.ts"), resolve(HERE, "../web/manager.html")],
   ["library", resolve(HERE, "../web/src/library/main.ts"), resolve(HERE, "../web/library.html")],
   ["probe", resolve(HERE, "../web/src/probe/main.ts"), resolve(HERE, "../web/probe.html")],
