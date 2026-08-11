@@ -341,8 +341,10 @@ test("no page's own stylesheet grows its overlap with the shared one", () => {
   };
 
   const shared = selectors(readFileSync(resolve(HERE, "../web/dnx.css"), "utf8"));
-  // The probe is the only page with a stylesheet of its own, and the only one not linking dnx.css.
-  const budgets: Record<string, number> = { probe: 18 };
+  // **Zero, for every page.** The budget was 18 while the probe kept its own copy of `.btn`,
+  // `select`, `table`, `.status` and the rest; it links `dnx.css` now and keeps only the 28
+  // selectors that are genuinely its own. Nothing may re-declare a shared rule again.
+  const budgets: Record<string, number> = {};
 
   for (const [name, , html] of PAGES) {
     const own = /<style>([\s\S]*?)<\/style>/.exec(readFileSync(html, "utf8"))?.[1];
