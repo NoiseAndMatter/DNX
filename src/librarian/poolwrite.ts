@@ -133,10 +133,20 @@ function fitToPool(preset: Uint8Array, device: Device): FittedPreset {
     );
   }
 
+  // **A +Drive preset really is this size, and that is a gap rather than a caller's mistake.**
+  // Measured 2026-08-13: every entry in `/soundbanks/A` lists 364 bytes, while a DN2 sound object
+  // is 359 — confirmed twice over, from pool slots inside project files and from a SysEx dump of
+  // the same preset. So a stored preset carries five bytes more than the object it holds, and
+  // where they sit nobody has looked. `docs/device-storage.md` has the arithmetic.
+  //
+  // This used to end "pass the body, not the file", which reads as *you handed me the wrong thing*
+  // — and it was the message shown when the librarian's own drag did the handing. Refusing is
+  // right either way; a 364-byte write into a 359-byte slot would run into the neighbouring one.
   throw new PoolWriteError(
-    `this preset is ${preset.length} bytes, and neither family's pool slot is that size ` +
-      `(${DN1_SOUND_SIZE} on a Digitone 1, ${DN2_SOUND_SIZE} on a Digitone II). A stored file ` +
-      `carries 43 bytes of container around the body — pass the body, not the file.`,
+    `this preset is ${preset.length} bytes and a pool slot is not that size ` +
+      `(${DN1_SOUND_SIZE} on a Digitone 1, ${DN2_SOUND_SIZE} on a Digitone II), so nothing was ` +
+      `written. A preset stored on the +Drive is ${DN2_SOUND_SIZE + 5} bytes — five more than the ` +
+      `sound inside it — and which five is not yet known, so it cannot be unpacked into a slot yet.`,
   );
 }
 
@@ -184,10 +194,11 @@ export function planAddPreset(
     throw new PoolWriteError(
       `slot ${slot} already holds ${existing.name || "an unnamed preset"}` +
         (existing.lockCount > 0
-          ? `, locked by ${existing.lockCount} trig(s) in pattern(s) ${existing.patterns.join(", ")}. ` +
+          ? `, locked by ${existing.lockCount} trig${existing.lockCount === 1 ? "" : "s"} in ` +
+            `pattern${existing.patterns.length === 1 ? "" : "s"} ${existing.patterns.join(", ")}. ` +
             `Replacing it changes what those trigs play.`
           : `, which nothing locks.`) +
-        ` Pass confirmOverwrite to replace it, or choose a free slot.`,
+        ` Nothing was written; a free slot would leave it alone.`,
     );
   }
 
