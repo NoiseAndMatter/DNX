@@ -1109,3 +1109,50 @@ not our code.
 So: **before believing a storage-layer diagnosis, swap the power supply.** It costs a minute, and
 the symptoms it produces — intermittent silence, stalls at varying points, a device that stops
 answering — are indistinguishable from the ones this document spent days chasing for real.
+
+### A +Drive preset is 364 bytes, and a DN2 sound object is 359 — **[verified]** 2026-08-13
+
+`Tests_To_Run.html` T34 asked which of two numbers a DN2 `/soundbanks` entry would report: **359**,
+the DN2 sound object, or **302**, the DN1's — the latter having gone into the code from DN1
+measurements "as though it were general".
+
+**It is neither. Every entry reports 364.**
+
+Sampled across `/soundbanks/A` slots 1, 2, 3, 8, 41, 129, 201 and 256 — `HIDDEN TEARS`, `MONOLOW`,
+`SYNTHVÅG`, `LONELY NIGHTS`, `DREAMY KEYS`, `DAWN BREATH`, `RADIO PAD`, `SPOOKY`. One number, the
+same on every row, exactly as the test predicted the *shape* of the answer would be.
+
+By this document's own calibration — a kit listing **10,752** and reading **10,795**, a difference of
+the 43-byte container — **the listed number is the body**, not the file. So the body is 364.
+
+#### And 359 is still right, which is the interesting part
+
+The corpus settles it without hardware. `99_HardwareTest/DigitoneII_Sound_1x_2255.syx` is a SysEx
+dump of a single DN2 sound — and it is **`HIDDEN TEARS`**, the same preset as `/soundbanks/A/1`.
+
+`encode87` transmits `N` data bytes as `N + ceil(N/7)`, one high-bit byte per group of seven:
+
+| dump | file | object | transmitted | framing |
+|---|---|---|---|---|
+| `Digitone_Sound_1x_2355.syx` (DN1) | 361 | 302 | 346 | **15** |
+| `DigitoneII_Sound_1x_2255.syx` (DN2) | 426 | **359** | 411 | **15** |
+| same, if the object were 364 | *431* | 364 | 416 | 15 |
+
+Same framing overhead on both, and **359 lands on 426 exactly** while 364 would need 431.
+
+So **a DN2 sound object is 359 bytes**, confirmed twice independently — the pool slots inside project
+files, and a dump of this very preset — and **a +Drive preset body carries 5 bytes more than the
+object it holds**.
+
+#### What those five bytes are is unknown
+
+Nobody has looked inside a +Drive preset body. They may lead, trail, or sit in a header; nothing here
+distinguishes those.
+
+**This is why the library refuses the drop**, and refusing is correct: writing 364 bytes into a
+359-byte pool slot would run into its neighbour, which is exactly what `poolwrite.ts` guards. The
+drag from library to pool cannot work until the five bytes are located — see
+`99_HardwareTest/device-test-results-2026-08-13-0030.md` for the failing case, which is T32 step 1.
+
+A kit does not have this problem: 10,752 listed matches `DN2_KIT.kitSize` exactly. **Whatever the
+five bytes are, they are specific to presets.**
