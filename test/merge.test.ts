@@ -196,7 +196,9 @@ test("occupied destination slots are refused unless confirmed", { skip }, () => 
   // Slot 0 of a real project holds something; that is the point of using a real project.
   assert.throws(
     () => planPatternMerge({ source: source(), patterns: [0], destination: dest, landing: 0 }),
-    (e: unknown) => e instanceof MergeRefused && /already hold a pattern/.test(String(e)),
+    // The `kind` field, not the wording. Matching prose here is what let a reworded refusal
+    // silently stop the page asking — see `MergeRefused` and `expanderplanning.test.ts`.
+    (e: unknown) => e instanceof MergeRefused && e.kind === "overwrite",
   );
 });
 

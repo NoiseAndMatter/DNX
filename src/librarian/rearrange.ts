@@ -286,9 +286,10 @@ export function applyRearrange(
         `  - slot ${c.slot} "${c.name ?? "?"}" (${c.trigCount} trigs)` +
         (c.replacedBy === undefined ? " would be emptied" : ` would be replaced by slot ${c.replacedBy}`),
     );
+    const one = plan.destructive.length === 1;
     throw new RearrangeError(
-      `This would destroy work in ${plan.destructive.length} slot(s):\n${lines.join("\n")}\n` +
-        `Pass confirmOverwrite to proceed.`,
+      `This would destroy work in ${plan.destructive.length} slot${one ? "" : "s"}:\n` +
+        `${lines.join("\n")}\nNothing was changed.`,
     );
   }
 

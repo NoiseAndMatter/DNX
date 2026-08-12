@@ -103,7 +103,8 @@ test("destroying a track needs confirmation", { skip }, () => {
   assert.ok(plan.destructive.length > 0, "moving onto an occupied track destroys it");
   assert.throws(
     () => applyTrackMove(img, deviceFor(img), index, moveMany([from], to)),
-    /confirmOverwrite/,
+    // Not `/confirmOverwrite/`: that named a TypeScript argument in a sentence a user reads.
+    /would destroy 1 track holding \d+ trigs\. Nothing was changed\./,
   );
 });
 
