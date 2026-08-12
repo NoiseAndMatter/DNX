@@ -72,10 +72,55 @@ export interface ReadStoredFileOptions {
    * Refuse to keep reading past this many chunks.
    *
    * A device that never sets the end-of-file flag would otherwise loop forever, and the failure
-   * would look like a hang rather than a protocol misunderstanding. 8,192 chunks is 16 MB, past any
-   * project either machine holds.
+   * would look like a hang rather than a protocol misunderstanding.
+   *
+   * **This was 8,192, on the reasoning that 16 MB is "past any project either machine holds". That
+   * reasoning was never checked against a Digitone II.** The first DN2 project ever read off a
+   * +Drive — 2026-08-12, slot 4 — is **12,889,647 bytes, 6,294 chunks**. The old ceiling had 30%
+   * left, not the wide margin the comment claimed, and a larger project would have failed with
+   * *"the device never set the end-of-file flag"* — sending the next person after a protocol bug
+   * that does not exist.
+   *
+   * A DN1 project is 131,072 bytes, about 64 chunks. **The two machines differ by a factor of a
+   * hundred**, so anything sized by eye against the DN1 is wrong here by two orders of magnitude.
    */
   maxChunks?: number;
+  /**
+   * How many times to ask again for a chunk the device did not answer.
+   *
+   * **This did not fix anything, and the honest story is worth more than the feature.** On
+   * 2026-08-12 a DN2 read stalled after 199, 700, 899 and 1,263 chunks on four attempts — a
+   * *varying* stall point, which reads exactly like a lost reply. It was a failing power supply.
+   * Swapping it made every read complete, and the control run with `maxRetriesPerChunk: 0` read the
+   * same 12,889,647 bytes. The clincher was moving the suspect supply to the Digitone 1, which had
+   * been flawless all evening and immediately started dropping replies too. **The fault followed
+   * the supply, not the device and not this loop.**
+   *
+   * It stays because **a 6,294-round-trip operation with no recovery is fragile whatever tonight's
+   * cause turned out to be** — a cable, a hub, a busy USB controller — and because losing 12.9 MB
+   * to one dropped message is a bad way to find that out. It is insurance, not a fix, and anyone
+   * reading a stall as "so the retry is not working" should suspect the power first.
+   *
+   * Retrying is sound because **this is a numbered-chunk API, not a stream**: `readRequest` asks
+   * for a specific sequence, `check()` verifies the index that comes back, and nothing on the
+   * device has moved on. `docs/device-storage.md` established that numbering precisely because the
+   * device rejected a byte-range request with `Invalid sequence number`.
+   *
+   * Bounded, and small. Unbounded retrying on this API has already cost 4,963 round trips once —
+   * see `MAX_EMPTY_CHUNKS`.
+   */
+  maxRetriesPerChunk?: number;
+  /**
+   * A pause before asking again, rather than instantly.
+   *
+   * Under the failing supply the device dropped requests that crowded each other — a listing
+   * answered in 201 ms cold, timed out repeated immediately, and answered again after a gap. That
+   * turned out to be the supply rather than the protocol, and on a healthy instrument three
+   * back-to-back listings all return in ~200 ms. The pause stays because a retry is by definition
+   * happening while something is already wrong, and asking again instantly is the one cadence
+   * observed to fail. Tests pass `0`.
+   */
+  retryPauseMs?: number;
   onProgress?: (chunks: number, bytes: number) => void;
 }
 
@@ -87,6 +132,14 @@ export interface StoredFile {
   /** Whether the close was acknowledged. **False is a warning, not a failure of the read.** */
   closed: boolean;
   /**
+   * How many chunk requests had to be repeated before the device answered.
+   *
+   * Reported rather than swallowed. A read that needed forty retries succeeded, but it is not the
+   * same event as one that needed none, and a caller writing "read 1.8 MB" over the top of that
+   * would be hiding the most interesting thing about the run.
+   */
+  retries: number;
+  /**
    * The checksum the device reported for this file's content, when it arrived in one chunk.
    *
    * `undefined` for a multi-chunk read, because a per-chunk checksum is not a whole-file one and
@@ -97,7 +150,15 @@ export interface StoredFile {
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000;
-const DEFAULT_MAX_CHUNKS = 8_192;
+/**
+ * 64 MB at 2,048 bytes a chunk — five times the largest project ever read, rather than 1.3 times.
+ *
+ * The number is a backstop and nothing else. `MAX_EMPTY_CHUNKS` is what actually catches a
+ * conversation going nowhere, in three round trips; this only has to stop an unbounded loop, so it
+ * should sit far above anything real. Sizing it *close* to a real file is what made the old value
+ * dangerous — it turned "a bigger project than we have seen" into "a protocol error".
+ */
+const DEFAULT_MAX_CHUNKS = 32_768;
 
 /**
  * Consecutive empty chunks before this gives up.
@@ -107,6 +168,18 @@ const DEFAULT_MAX_CHUNKS = 8_192;
  * a mistaken request should cost an error, not five thousand round trips.
  */
 const MAX_EMPTY_CHUNKS = 3;
+
+/**
+ * Three tries for a chunk the device did not answer, then give up on the file.
+ *
+ * Two would leave a single unlucky repeat fatal; ten would spend a minute per lost chunk at a
+ * 5-second timeout and turn a broken read into a hang. Three is enough to ride out the isolated
+ * drops observed on hardware without hiding a device that has genuinely stopped talking.
+ */
+const DEFAULT_RETRIES_PER_CHUNK = 3;
+
+/** Long enough to break the cadence the device dislikes, short enough not to dominate a long read. */
+const DEFAULT_RETRY_PAUSE_MS = 120;
 
 /**
  * Read one stored file end to end, and close the handle whatever happens.
@@ -123,6 +196,8 @@ export async function readStoredFile(
     transport,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxChunks = DEFAULT_MAX_CHUNKS,
+    maxRetriesPerChunk = DEFAULT_RETRIES_PER_CHUNK,
+    retryPauseMs = DEFAULT_RETRY_PAUSE_MS,
     onProgress,
   } = options;
   let nextId = options.msgId ?? 1;
@@ -156,6 +231,43 @@ export async function readStoredFile(
   let empties = 0;
   let metadata: Uint8Array | undefined;
   let closed = false;
+  let retries = 0;
+
+  /**
+   * Ask for one chunk, and ask again if the device does not answer.
+   *
+   * **Only the transport call is retried.** A rejection from `transport.request` is a timeout or a
+   * failure to send — the kinds of nothing that asking again can fix. Everything after it —
+   * `expect`, `parseRead`, `check` — throws on a reply that *arrived and was wrong*, which is a
+   * protocol disagreement and must stay fatal. Retrying those would turn a decoding bug into a
+   * silent loop, which is the failure mode this file's guards exist to prevent.
+   *
+   * A **fresh message id per attempt**, because the abandoned request may still be in flight and
+   * the transport matches replies by id. Reusing the id would make a late answer to the request we
+   * gave up on indistinguishable from an answer to this one — the exact mistake recorded in
+   * `docs/KNOWN-ISSUES.md`, where Transfer's traffic was read as our result.
+   */
+  const requestChunk = async (handle: number, sequence: number): Promise<ApiFrame> => {
+    let last: unknown;
+    for (let attempt = 0; attempt <= maxRetriesPerChunk; attempt++) {
+      if (attempt > 0) {
+        retries++;
+        if (retryPauseMs > 0) await new Promise((resolve) => setTimeout(resolve, retryPauseMs));
+      }
+      const attemptId = id();
+      try {
+        return await transport.request(
+          readRequest(attemptId, handle, sequence), attemptId, timeoutMs,
+        );
+      } catch (error) {
+        last = error;
+      }
+    }
+    throw new ListingError(
+      `no answer for chunk ${sequence} after ${maxRetriesPerChunk + 1} attempts ` +
+        `(handle ${handle}, ${total} bytes so far): ${last instanceof Error ? last.message : last}`,
+    );
+  };
 
   try {
     for (;;) {
@@ -166,15 +278,15 @@ export async function readStoredFile(
         );
       }
 
-      const readId = id();
       // **Sequence numbers start at 0**, which Transfer's own requests settled: it asks for 0, gets
       // the 22-byte empty reply, then asks for 1 and gets data. That empty reply was recorded here
       // as an unidentified "metadata" message for half a day; it is simply the answer to sequence
       // zero, and asking for zero is how you get it.
       const sequence = chunks === 0 ? 0 : parts.length + 1;
-      const chunk = parseRead(expect(await transport.request(
-        readRequest(readId, opened.handle, sequence), readId, timeoutMs,
-      ), StorageCode.Read).body);
+      const chunk = parseRead(expect(
+        await requestChunk(opened.handle, sequence),
+        StorageCode.Read,
+      ).body);
 
       check(chunk, opened.handle, parts.length + 1);
       chunks++;
@@ -215,7 +327,7 @@ export async function readStoredFile(
   // Only when the whole file came in one chunk. Two chunks means two checksums and no statement
   // about the whole, and a caller writing that back would send a number for a third of the file.
   const single = parts.length === 1 ? checksums[0] : undefined;
-  return { bytes: join(parts, total), chunks, metadata, closed, checksum: single };
+  return { bytes: join(parts, total), chunks, metadata, closed, checksum: single, retries };
 }
 
 /** A device with nobody else attached hands out handle 1 first. */
