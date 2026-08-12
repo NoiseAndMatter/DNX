@@ -44,6 +44,36 @@ The author holds a copy; its location is recorded in the private corpus at
 - **Device-authored captures** — built to a plan in `docs/dn2-capture-plan.md` and saved from
   the hardware. These are what name fields the corpora can only locate.
 
+## digi-roll — prior art for authoring, not for managing
+
+<https://github.com/zooloo303/digi-roll>, by zooloo303. Creates trigs in a **Digitakt II** and a
+**Digitone II** from a piano roll.
+
+**It is the only other project we know of that writes sequencer content to a DN2**, which makes it
+the closest thing available to a second opinion on the half of the format DNX cares most about.
+Everything in `docs/dn2-format.md` about trigs, notes and locks was derived from a corpus of real
+files and cross-checked against nothing but itself and Elektron's own conversions. A tool that puts
+notes *in* and gets a working pattern *out* has independently found the same fields — and anywhere
+it disagrees with us, one of the two is wrong and it is worth knowing which.
+
+**A different problem, though.** It is an authoring front end: you draw a part and it becomes trigs.
+DNX moves what already exists between instruments and slots, and editorial features stay behind the
+manager. So this is worth reading for what it proves about the format, not as a feature to match.
+
+Not yet cloned or read. Three questions to take to it first:
+
+- **Does it write over SysEx, or by building a project file?** That says which of the two protocols
+  it trusts, and `docs/device-storage.md` records how differently those behave.
+- **What does it do about the checksum?** T26 and T30 on the test sheet are still closing that from
+  our side.
+- **Does it handle the DT2 and the DN2 through one representation?** If so, that is direct evidence
+  about how much of the pattern format the two devices share — something we have so far only
+  inferred from elk-herd's Digitakt code.
+
+**Check the licence before reading any of it closely**, the way `elk-herd`'s BSD 2-Clause was checked
+below. Unknown until then, so treat it as all-rights-reserved and keep its text out of this
+repository.
+
 ## elk-herd — the closest prior art
 
 <https://github.com/mzero/elk-herd>, by Mark Lentczner. A patch and pattern manager for Elektron
