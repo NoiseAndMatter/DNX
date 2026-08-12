@@ -109,14 +109,25 @@ test("the end of a file is the device's flag, never a short chunk", async () => 
 
 // --- the promise this module exists to keep ------------------------------------------------------
 
-test("a read that fails still closes the handle", async () => {
+test("a read that fails every attempt still closes the handle", async () => {
   // 0x54 froze the user's Digitone 1 three times. The cause is now thought to be something else
   // entirely, and this still holds: an allocate that can skip its release is the one shape that
   // cannot be safe, whatever else turns out to be true.
-  const io = scripted([OPEN_OK, new Error("device went silent")]);
+  //
+  // **Four silences, not one.** A single unanswered chunk is now retried — see the tests below —
+  // so exhausting the retries is what it takes to fail the read, and the release has to survive
+  // that longer path too. The device's own words still reach the caller through the wrapper.
+  const io = scripted([OPEN_OK, ...Array(4).fill(new Error("device went silent"))]);
 
-  await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /device went silent/);
-  assert.deepEqual(io.sent, [StorageCode.Open, StorageCode.Read, StorageCode.Close]);
+  await assert.rejects(
+    readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 }),
+    /device went silent/,
+  );
+  assert.deepEqual(io.sent, [
+    StorageCode.Open,
+    StorageCode.Read, StorageCode.Read, StorageCode.Read, StorageCode.Read,
+    StorageCode.Close,
+  ]);
 });
 
 test("a chunk that fails its own checks still closes the handle", async () => {
@@ -248,4 +259,116 @@ test("a reply with the wrong code is refused rather than misparsed", async () =>
   };
 
   await assert.rejects(readStoredFile("/projects/PRESETS", { transport: io }), /expected 0xd4 in reply to 0x54, got 0xd3/);
+});
+
+// --- one lost reply must not lose the file -------------------------------------------------------
+//
+// **Measured on a Digitone II, 2026-08-12.** A DN2 project is at least 1.8 MB and arrives 2,048
+// bytes at a time, so a single read is 900+ round trips. Three consecutive attempts stalled after
+// 199, 899 and 700 chunks — a *varying* stall point, which is a lost reply and not an end of file.
+// The device was proven alive after every one. Without a retry, one dropped message in nine hundred
+// throws the whole file away, and on that instrument it happened every time.
+//
+// Retrying is sound because this is a **numbered-chunk** API: the request names its sequence and
+// `check()` verifies the index that comes back, so asking again asks for the same thing.
+
+/** Like `scripted`, but records the sequence and message id of every read, not just the code. */
+function watched(replies: (Uint8Array | Error)[]): ApiTransport & { reads: { seq: number; id: number }[] } {
+  let at = 0;
+  const reads: { seq: number; id: number }[] = [];
+  return {
+    reads,
+    request(request: Uint8Array, msgId: number): Promise<ApiFrame> {
+      const frame = decodeMessage(request);
+      // `0x55  u32 handle  u32 sequence` — the sequence is the second word of the body.
+      if (frame.code === StorageCode.Read) {
+        const b = frame.body;
+        reads.push({ seq: (b[4]! << 24) | (b[5]! << 16) | (b[6]! << 8) | b[7]!, id: msgId });
+      }
+      const reply = replies[at++];
+      if (reply === undefined) return Promise.reject(new Error("script exhausted"));
+      if (reply instanceof Error) return Promise.reject(reply);
+      return Promise.resolve({ msgId, respId: msgId, code: frame.code | RESPONSE_BIT, body: reply, isResponse: true });
+    },
+  };
+}
+
+test("a chunk the device does not answer is asked for again, and the file still arrives whole", async () => {
+  const io = watched([
+    OPEN_OK,
+    chunk(1, [0xaa], false),
+    new Error("no reply to 0x4591 within 5000ms"),   // the drop, mid-file
+    chunk(2, [0xbb], false),
+    chunk(3, [0xcc], true),
+    CLOSE_OK,
+  ]);
+
+  const file = await readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 });
+
+  assert.deepEqual([...file.bytes], [0xaa, 0xbb, 0xcc], "no byte is missing and none is duplicated");
+  assert.equal(file.closed, true);
+  assert.equal(file.retries, 1, "the recovery is reported, not swallowed");
+});
+
+test("the retry asks for the same sequence, which is the whole reason it is safe", async () => {
+  const io = watched([OPEN_OK, chunk(1, [1], false), new Error("silence"), chunk(2, [2], true), CLOSE_OK]);
+  await readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 });
+
+  // `[0, 2, 2]`, and the gap is real rather than a bug: **the sequence asked for and the chunk
+  // index returned are offset by one.** Asking for sequence 0 is answered by chunk index 1, so the
+  // next request is for 2. The retry repeats 2 — never skipping it, never re-reading 1.
+  assert.deepEqual(io.reads.map((r) => r.seq), [0, 2, 2]);
+});
+
+test("a retry uses a fresh message id, so a late answer to the abandoned request cannot pass for it", async () => {
+  // The transport matches replies by id. Reusing the id would make the reply we gave up waiting for
+  // indistinguishable from this one's — the exact mistake that let Transfer's traffic be read as our
+  // result once already.
+  const io = watched([OPEN_OK, new Error("silence"), chunk(1, [7], true), CLOSE_OK]);
+  await readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 });
+
+  const retried = io.reads.filter((r) => r.seq === 0);
+  assert.equal(retried.length, 2, "sequence 0 was asked twice");
+  assert.notEqual(retried[0]!.id, retried[1]!.id, "and with different message ids");
+});
+
+test("retrying is bounded, and the caller is told which chunk was never answered", async () => {
+  // Unbounded retrying on this API has already cost 4,963 round trips once.
+  const io = watched([OPEN_OK, chunk(1, [1], false), ...Array(9).fill(new Error("silence"))]);
+
+  await assert.rejects(
+    readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 }),
+    /no answer for chunk 2 after 4 attempts/,
+  );
+  assert.equal(io.reads.filter((r) => r.seq === 2).length, 4, "four attempts, not nine");
+});
+
+test("maxRetriesPerChunk of 0 restores the old one-shot behaviour", async () => {
+  const io = watched([OPEN_OK, new Error("silence")]);
+
+  await assert.rejects(
+    readStoredFile("/projects/PRESETS", { transport: io, maxRetriesPerChunk: 0, retryPauseMs: 0 }),
+    /after 1 attempts/,
+  );
+  assert.equal(io.reads.length, 1);
+});
+
+test("a reply that arrived and was wrong is never retried", async () => {
+  // The retry is for silence. A chunk with the wrong index is a protocol disagreement: the device
+  // answered, and it said something we do not understand. Asking again would turn a decoding bug
+  // into a loop, and would hide the one thing worth reporting.
+  const io = watched([OPEN_OK, chunk(9, [1], false), CLOSE_OK]);
+
+  await assert.rejects(
+    readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 }),
+    /expected chunk 1, the device sent 9/,
+  );
+  assert.equal(io.reads.length, 1, "asked once, refused, and did not ask again");
+});
+
+test("a clean read reports no retries", async () => {
+  const io = watched([OPEN_OK, chunk(1, [1], true), CLOSE_OK]);
+  const file = await readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 });
+
+  assert.equal(file.retries, 0, "so a run that needed help is distinguishable from one that did not");
 });
