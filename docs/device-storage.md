@@ -568,7 +568,9 @@ that one code covers mutation is built on a sample of one.
   messages at once produces a failure that cannot be attributed to any of them.
 - **Writing.** `0x5a`, `0x5b` and `0x5c` acknowledge mutations (§5b) but we never saw what was
   asked, and which code is which operation is unknown. Upload was not tested.
-- **Whether the Digitone II speaks the same API.** Everything here is from a Digitone 1.
+- ~~Whether the Digitone II speaks the same API.~~ **SOLVED — 2026-08-12.** It speaks it unchanged:
+  a whole project was read off a DN2's +Drive with the same open/read/close and the same 2,048-byte
+  chunks. See §10.
 - The three unidentified fields in §2.
 
 ---
@@ -1041,3 +1043,53 @@ one, and it needs no hardware.
 
 If that fails, the fallback is more pairs with **controlled inputs** — capturing Transfer uploading
 files whose bytes we choose, where a checksum's structure is far easier to see.
+
+---
+
+## 10. The Digitone II — **[verified]** 2026-08-12
+
+**The DN2 speaks this API unchanged.** Open, read by sequence, close; the same codes, the same
+2,048-byte chunks, the same end-of-file flag at `body[13]`. Nothing in §1–§9 needed altering for it.
+This was §6's last open question and it is closed.
+
+Firmware **1.10E (build 0050)**, product id **43** in API space. It reports `Reads +Drive files: no`
+and `Manages +Drive: no` in its capability list — **and reads files anyway**, exactly as the DN1
+does. The advertisement is still not the answer; the device is.
+
+### A DN2 project is a hundred times a DN1 project
+
+| | DN1 | DN2 |
+|---|---|---|
+| project size | 131,072 bytes | **12,889,647 bytes** |
+| chunks at 2,048 bytes | ~64 | **6,294** |
+| read time | under a second | ~37 s |
+
+First read: slot 4, `SKETCHPAD`, 2026-08-12. Repeated, byte-identical.
+
+**This invalidates anything sized by eye against the DN1.** `maxChunks` was 8,192 with a comment
+calling it "past any project either machine holds" — it had 30% of headroom, and a larger project
+would have failed with *"the device never set the end-of-file flag"*, pointing at a protocol bug
+that does not exist. It is 32,768 now, which is a backstop rather than an estimate.
+
+### The failure that was not a protocol failure
+
+> [!warning] **A failing power supply looks exactly like a protocol bug from up here.**
+
+Before the supply was changed, DN2 reads stalled after **199, 700, 899 and 1,263 chunks** on four
+attempts. A varying stall point reads unmistakably as a lost reply, and a whole diagnosis was built
+on that: the reader gives up on one dropped chunk, so add a retry. Listings failed when repeated
+immediately and succeeded after a pause, which read as the device disliking crowded requests.
+Eventually the instrument **froze and needed a power cycle** — the same symptom `0x54` produced on a
+Digitone 1, and it was read as confirmation.
+
+All of it was the power supply. Every read completed once it was changed, including a control run
+with retries disabled, which read the same 12,889,647 bytes.
+
+**What settled it was moving the suspect supply to the other instrument.** The Digitone 1 had been
+flawless all evening across hundreds of messages; on that supply it immediately began dropping
+replies to repeated listings. The fault followed the supply, not the device, not the firmware and
+not our code.
+
+So: **before believing a storage-layer diagnosis, swap the power supply.** It costs a minute, and
+the symptoms it produces — intermittent silence, stalls at varying points, a device that stops
+answering — are indistinguishable from the ones this document spent days chasing for real.
