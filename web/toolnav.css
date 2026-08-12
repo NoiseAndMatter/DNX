@@ -3,14 +3,19 @@
  *
  * ## Why this is not in `dnx.css`
  *
- * The probe does not link `dnx.css`. It is a self-contained page with its own `<style>` block and
- * always has been, so the choice was between copying these rules into it — a second home for a
- * thing that must look identical on three pages — and giving them a file of their own. Every page
+ * The probe did not link `dnx.css` when this was written. It was a self-contained page with its own
+ * `<style>` block, so the choice was between copying these rules into it — a second home for a
+ * thing that must look identical on four pages — and giving them a file of their own. Every page
  * links this one; nobody copies anything.
  *
- * It leans on four custom properties (`--teal`, `--muted`, `--fg`, `--line`) that all three pages
- * already declare with the same values, and falls back where one is missing: `--focus` exists in
- * `dnx.css` and not on the probe, so the outline names a colour after it.
+ * **The probe links `dnx.css` now**, at `probe.html:7`, so that original reason has expired. The
+ * file stays for a better one: the bar is not the visual language, it is one component that must
+ * never move, and a guard in `web.test.ts` holds `dnx.css` to not describing it. Folding the two
+ * together would put the thing nobody may change back into the file everybody edits.
+ *
+ * It leans on four custom properties (`--teal`, `--muted`, `--fg`, `--line`) that every page
+ * declares with the same values, and falls back where one is missing: `--focus` comes from
+ * `dnx.css`, so the outline names a colour after it rather than assuming it.
  *
  * ## What the design is for
  *
