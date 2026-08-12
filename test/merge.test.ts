@@ -347,3 +347,46 @@ test("the summary lines stay short enough to read", { skip }, () => {
   );
   assert.ok(lines.length <= 12, `describeMerge returned ${lines.length} lines:\n${lines.join("\n")}`);
 });
+
+/**
+ * Why the expander must not replan a merge it has already applied.
+ *
+ * `planPatternMerge` is **not idempotent against its own output**, and correctly so: once the
+ * patterns have landed, the landing slots hold patterns, and planning the same merge again is a
+ * request to overwrite them. The refusal is right.
+ *
+ * The expander used to ask that question anyway. `destination.apply` calls `onChange`
+ * synchronously, which replans — with the same selection, onto the same landing — so every
+ * successful merge was followed by a native `confirm` asking the user to approve overwriting the
+ * work they had just approved. It reads as a hung page, because a modal blocks the renderer.
+ *
+ * The fix is in `web/src/expander/main.ts`: the selection is cleared *before* the apply, so the
+ * replan has nothing to place. This test guards the assumption that fix rests on. **If
+ * `planPatternMerge` is ever made idempotent, this test fails and the page fix becomes
+ * unnecessary** — which is exactly what the next person needs to know.
+ */
+test("planning a merge against its own result asks to overwrite", { skip }, () => {
+  const args = {
+    source: source(),
+    patterns: [0],
+    destination: destination(),
+    landing: 3,
+    landingMode: "contiguous" as const,
+  };
+
+  const first = planPatternMerge(args);
+  assert.deepEqual(first.landingSlots, [3], "the first plan lands where it was asked to");
+
+  assert.throws(
+    // Exactly what the page holds after Apply: the plan's output is now the destination.
+    () => planPatternMerge({ ...args, destination: first.image }),
+    (error: unknown) =>
+      error instanceof MergeRefused && /already hold a pattern/.test((error as Error).message),
+    "re-planning onto a slot the merge just filled must refuse rather than silently overwrite",
+  );
+
+  // And it goes through when the caller has actually asked for it — the refusal is a question, not
+  // a wall. This is the path the CLI takes with --confirm.
+  const again = planPatternMerge({ ...args, destination: first.image, confirmOverwrite: true });
+  assert.deepEqual(again.landingSlots, [3]);
+});
