@@ -154,17 +154,21 @@ export function planSelected(args: {
   } catch (error) {
     if (!(error instanceof MergeRefused)) throw error;
     // The two refusals worth asking about rather than reporting. Anything else stands.
-    const overwrite = /already hold a pattern/.test(error.message);
-    const overflow = /no room/.test(error.message);
-    if (!overwrite && !overflow) throw error;
+    //
+    // **Read off `kind`, not off the sentence.** This matched `/already hold a pattern/` against
+    // the message, which made the wording load-bearing: rewriting that refusal so it stopped
+    // naming a TypeScript argument at a musician also stopped this asking, and turned a question
+    // into a rethrown error. `merge.ts` now says which refusal it is in a field.
+    if (error.kind === undefined) throw error;
 
     if (!args.ask(`${error.message}\n\nGo ahead anyway?`)) {
       return { described: { lines: [error.message, "Not planned."] }, message: "Not planned." };
     }
     plan = planPatternMerge({
       ...base,
-      ...(overwrite ? { confirmOverwrite: true } : {}),
-      ...(overflow ? { allowPoolOverflow: true, confirmOverwrite: true } : {}),
+      confirmOverwrite: true,
+      // Overflow needs its own consent as well; overwriting does not imply accepting dropped sounds.
+      ...(error.kind === "pool-overflow" ? { allowPoolOverflow: true } : {}),
     });
   }
 

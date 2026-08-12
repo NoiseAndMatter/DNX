@@ -407,10 +407,10 @@ export function applyTrackMove(
     throw new Error(plan.findings.filter((f) => f.severity === "blocker")[0]!.message);
   }
   if (plan.destructive.length > 0 && !options.confirmOverwrite) {
+    const one = plan.destructive.length === 1;
     throw new Error(
-      `This would destroy ${plan.destructive.length} track(s) holding ` +
-        `${plan.destructive.reduce((n, d) => n + d.trigCount, 0)} trigs. ` +
-        `Pass confirmOverwrite once the user has agreed.`,
+      `This would destroy ${plan.destructive.length} track${one ? "" : "s"} holding ` +
+        `${plan.destructive.reduce((n, d) => n + d.trigCount, 0)} trigs. Nothing was changed.`,
     );
   }
 
