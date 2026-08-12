@@ -87,7 +87,13 @@ test("a whole stored file is refused — the body is what goes in", { skip }, ()
   // the slot into the next preset.
   const img = image("008 JAM.dn2prj");
   const file = new Uint8Array(DN2_SOUND_SIZE + 43);
-  assert.throws(() => planAddPreset(img, deviceFor(img), file), /43 bytes of container/);
+  assert.throws(() => planAddPreset(img, deviceFor(img), file), (error: Error) => {
+    assert.match(error.message, /nothing was written/, "the refusal says the pool is untouched");
+    assert.match(error.message, new RegExp(String(DN2_SOUND_SIZE + 43)), "and names the size it got");
+    // Deliberately not asserting the explanation: it changed once already, when 364 turned out to
+    // be a real +Drive size rather than a caller handing over the wrong bytes.
+    return true;
+  });
 });
 
 /**

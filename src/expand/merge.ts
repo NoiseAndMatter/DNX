@@ -54,7 +54,28 @@ import { DN2_DEVICE } from "../librarian/device.js";
 /** No lock on this step. */
 const NO_LOCK = 0xff;
 
-export class MergeRefused extends Error {}
+/**
+ * Which refusals a caller can turn into a question, told apart by a field rather than by prose.
+ *
+ * Two of these are answerable by the person at the instrument — *"replace what is there?"*, *"let
+ * the pool overflow?"* — and the rest are not. The web needs to tell them apart to know when to
+ * ask, and it did so by matching `/already hold a pattern/` against the message.
+ *
+ * **That coupling made the sentences load-bearing.** Rewording this refusal to stop it naming a
+ * TypeScript argument silently stopped the page asking at all, and only a test caught it. Prose is
+ * for the person reading it; code should switch on something that is allowed to stay still.
+ */
+export type RefusalKind = "overwrite" | "pool-overflow";
+
+export class MergeRefused extends Error {
+  constructor(
+    message: string,
+    /** Set only for the refusals a caller may reasonably ask about and then override. */
+    readonly kind?: RefusalKind,
+  ) {
+    super(message);
+  }
+}
 
 export interface MergeOptions {
   /** The Digitone 1 project the patterns come from. */
@@ -194,10 +215,20 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
 
   const overwrites = landingSlots.filter((slot) => patternOccupied(destination, slot));
   if (overwrites.length > 0 && !options.confirmOverwrite) {
+    // **States the fact, not the remedy.** This sentence is shown to a musician verbatim — the web
+    // puts it straight into a dialog — and it used to end "pass confirmOverwrite to replace them",
+    // naming a TypeScript argument nobody at a keyboard can pass. The CLIs never showed it either:
+    // they check their own `--confirm` first and print their own wording (`cli/rearrange.ts:272`).
+    // So the argument name was read by exactly one audience, the one that could do nothing with it.
+    //
+    // How to go ahead belongs to whoever is asking: a flag in a terminal, a button on a page.
+    const one = overwrites.length === 1;
     throw new MergeRefused(
-      `${overwrites.length} destination slot(s) already hold a pattern ` +
-        `(${overwrites.map(patternName).join(", ")}). Nothing was changed — pass confirmOverwrite ` +
-        `to replace them, or land somewhere empty.`,
+      `${overwrites.length} destination slot${one ? "" : "s"} already ${one ? "holds" : "hold"} ` +
+        `a pattern (${overwrites.map(patternName).join(", ")}). Nothing was changed — ` +
+        `replacing ${one ? "it" : "them"} would discard what is there, and landing somewhere ` +
+        `empty would not.`,
+      "overwrite",
     );
   }
 
@@ -257,8 +288,9 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
       `the destination's pool has no room for ${dropped.length} of the ${needed.size} sound(s) ` +
         `these patterns need. Nothing was changed.\n\n` +
         `A partial merge is worse than none: the trigs would still fire, at whatever those slots ` +
-        `happen to hold. Free some pool slots, take fewer patterns, or pass allowPoolOverflow ` +
-        `knowing what it costs.`,
+        `happen to hold. Free some pool slots, or take fewer patterns — or go ahead knowing those ` +
+        `${dropped.length} sound(s) will not be there.`,
+      "pool-overflow",
     );
   }
 
