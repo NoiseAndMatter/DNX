@@ -359,7 +359,10 @@ test("no page's own stylesheet grows its overlap with the shared one", () => {
   }
 });
 
-test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
+// The name used to end "because the probe does not link dnx.css". It does — `probe.html:7` — and
+// has since it stopped carrying its own copy of `.btn`, `select` and `.status`. The assertions
+// below were always about something else and are unchanged; only the reason was stale.
+test("only toolnav.css describes the bar, so it cannot differ between pages", () => {
   const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");
 
@@ -368,6 +371,78 @@ test("only toolnav.css describes the bar, because the probe does not link dnx.cs
   // The status line keeps its indent — it is the page's own commentary. The bar must not have it.
   assert.doesNotMatch(dnx, /body\.page\s*>\s*\.topbar/, "indenting the bar is what moved it");
 });
+
+/**
+ * **A page does not explain itself in its own layout.**
+ *
+ * The probe opened with a 1,109-character paragraph between the controls and the results, and it
+ * cost 30% of the results window at 1600x876, 41% at 1280x800, and all of it at 900x800 — where
+ * `#results` was entirely below the fold before a single byte had arrived. It was not sticky
+ * either: it scrolled away after 188px, so it taxed the screenful that mattered and was gone by
+ * the time anyone wanted to read it.
+ *
+ * Nothing about that paragraph was wrong, which is the point. It was accurate, hard-won and
+ * growing, and no reviewer was ever going to argue for deleting a sentence of it. A ceiling is
+ * what stops the *next* one, because the pressure that produced this one has not gone anywhere —
+ * the answer is a `?` and a `<template>`, and the template is exempt.
+ *
+ * 120 characters is roughly a sentence. The longest paragraph on any other page is 81.
+ */
+const PROSE_LIMIT = 120;
+
+for (const [name, , html] of PAGES) {
+  test(`the ${name} does not explain itself in its own layout`, () => {
+    const source = readFileSync(html, "utf8")
+      // Where the explaining is supposed to happen, and comments are for us, not for the layout.
+      .replace(/<template[\s\S]*?<\/template>/g, "")
+      .replace(/<!--[\s\S]*?-->/g, "");
+
+    const long: string[] = [];
+    for (const paragraph of source.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)) {
+      const text = paragraph[1]!
+        .replace(/<[^>]*>/g, "")
+        .replace(/&\w+;/g, "-") // an entity is one character on screen, not seven
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text.length > PROSE_LIMIT) long.push(`${text.length} chars: ${text.slice(0, 60)}…`);
+    }
+
+    assert.deepEqual(
+      long,
+      [],
+      `the ${name} carries prose in its layout, over ${PROSE_LIMIT} chars. Move it into the ` +
+        `<template id="help"> and reach it from a data-help "?" — see web/src/help.ts`,
+    );
+  });
+
+  /**
+   * `data-help` and `data-topic` are a pairing nothing else checks.
+   *
+   * A renamed topic leaves a `?` that opens the panel on no section at all, and a renamed
+   * `data-help` leaves a section nothing can reach. Both typecheck, both render, and the page
+   * looks entirely correct until somebody presses the button. Same silent-pairing shape as the
+   * legend swatches that rendered as empty boxes for want of a `.sw` rule.
+   */
+  test(`every ? on the ${name} opens onto a topic, and every topic has a ?`, () => {
+    const source = readFileSync(html, "utf8");
+    const asked = [...source.matchAll(/\bdata-help="([^"]*)"/g)].map((m) => m[1]!);
+    const offered = [...source.matchAll(/\bdata-topic="([^"]*)"/g)].map((m) => m[1]!);
+
+    assert.deepEqual(
+      asked.filter((topic) => !offered.includes(topic)),
+      [],
+      `the ${name} has a "?" for a topic its help template does not define`,
+    );
+    assert.deepEqual(
+      offered.filter((topic) => !asked.includes(topic)),
+      [],
+      `the ${name}'s help template defines a topic nothing on the page opens`,
+    );
+    // A page with help at all needs the template `installHelp` is handed, and `$("help")` throws
+    // at load if it is missing — but only on the page that asks, and only once it is opened.
+    if (asked.length) assert.match(source, /<template id="help">/, `${name} has ? but no template`);
+  });
+}
 
 for (const [name, entry, html] of PAGES) {
   test(`the ${name}'s status bar is a status bar`, () => {

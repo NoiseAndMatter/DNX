@@ -78,8 +78,11 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
 .write { color: var(--salmon); font-weight: 600; }
 .unknown { color: var(--amber); }
 
-.note { padding: 0 .9rem; }
-.note p { color: var(--dim); font-size: .78rem; max-width: 56rem; }
+/*
+ * `.note` is gone. It held one 1,109-character paragraph explaining this page, between the
+ * controls and the results, and it cost 30% of the results window at 1600x876 and all of it at
+ * 900x800. The text now lives on a `?` on each card — `dnx.css`, `web/src/help.ts`.
+ */
 </style>
 </head>
 <body class="app">
@@ -110,7 +113,7 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
 -->
 <div class="controls">
   <section class="card">
-    <h2>Ports and session</h2>
+    <h2 data-help="session">Ports and session</h2>
     <div class="crow">
       <span class="lbl">Ports</span>
       <label class="lbl" for="output">Out</label>
@@ -128,7 +131,7 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
   </section>
 
   <section class="card">
-    <h2>Requests</h2>
+    <h2 data-help="requests">Requests</h2>
     <div class="crow">
       <span class="lbl">Dump</span>
       <select id="reqWhat" disabled></select>
@@ -168,7 +171,7 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
     they sat between a port selector and a listing path.
   -->
   <section class="card danger-card">
-    <h2>Writing &mdash; changes the instrument</h2>
+    <h2 data-help="writing">Writing &mdash; changes the instrument</h2>
     <div class="crow">
       <span class="lbl">Patterns</span>
       <button class="btn danger" id="writeBack" disabled title="Send a captured record back to the slot it came from">Write back</button>
@@ -224,25 +227,6 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
 </div>
 
 <main>
-  <div class="note">
-    <p>
-      Read-only. <strong>Probe</strong> asks the device what it is, what firmware it runs, which
-      messages it supports, and what is on its +Drive. <strong>Listen</strong> sends nothing at
-      all &mdash; it captures whatever the device chooses to send, so you can trigger a dump from
-      the front panel (<span class="mono">SETTINGS &gt; SYSEX DUMP &gt; SYSEX SEND</span>) and
-      save the result as a <span class="mono">.syx</span>. <strong>Read project</strong> asks for
-      all 128 patterns, all 128 sound-pool slots and the project settings, one at a time, waiting
-      for each answer before asking again &mdash; the same capture, without touching the device's
-      menus. Requests carry an empty body, so none of that writes anything to the device.
-      <strong>Write back</strong> is the one exception and the only control here that changes your
-      instrument: it sends a record from the current capture back to the slot it came from &mdash;
-      identical bytes to the same place &mdash; then reads it again and compares. Load a scratch
-      project first, and read <span class="mono">docs/device-probing.md</span>.
-      Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
-      SysEx permission, which is the whole point: without it every request is silently dropped
-      and the device looks like it is not answering.
-    </p>
-  </div>
   <!--
     The write verdict lives outside #results on purpose. #results is cleared and redrawn on every
     incoming MIDI message, so anything put there is destroyed by the next thing the device says —
@@ -254,6 +238,73 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
 </main>
 
 <div class="status" id="status">Requesting MIDI access&hellip;</div>
+
+<!--
+  What this page is, said where it costs the layout nothing.
+
+  This was one paragraph in a `.note` between the controls and the results. It is the same
+  sentences, split along the cards they describe and reachable from the `?` on each &mdash;
+  `web/src/help.ts` has the measurements that moved it.
+
+  **The split found two claims that had quietly stopped being true.** "Read-only" was the first
+  word on a page whose third card writes to the instrument; it is true of *Ports and session*,
+  which is where it now sits. And "Write back is the one exception and the only control here that
+  changes your instrument" was written before the +Drive controls existed &mdash; there are four
+  of them now, and one of them froze a Digitone 1 three times. Text kept beside what it describes
+  is text somebody notices is wrong.
+
+  Inert until cloned: a `<template>` renders nothing and its contents are not part of the document.
+-->
+<template id="help">
+  <section data-topic="session">
+    <h3>Ports and session</h3>
+    <p>
+      Read-only. <strong>Probe</strong> asks the device what it is, what firmware it runs, which
+      messages it supports, and what is on its +Drive. <strong>Listen</strong> sends nothing at
+      all &mdash; it captures whatever the device chooses to send, so you can trigger a dump from
+      the front panel (<span class="mono">SETTINGS &gt; SYSEX DUMP &gt; SYSEX SEND</span>) and
+      save the result as a <span class="mono">.syx</span>.
+    </p>
+    <p>
+      Needs Chrome or Edge &mdash; Safari and Firefox have no WebMIDI &mdash; and will ask for
+      SysEx permission, which is the whole point: without it every request is silently dropped
+      and the device looks like it is not answering.
+    </p>
+  </section>
+
+  <section data-topic="requests">
+    <h3>Requests</h3>
+    <p>
+      <strong>Read project</strong> asks for all 128 patterns, all 128 sound-pool slots and the
+      project settings, one at a time, waiting for each answer before asking again &mdash; the
+      same capture as <strong>Listen</strong>, without touching the device's menus.
+    </p>
+    <p>
+      Requests carry an empty body, so none of that writes anything to the device. The same is
+      true of <strong>Try code</strong> and <strong>Ask</strong>: both lists are fixed, and
+      neither can build a request that writes.
+    </p>
+  </section>
+
+  <section data-topic="writing">
+    <h3>Writing &mdash; changes the instrument</h3>
+    <p>
+      These controls change your instrument, which is why they have a card of their own. Load a
+      scratch project first, and read <span class="mono">docs/device-probing.md</span>.
+    </p>
+    <p>
+      <strong>Write back</strong> sends a record from the current capture back to the slot it came
+      from &mdash; identical bytes to the same place &mdash; then reads it again and compares.
+      <strong>Read file</strong> opens, reads and closes a file on the +Drive, and froze a Digitone
+      1 three times. <strong>Read &rarr; write</strong> copies those same bytes to an empty slot,
+      and an empty slot is the only destination it will accept.
+    </p>
+    <p>
+      <strong>List</strong> is the exception in here: it only asks what is on the +Drive, and a
+      wrong path is answered <span class="mono">Invalid path</span> in as many words.
+    </p>
+  </section>
+</template>
 
 <script type="module" src="dist/web/src/probe/main.js"></script>
 </body>
