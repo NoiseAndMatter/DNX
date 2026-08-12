@@ -359,7 +359,10 @@ test("no page's own stylesheet grows its overlap with the shared one", () => {
   }
 });
 
-test("only toolnav.css describes the bar, because the probe does not link dnx.css", () => {
+// The name used to end "because the probe does not link dnx.css". It does — `probe.html:7` — and
+// has since it stopped carrying its own copy of `.btn`, `select` and `.status`. The assertions
+// below were always about something else and are unchanged; only the reason was stale.
+test("only toolnav.css describes the bar, so it cannot differ between pages", () => {
   const dnx = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const nav = readFileSync(resolve(HERE, "../web/toolnav.css"), "utf8");
 
