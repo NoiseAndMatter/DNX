@@ -100,11 +100,11 @@ import {
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
 import {
-  LINK_DEAD,
   LIST_TIMEOUT_MS,
   requestListing,
   linkIsAlive as checkLink,
 } from "./storageio.js";
+import { type Verdict, verdictAfterSilence } from "./silence.js";
 import {
   UNKNOWN_TIMEOUT_MS,
   VERIFY_TIMEOUT_MS,
@@ -325,24 +325,24 @@ async function probe(): Promise<void> {
         ["Means", "the Digitakt file API applies to this machine; prefer it to the reconstructed 0x53"],
       ]);
       status(`${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`, "ok");
-    } catch {
-      const alive = await linkIsAlive(output);
-      card(results, alive ? "DirList: no answer, link verified" : "DirList: nothing reached the device", [
-        ["Advertised", caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`],
-        ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
-        [
-          "Means",
-          alive
-            ? "a genuine negative: this device does not implement 0x10. Its storage API is at " +
-              "0x53–0x5a instead — see docs/device-storage.md."
-            : LINK_DEAD,
-        ],
-      ]);
-      status(
-        alive
-          ? `${device.deviceName}: no DirList, link verified. Storage lives at 0x53.`
-          : `${device.deviceName}: nothing is reaching the device.`,
-        alive ? "warn" : "error",
+    } catch (error) {
+      showVerdict(
+        verdictAfterSilence({
+          what: "DirList",
+          alive: await linkIsAlive(output),
+          outcome: String(error),
+          outcomeLabel: "Error",
+          log: [
+            [
+              "Advertised",
+              caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`,
+            ],
+          ],
+          means:
+            "a genuine negative: this device does not implement 0x10. Its storage API is at " +
+            "0x53–0x5a instead — see docs/device-storage.md.",
+        }),
+        (title, rows) => card(results, title, rows),
       );
     }
 
@@ -1500,20 +1500,17 @@ async function listPath(): Promise<void> {
   if (!reply) {
     // The control that separates "it did not answer" from "we never spoke". Without it, both look
     // the same and the temptation is to record the more interesting one.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "No listing — but the device is answering" : "Nothing is reaching the device", [
-      ...log,
-      ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED — Device answered, so the silence is real" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "this device does not implement the listing, or the request shape is wrong. A genuine " +
-            "negative, worth recording."
-          : LINK_DEAD,
-      ],
-    ]);
-    status(alive ? "No listing, and the link is fine." : "Nothing is reaching the device.", alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: "Listing",
+        alive: await linkIsAlive(output),
+        outcome: `nothing within ${LIST_TIMEOUT_MS}ms`,
+        log,
+        means:
+          "this device does not implement the listing, or the request shape is wrong. A genuine " +
+          "negative, worth recording.",
+      }),
+    );
     return;
   }
 
@@ -1626,21 +1623,15 @@ async function askDevice(): Promise<void> {
   } catch (error) {
     // A silence is evidence only when we know we spoke. Two conclusions in this project were built
     // on silences that may never have left the machine.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? `0x${hex2(code)} — no answer, link proven` : "Nothing is reaching the device", [
-      ...log,
-      ["Result", String(error)],
-      ["Link check", alive ? "PASSED — the silence is the device's" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "a genuine negative worth recording: this device does not implement that code."
-          : LINK_DEAD,
-      ],
-    ]);
-    status(
-      alive ? `0x${hex2(code)} did not answer, and the link is fine.` : "Nothing is reaching the device.",
-      alive ? "warn" : "error",
+    showVerdict(
+      verdictAfterSilence({
+        what: `0x${hex2(code)}`,
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: "a genuine negative worth recording: this device does not implement that code.",
+      }),
     );
     return;
   }
@@ -1751,20 +1742,17 @@ async function readFile(): Promise<void> {
   } catch (error) {
     // The link check is the difference between "the device refused" and "we never spoke", and it
     // matters more here than anywhere: a silence from this message previously meant a dead device.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "The read failed, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
-      ...log,
-      ["Error", String(error)],
-      ["Link check", alive ? "PASSED — the device survived and refused" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "a genuine negative, worth recording — the request shape or the sequence is wrong."
-          : "the device may be frozen, as it was twice on 2026-07-30. Power-cycle it. Anything " +
-            "unsaved in the active project is gone.",
-      ],
-    ]);
-    status(alive ? "Read failed, link is fine." : "The device stopped answering — power-cycle it.", alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: "The read",
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: "a genuine negative, worth recording — the request shape or the sequence is wrong.",
+        canFreeze: true,
+      }),
+    );
   } finally {
     // Whatever happened, the handle is released by now and the next press is safe. Moving to the
     // next band is what stops this run's ids coming round again on the following one.
@@ -1870,22 +1858,20 @@ async function readThenWrite(): Promise<void> {
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");
   } catch (error) {
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "Refused, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
-      ...log,
-      ["Error", String(error)],
-      ["Link check", alive ? "PASSED" : "FAILED"],
-      [
-        "Means",
-        corrupt && alive
+    showVerdict(
+      verdictAfterSilence({
+        what: "The write",
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: corrupt
           ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
             "wanted and the reason to try it."
-          : alive
-            ? "a genuine refusal. The device's own wording is the best documentation this protocol has."
-            : "power-cycle it.",
-      ],
-    ]);
-    status(alive ? `Refused: ${String(error)}` : "The device stopped answering.", alive ? "warn" : "error");
+          : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
+        canFreeze: true,
+      }),
+    );
   } finally {
     readIds.advance();
     readingFile = false;
@@ -2015,20 +2001,17 @@ async function tryUnknownCode(): Promise<void> {
     // **This is the check whose absence voided a whole afternoon.** A run of silences was recorded
     // as "not implemented" while Elektron Transfer held the output port, so those requests may
     // never have been sent at all. The control makes a negative worth something.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? `${hex(code)} — no answer (link verified)` : `${hex(code)} — NOTHING WAS SENT`, [
-      ...log,
-      ["Result", `nothing within ${UNKNOWN_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "the link is proven, so this is a real negative: the code is not implemented, or it " +
-            "wants an argument we did not send. Worth recording."
-          : `${LINK_DEAD} **This result is void** — do not record it.`,
-      ],
-    ]);
-    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void — nothing reached the device.`, alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: hex(code),
+        alive: await linkIsAlive(output),
+        outcome: `nothing within ${UNKNOWN_TIMEOUT_MS}ms`,
+        log,
+        means:
+          "the link is proven, so this is a real negative: the code is not implemented, or it " +
+          "wants an argument we did not send. Worth recording.",
+      }),
+    );
     return;
   }
 
@@ -2081,6 +2064,20 @@ const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
 /** The write verdict, into the element this page reserves for it. */
 function verdictCard(title: string, rows: [string, string][]): void {
   drawVerdict($("writeResult"), title, rows);
+}
+
+/**
+ * Draw a verdict and say the same thing in the status bar.
+ *
+ * Both halves come from one object, so the card and the line under it cannot disagree — which they
+ * could when each call site wrote them out separately, and twice did.
+ */
+function showVerdict(
+  verdict: Verdict,
+  into: (title: string, rows: [string, string][]) => void = verdictCard,
+): void {
+  into(verdict.title, verdict.rows);
+  status(verdict.message, verdict.level);
 }
 
 /** Supported messages, with this page's hex formatter. */

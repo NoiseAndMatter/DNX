@@ -95,8 +95,5 @@ export async function requestListing(
   return frame?.body;
 }
 
-/** Shown when the link check fails, because the cause is almost always the same one. */
-export const LINK_DEAD =
-  "the device did not answer a message it always answers, so nothing we send is reaching it. " +
-  "Another application — Elektron Transfer, Overbridge, a DAW — is most likely holding the output " +
-  "port. Close it and try again. Until this passes, a silence proves nothing.";
+// `LINK_DEAD` moved to `silence.ts`, which is where the verdict it belongs to is now decided.
+// Two copies of one sentence in two files is the shape of the problem that module exists to end.
