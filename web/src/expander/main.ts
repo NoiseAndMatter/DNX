@@ -447,6 +447,17 @@ async function readDestination(): Promise<void> {
 function replanForDevice(): void {
   if (!destination.open || !source.image) return;
 
+  // **Nothing selected is a resting state, not a refusal.** It is where the page sits when a
+  // project has just opened and, since the fix in `applyToDestination`, immediately after a merge
+  // lands. `planSelected` throws `no patterns selected` for it, which is the right answer to
+  // "plan this" and the wrong thing to paint red across the panel the moment an apply succeeds.
+  if (merging() && selection.length === 0) {
+    planned = undefined;
+    $<HTMLButtonElement>("applyMerge").disabled = true;
+    $("devicePlan").innerHTML = "";
+    return;
+  }
+
   let outcome: PlanOutcome;
   try {
     outcome = merging()
@@ -490,14 +501,25 @@ function replanForDevice(): void {
  */
 function applyToDestination(): void {
   if (!destination.open || !planned) return;
+  const image = planned;
+  const landed = merging() ? [...selection] : (state.plan?.livePatterns ?? []);
+
+  // **The selection is cleared before the apply, not after.** `destination.apply` calls `onChange`
+  // synchronously, which replans — and a replan that still sees these patterns plans them onto the
+  // slots they have just landed in, finds those slots occupied, and asks the user to confirm
+  // overwriting their own merge. That dialog was reported as a hang: it is a native `confirm`, so
+  // it blocks the renderer until somebody answers a question about work they already approved.
+  //
+  // Clearing first is not bookkeeping tidiness. A pattern that has landed is no longer pending, and
+  // leaving it selected is what made the page believe the merge was still owed.
+  selection.length = 0;
+  planned = undefined;
+
   // The plan described a change *from* the old destination. Once it *is* the destination, the same
   // plan is a no-op — so applying recomputes rather than leaving something untrue on screen, which
   // `Destination`'s onChange does for the first two and this does for the report.
-  destination.apply(
-    planned,
-    merging() ? selection : (state.plan?.livePatterns ?? []),
-    merging() ? "merge" : "whole",
-  );
+  destination.apply(image, landed, merging() ? "merge" : "whole");
+  renderSource();
   renderReport();
   status(`Applied. ${destination.whatNext()}`);
 }
