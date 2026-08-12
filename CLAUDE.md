@@ -148,8 +148,22 @@ change; that is the point of the tool.
 ## Look at the page yourself
 
 **Any change to a page — layout, CSS, a control moving, an animation — is checked in a real
-browser before the MR is raised.** The Firefox DevTools MCP is available for exactly this: start
-the dev server, open the page, and look at it. Do not describe a visual change you have not seen.
+browser before the MR is raised.** Start the dev server, open the page, and look at it. Do not
+describe a visual change you have not seen.
+
+**Use Chrome, never Firefox.** Both DevTools MCP servers are configured — in the sibling
+`dn_sysex/.mcp.json`, not in this repository — but Firefox answers every Web MIDI request with
+`WebMIDI requires a site permission add-on` and drops it, so it cannot exercise anything that talks
+to an instrument, which is most of what these pages do. Chrome grants SysEx. Do not re-add Firefox.
+
+**Open the page in the state the bug would live in, not the state it first loads in.** Press the
+buttons, load the data, let the lists fill, *then* measure. A two-column grid the probe page
+inherited blew an explanatory paragraph to 3,108px tall and pushed the results area some 3,400px off
+screen — and that page *had* been opened in a browser for the PR that caused it. Empty, it looked
+fine.
+
+**Measure, do not eyeball.** `evaluate_script` with `getBoundingClientRect()` gives the numbers; a
+screenshot hides sub-pixel drift under rounding.
 
 The user checks too. That is not a substitute: *"always check yourself"*, and the reason is on the
 record. Four defects in the tool row shipped in a row — its font size, its leading edge, its
@@ -167,8 +181,9 @@ What to check, at minimum:
 - for anything animated, that it actually animates. The tool-change slide did not, for two
   releases, and was implemented the whole time
 
-`npm run web` serves at `http://localhost:8000`. If it is already running, the stale-build warning
-in `serve.ts` is a hint that it needs restarting, not a thing to read past.
+`npm run web`, from this repository, serves at `http://127.0.0.1:8173` — not port 8000. If it is
+already running, the stale-build warning in `serve.ts` is a hint that it needs restarting, not a
+thing to read past.
 
 ## Repository layout
 

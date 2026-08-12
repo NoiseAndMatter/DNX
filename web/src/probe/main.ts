@@ -100,11 +100,11 @@ import {
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
 import {
-  LINK_DEAD,
   LIST_TIMEOUT_MS,
   requestListing,
   linkIsAlive as checkLink,
 } from "./storageio.js";
+import { type Verdict, verdictAfterSilence } from "./silence.js";
 import {
   UNKNOWN_TIMEOUT_MS,
   VERIFY_TIMEOUT_MS,
@@ -325,24 +325,24 @@ async function probe(): Promise<void> {
         ["Means", "the Digitakt file API applies to this machine; prefer it to the reconstructed 0x53"],
       ]);
       status(`${device.deviceName}, firmware ${version.version}, ${root.length} entries at /.`, "ok");
-    } catch {
-      const alive = await linkIsAlive(output);
-      card(results, alive ? "DirList: no answer, link verified" : "DirList: nothing reached the device", [
-        ["Advertised", caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`],
-        ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
-        [
-          "Means",
-          alive
-            ? "a genuine negative: this device does not implement 0x10. Its storage API is at " +
-              "0x53–0x5a instead — see docs/device-storage.md."
-            : LINK_DEAD,
-        ],
-      ]);
-      status(
-        alive
-          ? `${device.deviceName}: no DirList, link verified. Storage lives at 0x53.`
-          : `${device.deviceName}: nothing is reaching the device.`,
-        alive ? "warn" : "error",
+    } catch (error) {
+      showVerdict(
+        verdictAfterSilence({
+          what: "DirList",
+          alive: await linkIsAlive(output),
+          outcome: String(error),
+          outcomeLabel: "Error",
+          log: [
+            [
+              "Advertised",
+              caps.driveFiles ? "yes" : `no — missing ${caps.missingForDriveFiles.map(hex).join(" ")}`,
+            ],
+          ],
+          means:
+            "a genuine negative: this device does not implement 0x10. Its storage API is at " +
+            "0x53–0x5a instead — see docs/device-storage.md.",
+        }),
+        (title, rows) => card(results, title, rows),
       );
     }
 
@@ -704,6 +704,68 @@ $("save").addEventListener("click", () => {
 
 
 
+// --- is the page in a state worth sending from? --------------------------------------------------
+
+/**
+ * What the reply is for, which is the only thing the Listen check needs to know.
+ *
+ * A request wants its answer collected. A write wants to read back what it wrote, which is a
+ * stronger reason: an unverifiable write is not a test of anything.
+ */
+type Await = "reply" | "readback";
+
+/**
+ * The output port, if sending is worth doing at all.
+ *
+ * Nine call sites opened with the same three guards and had drifted into four wordings of one
+ * sentence — *nothing will be collecting the reply*, *nothing collects the reply*, *the answers*,
+ * *the replies* — which is four ways of saying a thing that is true once. Unlike `silence.ts` this
+ * stays here rather than becoming a module: it reads `access`, `ports`, `listening` and `status`,
+ * so a separate file would need all four passed in, which is more machinery than the check.
+ */
+function readyOutput(waiting: Await): MIDIOutput | undefined {
+  if (!access) return undefined;
+
+  const output = ports.output(access);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return undefined;
+  }
+  if (!listening) {
+    status(
+      waiting === "readback"
+        ? "Press Listen first: a write that cannot be read back is not verifiable."
+        : "Press Listen first — otherwise nothing collects the reply.",
+      "warn",
+    );
+    return undefined;
+  }
+  return output;
+}
+
+/**
+ * The same, plus the product id the dump protocol needs to address anything at all.
+ *
+ * The storage API is addressed by path and does not need this; the `0x6n` requests do.
+ */
+function readyDump(waiting: Await): { output: MIDIOutput; productId: number } | undefined {
+  const output = readyOutput(waiting);
+  if (!output) return undefined;
+
+  const productId = lastProductId;
+  if (productId === undefined) {
+    // Both halves matter: probing may not have happened, or it happened and returned a product
+    // this build has no dump-protocol entry for. They need different things done about them.
+    status(
+      "No dump-protocol product id for this device — probe it first, and if it has been probed, " +
+        "it is a product this build does not know how to address.",
+      "warn",
+    );
+    return undefined;
+  }
+  return { output, productId };
+}
+
 // --- requesting --------------------------------------------------------------------------------
 
 /**
@@ -729,28 +791,12 @@ function requestOption(): (typeof REQUEST_OPTIONS)[number] {
 }
 
 $("request").addEventListener("click", () => {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing will be collecting the reply.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId: product } = ready;
 
   const option = requestOption();
   const objNr = option.indexed ? Number($<HTMLInputElement>("reqObj").value) : 0;
-  const product = lastProductId;
-  if (product === undefined) {
-    status(
-      `No dump-protocol product id for this device — probe it first, and if it has been probed, ` +
-        `it is a product this build does not know how to address.`,
-      "warn",
-    );
-    return;
-  }
 
   try {
     output.send([...dumpRequest(product, { code: option.code, objNr })]);
@@ -791,21 +837,9 @@ $("readProject").addEventListener("click", () => {
 });
 
 async function readProject(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing will be collecting the answers.", "warn");
-    return;
-  }
-  const productId = lastProductId;
-  if (productId === undefined) {
-    status("Probe the device first: a read needs to know which product to address.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   let plan;
   try {
@@ -1016,17 +1050,9 @@ $("writeBack").addEventListener("click", () => {
 });
 
 async function writeBack(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first — a write has to be addressed to a known product.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
-    return;
-  }
+  const ready = readyDump("readback");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   // Sent back to its own slot, so the record has to come from this device in the first place.
   const messages = splitCapture();
@@ -1225,17 +1251,9 @@ $("writeSlot").addEventListener("click", () => {
 });
 
 async function writeToChosenSlot(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
-    return;
-  }
+  const ready = readyDump("readback");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   const destination = patternIndex($<HTMLInputElement>("writeTo").value);
   if (destination === undefined) {
@@ -1455,16 +1473,8 @@ $("lsSend").addEventListener("click", () => {
 });
 
 async function listPath(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
 
   const path = $<HTMLInputElement>("lsPath").value;
   // The cursor half of the request has never been exercised. Transfer uses it — a 43-byte reply in
@@ -1500,20 +1510,17 @@ async function listPath(): Promise<void> {
   if (!reply) {
     // The control that separates "it did not answer" from "we never spoke". Without it, both look
     // the same and the temptation is to record the more interesting one.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "No listing — but the device is answering" : "Nothing is reaching the device", [
-      ...log,
-      ["Result", `nothing within ${LIST_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED — Device answered, so the silence is real" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "this device does not implement the listing, or the request shape is wrong. A genuine " +
-            "negative, worth recording."
-          : LINK_DEAD,
-      ],
-    ]);
-    status(alive ? "No listing, and the link is fine." : "Nothing is reaching the device.", alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: "Listing",
+        alive: await linkIsAlive(output),
+        outcome: `nothing within ${LIST_TIMEOUT_MS}ms`,
+        log,
+        means:
+          "this device does not implement the listing, or the request shape is wrong. A genuine " +
+          "negative, worth recording.",
+      }),
+    );
     return;
   }
 
@@ -1596,16 +1603,8 @@ $("askSend").addEventListener("click", () => {
 });
 
 async function askDevice(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
 
   const code = Number($<HTMLSelectElement>("askCode").value);
   const key = "";
@@ -1626,21 +1625,15 @@ async function askDevice(): Promise<void> {
   } catch (error) {
     // A silence is evidence only when we know we spoke. Two conclusions in this project were built
     // on silences that may never have left the machine.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? `0x${hex2(code)} — no answer, link proven` : "Nothing is reaching the device", [
-      ...log,
-      ["Result", String(error)],
-      ["Link check", alive ? "PASSED — the silence is the device's" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "a genuine negative worth recording: this device does not implement that code."
-          : LINK_DEAD,
-      ],
-    ]);
-    status(
-      alive ? `0x${hex2(code)} did not answer, and the link is fine.` : "Nothing is reaching the device.",
-      alive ? "warn" : "error",
+    showVerdict(
+      verdictAfterSilence({
+        what: `0x${hex2(code)}`,
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: "a genuine negative worth recording: this device does not implement that code.",
+      }),
     );
     return;
   }
@@ -1691,16 +1684,8 @@ $("fileRead").addEventListener("click", () => {
 });
 
 async function readFile(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the replies.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
   // **One at a time.** Two presses produced two sessions numbering their messages from 1, on a
   // transport with a single reply slot, so each stole the other's answers — three opens all
   // answering message 1, and a "whose traffic is this" verdict that contradicted itself. A
@@ -1751,20 +1736,17 @@ async function readFile(): Promise<void> {
   } catch (error) {
     // The link check is the difference between "the device refused" and "we never spoke", and it
     // matters more here than anywhere: a silence from this message previously meant a dead device.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "The read failed, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
-      ...log,
-      ["Error", String(error)],
-      ["Link check", alive ? "PASSED — the device survived and refused" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "a genuine negative, worth recording — the request shape or the sequence is wrong."
-          : "the device may be frozen, as it was twice on 2026-07-30. Power-cycle it. Anything " +
-            "unsaved in the active project is gone.",
-      ],
-    ]);
-    status(alive ? "Read failed, link is fine." : "The device stopped answering — power-cycle it.", alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: "The read",
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: "a genuine negative, worth recording — the request shape or the sequence is wrong.",
+        canFreeze: true,
+      }),
+    );
   } finally {
     // Whatever happened, the handle is released by now and the next press is safe. Moving to the
     // next band is what stops this run's ids coming round again on the following one.
@@ -1801,16 +1783,8 @@ $("fileWrite").addEventListener("click", () => {
 });
 
 async function readThenWrite(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the replies.", "warn");
-    return;
-  }
+  const output = readyOutput("readback");
+  if (!output) return;
   if (readingFile) {
     status("A read is already running. Wait for it to close its handle.", "warn");
     return;
@@ -1870,22 +1844,20 @@ async function readThenWrite(): Promise<void> {
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");
   } catch (error) {
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? "Refused, and the device is still answering" : "THE DEVICE IS NOT ANSWERING", [
-      ...log,
-      ["Error", String(error)],
-      ["Link check", alive ? "PASSED" : "FAILED"],
-      [
-        "Means",
-        corrupt && alive
+    showVerdict(
+      verdictAfterSilence({
+        what: "The write",
+        alive: await linkIsAlive(output),
+        outcome: String(error),
+        outcomeLabel: "Error",
+        log,
+        means: corrupt
           ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
             "wanted and the reason to try it."
-          : alive
-            ? "a genuine refusal. The device's own wording is the best documentation this protocol has."
-            : "power-cycle it.",
-      ],
-    ]);
-    status(alive ? `Refused: ${String(error)}` : "The device stopped answering.", alive ? "warn" : "error");
+          : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
+        canFreeze: true,
+      }),
+    );
   } finally {
     readIds.advance();
     readingFile = false;
@@ -1969,17 +1941,9 @@ $("probeSend").addEventListener("click", () => {
 });
 
 async function tryUnknownCode(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   const code = Number($<HTMLSelectElement>("probeCode").value);
   const objNr = Number($<HTMLInputElement>("probeObj").value);
@@ -2015,20 +1979,17 @@ async function tryUnknownCode(): Promise<void> {
     // **This is the check whose absence voided a whole afternoon.** A run of silences was recorded
     // as "not implemented" while Elektron Transfer held the output port, so those requests may
     // never have been sent at all. The control makes a negative worth something.
-    const alive = await linkIsAlive(output);
-    verdictCard(alive ? `${hex(code)} — no answer (link verified)` : `${hex(code)} — NOTHING WAS SENT`, [
-      ...log,
-      ["Result", `nothing within ${UNKNOWN_TIMEOUT_MS}ms`],
-      ["Link check", alive ? "PASSED — Device answered afterwards" : "FAILED"],
-      [
-        "Means",
-        alive
-          ? "the link is proven, so this is a real negative: the code is not implemented, or it " +
-            "wants an argument we did not send. Worth recording."
-          : `${LINK_DEAD} **This result is void** — do not record it.`,
-      ],
-    ]);
-    status(alive ? `${hex(code)}: genuine silence.` : `${hex(code)}: void — nothing reached the device.`, alive ? "warn" : "error");
+    showVerdict(
+      verdictAfterSilence({
+        what: hex(code),
+        alive: await linkIsAlive(output),
+        outcome: `nothing within ${UNKNOWN_TIMEOUT_MS}ms`,
+        log,
+        means:
+          "the link is proven, so this is a real negative: the code is not implemented, or it " +
+          "wants an argument we did not send. Worth recording.",
+      }),
+    );
     return;
   }
 
@@ -2081,6 +2042,20 @@ const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
 /** The write verdict, into the element this page reserves for it. */
 function verdictCard(title: string, rows: [string, string][]): void {
   drawVerdict($("writeResult"), title, rows);
+}
+
+/**
+ * Draw a verdict and say the same thing in the status bar.
+ *
+ * Both halves come from one object, so the card and the line under it cannot disagree — which they
+ * could when each call site wrote them out separately, and twice did.
+ */
+function showVerdict(
+  verdict: Verdict,
+  into: (title: string, rows: [string, string][]) => void = verdictCard,
+): void {
+  into(verdict.title, verdict.rows);
+  status(verdict.message, verdict.level);
 }
 
 /** Supported messages, with this page's hex formatter. */
