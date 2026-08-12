@@ -477,3 +477,67 @@ ul.overflow { columns: 2; column-gap: 1.4rem; margin: .3rem 0; padding-left: 1.1
 
 .good { color: var(--teal); }
 .muted { color: var(--muted); }
+
+/*
+ * ---- help ------------------------------------------------------------------------------
+ *
+ * A page's explanation of itself, on a `?` rather than in the layout. See `web/src/help.ts` for
+ * what it cost the probe to keep that explanation on the page: 30% of the results window at
+ * 1600x876, and all of it at 900x800.
+ *
+ * Here rather than in the probe's own `<style>` because it is a component, not a layout. The next
+ * page with something to explain should get the same panel, and the alternative is a second copy
+ * of these rules written months later against a slightly different set of colours — which is what
+ * this whole file exists to stop.
+ */
+/* The heading becomes a row so the `?` can sit at its end, out of the way of the words. */
+[data-help] { display: flex; align-items: center; gap: .5rem; }
+.helpq {
+  margin-left: auto; flex: none;
+  width: 1.15rem; height: 1.15rem; padding: 0; line-height: 1;
+  background: none; border: 1px solid var(--line); border-radius: 50%;
+  color: var(--muted); font-size: .72rem; font-weight: 600; cursor: pointer;
+}
+.helpq:hover { border-color: var(--teal); color: var(--teal); }
+.helpq:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/*
+ * **`[open]`, not a bare `dialog.help`.** A closed dialog is hidden by a UA rule of
+ * `display: none`, which any author rule setting `display` beats — the same fault that left the
+ * bank tabs and the pattern grid on screen while marked `hidden`. Without the attribute selector
+ * every page's help panel would render inline, permanently, at the bottom of the document.
+ */
+dialog.help[open] { display: flex; flex-direction: column; }
+dialog.help {
+  padding: 0;                    /* so a click landing on the dialog itself is really the backdrop */
+  border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); color: var(--fg);
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: min(38rem, calc(100vh - 4rem));
+}
+dialog.help::backdrop { background: rgba(10, 13, 14, .66); }
+/* `min-height: 0`, or a flex child refuses to shrink below its content and the panel overflows. */
+.helpbody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; }
+.helpbody > h2 {
+  margin: 0 0 .7rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--teal); font-weight: 600;
+}
+.helpbody [data-topic] {
+  padding: .7rem; margin: 0 -.7rem; border-top: 1px solid var(--line-soft); border-radius: 3px;
+}
+.helpbody [data-topic]:first-of-type { border-top: none; padding-top: 0; }
+.helpbody [data-topic] h3 {
+  margin: 0 0 .35rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--muted); font-weight: 600;
+}
+.helpbody [data-topic] p { margin: 0 0 .5rem; color: var(--muted); font-size: .8rem; }
+.helpbody [data-topic] p:last-child { margin-bottom: 0; }
+.helpbody strong { color: var(--fg); font-weight: 600; }
+/*
+ * Where the `?` you pressed lands. Marked by lifting it rather than by dimming its neighbours: the
+ * sentence somebody needs is often on the card next to the one they asked about, and help you have
+ * to squint at is help that did not work.
+ */
+.helpbody [data-topic][data-current] { background: var(--panel-2); }
+.helpbody [data-topic][data-current] h3 { color: var(--teal); }
+.helpclose { display: flex; justify-content: flex-end; margin-top: .9rem; }
