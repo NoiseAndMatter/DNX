@@ -74,15 +74,16 @@ export interface ReadStoredFileOptions {
    * A device that never sets the end-of-file flag would otherwise loop forever, and the failure
    * would look like a hang rather than a protocol misunderstanding.
    *
-   * **This was 8,192, on the reasoning that 16 MB is "past any project either machine holds". That
-   * reasoning was never checked against a Digitone II.** The first DN2 project ever read off a
-   * +Drive — 2026-08-12, slot 4 — is **12,889,647 bytes, 6,294 chunks**. The old ceiling had 30%
-   * left, not the wide margin the comment claimed, and a larger project would have failed with
-   * *"the device never set the end-of-file flag"* — sending the next person after a protocol bug
-   * that does not exist.
+   * **This was 8,192, on the reasoning that 16 MB is "past any project either machine holds".**
+   * Real projects: a DN2's is **12,889,647 bytes, 6,294 chunks**; a DN1's is at least 2,504,704.
+   * Both are megabytes, and a larger one would have failed with *"the device never set the
+   * end-of-file flag"* — sending the next person after a protocol bug that does not exist.
    *
-   * A DN1 project is 131,072 bytes, about 64 chunks. **The two machines differ by a factor of a
-   * hundred**, so anything sized by eye against the DN1 is wrong here by two orders of magnitude.
+   * **8,192 was not a ceiling nobody would reach — it had already been reached.** The 131,072-byte
+   * figure that used to be quoted here as a DN1 project size is `8,192 × 16`: this guard, times the
+   * 16-byte default chunk size, from a read `docs/device-storage.md` §3 records as having *"no end
+   * in sight"*. A cut-off read still reports a number, and the number outlived the sentence saying
+   * it was cut off. Anything sized by eye against a stopped read is sized against this guard.
    */
   maxChunks?: number;
   /**

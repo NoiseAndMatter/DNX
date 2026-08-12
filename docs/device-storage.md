@@ -1056,20 +1056,36 @@ Firmware **1.10E (build 0050)**, product id **43** in API space. It reports `Rea
 and `Manages +Drive: no` in its capability list — **and reads files anyway**, exactly as the DN1
 does. The advertisement is still not the answer; the device is.
 
-### A DN2 project is a hundred times a DN1 project
+### Projects on both machines are megabytes, not kilobytes
 
 | | DN1 | DN2 |
 |---|---|---|
-| project size | 131,072 bytes | **12,889,647 bytes** |
-| chunks at 2,048 bytes | ~64 | **6,294** |
-| read time | under a second | ~37 s |
+| project size | **≥ 2,504,704 bytes** | **12,889,647 bytes** |
+| chunks at 2,048 bytes | ≥ 1,223 | **6,294** |
+| read time | ~23 s | ~37 s |
 
-First read: slot 4, `SKETCHPAD`, 2026-08-12. Repeated, byte-identical.
+DN2: slot 4, `SKETCHPAD`, 2026-08-12, read twice byte-identical. DN1: slot 53, `TECNO_EXP`, the same
+evening — the figure is the last progress report seen before the read completed, so it is a floor and
+not the total.
 
-**This invalidates anything sized by eye against the DN1.** `maxChunks` was 8,192 with a comment
-calling it "past any project either machine holds" — it had 30% of headroom, and a larger project
-would have failed with *"the device never set the end-of-file flag"*, pointing at a protocol bug
-that does not exist. It is 32,768 now, which is a backstop rather than an estimate.
+> [!warning] **This table first said a DN1 project was 131,072 bytes. That number is not a size.**
+>
+> It is **8,192 × 16** — the old `maxChunks` ceiling times the 16-byte default chunk size — from the
+> read described in §3's note as *"8,192 chunks of exactly 16 bytes each, 131,072 bytes, and no end
+> in sight"*. It is the **guard's fingerprint**, the shape of a read that was cut off, and the note
+> that recorded it says so plainly in the same sentence.
+>
+> It was still read here as a measurement, and the whole "a hundred times bigger" framing was built
+> on it. A truncated read reports a number, and a number in a document outlives the sentence that
+> qualified it.
+>
+> It also inverts the argument it was used for. 8,192 was not a generous ceiling nobody would reach
+> — **it had already been reached, and this is the record of it.**
+
+**Nothing here should be sized by eye against the other machine, or against a read that stopped.**
+`maxChunks` was 8,192 with a comment calling it "past any project either machine holds" — a larger
+project would have failed with *"the device never set the end-of-file flag"*, pointing at a protocol
+bug that does not exist. It is 32,768 now, which is a backstop rather than an estimate.
 
 ### The failure that was not a protocol failure
 
