@@ -704,6 +704,68 @@ $("save").addEventListener("click", () => {
 
 
 
+// --- is the page in a state worth sending from? --------------------------------------------------
+
+/**
+ * What the reply is for, which is the only thing the Listen check needs to know.
+ *
+ * A request wants its answer collected. A write wants to read back what it wrote, which is a
+ * stronger reason: an unverifiable write is not a test of anything.
+ */
+type Await = "reply" | "readback";
+
+/**
+ * The output port, if sending is worth doing at all.
+ *
+ * Nine call sites opened with the same three guards and had drifted into four wordings of one
+ * sentence — *nothing will be collecting the reply*, *nothing collects the reply*, *the answers*,
+ * *the replies* — which is four ways of saying a thing that is true once. Unlike `silence.ts` this
+ * stays here rather than becoming a module: it reads `access`, `ports`, `listening` and `status`,
+ * so a separate file would need all four passed in, which is more machinery than the check.
+ */
+function readyOutput(waiting: Await): MIDIOutput | undefined {
+  if (!access) return undefined;
+
+  const output = ports.output(access);
+  if (!output) {
+    status("That output is no longer there. Press Rescan.", "error");
+    return undefined;
+  }
+  if (!listening) {
+    status(
+      waiting === "readback"
+        ? "Press Listen first: a write that cannot be read back is not verifiable."
+        : "Press Listen first — otherwise nothing collects the reply.",
+      "warn",
+    );
+    return undefined;
+  }
+  return output;
+}
+
+/**
+ * The same, plus the product id the dump protocol needs to address anything at all.
+ *
+ * The storage API is addressed by path and does not need this; the `0x6n` requests do.
+ */
+function readyDump(waiting: Await): { output: MIDIOutput; productId: number } | undefined {
+  const output = readyOutput(waiting);
+  if (!output) return undefined;
+
+  const productId = lastProductId;
+  if (productId === undefined) {
+    // Both halves matter: probing may not have happened, or it happened and returned a product
+    // this build has no dump-protocol entry for. They need different things done about them.
+    status(
+      "No dump-protocol product id for this device — probe it first, and if it has been probed, " +
+        "it is a product this build does not know how to address.",
+      "warn",
+    );
+    return undefined;
+  }
+  return { output, productId };
+}
+
 // --- requesting --------------------------------------------------------------------------------
 
 /**
@@ -729,28 +791,12 @@ function requestOption(): (typeof REQUEST_OPTIONS)[number] {
 }
 
 $("request").addEventListener("click", () => {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing will be collecting the reply.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId: product } = ready;
 
   const option = requestOption();
   const objNr = option.indexed ? Number($<HTMLInputElement>("reqObj").value) : 0;
-  const product = lastProductId;
-  if (product === undefined) {
-    status(
-      `No dump-protocol product id for this device — probe it first, and if it has been probed, ` +
-        `it is a product this build does not know how to address.`,
-      "warn",
-    );
-    return;
-  }
 
   try {
     output.send([...dumpRequest(product, { code: option.code, objNr })]);
@@ -791,21 +837,9 @@ $("readProject").addEventListener("click", () => {
 });
 
 async function readProject(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing will be collecting the answers.", "warn");
-    return;
-  }
-  const productId = lastProductId;
-  if (productId === undefined) {
-    status("Probe the device first: a read needs to know which product to address.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   let plan;
   try {
@@ -1016,17 +1050,9 @@ $("writeBack").addEventListener("click", () => {
 });
 
 async function writeBack(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first — a write has to be addressed to a known product.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
-    return;
-  }
+  const ready = readyDump("readback");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   // Sent back to its own slot, so the record has to come from this device in the first place.
   const messages = splitCapture();
@@ -1225,17 +1251,9 @@ $("writeSlot").addEventListener("click", () => {
 });
 
 async function writeToChosenSlot(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first: a write that cannot be read back is not verifiable.", "warn");
-    return;
-  }
+  const ready = readyDump("readback");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   const destination = patternIndex($<HTMLInputElement>("writeTo").value);
   if (destination === undefined) {
@@ -1455,16 +1473,8 @@ $("lsSend").addEventListener("click", () => {
 });
 
 async function listPath(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
 
   const path = $<HTMLInputElement>("lsPath").value;
   // The cursor half of the request has never been exercised. Transfer uses it — a 43-byte reply in
@@ -1593,16 +1603,8 @@ $("askSend").addEventListener("click", () => {
 });
 
 async function askDevice(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
 
   const code = Number($<HTMLSelectElement>("askCode").value);
   const key = "";
@@ -1682,16 +1684,8 @@ $("fileRead").addEventListener("click", () => {
 });
 
 async function readFile(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the replies.", "warn");
-    return;
-  }
+  const output = readyOutput("reply");
+  if (!output) return;
   // **One at a time.** Two presses produced two sessions numbering their messages from 1, on a
   // transport with a single reply slot, so each stole the other's answers — three opens all
   // answering message 1, and a "whose traffic is this" verdict that contradicted itself. A
@@ -1789,16 +1783,8 @@ $("fileWrite").addEventListener("click", () => {
 });
 
 async function readThenWrite(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  if (!output) {
-    status("That output is no longer there. Press Rescan.", "error");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the replies.", "warn");
-    return;
-  }
+  const output = readyOutput("readback");
+  if (!output) return;
   if (readingFile) {
     status("A read is already running. Wait for it to close its handle.", "warn");
     return;
@@ -1955,17 +1941,9 @@ $("probeSend").addEventListener("click", () => {
 });
 
 async function tryUnknownCode(): Promise<void> {
-  if (!access) return;
-  const output = ports.output(access);
-  const productId = lastProductId;
-  if (!output || productId === undefined) {
-    status("Probe the device first.", "warn");
-    return;
-  }
-  if (!listening) {
-    status("Press Listen first — otherwise nothing collects the reply.", "warn");
-    return;
-  }
+  const ready = readyDump("reply");
+  if (!ready) return;
+  const { output, productId } = ready;
 
   const code = Number($<HTMLSelectElement>("probeCode").value);
   const objNr = Number($<HTMLInputElement>("probeObj").value);
