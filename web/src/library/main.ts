@@ -52,6 +52,7 @@ import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
+import { askConfirm } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
 import {
@@ -392,7 +393,19 @@ async function loadKit(index: number, pattern: number): Promise<void> {
     status(lines[0]!, "warn");
     return;
   }
-  if (!window.confirm(`${lines.join("\n")}\n\nGo ahead?`)) {
+  // The per-track before/after is the whole reason this is safe to offer, and `confirm` could only
+  // show it as one paragraph with newlines in it. As a list it is what it always was: sixteen
+  // findings to scan, of which two or three are the ones that matter.
+  const [summary, ...findings] = lines;
+  if (
+    !(await askConfirm({
+      title: `Load kit ${bank.bank}${index} into ${patternName(pattern)}?`,
+      body: summary === undefined ? [] : [summary],
+      list: findings,
+      confirmLabel: "Load kit",
+      danger: true,
+    }))
+  ) {
     status("Not loaded.");
     return;
   }
@@ -433,11 +446,28 @@ async function addToPool(index: number, slot: number): Promise<void> {
   // Planned before anything is written, so a refusal — a MIDI preset, an occupied slot with locks —
   // is something you read rather than something you undo.
   const preview = planAddPreset(project.image, projectDevice, body, { slot });
-  if (preview.replaces && !window.confirm(`${describeAddPreset(preview)}
-
-Go ahead?`)) {
-    status("Not added.");
-    return;
+  if (preview.replaces) {
+    const replaced = preview.replaces;
+    const ok = await askConfirm({
+      title: `Replace ${replaced.name || "the preset"} in pool slot ${preview.slot}?`,
+      body: [
+        describeAddPreset(preview),
+        // Said separately because it is the consequence, not the description. A slot with locks is
+        // not merely occupied — it is in use, and replacing it changes what those trigs play.
+        ...(replaced.lockCount > 0
+          ? [
+              `${replaced.lockCount} trig${replaced.lockCount === 1 ? "" : "s"} lock to that ` +
+                `slot and will play the new preset instead.`,
+            ]
+          : []),
+      ],
+      confirmLabel: "Replace it",
+      danger: true,
+    });
+    if (!ok) {
+      status("Not added.");
+      return;
+    }
   }
 
   const { image, plan } = applyAddPreset(project.image, projectDevice, body, {
