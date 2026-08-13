@@ -141,6 +141,45 @@ const PAGES: [string, string, string][] = [
   ["probe", resolve(HERE, "../web/src/probe/main.ts"), resolve(HERE, "../web/probe.html")],
 ];
 
+/**
+ * No page asks a question through the browser's own box.
+ *
+ * `confirm`, `prompt` and `alert` block the renderer — and CDP with it — so a page waiting on one
+ * is indistinguishable from a hung page. That cost an hour on 2026-08-12 and was diagnosed only
+ * because the user sent a screenshot. They also look nothing like the app, at exactly the moment
+ * somebody is being asked to commit to overwriting their own work.
+ *
+ * `web/src/dialog.ts` replaces all twelve. This is a **guard on a decision**, not a style rule:
+ * the native call is one word shorter than the good one and always will be, so the only thing
+ * keeping it out is a test.
+ *
+ * **Comments are stripped first.** Five of these files now explain at length why they do not call
+ * `window.confirm`, and a naive search fails on the explanation for the fix.
+ */
+test("no page asks through a native dialog", () => {
+  const offenders: string[] = [];
+
+  for (const [, entry] of PAGES) {
+    for (const file of reachableFiles(entry)) {
+      const code = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+      // Word-boundary-led so `askConfirm(` and `confirmOverwrite` do not match, and a leading `.`
+      // is excluded so a method named `prompt` on some object of ours would not either.
+      for (const match of code.matchAll(/(?<![.\w])(?:window\s*\.\s*)?(confirm|prompt|alert)\s*\(/g)) {
+        offenders.push(`${match[1]!} in ${file}`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `use askConfirm/askText from web/src/dialog.ts instead:\n  ${offenders.join("\n  ")}`,
+  );
+});
+
 for (const [name, entry, html] of PAGES) {
   test(`every element the ${name} asks for exists in its page`, () => {
     // `$("id")` throws at load when the id is missing, so a typo or a half-wired feature takes
