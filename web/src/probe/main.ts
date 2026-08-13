@@ -302,6 +302,7 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("filePath").disabled = false;
     $<HTMLInputElement>("writeTarget").disabled = false;
     $<HTMLInputElement>("corruptSum").disabled = false;
+    $<HTMLInputElement>("chunkSize").disabled = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
 
@@ -1776,6 +1777,16 @@ async function readFile(): Promise<void> {
 /** True while a read owns a device handle. See the guard in `readFile`. */
 let readingFile = false;
 
+/**
+ * What the chunk box falls back to, matching `storagewrite.ts`'s own default.
+ *
+ * Stated here rather than imported, because the two are the same number for different reasons: that
+ * one is what the write path does when nobody chooses, this one is what the *form* shows. If the
+ * transport's default ever changes, this should not silently follow it — a probe control that moves
+ * when you are not looking is the opposite of an instrument.
+ */
+const DEFAULT_PROBE_CHUNK = 2048;
+
 /** The bands a long read draws its message ids from. See `messageids.ts` for why. */
 const readIds = new MessageIdBands();
 
@@ -1810,16 +1821,24 @@ async function readThenWrite(): Promise<void> {
   const source = $<HTMLInputElement>("filePath").value;
   const target = $<HTMLInputElement>("writeTarget").value;
   const corrupt = $<HTMLInputElement>("corruptSum").checked;
+  // Read as a number and sanity-checked here rather than trusted from the input: `min`/`max` on a
+  // number field are advisory, and a chunk size of 0 would loop forever slicing nothing.
+  const typed = Number($<HTMLInputElement>("chunkSize").value);
+  const chunkSize = Number.isInteger(typed) && typed >= 16 ? typed : DEFAULT_PROBE_CHUNK;
   const log: [string, string][] = [
     ["Reading", source],
     ["Writing to", target],
     ["Checksum", corrupt ? "DELIBERATELY WRONG — testing whether it is enforced" : "the device's own, from the read"],
+    ["Chunk size", `${chunkSize} bytes per 0x58`],
     ["Guard", "the destination must be empty in a fresh listing, or nothing is sent"],
   ];
   verdictCard("Writing…", log);
 
   readingFile = true;
   $<HTMLButtonElement>("fileWrite").disabled = true;
+  // Hoisted so the failure path can say whether this was a multi-chunk attempt. `file` is scoped to
+  // the `try`, and a refusal is exactly when the difference between one chunk and six matters most.
+  let sourceLength = 0;
   try {
     // The destination's own directory, listed now rather than trusted from earlier. A listing from
     // ten minutes ago is not evidence about what is in a slot at the moment of writing.
@@ -1834,6 +1853,7 @@ async function readThenWrite(): Promise<void> {
 
     const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIds.base() });
     readIds.advance();
+    sourceLength = file.bytes.length;
     const chunk = file.checksum;
     if (chunk === undefined) throw new Error("the read gave no checksum, so there is nothing to write with");
 
@@ -1842,6 +1862,7 @@ async function readThenWrite(): Promise<void> {
       transport: apiTransport(output),
       target: entry,
       msgId: readIds.base(),
+      chunkSize,
       onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
     });
 
@@ -1855,8 +1876,13 @@ async function readThenWrite(): Promise<void> {
         corrupt
           ? "the device ACCEPTED a wrong checksum, so the field is not validated and arbitrary " +
             "content can be written. Check the slot on the instrument before believing it."
-          : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
-            "not the same as bytes on the +Drive.",
+          : result.chunks > 1
+            ? `a MULTI-CHUNK write was accepted — ${result.chunks} chunks, each carrying the ` +
+              `whole file's checksum. That is the open question in storagewrite.ts answered: the ` +
+              `field is per file, not per chunk, so a project of ~6,294 chunks has no new ` +
+              `unknown in its way. Read it back and diff before believing it.`
+            : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
+              "not the same as bytes on the +Drive.",
       ],
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");
@@ -1871,7 +1897,12 @@ async function readThenWrite(): Promise<void> {
         means: corrupt
           ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
             "wanted and the reason to try it."
-          : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
+          : sourceLength > chunkSize
+            ? "a refusal on a MULTI-CHUNK write, where the same bytes at one chunk succeed, says " +
+              "the whole-file checksum is not what a second chunk should carry — try per-chunk " +
+              "next. Run the one-chunk control before concluding that: a refusal that happens at " +
+              "any chunk size is about something else entirely."
+            : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
         canFreeze: true,
       }),
     );
