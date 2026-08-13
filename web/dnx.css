@@ -541,3 +541,69 @@ dialog.help::backdrop { background: rgba(10, 13, 14, .66); }
 .helpbody [data-topic][data-current] { background: var(--panel-2); }
 .helpbody [data-topic][data-current] h3 { color: var(--teal); }
 .helpclose { display: flex; justify-content: flex-end; margin-top: .9rem; }
+
+/* ---- asking something ----------------------------------------------------------------
+ *
+ * The consent dialogs, replacing twelve `window.confirm` and `prompt` boxes. Same skeleton as
+ * `dialog.help` above and deliberately so — one modal shape for the app, differing only in that
+ * this one has an answer and help does not.
+ *
+ * **`[open]`, not a bare `dialog.ask`** — see the note on the help panel. A closed dialog is
+ * hidden by a UA `display: none` rule, which any author rule setting `display` beats.
+ */
+dialog.ask[open] { display: flex; flex-direction: column; }
+dialog.ask {
+  /* All padding is on `.askbody`, so the scroll container is the full width of the panel. Unlike
+     `dialog.help` this is not also load-bearing for hit-testing: a question does not dismiss on a
+     backdrop click, because the list inside it is what the answer is decided from. */
+  padding: 0;
+  border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); color: var(--fg);
+  /* Narrower than help: a question is read once and answered, not browsed. */
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 4rem));
+}
+dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
+.askbody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; }
+.askbody > h2 {
+  margin: 0 0 .7rem; font-size: .78rem; letter-spacing: .02em;
+  color: var(--fg); font-weight: 600;
+}
+.askbody > p { margin: 0 0 .6rem; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+
+/*
+ * The itemised half — tracks about to be destroyed, findings of a plan. Scrolls on its own so a
+ * long list cannot push the buttons off the bottom of the dialog, which is the one thing a modal
+ * must never do: an unanswerable question with no visible way out.
+ */
+.asklist {
+  margin: 0 0 .7rem; padding: .5rem .7rem; list-style: none;
+  max-height: 14rem; overflow: auto;
+  background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 3px;
+  font-size: .75rem; color: var(--muted);
+}
+.asklist li { padding: .16rem 0; border-bottom: 1px solid var(--line-soft); }
+.asklist li:last-child { border-bottom: none; }
+
+.askbuttons { display: flex; justify-content: flex-end; gap: .4rem; margin-top: .9rem; }
+
+/*
+ * **The destructive button has to look destructive before it is pointed at.**
+ *
+ * `.btn.danger` elsewhere only colours on `:hover`, which is fine for a button sitting in a bar
+ * you are reading anyway. In a dialog it is not: measured on the manager's own destroy dialog,
+ * "Destroy it" and "Cancel" both computed to `rgb(49, 58, 61)` — the same border, the same text,
+ * distinguishable only by the words. The one place the app asks somebody to approve losing work
+ * is the one place two buttons must not look alike.
+ *
+ * Scoped to `.askbuttons` deliberately. Restyling every `.btn.danger` in the app is a change to
+ * pages this has nothing to do with, and it belongs to whoever is looking at those pages.
+ */
+.askbuttons .btn.danger { border-color: var(--salmon); color: var(--salmon); }
+.askbuttons .btn.danger:hover:not(:disabled) { background: var(--salmon); color: #1a1010; }
+.askinput {
+  width: 100%; box-sizing: border-box; margin: .2rem 0 0;
+  background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 3px;
+  padding: .38rem .5rem; color: var(--fg); font: inherit; letter-spacing: .04em;
+}
+.askinput:focus { outline: 2px solid var(--focus); outline-offset: -2px; }

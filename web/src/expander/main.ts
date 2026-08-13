@@ -28,11 +28,14 @@ import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
 import { renderToolNav } from "../toolnav.js";
+import { askConfirm } from "../dialog.js";
 import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
 import {
   type ExpanderOptions,
+  type MergeOverrides,
   type PlanOutcome,
+  offerLabel,
   planFor,
   planSelected,
   planWhole,
@@ -444,7 +447,15 @@ async function readDestination(): Promise<void> {
   );
 }
 
-function replanForDevice(): void {
+/**
+ * Work out what the merge would do, and paint it.
+ *
+ * `overrides` is consent the user has just given by pressing the button an `offer` rendered. It is
+ * an **argument and not state** on purpose: it lives for exactly this call, so every other route
+ * into a replan — a click on a pattern, a new landing slot, a toggled option — runs with none, and
+ * agreeing to overwrite one slot can never quietly authorise overwriting another.
+ */
+function replanForDevice(overrides: MergeOverrides = {}): void {
   if (!destination.open || !source.image) return;
 
   // **Nothing selected is a resting state, not a refusal.** It is where the page sits when a
@@ -468,7 +479,7 @@ function replanForDevice(): void {
           landing,
           landingMode: landingMode(),
           options: options(),
-          ask: (question) => window.confirm(question),
+          overrides,
         })
       : planWhole({
           source: source.image,
@@ -489,6 +500,26 @@ function replanForDevice(): void {
   planned = outcome.image;
   $("devicePlan").innerHTML = renderDescribed(outcome.described);
   $<HTMLButtonElement>("applyMerge").disabled = planned === undefined;
+
+  // A refusal that can be lifted gets the button that lifts it, right under the sentence explaining
+  // why. This replaces a `window.confirm` that asked the same question mid-plan — which blocked the
+  // renderer, and which asked it again on every replan because nothing remembered the answer.
+  //
+  // Pressing it plans again with the consent it carries. Nothing else is stored, so walking away
+  // from the question — picking another landing slot, deselecting a pattern — simply cancels it.
+  if (outcome.offer) {
+    const offer = outcome.offer;
+    const lift = document.createElement("button");
+    lift.type = "button";
+    lift.className = "btn danger";
+    lift.textContent = offerLabel(offer.kind);
+    const row = document.createElement("div");
+    row.className = "ops offerrow";
+    row.append(lift);
+    $("devicePlan").append(row);
+    lift.addEventListener("click", () => replanForDevice(offer.overrides));
+  }
+
   status(outcome.message, outcome.level);
 }
 
@@ -564,11 +595,16 @@ async function writeToDevice(): Promise<void> {
 
   // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
   // most people the instrument holds the only copy.
-  const ok = window.confirm(
-    "Write everything merged so far into the project loaded on the device?\n\n" +
-      "It is not permanent until you press SAVE PROJECT on the instrument — and loading another " +
-      "project discards it.",
-  );
+  const ok = await askConfirm({
+    title: "Write to the project loaded on the device?",
+    body: [
+      "Everything merged so far goes into the project currently loaded on the instrument.",
+      "It is not permanent until you press SAVE PROJECT on the device — and loading another " +
+        "project discards it.",
+    ],
+    confirmLabel: "Write to device",
+    danger: true,
+  });
   if (!ok) {
     status("Not written.");
     return;

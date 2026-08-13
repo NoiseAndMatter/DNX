@@ -126,19 +126,23 @@ test("merging with nothing selected is refused, not planned", { skip }, () => {
         landing: 0,
         landingMode: "relative",
         options: OPTIONS,
-        ask: () => true,
       }),
     PlanningRefused,
   );
 });
 
-test("consent is asked for, and declining plans nothing", { skip }, () => {
-  // Two passes over an occupied slot: the first refuses, the caller is asked, and a "no" must
-  // leave `image` undefined rather than writing anyway.
+/**
+ * An occupied landing slot comes back as an offer, not as a question this module asks.
+ *
+ * These two tests used to pass an `ask` callback and count how often it fired. That shape is gone:
+ * asking synchronously meant `window.confirm`, which blocks the renderer so completely that a page
+ * waiting on one cannot be told from a hung one. The refusal is returned instead, and the page
+ * renders it with the button that lifts it.
+ */
+test("an occupied landing slot is offered, not asked, and plans nothing", { skip }, () => {
   const source = dn1();
   const occupied = planWhole({ source, destination: dn2() }).image!;
 
-  const asked: string[] = [];
   const outcome = planSelected({
     source,
     destination: occupied,
@@ -146,34 +150,67 @@ test("consent is asked for, and declining plans nothing", { skip }, () => {
     landing: 0,
     landingMode: "relative",
     options: OPTIONS,
-    ask: (question) => {
-      asked.push(question);
-      return false;
-    },
   });
 
-  assert.equal(asked.length, 1, "an occupied landing slot has to be asked about exactly once");
-  assert.match(asked[0]!, /Go ahead anyway\?/);
-  assert.equal(outcome.image, undefined, "declining must not produce bytes to write");
-  assert.match(outcome.message, /Not planned/);
+  assert.equal(outcome.image, undefined, "an offer means nothing was planned");
+  assert.equal(outcome.offer?.kind, "overwrite");
+  assert.equal(
+    outcome.offer?.overrides.confirmOverwrite,
+    true,
+    "the offer has to carry what would lift it, or the button has nothing to press with",
+  );
+  // The sentence is the refusal's own, so the panel explains itself without the page rewording it.
+  assert.match(outcome.message, /already holds a pattern/);
 });
 
-test("agreeing plans it", { skip }, () => {
+test("passing the offer's overrides back plans it", { skip }, () => {
   const source = dn1();
   const occupied = planWhole({ source, destination: dn2() }).image!;
 
-  const outcome = planSelected({
+  const args = {
     source,
     destination: occupied,
     selection: [0],
     landing: 0,
-    landingMode: "relative",
+    landingMode: "relative" as const,
     options: OPTIONS,
-    ask: () => true,
-  });
+  };
+
+  const refused = planSelected(args);
+  assert.ok(refused.offer, "this fixture must refuse, or the second half proves nothing");
+
+  // Exactly what pressing the button does: the same call, plus the consent the offer carried.
+  const outcome = planSelected({ ...args, overrides: refused.offer.overrides });
 
   assert.ok(outcome.image, "consent given, so there must be bytes");
+  assert.equal(outcome.offer, undefined, "and nothing left to ask about");
   assert.match(outcome.message, /press Apply/);
+});
+
+/**
+ * Consent does not survive the call it was given for.
+ *
+ * The old `ask` callback was invoked mid-plan, so there was nothing to leak. An override is a
+ * value, and a value can be kept — which is the one way this design can go wrong: agreeing to
+ * overwrite `A1` must never quietly authorise overwriting somewhere else. The page passes
+ * `overrides` as an argument to a single replan and stores nothing, and this is that guarantee
+ * written down where a refactor would trip over it.
+ */
+test("planning again without the overrides refuses again", { skip }, () => {
+  const source = dn1();
+  const occupied = planWhole({ source, destination: dn2() }).image!;
+  const args = {
+    source,
+    destination: occupied,
+    selection: [0],
+    landing: 0,
+    landingMode: "relative" as const,
+    options: OPTIONS,
+  };
+
+  assert.ok(planSelected(args).offer, "refused once");
+  assert.ok(planSelected({ ...args, overrides: { confirmOverwrite: true } }).image, "then agreed");
+  assert.ok(planSelected(args).offer, "and asks again when the consent is not passed back");
 });
 
 // --- rendering -----------------------------------------------------------------------------------

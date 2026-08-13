@@ -77,6 +77,7 @@ import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } fr
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
 
 const status = statusBar();
@@ -474,11 +475,11 @@ const drag = new GridDrag({
     const suffix = level === "track" ? scopeSuffix() : "";
     const to = nameAt(level, index);
     if (action === "swap") {
-      run(`swap ${names} and ${to}${suffix}`, swap(indices[0]!, index), level);
+      run(`swap ${names} and ${to}${suffix}`, swap(indices[0]!, index), level).catch(report);
     } else if (action === "copy") {
-      run(`copy ${names} to ${to}${suffix}`, copyMany(indices, index), level);
+      run(`copy ${names} to ${to}${suffix}`, copyMany(indices, index), level).catch(report);
     } else {
-      run(`move ${names} to ${to}${suffix}`, moveMany(indices, index), level);
+      run(`move ${names} to ${to}${suffix}`, moveMany(indices, index), level).catch(report);
     }
   },
 
@@ -490,12 +491,23 @@ const drag = new GridDrag({
 // --- operations ---------------------------------------------------------------------------
 
 /**
+ * Where a rejected operation goes.
+ *
+ * Operations became `async` when their confirmation did, and an async handler nobody awaits turns
+ * a throw into an unhandled rejection — nothing on screen, one line in a console nobody has open.
+ * Every `.catch(report)` in this file exists for that, not for tidiness.
+ */
+function report(error: unknown): void {
+  status(error instanceof Error ? error.message : String(error), "error");
+}
+
+/**
  * Run a shuffle through plan, confirm, apply, verify.
  *
  * The order matters and is the CLI's: plan first so the user is told what would be destroyed,
  * ask, and only then apply — which verifies its own work before the session records it.
  */
-function run(label: string, shuffle: Shuffle, level: Level = state.level): void {
+async function run(label: string, shuffle: Shuffle, level: Level = state.level): Promise<void> {
   const session = state.session;
   const device = state.device;
   if (!session || !device) return;
@@ -521,15 +533,23 @@ function run(label: string, shuffle: Shuffle, level: Level = state.level): void 
   }
 
   if (plan.destructive.length > 0) {
-    const lines = plan.destructive
-      .map((c) =>
-        "slot" in c
-          ? `  ${patternName(c.slot)}${c.name ? ` "${c.name}"` : ""} — ${c.trigCount} trigs` +
-            (c.replacedBy !== undefined ? `, replaced by ${patternName(c.replacedBy)}` : "")
-          : `  ${trackName(c.track)} — ${c.trigCount} trigs`,
-      )
-      .join("\n");
-    if (!confirm(`This destroys work that cannot be recovered from the file:\n\n${lines}\n\nContinue?`)) {
+    // A list, not a paragraph with newlines in it. This is the one dialog in the app where the
+    // *detail* is the decision — how many trigs, in which named pattern — and `confirm` could only
+    // render it as run-together text in a system font.
+    const lines = plan.destructive.map((c) =>
+      "slot" in c
+        ? `${patternName(c.slot)}${c.name ? ` "${c.name}"` : ""} — ${c.trigCount} trigs` +
+          (c.replacedBy !== undefined ? `, replaced by ${patternName(c.replacedBy)}` : "")
+        : `${trackName(c.track)} — ${c.trigCount} trigs`,
+    );
+    const ok = await askConfirm({
+      title: "This destroys work that cannot be recovered from the file",
+      body: [`${label}. What is listed below is overwritten or emptied:`],
+      list: lines,
+      confirmLabel: "Destroy it",
+      danger: true,
+    });
+    if (!ok) {
       status("Cancelled — nothing changed.");
       return;
     }
@@ -569,12 +589,19 @@ function run(label: string, shuffle: Shuffle, level: Level = state.level): void 
 }
 
 /** Ask for a destination, accepting whatever the current level calls its slots. */
-function askTarget(what: string): number | undefined {
+async function askTarget(what: string): Promise<number | undefined> {
   const device = state.device;
   if (!device) return undefined;
   const count = inTracks() ? DN2_TRACK_COUNT : device.patternCount;
-  const answer = prompt(`${what} — destination (${slotName(0)} … ${slotName(count - 1)})`);
-  if (answer === null) return undefined;
+  const answer = await askText({
+    title: what,
+    body: [`Where should it land? ${slotName(0)} to ${slotName(count - 1)}.`],
+    placeholder: slotName(0),
+    confirmLabel: "Choose",
+  });
+  // `undefined` is dismissal; `""` is somebody pressing the button with an empty box, which is not
+  // a slot and should say so rather than silently doing nothing.
+  if (answer === undefined) return undefined;
 
   const wanted = answer.trim().toUpperCase();
   for (let i = 0; i < count; i++) if (slotName(i) === wanted) return i;
@@ -590,13 +617,25 @@ function askTarget(what: string): number | undefined {
  * shuffle-shaped, and a rename moves nothing. `Session.apply` takes any image-to-image
  * function, so a rename needed no new machinery at either layer — the seam was already right.
  */
-function runRename(pattern: number): void {
+async function runRename(pattern: number): Promise<void> {
   const { session, device } = state;
   if (!session || !device) return;
 
   const current = readPatternName(session.image, device, pattern);
-  const typed = prompt(`Rename ${patternName(pattern)} (up to ${NAME_SIZE} characters)`, current);
-  if (typed === null) return;
+  // `maxLength` is the device's own field width, so the box cannot accept what the format cannot
+  // hold. `planRename` still reports truncation and upper-casing — this stops one of the three
+  // transformations happening at all, rather than replacing the reporting.
+  const typed = await askText({
+    title: `Rename ${patternName(pattern)}`,
+    body: [
+      `Up to ${NAME_SIZE} characters. The device has no lowercase, so anything typed in lower ` +
+        `case is stored upper.`,
+    ],
+    value: current,
+    maxLength: NAME_SIZE,
+    confirmLabel: "Rename",
+  });
+  if (typed === undefined) return;
 
   const renames = new Map([[pattern, typed]]);
   const plan = planRename(session.image, device, renames);
@@ -644,32 +683,42 @@ function scopeSuffix(): string {
 }
 
 function wireOperations(): void {
+  // **Every one of these is fire-and-forget, and `report` is what makes that safe.** An async
+  // handler whose promise nobody holds swallows its rejection into an unhandled one — silence on
+  // screen and a line in a console nobody has open. `.catch(report)` puts it in the status bar.
   $("opMove").addEventListener("click", () => {
     const names = state.selection.map(slotName).join(" ");
-    const to = askTarget(`Move ${names}`);
-    if (to === undefined) return;
-    run(`move ${names} to ${slotName(to)}${scopeSuffix()}`, moveMany(state.selection, to));
+    void (async () => {
+      const to = await askTarget(`Move ${names}`);
+      if (to === undefined) return;
+      await run(`move ${names} to ${slotName(to)}${scopeSuffix()}`, moveMany(state.selection, to));
+    })().catch(report);
   });
 
   $("opCopy").addEventListener("click", () => {
     const names = state.selection.map(slotName).join(" ");
-    const to = askTarget(`Copy ${names}`);
-    if (to === undefined) return;
-    run(`copy ${names} to ${slotName(to)}${scopeSuffix()}`, copyMany(state.selection, to));
+    void (async () => {
+      const to = await askTarget(`Copy ${names}`);
+      if (to === undefined) return;
+      await run(`copy ${names} to ${slotName(to)}${scopeSuffix()}`, copyMany(state.selection, to));
+    })().catch(report);
   });
 
   $("opSwap").addEventListener("click", () => {
     const [a, b] = state.selection as [number, number];
-    run(`swap ${slotName(a)} and ${slotName(b)}${scopeSuffix()}`, swap(a, b));
+    run(`swap ${slotName(a)} and ${slotName(b)}${scopeSuffix()}`, swap(a, b)).catch(report);
   });
 
   $("opRename").addEventListener("click", () => {
     const [pattern] = state.selection;
-    if (pattern !== undefined) runRename(pattern);
+    if (pattern !== undefined) runRename(pattern).catch(report);
   });
 
   $("opClear").addEventListener("click", () => {
-    run(`clear ${state.selection.map(slotName).join(" ")}${scopeSuffix()}`, clear(...state.selection));
+    run(
+      `clear ${state.selection.map(slotName).join(" ")}${scopeSuffix()}`,
+      clear(...state.selection),
+    ).catch(report);
   });
 
   $("closeTracks").addEventListener("click", () => {
@@ -1190,24 +1239,28 @@ function wireFileInput(id: string, guard: boolean): void {
     const file = input.files?.[0];
     if (!file) return;
 
-    if (guard && state.session?.canUndo) {
-      const ok = confirm(
-        `Opening ${file.name} discards the edits made to this project and its undo history.\n\n` +
-          `Nothing has been written to disk yet — export first if you want to keep them.\n\n` +
-          `Open anyway?`,
-      );
-      if (!ok) {
-        // Clear it, or picking the same file again fires no change event and looks broken.
-        input.value = "";
-        status("Cancelled — the open project is untouched.");
-        return;
+    void (async () => {
+      if (guard && state.session?.canUndo) {
+        const ok = await askConfirm({
+          title: `Open ${file.name}?`,
+          body: [
+            "This discards the edits made to the open project, and its undo history with them.",
+            "Nothing has been written to disk yet — export first if you want to keep them.",
+          ],
+          confirmLabel: "Discard and open",
+          danger: true,
+        });
+        if (!ok) {
+          // Clear it, or picking the same file again fires no change event and looks broken.
+          input.value = "";
+          status("Cancelled — the open project is untouched.");
+          return;
+        }
       }
-    }
 
-    load(file)
-      .catch((error: unknown) =>
-        status(error instanceof Error ? error.message : String(error), "error"),
-      )
+      await load(file);
+    })()
+      .catch(report)
       .finally(() => {
         input.value = "";
       });

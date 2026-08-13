@@ -17,12 +17,28 @@
  * Returning an outcome makes the same code answerable in a test. The caller writes the HTML, sets
  * the button and shows the status line, because those are the caller's job.
  *
- * ## Consent is an argument
+ * ## Consent is an answer, not a question this module asks
  *
- * `planSelected` takes an `ask` callback rather than reaching for `window.confirm`. Two of the
- * merge's refusals — an occupied landing slot, a pool with no room — are questions only the person
- * at the instrument can answer, and they have to be asked *between* two planning passes. Passing
- * the asking in keeps that flow intact while leaving this module free of the browser.
+ * Two of the merge's refusals — an occupied landing slot, a pool with no room — are decisions only
+ * the person at the instrument can make. This module used to take an `ask` callback and call it
+ * *between* two planning passes, which kept the browser out of here but forced the asking to be
+ * **synchronous**: the only thing that fits in that slot is `window.confirm`, and a native modal
+ * blocks the renderer so thoroughly that the page cannot be told apart from a hung one.
+ *
+ * So the refusal is now **returned** rather than asked about. `planSelected` plans once, and when
+ * it stops on one of those two questions it hands back an `offer`: the sentence, and the overrides
+ * that would lift it. The page renders that as a button beside the plan, and pressing it plans
+ * again with those overrides. Consent arrives as an argument to the *next* call.
+ *
+ * That is better than an async callback for a reason beyond the modal:
+ *
+ * - **The question stays on screen.** A modal is answered and gone; a refusal in the panel can be
+ *   read twice, and sits next to the landing controls that are the other way to resolve it.
+ * - **Nothing has to be re-entrant.** Planning is triggered by change events, and an `await` in
+ *   the middle of one means two plans in flight racing to assign the same variable.
+ * - **Consent cannot leak.** It lives for exactly one call. Change the selection, the landing or
+ *   an option and the next plan runs with no overrides at all — so agreeing to overwrite `A4` can
+ *   never quietly authorise overwriting `A9`.
  */
 
 import { type ExpansionPlan } from "../../../src/expand/types.js";
@@ -33,6 +49,7 @@ import {
   planPatternMerge,
   type MergeNote,
   type MergePlan,
+  type RefusalKind,
 } from "../../../src/expand/merge.js";
 import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/deviceexpand.js";
 import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
@@ -76,6 +93,33 @@ export interface PlanOutcome {
   /** What to put in the status bar, and how loudly. */
   message: string;
   level?: "ok" | "warn" | "error";
+  /**
+   * Set when planning stopped on a question the person at the instrument can answer.
+   *
+   * `image` is always absent alongside it — an offer means nothing was planned. The page renders
+   * `message` with a button labelled from `kind`, and passing `overrides` straight back to
+   * `planSelected` is what pressing it does.
+   */
+  offer?: MergeOffer;
+}
+
+/** A refusal the page can turn into a button. */
+export interface MergeOffer {
+  kind: RefusalKind;
+  /**
+   * Everything needed to get past it, **cumulatively**.
+   *
+   * Not just the one override this refusal needs: a merge can be refused twice in a row — first
+   * for an occupied slot, then for a full pool — and the second offer has to carry the consent
+   * already given for the first, or pressing it would re-raise a question already answered.
+   */
+  overrides: MergeOverrides;
+}
+
+/** Consent, as the planner takes it. Both default to absent, which is the safe reading. */
+export interface MergeOverrides {
+  confirmOverwrite?: boolean;
+  allowPoolOverflow?: boolean;
 }
 
 /**
@@ -119,10 +163,10 @@ export function planWhole(args: {
 /**
  * Merge the selected patterns into the loaded project, keeping its pool.
  *
- * Both refusals are surfaced as questions rather than swallowed: an occupied landing slot and a
- * pool with no room each stop the plan, and each is something only the person at the instrument
- * can answer. `planPatternMerge` is asked twice in that case — once to find out, once with the
- * answer — which costs milliseconds and keeps the consent explicit.
+ * Both refusals are surfaced rather than swallowed: an occupied landing slot and a pool with no
+ * room each stop the plan, and each is something only the person at the instrument can decide.
+ * Neither is asked about here — the refusal comes back as `offer`, and the caller decides how to
+ * put the question. See the note on consent at the top of this file.
  */
 export function planSelected(args: {
   source: Uint8Array;
@@ -131,17 +175,24 @@ export function planSelected(args: {
   landing: number;
   landingMode: LandingMode;
   options: ExpanderOptions;
-  /** Returns true to go ahead. Injected so this module never reaches for `window`. */
-  ask: (question: string) => boolean;
+  /**
+   * Consent already given, from a previous outcome's `offer.overrides`.
+   *
+   * Absent means none, which is the only safe default: an override that survived from an earlier
+   * call would authorise something the person never saw.
+   */
+  overrides?: MergeOverrides;
 }): PlanOutcome {
   if (args.selection.length === 0) throw new PlanningRefused("no patterns selected");
 
+  const given = args.overrides ?? {};
   const base = {
     source: args.source,
     patterns: [...args.selection],
     destination: args.destination,
     landing: args.landing,
     landingMode: args.landingMode,
+    ...given,
     // Scoped to the selection, **not** the whole-project plan. Handing that one over made the
     // merge allocate tracks against 128 patterns of competition — the layout it produced was not
     // the one the panel above described, and not the one asked for.
@@ -153,7 +204,7 @@ export function planSelected(args: {
     plan = planPatternMerge(base);
   } catch (error) {
     if (!(error instanceof MergeRefused)) throw error;
-    // The two refusals worth asking about rather than reporting. Anything else stands.
+    // The two refusals worth offering a way past. Anything else stands.
     //
     // **Read off `kind`, not off the sentence.** This matched `/already hold a pattern/` against
     // the message, which made the wording load-bearing: rewriting that refusal so it stopped
@@ -161,15 +212,21 @@ export function planSelected(args: {
     // into a rethrown error. `merge.ts` now says which refusal it is in a field.
     if (error.kind === undefined) throw error;
 
-    if (!args.ask(`${error.message}\n\nGo ahead anyway?`)) {
-      return { described: { lines: [error.message, "Not planned."] }, message: "Not planned." };
-    }
-    plan = planPatternMerge({
-      ...base,
-      confirmOverwrite: true,
-      // Overflow needs its own consent as well; overwriting does not imply accepting dropped sounds.
-      ...(error.kind === "pool-overflow" ? { allowPoolOverflow: true } : {}),
-    });
+    return {
+      described: { lines: [error.message] },
+      message: error.message,
+      level: "warn",
+      offer: {
+        kind: error.kind,
+        // **Cumulative.** Overflow needs its own consent — agreeing to overwrite a slot is not
+        // agreeing to lose sounds — but the consent already given has to travel, or lifting the
+        // second refusal would re-raise the first.
+        overrides: {
+          ...given,
+          ...(error.kind === "overwrite" ? { confirmOverwrite: true } : { allowPoolOverflow: true }),
+        },
+      },
+    };
   }
 
   return {
@@ -181,6 +238,18 @@ export function planSelected(args: {
       `Planned — press Apply to fold ${plan.landingSlots.length} pattern(s) into ` +
       `${plan.landingSlots.map(patternName).join(", ")}, ${describeLanding(args.landingMode)}.`,
   };
+}
+
+/**
+ * What the button lifting an offer should say.
+ *
+ * Here rather than in the page because the label has to mean the same thing as the refusal it sits
+ * under, and the two drifting apart is how a button ends up authorising more than it claims. It
+ * names the **action**, never "OK" or "Yes" — those answer a question the user has to have kept in
+ * their head, and this button is read on its own, beside a paragraph, days later in a screenshot.
+ */
+export function offerLabel(kind: RefusalKind): string {
+  return kind === "overwrite" ? "Replace what is there" : "Merge without those sounds";
 }
 
 /** Raised where the page can say something useful rather than throwing a stack at somebody. */
