@@ -76,14 +76,20 @@ import {
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
 import { patternIndex, patternName } from "../../../src/sheet/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
-import { type Entry, StorageCode, listRequest, parseListing } from "../../../src/device/storage.js";
+import {
+  type Entry,
+  StorageCode,
+  driveChecksum,
+  listRequest,
+  parseListing,
+} from "../../../src/device/storage.js";
 import {
   INFORMATION_CODES,
   describeApiReply,
   hexBody,
   informationRequest,
 } from "../../../src/device/apiprobe.js";
-import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
+import { type ApiTransport, type StoredFile, readStoredFile } from "../../../src/device/storagesession.js";
 import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
@@ -302,6 +308,7 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("filePath").disabled = false;
     $<HTMLInputElement>("writeTarget").disabled = false;
     $<HTMLInputElement>("corruptSum").disabled = false;
+    $<HTMLInputElement>("chunkSize").disabled = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
 
@@ -1747,6 +1754,11 @@ async function readFile(): Promise<void> {
       // The one field that says what we have. A `.dnprj` opens `PK` and a raw image does not.
       ["Looks like", looksLikeZip(file.bytes) ? "a project file (PK header)" : "not a ZIP — raw or something else"],
       ["Metadata reply", file.metadata ? [...file.metadata].map(hex2).join(" ") : "none arrived"],
+      // **The write question, answered by a read.** The device reports a checksum per chunk, so if
+      // `driveChecksum` reproduces each one over its own slice, we can compute what a written chunk
+      // should carry instead of only ever echoing a value the device gave us for a whole small
+      // file. That is the difference between writing a 364-byte preset and writing a project.
+      ...describeChunkChecksums(file),
       ["Saved", "downloaded — check it before pressing this again"],
     ]);
     status(`Read ${path}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
@@ -1773,8 +1785,59 @@ async function readFile(): Promise<void> {
   }
 }
 
+/**
+ * Hold every chunk's reported checksum against `driveChecksum` computed over the same slice.
+ *
+ * Read-only, and it decides the write question: `writeStoredFile` currently sends the whole file's
+ * checksum on every `0x58`, which was a guess from the one single-chunk upload ever captured. The
+ * read path has always collected one checksum *per chunk*. If our own algorithm reproduces those,
+ * a writer can compute the value for any chunking it likes — and a project stops being special.
+ *
+ * Reported as a count of agreements rather than a verdict. A partial match is the interesting
+ * outcome and the one a summary would hide: it would mean the boundaries are not where we think.
+ */
+function describeChunkChecksums(file: StoredFile): [string, string][] {
+  const sums = file.chunkChecksums;
+  if (sums.length === 0) return [];
+
+  // **Walked with the recorded lengths, never re-derived.** Dividing the total by the chunk count
+  // gave 1,800-byte slices for a file the device sent as 2,048s, and every comparison failed for
+  // that reason alone — a wrong answer that looked exactly like a wrong algorithm.
+  const mismatches: string[] = [];
+  let at = 0;
+  for (const [i, reported] of sums.entries()) {
+    const length = file.chunkLengths[i] ?? 0;
+    const computed = driveChecksum(file.bytes.subarray(at, at + length));
+    at += length;
+    if (computed !== reported) mismatches.push(`#${i} device ${hex8(reported)} vs ours ${hex8(computed)}`);
+  }
+
+  return [
+    ["Chunk sizes", file.chunkLengths.join(", ")],
+    ["Chunk checksums", `${sums.length}, ${sums.slice(0, 4).map(hex8).join(" ")}${sums.length > 4 ? " …" : ""}`],
+    [
+      "driveChecksum agrees",
+      mismatches.length === 0
+        ? `all ${sums.length} — the algorithm is right at chunk granularity. Note this says nothing ` +
+          `about writing: a write declaring these same per-chunk values was refused, and so was one ` +
+          `declaring the whole file's. Reads and writes do not use this field the same way.`
+        : `${sums.length - mismatches.length} of ${sums.length}. ${mismatches.slice(0, 3).join("; ")}`,
+    ],
+  ];
+}
+
 /** True while a read owns a device handle. See the guard in `readFile`. */
 let readingFile = false;
+
+/**
+ * What the chunk box falls back to, matching `storagewrite.ts`'s own default.
+ *
+ * Stated here rather than imported, because the two are the same number for different reasons: that
+ * one is what the write path does when nobody chooses, this one is what the *form* shows. If the
+ * transport's default ever changes, this should not silently follow it — a probe control that moves
+ * when you are not looking is the opposite of an instrument.
+ */
+const DEFAULT_PROBE_CHUNK = 2048;
 
 /** The bands a long read draws its message ids from. See `messageids.ts` for why. */
 const readIds = new MessageIdBands();
@@ -1810,16 +1873,29 @@ async function readThenWrite(): Promise<void> {
   const source = $<HTMLInputElement>("filePath").value;
   const target = $<HTMLInputElement>("writeTarget").value;
   const corrupt = $<HTMLInputElement>("corruptSum").checked;
+  // Read as a number and sanity-checked here rather than trusted from the input: `min`/`max` on a
+  // number field are advisory, and a chunk size of 0 would loop forever slicing nothing.
+  const typed = Number($<HTMLInputElement>("chunkSize").value);
+  const chunkSize = Number.isInteger(typed) && typed >= 16 ? typed : DEFAULT_PROBE_CHUNK;
   const log: [string, string][] = [
     ["Reading", source],
     ["Writing to", target],
     ["Checksum", corrupt ? "DELIBERATELY WRONG — testing whether it is enforced" : "the device's own, from the read"],
+    ["Chunk size", `${chunkSize} bytes per 0x58`],
     ["Guard", "the destination must be empty in a fresh listing, or nothing is sent"],
   ];
   verdictCard("Writing…", log);
 
   readingFile = true;
   $<HTMLButtonElement>("fileWrite").disabled = true;
+  // Hoisted so the failure path can say whether this was a multi-chunk attempt. `file` is scoped to
+  // the `try`, and a refusal is exactly when the difference between one chunk and six matters most.
+  let sourceLength = 0;
+  // **Whether a write was ever attempted**, which is not the same as whether this function failed.
+  // The first run of this card reported "a refusal on a MULTI-CHUNK write" for a failure in the
+  // *read*, before a single byte went out — the verdict keyed off the chunk arithmetic alone and
+  // read as evidence about chunking when it was evidence about nothing.
+  let wroteAnything = false;
   try {
     // The destination's own directory, listed now rather than trusted from earlier. A listing from
     // ten minutes ago is not evidence about what is in a slot at the moment of writing.
@@ -1834,29 +1910,57 @@ async function readThenWrite(): Promise<void> {
 
     const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIds.base() });
     readIds.advance();
-    const chunk = file.checksum;
-    if (chunk === undefined) throw new Error("the read gave no checksum, so there is nothing to write with");
+    sourceLength = file.bytes.length;
 
-    const checksum = corrupt ? (chunk ^ 1) >>> 0 : chunk;
+    // **`undefined` is the right answer here now.** The write computes each chunk's own checksum,
+    // which is what the device reports on a read and what it evidently wants back.
+    //
+    // This used to demand `file.checksum` and refuse without it — reasonable when the whole file's
+    // value was the only thing a write could send, and the reason the first attempt at a six-chunk
+    // write never left the page: a multi-chunk read deliberately reports no whole-file checksum,
+    // so requiring one ruled out exactly the case being tested.
+    //
+    // Corruption still needs a single number to force onto every chunk. Taken from the read when
+    // there is one, and from our own arithmetic when there is not, so the experiment is available
+    // for a file of any size rather than only for one that fits in a chunk.
+    const corruptFrom = file.checksum ?? driveChecksum(file.bytes);
+    const checksum = corrupt ? ((corruptFrom ^ 1) >>> 0) : undefined;
+    wroteAnything = true;
     const result = await writeStoredFile(target, file.bytes, checksum, {
       transport: apiTransport(output),
       target: entry,
       msgId: readIds.base(),
+      chunkSize,
       onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
     });
 
     verdictCard(`${target} — ${result.committed ? "COMMITTED" : "not committed"}`, [
       ...log,
-      ["Read", `${file.bytes.length.toLocaleString()} bytes, checksum ${hex8(chunk)}`],
-      ["Sent", `${result.written.toLocaleString()} bytes in ${result.chunks} chunk(s), checksum ${hex8(checksum)}`],
+      [
+        "Read",
+        `${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunk(s)` +
+          (file.checksum === undefined ? "" : `, whole-file checksum ${hex8(file.checksum)}`),
+      ],
+      [
+        "Sent",
+        `${result.written.toLocaleString()} bytes in ${result.chunks} chunk(s), ` +
+          (checksum === undefined
+            ? "each chunk carrying its own checksum"
+            : `${hex8(checksum)} forced onto every chunk`),
+      ],
       ["Committed", result.committed ? "yes — 0x59 acknowledged" : "NO"],
       [
         "Means",
         corrupt
           ? "the device ACCEPTED a wrong checksum, so the field is not validated and arbitrary " +
             "content can be written. Check the slot on the instrument before believing it."
-          : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
-            "not the same as bytes on the +Drive.",
+          : result.chunks > 1
+            ? `a MULTI-CHUNK write was accepted — ${result.chunks} chunks, each carrying the ` +
+              `whole file's checksum. That is the open question in storagewrite.ts answered: the ` +
+              `field is per file, not per chunk, so a project of ~6,294 chunks has no new ` +
+              `unknown in its way. Read it back and diff before believing it.`
+            : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
+              "not the same as bytes on the +Drive.",
       ],
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");
@@ -1868,10 +1972,18 @@ async function readThenWrite(): Promise<void> {
         outcome: String(error),
         outcomeLabel: "Error",
         log,
-        means: corrupt
-          ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
-            "wanted and the reason to try it."
-          : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
+        means: !wroteAnything
+          ? "this failed BEFORE any write was attempted, so it says nothing about writing at all — " +
+            "read the error as being about the read, the listing or the guard."
+          : corrupt
+            ? "if that refusal names the checksum, the field IS validated — which is the answer we " +
+              "wanted and the reason to try it."
+            : sourceLength > chunkSize
+              ? "a refusal on a MULTI-CHUNK write, where the same bytes at one chunk succeed, says " +
+                "the whole-file checksum is not what a second chunk should carry — try per-chunk " +
+                "next. Run the one-chunk control before concluding that: a refusal that happens at " +
+                "any chunk size is about something else entirely."
+              : "a genuine refusal. The device's own wording is the best documentation this protocol has.",
         canFreeze: true,
       }),
     );

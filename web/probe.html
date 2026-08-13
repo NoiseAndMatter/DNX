@@ -221,6 +221,21 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
       <input id="writeTarget" type="text" value="/soundbanks/H/256" size="18" disabled title="Destination &mdash; must be an empty slot">
       <label class="lbl" for="corruptSum">corrupt</label>
       <input id="corruptSum" type="checkbox" disabled title="Flip a bit in the checksum, to find out whether it is enforced">
+      <!--
+        The chunk size is a control because **the chunk count is the open question**, and this is
+        the only way to vary it without also varying the payload. Every write ever sent or captured
+        was a single chunk, so nothing is known about what a second one should carry — whether the
+        whole-file checksum is repeated, or each chunk carries its own. Writing a known 364-byte
+        preset at 128 asks that with one variable changed and the bytes held still; reaching for a
+        bigger file instead would change both at once and leave a refusal ambiguous.
+      -->
+      <label class="lbl" for="chunkSize">chunk</label>
+      <!--
+        The ceiling is above any object we write, so the **one-chunk control** stays available: the
+        same bytes to the same kind of slot in a single 0x58. A refusal is only evidence about
+        chunking if the one-chunk form of it succeeds.
+      -->
+      <input id="chunkSize" type="number" value="2048" min="16" max="65536" step="16" disabled title="Bytes per 0x58 write. Below the file size forces a multi-chunk write; above it forces one.">
       <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read &rarr; write</button>
     </div>
   </section>

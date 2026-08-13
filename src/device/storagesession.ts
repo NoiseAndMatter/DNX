@@ -144,10 +144,37 @@ export interface StoredFile {
    * The checksum the device reported for this file's content, when it arrived in one chunk.
    *
    * `undefined` for a multi-chunk read, because a per-chunk checksum is not a whole-file one and
-   * pretending otherwise would hand a write the wrong number. The algorithm is unknown, so this is
-   * the only way to write a file back: **let the device supply the value for its own bytes.**
+   * pretending otherwise would hand a write the wrong number. This is the safe thing to hand a
+   * writer: **let the device supply the value for its own bytes.**
    */
   checksum?: number;
+  /**
+   * Every chunk's checksum, in order — the same values `checksum` collapses to one of.
+   *
+   * Kept because **the device checksums per chunk, and that is the strongest evidence we have
+   * about what a write should carry.** `writeStoredFile` sends the whole file's value on every
+   * `0x58`, which was a guess made when the only upload ever captured was a single chunk; the read
+   * path has been saying otherwise the whole time and nothing was looking.
+   *
+   * Two things this makes checkable, both without writing anything:
+   *
+   * 1. **Whether `driveChecksum` is right at chunk granularity.** Compute it over each slice and
+   *    compare. The algorithm was solved against whole small files; that it also holds for an
+   *    arbitrary 2,048-byte window is an assumption until this says so.
+   * 2. **What the boundaries are.** A checksum per chunk is only useful for writing if a written
+   *    chunk means the same thing as a read one.
+   */
+  chunkChecksums: number[];
+  /**
+   * How many bytes each chunk actually carried, in order.
+   *
+   * **Recorded rather than derived.** The first attempt to check `driveChecksum` against the
+   * device's per-chunk values re-sliced the file by `ceil(total / chunkCount)` and got 0 of 6 —
+   * not because the algorithm is wrong, but because 10,795 bytes in 6 chunks is five of 2,048 and
+   * a remainder, never six of 1,800. A checksum comparison is only evidence when it runs over the
+   * bytes the device actually checksummed, and this is the only thing that knows them.
+   */
+  chunkLengths: number[];
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -328,7 +355,16 @@ export async function readStoredFile(
   // Only when the whole file came in one chunk. Two chunks means two checksums and no statement
   // about the whole, and a caller writing that back would send a number for a third of the file.
   const single = parts.length === 1 ? checksums[0] : undefined;
-  return { bytes: join(parts, total), chunks, metadata, closed, checksum: single, retries };
+  return {
+    bytes: join(parts, total),
+    chunks,
+    metadata,
+    closed,
+    checksum: single,
+    chunkChecksums: checksums,
+    chunkLengths: parts.map((p) => p.length),
+    retries,
+  };
 }
 
 /** A device with nobody else attached hands out handle 1 first. */
