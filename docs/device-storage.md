@@ -1156,3 +1156,60 @@ drag from library to pool cannot work until the five bytes are located — see
 
 A kit does not have this problem: 10,752 listed matches `DN2_KIT.kitSize` exactly. **Whatever the
 five bytes are, they are specific to presets.**
+
+## 11. A write lands in one chunk and is refused in two — **[verified]** 2026-08-13
+
+The question `storagewrite.ts` had carried since the first write: the only upload ever captured was
+a 269-byte sound in a **single** chunk, so nothing was known about what a second chunk should carry.
+A project is ~6,294 chunks, and that unknown is what stopped the manager saving to a +Drive slot.
+
+Four runs, same 10,795-byte kit (`/kits/A/1`), same instrument, into empty kit slots:
+
+| chunks | chunk size | checksum declared | result |
+|---|---|---|---|
+| 6 | 2,048 | each chunk's own | `Invalid package checksum; corrupt transfer` |
+| 6 | 2,048 | the whole file's | `Invalid package checksum; corrupt transfer` |
+| 2 | 8,192 | the whole file's | `Invalid package checksum; corrupt transfer` |
+| **1** | 16,384 | the whole file's | **committed, and it read back** |
+
+The last three differ in nothing but how the same bytes were split. **The chunk count is the
+variable** — not the chunk size, and not which value the checksum field carries.
+
+8,192 was tried rather than guessed: digi-roll's protocol notes record elk-herd's +Drive `FileWrite`
+(`0x40`–`0x42`, a different opcode set from our `0x57`–`0x59`) as *"chunked at 8192 bytes"*. Refused
+here exactly as 2,048 is, which is what rules chunk size out.
+
+### What this unblocks, and what it does not
+
+**Anything that fits in one message is writable today.** 10,795 bytes does, so presets (364) and
+kits (10,795) can be written to the +Drive. A ~12.9 MB project cannot, and will not until a
+continuation `0x58` is understood.
+
+### The checksum field is validated — and reads and writes do not use it alike
+
+Two independent facts, and holding them together is what produced the wrong first guess:
+
+- **On a read it is per chunk.** `readStoredFile` collects one checksum per chunk, and
+  `driveChecksum` reproduces every one over that chunk's own slice — all six of the kit's,
+  once the slices are taken at the lengths the device actually sent (2048 × 5, then 555).
+  Deriving the boundary as `ceil(total / chunks)` gives 1,800-byte slices and **0 of 6**, which
+  looks exactly like a wrong algorithm and is a wrong question.
+- **On a write, per-chunk values are refused.** So is the whole file's, at more than one chunk.
+
+The refusal answers the older question outright: the field **is** enforced, not decorative. That was
+the corruption experiment's purpose, and it got answered by a write trying to be correct.
+
+### The device stamps the slot index — kit container `+24`
+
+`/kits/A/1` written verbatim into `/kits/A/38` reads back differing in **one byte of 10,795**:
+
+```
++24    was: 00    now: 25
+```
+
+`0x25` is 37, and the target is slot 38 — so `+24` is the container's own **zero-based slot index**,
+the same idea as `slotIndexOffset` in a pattern record. **The instrument writes it itself**, so a
+caller need not fix it up; a byte-for-byte round-trip check must expect it or read it as corruption.
+
+Everything else round-tripped exactly, which is the stronger claim: our write is what the device
+itself would have stored.
