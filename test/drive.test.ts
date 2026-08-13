@@ -178,7 +178,18 @@ test("a device read and a file read produce the same shape", { skip }, () => {
   // The point of the manifest reconstruction: everything above this line stops caring whether a
   // project came off a device or off a disk.
   const project = projectFor(
-    { bytes: deviceRead(), chunks: 1, closed: true, retries: 0, payload: parsePayload(deviceRead()) },
+    {
+      bytes: deviceRead(),
+      chunks: 1,
+      closed: true,
+      retries: 0,
+      // One chunk, so one checksum. Present rather than omitted because `StoredFile` now always
+      // carries the per-chunk list — an empty array here would describe a read that returned no
+      // chunks at all, which is not the shape this test is standing in for.
+      chunkChecksums: [0],
+      chunkLengths: [deviceRead().length],
+      payload: parsePayload(deviceRead()),
+    },
     "PRESETS",
     "1.42A",
   );
