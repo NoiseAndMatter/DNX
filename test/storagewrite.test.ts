@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
-import { type Entry, StorageCode } from "../src/device/storage.js";
+import { type Entry, StorageCode, driveChecksum } from "../src/device/storage.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
 import { refuseUnlessEmpty, writeStoredFile } from "../src/device/storagewrite.js";
 
@@ -121,6 +121,79 @@ test("a long file is split, and every chunk states its offset", async () => {
   assert.equal(result.chunks, 3);
   const offsets = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 4));
   assert.deepEqual(offsets, [0, 2048, 4096]);
+});
+
+/**
+ * Each chunk declares **its own** checksum, not the whole file's.
+ *
+ * Measured on hardware 2026-08-13, read-only: a read reports one checksum per chunk, and
+ * `driveChecksum` reproduces each of them over that chunk's own slice — `/kits/A/1`, 10,795 bytes
+ * in six chunks, checked against the device's numbers.
+ *
+ * This module used to send the whole file's value on every chunk. **At one chunk the two are the
+ * same number**, so the single 269-byte upload the protocol was copied from could not tell them
+ * apart, and the wrong model passed the only test there was. The test above is that case, and it
+ * is exactly why this one has to exist beside it.
+ */
+test("by default every chunk declares the whole file's checksum", async () => {
+  const io = accepting();
+  // Deliberately not uniform bytes: a file of one repeated value gives identical slices, and two
+  // chunks agreeing by accident would prove nothing either way.
+  const bytes = new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff);
+
+  await writeStoredFile("/projects/9", bytes, undefined, {
+    transport: io,
+    target: entry(),
+    chunkSize: 2048,
+  });
+
+  const writes = io.sent.filter((s) => s.code === StorageCode.Write);
+  assert.equal(writes.length, 3);
+
+  const whole = driveChecksum(bytes);
+  assert.deepEqual(
+    writes.map((s) => u32(s.body, 8)),
+    [whole, whole, whole],
+    "the whole file's value on every chunk — the only form a device has accepted",
+  );
+});
+
+test("a per-chunk function reaches the wire, because that hypothesis had to be tried", async () => {
+  // The device refused this on hardware: `Invalid package checksum; corrupt transfer`. The test
+  // asserts the *mechanism*, not that the device likes it — the next hypothesis about this field
+  // should be a call rather than an edit to `storagewrite.ts`, and this is what keeps that true.
+  const io = accepting();
+  const bytes = new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff);
+
+  await writeStoredFile("/projects/9", bytes, (slice) => driveChecksum(slice), {
+    transport: io,
+    target: entry(),
+    chunkSize: 2048,
+  });
+
+  const writes = io.sent.filter((s) => s.code === StorageCode.Write);
+  const boundaries = [0, 2048, 4096, 5000];
+  for (const [i, sent] of writes.entries()) {
+    const slice = bytes.subarray(boundaries[i]!, boundaries[i + 1]!);
+    assert.equal(u32(sent.body, 8), driveChecksum(slice), `chunk ${i} carried its own slice's value`);
+  }
+});
+
+test("a declared checksum overrides every chunk, for the corruption experiment", async () => {
+  // The one caller that wants this: deliberately sending a wrong value to find out whether the
+  // field is enforced. It must reach *every* chunk, or a multi-chunk corruption test would send
+  // one bad chunk and two good ones and prove nothing.
+  const io = accepting();
+  const bytes = new Uint8Array(3000).fill(0x5a);
+
+  await writeStoredFile("/projects/9", bytes, 0xdeadbeef, {
+    transport: io,
+    target: entry(),
+    chunkSize: 2048,
+  });
+
+  const sums = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 8));
+  assert.deepEqual(sums, [0xdeadbeef, 0xdeadbeef]);
 });
 
 test("the device's own refusal is what the caller is told", async () => {

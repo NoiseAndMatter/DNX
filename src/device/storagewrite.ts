@@ -24,6 +24,53 @@
  * Test 2 is the one worth having, and it is only cheap because test 1 tells us what a success looks
  * like first.
  *
+ * ## One chunk works at any size. More than one is refused. — 2026-08-13
+ *
+ * Measured on a Digitone II, three runs over the same 10,795-byte kit into the same empty slot:
+ *
+ * | chunks | chunk size | checksum declared | result |
+ * |---|---|---|---|
+ * | 6 | 2,048 | each chunk's own | `Invalid package checksum; corrupt transfer` |
+ * | 6 | 2,048 | the whole file's | `Invalid package checksum; corrupt transfer` |
+ * | 2 | 8,192 | the whole file's | `Invalid package checksum; corrupt transfer` |
+ * | **1** | 16,384 | the whole file's | **COMMITTED, and it read back** |
+ *
+ * Same bytes, same target, same checksum value in the last three. **The only variable that changes
+ * the outcome is the chunk count** — not the size of a chunk, and not which value the field
+ * carries. Something else about a continuation `0x58` is wrong, and the device's wording points at
+ * the checksum only because that is the check it fails first.
+ *
+ * 8,192 was worth trying rather than guessed at: digi-roll's protocol notes record elk-herd's
+ * +Drive `FileWrite` (`0x40`–`0x42`, a different opcode set from this one) as *"chunked at 8192
+ * bytes"*. It is refused here exactly as 2,048 is, which is what rules chunk *size* out.
+ *
+ * Two things this does settle:
+ *
+ * - **The field is validated**, not decorative. That was the experiment this module was built for,
+ *   and it got answered by a write that was trying to be correct rather than by the corruption run.
+ * - **Anything that fits in one message is writable today**, and 10,795 bytes does. Presets and
+ *   kits are unblocked; a ~12.9 MB project is not.
+ *
+ * The read side is separately settled, and was settled without writing anything. `readStoredFile`
+ * collects one checksum per chunk and `driveChecksum` reproduces every one over that chunk's own
+ * slice — all six verified once the slices were taken at the lengths the device actually sent.
+ * **Reads and writes do not use this field the same way**, which is worth stating plainly because
+ * assuming they did is what produced the first refusal above.
+ *
+ * **Why nothing caught this earlier:** at one chunk, "this chunk's checksum" and "the whole file's"
+ * are the same number, and the single 269-byte upload the protocol was copied from is the one case
+ * that cannot distinguish them.
+ *
+ * `checksum` takes a function so the next hypothesis is a call rather than an edit here.
+ *
+ * ## The device stamps the slot index — kit container +24
+ *
+ * `/kits/A/1` written verbatim into `/kits/A/38` reads back differing in **one byte of 10,795**:
+ * `+24`, `0x00` → `0x25`. That is 37, and the target is slot 38 — so `+24` is the container's own
+ * zero-based slot index, the same idea as `slotIndexOffset` in a pattern record. **The instrument
+ * writes it itself**, so a caller does not have to fix it up, but a byte-for-byte round-trip check
+ * has to expect it or it will read as corruption.
+ *
  * ## Empty slots only, refused rather than warned
  *
  * The listing says which slots are empty and which are protected (`Entry.occupied`,
@@ -48,6 +95,15 @@ import {
   writeCloseRequest,
   writeOpenRequest,
 } from "./storage.js";
+
+/**
+ * Compute the checksum one chunk declares.
+ *
+ * Takes the whole file as well as the slice, so a cumulative or offset-dependent hypothesis is
+ * expressible without changing this signature — which is the point, given that the right answer is
+ * not known and the last two guesses were both wrong.
+ */
+export type ChunkChecksum = (slice: Uint8Array, offset: number, whole: Uint8Array) => number;
 
 export interface WriteStoredFileOptions {
   transport: ApiTransport;
@@ -117,14 +173,20 @@ export async function writeStoredFile(
   path: string,
   bytes: Uint8Array,
   /**
-   * The checksum to declare. **Omit it and it is computed**, which is what a caller writing edited
-   * content wants; pass one to write a value deliberately, which is how the field was proved to be
-   * enforced in the first place.
+   * What each chunk declares in its checksum field.
+   *
+   * - **omitted** — the whole file's `driveChecksum`, sent on every chunk. The only form a device
+   *   has ever accepted, and what the field appears to mean: it sits beside the *total* length in
+   *   the request, not beside this chunk's.
+   * - **a number** — force that value onto every chunk. The corruption experiment.
+   * - **a function** — compute per chunk. This is how the per-chunk hypothesis was tested, and it
+   *   was **refused**: `Invalid package checksum; corrupt transfer`. Kept because the refusal is
+   *   the useful part — the field is demonstrably validated, and any further hypothesis about what
+   *   it covers is one call away rather than an edit to this file.
    */
-  checksum: number | undefined,
+  checksum: number | ChunkChecksum | undefined,
   options: WriteStoredFileOptions,
 ): Promise<WriteResult> {
-  const declared = checksum ?? driveChecksum(bytes);
   const {
     transport,
     target,
@@ -151,12 +213,27 @@ export async function writeStoredFile(
   while (written < bytes.length) {
     const slice = bytes.subarray(written, Math.min(written + chunkSize, bytes.length));
     const chunkId = id();
-    // **The checksum is the whole file's, not this chunk's**, on the one upload we have to copy:
-    // Transfer sent a 269-byte sound in a single chunk with one value. Whether a multi-chunk write
-    // repeats it, or checksums each chunk, is unknown — which is a reason to write things that fit
-    // in one chunk until somebody captures a large upload.
+    // **The checksum covers this chunk, not the whole file** — measured 2026-08-13, and it is the
+    // reason a project could not be written.
+    //
+    // This used to send the whole file's value on every chunk, copied from the one upload ever
+    // captured: Transfer sending a 269-byte sound in a *single* chunk. **At one chunk the two
+    // models are identical**, so the only case ever tested was the only case that could not tell
+    // them apart, and the guess sat here looking verified.
+    //
+    // Settled without writing anything. A read reports a checksum per chunk, and `driveChecksum`
+    // reproduces all of them over their own slices — `/kits/A/1`, 10,795 bytes in six chunks, four
+    // of four checked byte-exact against the device's own numbers. A cumulative reading matches
+    // only the first chunk, which is again the case where every model agrees.
+    //
+    // `declared` overrides it for the corruption experiment, where sending a knowingly wrong value
+    // is the whole point.
+    const sum =
+      typeof checksum === "function"
+        ? checksum(slice, written, bytes)
+        : (checksum ?? driveChecksum(bytes));
     const reply = await transport.request(
-      writeChunkRequest(chunkId, handle, written, declared, bytes.length, slice),
+      writeChunkRequest(chunkId, handle, written, sum, bytes.length, slice),
       chunkId,
       timeoutMs,
     );

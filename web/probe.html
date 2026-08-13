@@ -230,7 +230,12 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
         bigger file instead would change both at once and leave a refusal ambiguous.
       -->
       <label class="lbl" for="chunkSize">chunk</label>
-      <input id="chunkSize" type="number" value="2048" min="16" max="4096" step="16" disabled title="Bytes per 0x58 write. Set it below the file size to force a multi-chunk write.">
+      <!--
+        The ceiling is above any object we write, so the **one-chunk control** stays available: the
+        same bytes to the same kind of slot in a single 0x58. A refusal is only evidence about
+        chunking if the one-chunk form of it succeeds.
+      -->
+      <input id="chunkSize" type="number" value="2048" min="16" max="65536" step="16" disabled title="Bytes per 0x58 write. Below the file size forces a multi-chunk write; above it forces one.">
       <button class="btn danger" id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read &rarr; write</button>
     </div>
   </section>
