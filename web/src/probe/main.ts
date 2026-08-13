@@ -88,6 +88,7 @@ import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
+import { askConfirm } from "../dialog.js";
 import {
   card,
   hex2,
@@ -856,12 +857,15 @@ async function readProject(): Promise<void> {
 
   const megabytes = (planBytes(plan) / 1_000_000).toFixed(1);
   if (
-    !confirm(
-      `Ask for all ${plan.length} objects — roughly ${megabytes} MB.\n\n` +
-        `Nothing is written to the device; every request carries an empty body.\n\n` +
-        `Make sure SETTINGS > SYSEX DUMP is set to USB rather than USB+MIDI: DIN MIDI ` +
-        `throttles the transfer to about 3 kB/s, which would take over an hour.`,
-    )
+    !(await askConfirm({
+      title: `Read all ${plan.length} objects — roughly ${megabytes} MB?`,
+      body: [
+        "Nothing is written to the device; every request carries an empty body.",
+        "Make sure SETTINGS > SYSEX DUMP is set to USB rather than USB+MIDI. DIN MIDI throttles " +
+          "the transfer to about 3 kB/s, which would take over an hour.",
+      ],
+      confirmLabel: "Read the project",
+    }))
   ) {
     return;
   }
@@ -1073,12 +1077,16 @@ async function writeBack(): Promise<void> {
 
   const slot = patternName(candidate.objNr);
   if (
-    !confirm(
-      `Write pattern ${slot} back to slot ${slot} on the device.\n\n` +
+    !(await askConfirm({
+      title: `Write pattern ${slot} back to slot ${slot}?`,
+      body: [
         `This OVERWRITES that slot. The bytes are identical to what the device just sent, so ` +
-        `nothing should change — but this is a real write and there is no undo.\n\n` +
-        `Load a scratch project first. Continue?`,
-    )
+          `nothing should change — but this is a real write and there is no undo.`,
+        "Load a scratch project first.",
+      ],
+      confirmLabel: `Overwrite ${slot}`,
+      danger: true,
+    }))
   ) {
     return;
   }
@@ -1295,13 +1303,17 @@ async function writeToChosenSlot(): Promise<void> {
   const from = patternName(sourceObj);
   const to = patternName(destination);
   if (
-    !confirm(
-      `Copy pattern ${from} into slot ${to}.\n\n` +
-        `Destination: ${occupancy}\n\n` +
-        `This overwrites ${to} in the device's ACTIVE project. ${from} is unaffected.\n\n` +
-        `To undo: load another project on the device without saving. A write does not reach the ` +
-        `+Drive until you press SAVE PROJECT.\n\nContinue?`,
-    )
+    !(await askConfirm({
+      title: `Copy pattern ${from} into slot ${to}?`,
+      body: [
+        `Destination ${to} is ${occupancy}.`,
+        `This overwrites ${to} in the device's ACTIVE project. ${from} is unaffected.`,
+        "To undo: load another project on the device without saving. A write does not reach the " +
+          "+Drive until you press SAVE PROJECT.",
+      ],
+      confirmLabel: `Overwrite ${to}`,
+      danger: true,
+    }))
   ) {
     return;
   }
@@ -1956,12 +1968,16 @@ async function tryUnknownCode(): Promise<void> {
 
   if (
     !info.known &&
-    !confirm(
-      `Send ${hex(code)}, an unidentified request, object ${objNr}.\n\n` +
-        `It carries an empty body, like every request already proven on both machines — so by ` +
-        `that convention it asks rather than stores. That is an inference, not a certainty.\n\n` +
-        `Load a scratch project first, and check the device after this returns.\n\nContinue?`,
-    )
+    !(await askConfirm({
+      title: `Send ${hex(code)}, an unidentified request, object ${objNr}?`,
+      body: [
+        "It carries an empty body, like every request already proven on both machines — so by " +
+          "that convention it asks rather than stores. That is an inference, not a certainty.",
+        "Load a scratch project first, and check the device after this returns.",
+      ],
+      confirmLabel: `Send ${hex(code)}`,
+      danger: true,
+    }))
   ) {
     return;
   }
