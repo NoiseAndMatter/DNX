@@ -64,6 +64,13 @@ const NO_LOCK = 0xff;
  * **That coupling made the sentences load-bearing.** Rewording this refusal to stop it naming a
  * TypeScript argument silently stopped the page asking at all, and only a test caught it. Prose is
  * for the person reading it; code should switch on something that is allowed to stay still.
+ *
+ * **And the tests were doing it too.** Adding `kind` fixed the page and left two matchers in
+ * `merge.test.ts` reading the same sentences — so the very next wording change, making the refusal
+ * agree with itself in the singular (one slot *holds*), turned `main` red. Both now read `kind`.
+ * The rule is not "the page should not match prose", it is **nothing should**: a message written
+ * for a musician is going to be rewritten, and every matcher on it is a future build break filed
+ * against whoever improved the wording.
  */
 export type RefusalKind = "overwrite" | "pool-overflow";
 
