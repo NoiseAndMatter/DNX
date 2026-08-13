@@ -248,7 +248,8 @@ test("a pool with no room refuses rather than merging half of it", { skip }, () 
   try {
     planPatternMerge(options);
   } catch (error) {
-    refused = error instanceof MergeRefused && /no room/.test(String(error));
+    // `kind`, not the sentence — see the overwrite test below for what prose-matching cost.
+    refused = error instanceof MergeRefused && error.kind === "pool-overflow";
   }
 
   // Only meaningful if these patterns need pool slots at all; if they do, it must refuse.
@@ -382,8 +383,11 @@ test("planning a merge against its own result asks to overwrite", { skip }, () =
   assert.throws(
     // Exactly what the page holds after Apply: the plan's output is now the destination.
     () => planPatternMerge({ ...args, destination: first.image }),
-    (error: unknown) =>
-      error instanceof MergeRefused && /already hold a pattern/.test((error as Error).message),
+    // **`kind`, not the sentence.** This asked for `/already hold a pattern/`, and rewording the
+    // refusal to agree with itself in the singular — one slot *holds* — turned a green suite red
+    // on `main`. The wording is prose written for a musician and will be rewritten again; the
+    // refusal it names will not. Matching the message made every future edit to it a build break.
+    (error: unknown) => error instanceof MergeRefused && error.kind === "overwrite",
     "re-planning onto a slot the merge just filled must refuse rather than silently overwrite",
   );
 
