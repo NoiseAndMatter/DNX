@@ -33,6 +33,7 @@
  * is on the plan, and nothing is written until they have.
  */
 
+import { DN2_SPEC } from "../project/spec.js";
 import { DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
 import { SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { soundLockCountsByTrack } from "../project/dn2pattern.js";
@@ -49,7 +50,15 @@ export class KitWriteError extends Error {}
  * constant. Corroborated on a kit read off a +Drive: `SOLID` reads at +8, and the sixteen u16le
  * track levels start at 0x1C exactly where the name ends.
  */
-export const KIT_NAME_OFFSET = 8;
+/**
+ * Where a Digitone II kit keeps its name.
+ *
+ * **Read from the spec, not written here.** The same fact lived in `blank.ts` as well, as a record
+ * keyed by device kind — two addresses for one field, which is the shape of every drift this
+ * codebase has paid for. Kept as a named export because the reader below and its callers say
+ * `KIT_NAME_OFFSET` and that is the clearer word at those call sites.
+ */
+export const KIT_NAME_OFFSET = DN2_SPEC.kit.nameOffset;
 
 export interface LoadKitOptions {
   /** The pattern whose kit is replaced, 0-based. */
