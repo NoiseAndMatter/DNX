@@ -56,6 +56,29 @@ export interface LoadKitOptions {
   pattern: number;
 }
 
+/**
+ * The name of the kit a pattern is currently wearing.
+ *
+ * **Exported because a kit load was otherwise invisible.** Loading a kit replaces sixteen presets
+ * and changes nothing a pattern cell displays — a cell shows the pattern's own name and its trig
+ * counts, and a kit is the sound rather than the sequence. So the grid went on correctly showing an
+ * unchanged pattern while everything underneath it had been replaced, and the only trace was a
+ * status line the next click overwrote.
+ *
+ * The durable answer is not a message about what just happened. It is showing which kit is on, all
+ * the time, so *"what is this pattern wearing"* is a question the page can answer at rest.
+ *
+ * **Empty is a real answer.** The device names a kit lazily — `KIT <slot + 1>`, supplied when it
+ * loads one — so a blank here means nobody has named it, not that it could not be read.
+ */
+export function readPatternKitName(image: Uint8Array, device: Device, pattern: number): string {
+  // A Digitone 1 has no kits at all, which is why its +Drive has no `/kits`. Nothing to report
+  // rather than an error: this is a display helper and a grid still has to draw.
+  if (device.kind !== "dn2") return "";
+  if (!Number.isInteger(pattern) || pattern < 0 || pattern >= DN2_LAYOUT.patternCount) return "";
+  return readName(kitRecord(image, pattern, DN2_LAYOUT), KIT_NAME_OFFSET);
+}
+
 /** One track's side of the change. `before` and `after` differ only in what a kit holds. */
 export interface KitTrackChange {
   index: number;

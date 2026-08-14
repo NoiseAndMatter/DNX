@@ -42,6 +42,7 @@ import {
   applyLoadKit,
   describeLoadKit,
   planLoadKit,
+  readPatternKitName,
 } from "../../../src/librarian/kitwrite.js";
 import { summariseTracks } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
@@ -130,6 +131,18 @@ const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagR
  */
 const banks: BankCache = new Map();
 
+/**
+ * Which kit went into which pattern, this session.
+ *
+ * **A kit load is otherwise untraceable.** It replaces sixteen presets and changes nothing a
+ * pattern cell displayed, so once the confirmation was dismissed there was no way to tell which
+ * patterns had been touched — the grid, correctly, looked exactly as it had.
+ *
+ * Cleared when another project is opened, because it describes edits to *that* image and would
+ * otherwise claim a fresh project had kits loaded into it.
+ */
+const applied = new Map<number, string>();
+
 // --- the pool ------------------------------------------------------------------------------------
 
 async function loadProject(file: File): Promise<void> {
@@ -148,6 +161,9 @@ async function loadProject(file: File): Promise<void> {
 
   state.project = loaded;
   state.audit = auditPool(loaded.image, device);
+  // This described edits to the previous image. Kept, it would claim a freshly opened project had
+  // kits loaded into patterns nobody has touched.
+  applied.clear();
   $("poolInfo").hidden = false;
   $("poolInfo").textContent = file.name;
   renderDestination();
@@ -198,10 +214,34 @@ function renderPatterns(): void {
 
   renderGrid(
     $("patternGrid"),
-    Array.from({ length: 128 }, (_, index) => ({
-      index,
-      ...patternSlotView(device, project.image, index),
-    })),
+    Array.from({ length: 128 }, (_, index) => {
+      const view = patternSlotView(device, project.image, index);
+      // **The kit name replaces the trig count, on this grid only.**
+      //
+      // `patternSlotView` reports what a pattern *is* — its name and how many trigs it holds — and
+      // that is the right summary in the manager, where patterns are being moved about. Here the
+      // question is which sixteen presets a pattern is wearing, because that is what a drop changes
+      // and what was invisible: a kit load rewrites all sixteen and touches nothing the standard
+      // cell displays, so the grid correctly showed an unchanged pattern over a replaced kit.
+      //
+      // Overridden here rather than added to the shared view, so the manager's cells are untouched.
+      // **Shown whenever there is a name, not only on occupied patterns.** Gating it on occupancy
+      // was the first version and it hid the case that matters most: a kit dropped onto an *empty*
+      // pattern leaves it still empty — a kit is the sound, not the sequence — so the cell would
+      // have gone on saying "empty" with sixteen presets freshly loaded into it.
+      //
+      // Falling back to the standard detail rather than printing "kit unnamed" everywhere: the
+      // device names a kit lazily, so a blank is the normal state of a project nobody has edited,
+      // and 128 cells announcing it would bury the ones that have something to say.
+      const kit = readPatternKitName(project.image, device, index);
+      const marks = [...(view.classes ?? []), ...(applied.has(index) ? ["justApplied"] : [])];
+      return {
+        index,
+        ...view,
+        ...(kit ? { detail: `kit ${kit}` } : {}),
+        ...(marks.length > 0 ? { classes: marks } : {}),
+      };
+    }),
     {
       selected: [],
       onClick: (index) => describePattern(index),
@@ -209,9 +249,34 @@ function renderPatterns(): void {
     },
   );
 
+  renderApplied();
+}
+
+/**
+ * What has been loaded where, this session.
+ *
+ * The per-track findings from a drop are worth reading once and gone by the next click. **Which kit
+ * went into which pattern is worth keeping**, because it is the only record that this project now
+ * differs from the file it came from — nothing else on the page says so until the export.
+ *
+ * A poor relation of real undo history, which is queued. This is deliberately just a list: it says
+ * what happened, and makes no offer to reverse it.
+ */
+function renderApplied(): void {
+  if (applied.size === 0) {
+    $("findings").innerHTML =
+      `<p class="none">Drop a kit on a pattern to see what it would change, track by track. ` +
+      `The trigs stay where they are — a kit is the sound, not the sequence.</p>`;
+    return;
+  }
+
+  const lines = [...applied.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([pattern, what]) => `<li>${escapeHtml(`${patternName(pattern)} ← ${what}`)}</li>`)
+    .join("");
   $("findings").innerHTML =
-    `<p class="none">Drop a kit on a pattern to see what it would change, track by track. ` +
-    `The trigs stay where they are — a kit is the sound, not the sequence.</p>`;
+    `<p class="none">Loaded this session — nothing reaches disk until <b>Export project</b>:</p>` +
+    `<ul class="applied">${lines}</ul>`;
 }
 
 function describePattern(index: number): void {
@@ -631,8 +696,17 @@ async function loadKit(index: number, pattern: number): Promise<void> {
   const { image, plan } = applyLoadKit(project.image, projectDevice, body, { pattern });
   state.project = { ...project, image };
   state.audit = auditPool(image, projectDevice);
+
+  // Recorded before the render, so the cell can mark itself and the list can name it. The kit's own
+  // name is preferred over the slot's — they usually agree, but the kit record is what the pattern
+  // now carries and the listing entry is only where it came from.
+  applied.set(
+    pattern,
+    `${plan.name || bank.entries.find((e) => e.index === index)?.name || "an unnamed kit"} ` +
+      `(${bank.bank}${index}), ${plan.changedTracks.length} track(s) changed`,
+  );
+
   renderPatterns();
-  $("findings").innerHTML = `<ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`;
   status(
     `${plan.name || bank.entries.find((e) => e.index === index)?.name || "kit"} → ` +
       `${patternName(pattern)}. ${plan.changedTracks.length} track(s) changed. ` +
