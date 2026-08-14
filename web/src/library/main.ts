@@ -53,6 +53,14 @@ import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
+import { Session, tag } from "../../../src/librarian/session.js";
+import {
+  type HistoryElements,
+  goToHistoryPoint,
+  renderHistory,
+  wireHistory,
+  wireHistoryKeys,
+} from "../history.js";
 import { askConfirm } from "../dialog.js";
 import {
   type LibraryFilter,
@@ -89,7 +97,16 @@ const status = statusBar();
 renderToolNav($("toolnav"), "library");
 
 interface State {
+  /**
+   * The file the project came from — its name, manifest and container header.
+   *
+   * **Not its bytes.** Those live in `session`, because they change. Keeping an image here as well
+   * would be two answers to "what is the project now", and the exporter would eventually pick the
+   * stale one.
+   */
   project?: LoadedProject;
+  /** The image being edited, and every step taken to it. */
+  session?: Session;
   audit?: PoolAudit;
   device?: ConnectedDevice;
   bank?: LibraryBank;
@@ -136,16 +153,17 @@ const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagR
 const banks: BankCache = new Map();
 
 /**
- * Which kit went into which pattern, this session.
+ * Patterns whose kit was replaced, for the amber mark on the grid.
  *
- * **A kit load is otherwise untraceable.** It replaces sixteen presets and changes nothing a
- * pattern cell displayed, so once the confirmation was dismissed there was no way to tell which
- * patterns had been touched — the grid, correctly, looked exactly as it had.
+ * **Only the mark.** What was loaded, and when, is the history's job now — it was a `Map` carrying
+ * a sentence per pattern until this page had a timeline, and two records of the same events is one
+ * too many. This is a decoration; that is the account.
  *
- * Cleared when another project is opened, because it describes edits to *that* image and would
- * otherwise claim a fresh project had kits loaded into it.
+ * Not undone by undo, deliberately: it says *this pattern's kit has been touched in this session*,
+ * which stays true after stepping back. Marking it as reverted would need the history to describe
+ * the grid, and the history describes bytes.
  */
-const applied = new Map<number, string>();
+const applied = new Set<number>();
 
 /** The +Drive listing, so Open can resolve the chosen slot without listing again. */
 let driveProjects: DriveProject[] = [];
@@ -178,14 +196,25 @@ function adopt(loaded: LoadedProject, label: string): void {
   }
 
   state.project = loaded;
+  // A fresh session per project: the history describes edits to *this* image, and carrying one
+  // across would offer to undo a step into a project that never had it done.
+  state.session = new Session(loaded.image);
   state.audit = auditPool(loaded.image, device);
-  // This described edits to the previous image. Kept, it would claim a freshly opened project had
-  // kits loaded into patterns nobody has touched.
-  applied.clear();
   $("poolInfo").hidden = false;
   $("poolInfo").textContent = label;
-  renderDestination();
+  render();
   status(`${label} open. ${describePoolAudit(state.audit)[0]}`, "ok");
+}
+
+/**
+ * The project as it is now.
+ *
+ * Every reader goes through this rather than through `state.project.image`, which is the image the
+ * project was *opened* with and never moves. Undo has to change what the whole page sees, and it
+ * can only do that if there is one place the bytes come from.
+ */
+function currentImage(): Uint8Array | undefined {
+  return state.session?.image;
 }
 
 function poolSlotView(index: number): Omit<SlotView, "index"> {
@@ -221,9 +250,9 @@ function renderDestination(): void {
 }
 
 function renderPatterns(): void {
-  const project = state.project;
-  if (!project) return;
-  const device = deviceFor(project.image);
+  const image = currentImage();
+  if (!image) return;
+  const device = deviceFor(image);
 
   $("poolGrid").hidden = true;
   $("patternGrid").hidden = false;
@@ -233,7 +262,7 @@ function renderPatterns(): void {
   renderGrid(
     $("patternGrid"),
     Array.from({ length: 128 }, (_, index) => {
-      const view = patternSlotView(device, project.image, index);
+      const view = patternSlotView(device, image, index);
       // **The kit name replaces the trig count, on this grid only.**
       //
       // `patternSlotView` reports what a pattern *is* — its name and how many trigs it holds — and
@@ -251,7 +280,7 @@ function renderPatterns(): void {
       // Falling back to the standard detail rather than printing "kit unnamed" everywhere: the
       // device names a kit lazily, so a blank is the normal state of a project nobody has edited,
       // and 128 cells announcing it would bury the ones that have something to say.
-      const kit = readPatternKitName(project.image, device, index);
+      const kit = readPatternKitName(image, device, index);
       const marks = [...(view.classes ?? []), ...(applied.has(index) ? ["justApplied"] : [])];
       return {
         index,
@@ -271,6 +300,28 @@ function renderPatterns(): void {
 }
 
 /**
+ * Redraw everything the session can have changed.
+ *
+ * One entry point, because undo changes the pool, the pattern grid, the findings and the buttons at
+ * once — and a page with four separate refresh calls is a page where one of them is forgotten on
+ * the path nobody tested.
+ */
+function render(): void {
+  renderDestination();
+  renderHistory(historyElements(), state.session);
+  $<HTMLButtonElement>("export").disabled = state.project === undefined;
+}
+
+/** The three elements the shared history panel writes to. */
+function historyElements(): HistoryElements {
+  return {
+    list: $("history"),
+    undo: $<HTMLButtonElement>("undo"),
+    redo: $<HTMLButtonElement>("redo"),
+  };
+}
+
+/**
  * What has been loaded where, this session.
  *
  * The per-track findings from a drop are worth reading once and gone by the next click. **Which kit
@@ -281,26 +332,18 @@ function renderPatterns(): void {
  * what happened, and makes no offer to reverse it.
  */
 function renderApplied(): void {
-  if (applied.size === 0) {
-    $("findings").innerHTML =
-      `<p class="none">Drop a kit on a pattern to see what it would change, track by track. ` +
-      `The trigs stay where they are — a kit is the sound, not the sequence.</p>`;
-    return;
-  }
-
-  const lines = [...applied.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([pattern, what]) => `<li>${escapeHtml(`${patternName(pattern)} ← ${what}`)}</li>`)
-    .join("");
   $("findings").innerHTML =
-    `<p class="none">Loaded this session — nothing reaches disk until <b>Export project</b>:</p>` +
-    `<ul class="applied">${lines}</ul>`;
+    applied.size === 0
+      ? `<p class="none">Drop a kit on a pattern to see what it would change, track by track. ` +
+        `The trigs stay where they are — a kit is the sound, not the sequence.</p>`
+      : `<p class="none">${applied.size} pattern(s) have had a kit loaded this session — ` +
+        `see History for what, and to step back.</p>`;
 }
 
 function describePattern(index: number): void {
-  const project = state.project;
-  if (!project) return;
-  const tracks = summariseTracks(project.image, index).filter((t) => !t.empty);
+  const image = currentImage();
+  if (!image) return;
+  const tracks = summariseTracks(image, index).filter((t) => !t.empty);
   status(
     tracks.length === 0
       ? `${patternName(index)} is empty.`
@@ -781,8 +824,11 @@ async function loadKit(index: number, pattern: number): Promise<void> {
     msgId: reserveMessageIds(IDS_FOR.oneObject),
   });
 
-  const projectDevice = deviceFor(project.image);
-  const preview = planLoadKit(project.image, projectDevice, body, { pattern });
+  const image = currentImage();
+  const session = state.session;
+  if (!image || !session) return;
+  const projectDevice = deviceFor(image);
+  const preview = planLoadKit(image, projectDevice, body, { pattern });
   const lines = describeLoadKit(preview);
 
   if (preview.changedTracks.length === 0) {
@@ -806,20 +852,21 @@ async function loadKit(index: number, pattern: number): Promise<void> {
     return;
   }
 
-  const { image, plan } = applyLoadKit(project.image, projectDevice, body, { pattern });
-  state.project = { ...project, image };
-  state.audit = auditPool(image, projectDevice);
+  // **Through the session, so it can be taken back.** `Session.apply` takes any image-to-image
+  // function and `applyLoadKit` is one — the seam was already the right shape, which is why this is
+  // a closure and not a redesign. The plan is captured on the way past for the sentence below.
+  let plan: ReturnType<typeof applyLoadKit>["plan"] | undefined;
+  const kitName = plan?.name || bank.entries.find((e) => e.index === index)?.name || "kit";
+  session.apply(tag(`load kit ${bank.bank}${index} into ${patternName(pattern)}`), (current) => {
+    const result = applyLoadKit(current, projectDevice, body, { pattern });
+    plan = result.plan;
+    return result.image;
+  });
+  if (!plan) return;
 
-  // Recorded before the render, so the cell can mark itself and the list can name it. The kit's own
-  // name is preferred over the slot's — they usually agree, but the kit record is what the pattern
-  // now carries and the listing entry is only where it came from.
-  applied.set(
-    pattern,
-    `${plan.name || bank.entries.find((e) => e.index === index)?.name || "an unnamed kit"} ` +
-      `(${bank.bank}${index}), ${plan.changedTracks.length} track(s) changed`,
-  );
-
-  renderPatterns();
+  state.audit = auditPool(session.image, projectDevice);
+  applied.add(pattern);
+  render();
   status(
     `${plan.name || bank.entries.find((e) => e.index === index)?.name || "kit"} → ` +
       `${patternName(pattern)}. ${plan.changedTracks.length} track(s) changed. ` +
@@ -852,10 +899,13 @@ async function addToPool(index: number, slot: number): Promise<void> {
     msgId: reserveMessageIds(IDS_FOR.oneObject),
   });
 
-  const projectDevice = deviceFor(project.image);
+  const image = currentImage();
+  const session = state.session;
+  if (!image || !session) return;
+  const projectDevice = deviceFor(image);
   // Planned before anything is written, so a refusal — a MIDI preset, an occupied slot with locks —
   // is something you read rather than something you undo.
-  const preview = planAddPreset(project.image, projectDevice, body, { slot });
+  const preview = planAddPreset(image, projectDevice, body, { slot });
   if (preview.replaces) {
     const replaced = preview.replaces;
     const ok = await askConfirm({
@@ -880,13 +930,16 @@ async function addToPool(index: number, slot: number): Promise<void> {
     }
   }
 
-  const { image, plan } = applyAddPreset(project.image, projectDevice, body, {
-    slot,
-    confirmOverwrite: true,
+  let plan: ReturnType<typeof applyAddPreset>["plan"] | undefined;
+  session.apply(tag(`add ${entry?.name || "a preset"} to pool slot ${slot}`), (current) => {
+    const result = applyAddPreset(current, projectDevice, body, { slot, confirmOverwrite: true });
+    plan = result.plan;
+    return result.image;
   });
-  state.project = { ...project, image };
-  state.audit = auditPool(image, projectDevice);
-  renderPool();
+  if (!plan) return;
+
+  state.audit = auditPool(session.image, projectDevice);
+  render();
   // Named when it happened. A Digitone 1 preset in a Digitone II pool is a very good likeness
   // rather than the same object, and that is worth one clause of a sentence.
   const converted = plan.converted ? `Converted from a ${plan.converted.from} preset. ` : "";
@@ -901,7 +954,9 @@ async function addToPool(index: number, slot: number): Promise<void> {
 async function exportProject(): Promise<void> {
   const project = state.project;
   if (!project) return;
-  const blob = await buildProjectBlob(project, project.image);
+  // The session's image, never the one the project was opened with. Exporting the original after
+  // an afternoon of edits is the failure this accessor exists to make impossible.
+  const blob = await buildProjectBlob(project, state.session?.image ?? project.image);
   download(blob, project.fileName);
   status(`Exported ${project.fileName}. The original file is untouched.`, "ok");
 }
@@ -916,6 +971,26 @@ $<HTMLInputElement>("projectFile").addEventListener("change", (event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (file) loadProject(file).catch(report);
 });
+
+/**
+ * Stepping about in the timeline.
+ *
+ * Everything the session changed is redrawn from `render`, and the pool audit is recomputed from
+ * the image rather than kept alongside it — an audit that survived an undo would describe a project
+ * that no longer exists.
+ */
+function goTo(step: string): void {
+  const said = goToHistoryPoint(state.session, step);
+  const image = currentImage();
+  if (image) state.audit = auditPool(image, deviceFor(image));
+  render();
+  if (said) status(said);
+}
+
+$("undo").addEventListener("click", () => goTo("undo:1"));
+$("redo").addEventListener("click", () => goTo("redo:1"));
+wireHistory($("history"), goTo);
+wireHistoryKeys(historyElements());
 
 $("driveBrowse").addEventListener("click", () => {
   browseDriveProjects().catch(report);
