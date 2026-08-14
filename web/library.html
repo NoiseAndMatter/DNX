@@ -96,6 +96,14 @@
         <input type="search" id="librarySearch" placeholder="Search name, machine, tag, slot…" autocomplete="off">
         <label class="lbl"><input type="checkbox" id="libraryOccupied"> used only</label>
         <button class="btn" id="libraryClear" title="Clear the search and every selected tag">Clear</button>
+        <!--
+          A bank is re-listed on every visit but its slots are only read again where the listing
+          says they changed. That comparison is a **proxy**: a slot overwritten by something of the
+          same name and size looks identical, so its cached tags would survive and be wrong. Nothing
+          in a listing can rule that out — only the body can, and that is the read being avoided. So
+          the honest answer is a button rather than a claim.
+        -->
+        <button class="btn" id="libraryRefresh" title="Read this bank's slots again, ignoring anything cached">Refresh</button>
       </div>
       <div class="tagchips" id="libraryTags" hidden></div>
       <div class="libtablewrap" id="libraryGrid" hidden></div>
