@@ -62,6 +62,14 @@ import {
 } from "./filter.js";
 import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
+import {
+  type BankCache,
+  type SlotFacts,
+  cacheKey,
+  forget,
+  planBankRead,
+  remember,
+} from "./bankcache.js";
 import { type TagName } from "../../../src/project/tags.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
@@ -95,6 +103,15 @@ interface State {
 }
 
 const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagRun: 0 };
+
+/**
+ * What each bank turned out to hold, for as long as the page is open.
+ *
+ * Deliberately **not** persisted beyond the session. It is a cache of what an instrument had in it
+ * a moment ago, and an instrument that was unplugged and edited in between is exactly the case a
+ * stored copy would get wrong with the most confidence. `bankcache.ts` explains what invalidates it.
+ */
+const banks: BankCache = new Map();
 
 // --- the pool ------------------------------------------------------------------------------------
 
@@ -249,30 +266,59 @@ function kind(): LibraryKind {
   return $<HTMLSelectElement>("kind").value === "kit" ? "kit" : "preset";
 }
 
-async function browse(): Promise<void> {
+async function browse(options: { force?: boolean } = {}): Promise<void> {
   const device = state.device;
   if (!device) throw new DeviceSourceError("connect a Digitone II first");
 
   status(`Listing ${kind()}s in bank ${state.bankLetter}…`);
+  // **Always re-listed, never cached.** One message, and the only thing that can tell us whether
+  // anything changed — which is what decides how many *bodies* have to be read. `bankcache.ts` has
+  // the asymmetry: 1 round trip to list, 256 to read.
   const bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter);
   state.bank = bank;
 
+  const plan = planBankRead(
+    banks.get(cacheKey(kind(), bank.bank)),
+    bank,
+    options.force === undefined ? {} : { force: options.force },
+  );
+
   // Rows first, from the listing alone — everything except tags and machine is already here, and
-  // the table appears at once rather than after a bank's worth of round trips.
-  state.rows = bank.entries.map((e) => ({
-    index: e.index,
-    name: e.name,
-    occupied: e.occupied,
-    writable: e.writable,
-    size: e.size,
-  }));
+  // the table appears at once rather than after a bank's worth of round trips. Anything the cache
+  // still vouches for arrives already filled in, so a revisited bank never blinks back to
+  // "reading…" for rows nothing has happened to.
+  state.rows = bank.entries.map((e) => {
+    const known = plan.reuse.get(e.index);
+    return {
+      index: e.index,
+      name: e.name,
+      occupied: e.occupied,
+      writable: e.writable,
+      size: e.size,
+      ...(known ? { tags: known.tags, machine: known.machine } : {}),
+    };
+  });
 
   renderLibrary();
   renderDestination();
-  status(`Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s). Reading tags…`, "ok");
+
+  if (plan.toRead.length === 0) {
+    status(
+      `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s), unchanged — ` +
+        `nothing to read again.`,
+      "ok",
+    );
+    return;
+  }
+
+  status(
+    `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s). ` +
+      `Reading ${plan.toRead.length} slot(s)…`,
+    "ok",
+  );
 
   // Not awaited. See `loadTags`.
-  loadTags(bank);
+  loadTags(bank, plan.toRead, plan.reuse);
 }
 
 function renderLibrary(): void {
@@ -351,33 +397,43 @@ function toggleTagAndRender(tag: TagName): void {
  * Started after the table is already on screen and deliberately not awaited by `browse` — a bank of
  * 256 is seconds of round trips, and nobody should wait for a tag column to read a name.
  */
-function loadTags(bank: LibraryBank): void {
+function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<number, SlotFacts>): void {
   const device = state.device;
   if (!device) return;
+  if (indices.length === 0) return;
 
   const run = ++state.tagRun;
-  const occupied = bank.entries.filter((e) => e.occupied).map((e) => e.index);
-  if (occupied.length === 0) return;
+  const collection = kind();
+  // Starts from what the cache vouched for, so a partial re-read still stores the whole bank —
+  // otherwise reading one changed slot would forget the 255 that did not change, and the visit
+  // after this one would read everything again.
+  const learned = new Map(reused);
 
   readBankTags({
     transport: apiTransport(device),
-    kind: kind(),
+    kind: collection,
     bank: bank.bank,
-    indices: occupied,
+    indices,
     keepGoing: () => state.tagRun === run,
     onSlot: ({ index, tags, machine }) => {
       const row = state.rows.find((r) => r.index === index);
       if (!row) return;
       row.tags = tags;
       row.machine = machine;
+      learned.set(index, { tags, machine });
       renderTable();
     },
   })
     .then(({ read, failed }) => {
+      // **Only a run that finished as the current one may store anything.** An abandoned run holds
+      // a `learned` map for a bank nobody is looking at, and writing it under the *current* key is
+      // how a preset bank's tags would end up cached as a kit bank's.
       if (state.tagRun !== run) return;
+
+      remember(banks, collection, bank, learned);
       status(
         failed === 0
-          ? `${bank.path}: tags read for all ${read} slot(s).`
+          ? `${bank.path}: tags read for ${read} slot(s).`
           : `${bank.path}: tags read for ${read} slot(s); ${failed} could not be read.`,
         failed === 0 ? "ok" : "warn",
       );
@@ -642,6 +698,15 @@ $<HTMLInputElement>("librarySearch").addEventListener("input", (event) => {
 $<HTMLInputElement>("libraryOccupied").addEventListener("change", (event) => {
   state.filter = { ...state.filter, occupiedOnly: (event.target as HTMLInputElement).checked };
   renderTable();
+});
+
+$("libraryRefresh").addEventListener("click", () => {
+  // Drops only the bank on screen. A refresh of one is not a refresh of all of them — the other
+  // seven are no more suspect than they were a moment ago.
+  const bank = state.bank;
+  if (!bank) return;
+  forget(banks, kind(), bank.bank);
+  browse({ force: true }).catch(report);
 });
 
 $("libraryClear").addEventListener("click", () => {
