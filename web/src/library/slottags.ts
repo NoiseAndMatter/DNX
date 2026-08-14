@@ -34,6 +34,15 @@ import { SOUND_MACHINE_OFFSET, machineName } from "../../../src/project/machine.
 /** Where the tag bitfield sits in a sound object. `docs/` has the derivation of the table itself. */
 const TAG_BITS_OFFSET = 8;
 
+/**
+ * Ids one slot's read may consume: open, its chunks, close.
+ *
+ * A preset is 407 bytes and arrives in two chunks, so four is comfortable. It must be a **ceiling**
+ * rather than a measurement — running past it puts the next slot's requests on ids this one is
+ * still waiting on.
+ */
+const IDS_PER_SLOT = 8;
+
 export interface SlotTags {
   index: number;
   tags: TagName[];
@@ -63,7 +72,7 @@ export async function readBankTags(options: ReadTagsOptions): Promise<{ read: nu
   let read = 0;
   let failed = 0;
 
-  for (const index of options.indices) {
+  for (const [nth, index] of options.indices.entries()) {
     if (!options.keepGoing()) break;
 
     try {
@@ -72,7 +81,12 @@ export async function readBankTags(options: ReadTagsOptions): Promise<{ read: nu
         options.kind,
         options.bank,
         index,
-        options.msgId === undefined ? {} : { msgId: options.msgId + read * 4 },
+        // **Numbered by position, not by successes.** This advanced with `read`, which only counts
+        // slots that worked — so a slot that failed left the next one reusing its ids, and the
+        // reply to a request that had already given up could be matched against its successor.
+        // The same off-by-one hazard the dump reader names as "a late answer filed against the
+        // next step", one level down.
+        options.msgId === undefined ? {} : { msgId: options.msgId + nth * IDS_PER_SLOT },
       );
 
       // **`object`, not `body`.** A Digitone II preset's stored body carries five bytes in front of
