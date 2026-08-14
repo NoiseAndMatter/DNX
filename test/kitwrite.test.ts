@@ -23,6 +23,7 @@ import { summariseTracks } from "../src/librarian/tracksummary.js";
 import {
   KitWriteError,
   applyLoadKit,
+  readPatternKitName,
   describeLoadKit,
   planLoadKit,
 } from "../src/librarian/kitwrite.js";
@@ -193,4 +194,54 @@ test("the original image is not modified", { skip }, () => {
   const { from, to } = busyPair(before);
   applyLoadKit(before, deviceFor(before), kitRecord(before, from, DN2_LAYOUT), { pattern: to });
   assert.deepEqual(before, copy, "applying must not write through its argument");
+});
+
+/**
+ * The kit name a pattern is wearing.
+ *
+ * This is what makes a kit load visible at all. A pattern cell shows the pattern's own name and its
+ * trig counts, and a kit load changes neither — it replaces sixteen presets and leaves the sequence
+ * exactly where it was. So the library shows this instead, and it has to be read from the same
+ * place `planLoadKit` reads `replaces` from, or the cell and the confirmation would disagree about
+ * what is currently loaded.
+ */
+test("a pattern reports the kit it is wearing, from where the plan reads it", { skip }, () => {
+  const project = dn2();
+  const device = deviceFor(project);
+
+  // Held against `planLoadKit`'s own reading rather than against a literal. A literal would pin
+  // this to one corpus file; agreeing with the planner is the property that actually matters,
+  // because those two names appear side by side the moment somebody drops a kit.
+  const anyKit = kitRecord(project, 1, DN2_LAYOUT);
+  const plan = planLoadKit(project, device, anyKit, { pattern: 0 });
+
+  assert.equal(readPatternKitName(project, device, 0), plan.replaces);
+});
+
+test("loading a kit changes what the pattern reports it is wearing", { skip }, () => {
+  const project = dn2();
+  const device = deviceFor(project);
+
+  // A kit from one pattern into another, chosen so the two names differ — otherwise the assertion
+  // passes without the write having done anything.
+  const source = 1;
+  const target = 0;
+  const incoming = kitRecord(project, source, DN2_LAYOUT);
+  const was = readPatternKitName(project, device, target);
+  const coming = readPatternKitName(project, device, source);
+
+  if (was === coming) return; // nothing to prove on a project whose kits share a name
+
+  const { image: after } = applyLoadKit(project, device, incoming, { pattern: target });
+  assert.equal(readPatternKitName(after, device, target), coming);
+  assert.notEqual(readPatternKitName(after, device, target), was);
+  // And the pattern it came from is untouched, which is the other half of "which one changed".
+  assert.equal(readPatternKitName(after, device, source), coming);
+});
+
+test("a Digitone 1 pattern reports no kit, because it has none", { skip }, () => {
+  // Not an error: this is a display helper and a grid still has to draw. The DN1 has no kits at
+  // all, which is why its +Drive has no /kits directory.
+  const dn1 = image(DN1_PROJECTS, "002 MORNING_JAM.dnprj");
+  assert.equal(readPatternKitName(dn1, deviceFor(dn1), 0), "");
 });
