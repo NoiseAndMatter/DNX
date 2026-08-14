@@ -55,6 +55,7 @@ import { DeviceSession } from "../../src/device/session.js";
 import { dumpProductFor } from "../../src/device/dumprequest.js";
 import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
 import { layoutFor } from "../../src/project/dn2image.js";
+import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 
 export class DeviceSourceError extends Error {}
 
@@ -368,22 +369,14 @@ export function apiTransport(device: ConnectedDevice): ApiTransport {
     timeoutError: (msgId, ms) => new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${ms}ms`),
   });
 }
-/**
- * Message ids for +Drive work, in bands.
- *
- * A single read consumes one id per chunk — 1,358 for a DN1 project — and **`msgId` is a u16**, so
- * a plain counter runs out. Bands start at 8,192 to stay clear of Transfer, which numbers from the
- * low hundreds, and each call takes a fresh one.
- */
-let driveBand = 0;
-function nextDriveId(): number {
-  return 8_192 + (driveBand++ % 6) * 8_192;
-}
+// Message ids come from the page's one allocator. This module used to keep its own band scheme —
+// the same idea the probe also implemented separately — and neither was shared with the library,
+// which is why the library collided at id 1. See `messageids.ts`.
 
 /** Every project stored on the device, by slot. Reads nothing but the directory. */
 export async function listDeviceProjects(device: ConnectedDevice): Promise<DriveProject[]> {
   try {
-    return await listProjects(apiTransport(device), { msgId: nextDriveId() });
+    return await listProjects(apiTransport(device), { msgId: reserveMessageIds(IDS_FOR.oneMessage) });
   } catch (error) {
     throw new DeviceSourceError(`Could not list the +Drive: ${String(error)}`);
   }
@@ -428,7 +421,7 @@ export async function openDeviceProject(
   onProgress: (chunks: number, bytes: number) => void,
 ): Promise<DriveProjectHandle> {
   const read = await readDriveProject(apiTransport(device), project.index, {
-    msgId: nextDriveId(),
+    msgId: reserveMessageIds(IDS_FOR.wholeProject),
     onProgress,
   });
 

@@ -42,7 +42,7 @@ import {
   queryRequest,
   versionRequest,
 } from "../../../src/device/api.js";
-import { MessageIdBands } from "./messageids.js";
+import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import {
   answerIsNews,
   describeAnswerChange,
@@ -1736,7 +1736,7 @@ async function readFile(): Promise<void> {
       transport: apiTransport(output),
       // A band of its own, never from 1. Ids that restart per session collide with the previous
       // session's — and with Transfer's, which numbers from the low hundreds.
-      msgId: readIds.base(),
+      msgId: reserveMessageIds(IDS_FOR.wholeProject),
       onProgress: (chunks, bytes) => {
         status(`Reading ${path}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
       },
@@ -1779,7 +1779,6 @@ async function readFile(): Promise<void> {
   } finally {
     // Whatever happened, the handle is released by now and the next press is safe. Moving to the
     // next band is what stops this run's ids coming round again on the following one.
-    readIds.advance();
     readingFile = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
   }
@@ -1839,8 +1838,9 @@ let readingFile = false;
  */
 const DEFAULT_PROBE_CHUNK = 2048;
 
-/** The bands a long read draws its message ids from. See `messageids.ts` for why. */
-const readIds = new MessageIdBands();
+// Ids come from the page's one allocator now. This file used to keep its own band scheme, and
+// `devicesource.ts` kept a second one — the same idea implemented twice and shared with nothing,
+// which is how the library came to collide at id 1. See `messageids.ts`.
 
 /**
  * **The first write to a Digitone's +Drive**, and the experiment that unblocks the rest.
@@ -1908,8 +1908,10 @@ async function readThenWrite(): Promise<void> {
       throw new Error(`${target} is not in ${directory} — that listing has ${listing.length} entries`);
     }
 
-    const file = await readStoredFile(source, { transport: apiTransport(output), msgId: readIds.base() });
-    readIds.advance();
+    const file = await readStoredFile(source, {
+      transport: apiTransport(output),
+      msgId: reserveMessageIds(IDS_FOR.wholeProject),
+    });
     sourceLength = file.bytes.length;
 
     // **`undefined` is the right answer here now.** The write computes each chunk's own checksum,
@@ -1929,7 +1931,7 @@ async function readThenWrite(): Promise<void> {
     const result = await writeStoredFile(target, file.bytes, checksum, {
       transport: apiTransport(output),
       target: entry,
-      msgId: readIds.base(),
+      msgId: reserveMessageIds(IDS_FOR.wholeProject),
       chunkSize,
       onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
     });
@@ -1988,7 +1990,6 @@ async function readThenWrite(): Promise<void> {
       }),
     );
   } finally {
-    readIds.advance();
     readingFile = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
   }
