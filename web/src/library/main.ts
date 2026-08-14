@@ -460,11 +460,16 @@ async function openDriveProject(): Promise<void> {
   progress.working(`Reading ${project.name}`);
   let opened;
   try {
-    opened = await openDeviceProject(device, project, (chunks, bytes) => {
-      if (chunks % 64 === 0) {
-        progress.working(`Reading ${project.name}`);
-        status(`Reading ${project.name}: ${describeBytes(bytes)}…`);
-      }
+    opened = await openDeviceProject(device, project, (chunks, bytes, total) => {
+      if (chunks % 64 !== 0) return;
+      // The container header declares the length, so this is a real bar after the first chunk —
+      // `working` only covers the moment before that. See `fileLengthFromHead`.
+      if (total) progress.at(bytes, total, `Reading ${project.name}`);
+      else progress.working(`Reading ${project.name}`);
+      status(
+        `Reading ${project.name}: ${describeBytes(bytes)}` +
+          (total ? ` of ${describeBytes(total)}` : "") + "…",
+      );
     });
   } finally {
     // In a `finally`, so a read that threw does not leave a bar sweeping over a page that has

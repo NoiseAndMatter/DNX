@@ -891,11 +891,14 @@ async function openFromDrive(): Promise<void> {
   try {
     status(`Reading ${project.name} from slot ${project.index}…`);
     progress.working(`Reading ${project.name}`);
-    const opened = await openDeviceProject(drive.connected, project, (chunks, bytes) => {
-      if (chunks % 8 === 0) {
-        progress.working(`Reading ${project.name}`);
-        status(`Reading ${project.name}: ${describeBytes(bytes)}…`);
-      }
+    const opened = await openDeviceProject(drive.connected, project, (chunks, bytes, total) => {
+      if (chunks % 8 !== 0) return;
+      if (total) progress.at(bytes, total, `Reading ${project.name}`);
+      else progress.working(`Reading ${project.name}`);
+      status(
+        `Reading ${project.name}: ${describeBytes(bytes)}` +
+          (total ? ` of ${describeBytes(total)}` : "") + "…",
+      );
     });
 
     const device = deviceFor(opened.image);
