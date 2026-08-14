@@ -54,6 +54,49 @@ export const OBJECT_MAGIC = Uint8Array.of(0xbe, 0xef, 0xba, 0xce);
 /** Difference between payload length and the stored length field. Constant in all files seen. */
 export const LENGTH_BIAS = 43;
 
+/** Where the container header repeats the body length, as a big-endian u32. */
+const HEAD_LENGTH_OFFSET = 25;
+
+/** Enough bytes to read it. The header is 31; this is the least that answers the question. */
+export const HEAD_LENGTH_MINIMUM = HEAD_LENGTH_OFFSET + 4;
+
+/**
+ * How long the whole file will be, from the first bytes of it.
+ *
+ * **The length is in the header as well as in the trailer.** `parsePayload` reads `storedLength`
+ * from `raw.length - 8`, which is why it looks like a fact only available once the file is
+ * complete — and on that reading a +Drive read could never report a percentage, only bytes
+ * arriving. It can: the same number sits at header offset 25.
+ *
+ * Measured on two files four hundred times apart in size, header against trailer:
+ *
+ * | | header `+25` | trailer | file |
+ * |---|---|---|---|
+ * | a stored preset | **364** | 364 | 31 + 364 + 12 = 407 |
+ * | a stored kit | **10,752** | 10,752 | 31 + 10,752 + 12 = 10,795 |
+ *
+ * Returns the **file** length, `LENGTH_BIAS` included, because that is what a caller counting
+ * received bytes is comparing against.
+ *
+ * `undefined` for anything too short to answer, or without the container magic. This is used for a
+ * progress bar, so a wrong number is worse than none — a bar that overshoots its own total says
+ * the thing it exists to say, wrongly.
+ */
+export function fileLengthFromHead(head: Uint8Array): number | undefined {
+  if (head.length < HEAD_LENGTH_MINIMUM) return undefined;
+  if (!startsWith(head, CONTAINER_MAGIC)) return undefined;
+
+  const body =
+    ((head[HEAD_LENGTH_OFFSET]! << 24) |
+      (head[HEAD_LENGTH_OFFSET + 1]! << 16) |
+      (head[HEAD_LENGTH_OFFSET + 2]! << 8) |
+      head[HEAD_LENGTH_OFFSET + 3]!) >>>
+    0;
+
+  // A zero-length body is not a file this could describe, and it would make a bar divide by zero.
+  return body > 0 ? body + LENGTH_BIAS : undefined;
+}
+
 export interface ProjectManifest {
   FormatVersion: string;
   /** Transfer-protocol device IDs this file targets. DN1 projects list ["24","30"]. */

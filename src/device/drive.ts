@@ -31,7 +31,13 @@
  * the expander — so nothing here may assume there is one device.
  */
 
-import { type Project, type ProjectManifest, type ProjectPayload, parsePayload } from "../project/container.js";
+import {
+  type Project,
+  type ProjectManifest,
+  type ProjectPayload,
+  fileLengthFromHead,
+  parsePayload,
+} from "../project/container.js";
 import { type ApiTransport, type StoredFile, readStoredFile } from "./storagesession.js";
 import { StorageCode, type Entry, ListingError, listRequest, parseListing } from "./storage.js";
 import { RESPONSE_BIT } from "./api.js";
@@ -58,7 +64,7 @@ export interface DriveOptions {
   /** First message id. A read consumes one per chunk, so give each call its own band. */
   msgId?: number;
   timeoutMs?: number;
-  onProgress?: (chunks: number, bytes: number) => void;
+  onProgress?: (chunks: number, bytes: number, total?: number) => void;
 }
 
 /**
@@ -115,6 +121,10 @@ export async function readDriveProject(
     msgId: options.msgId,
     timeoutMs: options.timeoutMs,
     onProgress: options.onProgress,
+    // A project is an Elektron container, and its header declares how long it will be — so a read
+    // that used to be able to report only "bytes so far" can report a percentage from the first
+    // chunk. See `fileLengthFromHead`.
+    totalFromHead: fileLengthFromHead,
   });
 
   return { ...file, payload: parsePayload(file.bytes) };

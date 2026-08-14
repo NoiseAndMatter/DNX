@@ -122,7 +122,25 @@ export interface ReadStoredFileOptions {
    * observed to fail. Tests pass `0`.
    */
   retryPauseMs?: number;
-  onProgress?: (chunks: number, bytes: number) => void;
+  /**
+   * Progress, with the file's expected total once it is known.
+   *
+   * `total` is `undefined` until enough of the file has arrived for `totalFromHead` to answer, and
+   * for every read that does not supply one. A caller drawing a bar switches from *working* to a
+   * percentage the moment it appears.
+   */
+  onProgress?: (chunks: number, bytes: number, total?: number) => void;
+  /**
+   * Given the first bytes, how long the whole file will be.
+   *
+   * **Supplied by the caller, not known here.** This module reads chunks off a handle and has no
+   * business knowing what a +Drive file looks like inside; the caller does, and passes a function
+   * that answers from a head. For an Elektron container that is `fileLengthFromHead`.
+   *
+   * Used only for reporting. Nothing about the read depends on it, so a wrong answer costs a wrong
+   * bar rather than a truncated file.
+   */
+  totalFromHead?: (head: Uint8Array) => number | undefined;
 }
 
 export interface StoredFile {
@@ -227,6 +245,7 @@ export async function readStoredFile(
     maxRetriesPerChunk = DEFAULT_RETRIES_PER_CHUNK,
     retryPauseMs = DEFAULT_RETRY_PAUSE_MS,
     onProgress,
+    totalFromHead,
   } = options;
   let nextId = options.msgId ?? 1;
   const id = (): number => nextId++;
@@ -260,6 +279,8 @@ export async function readStoredFile(
   let metadata: Uint8Array | undefined;
   let closed = false;
   let retries = 0;
+  /** The file's declared length, once the first chunk has been seen. See `totalFromHead`. */
+  let expectedTotal: number | undefined;
 
   /**
    * Ask for one chunk, and ask again if the device does not answer.
@@ -342,7 +363,13 @@ export async function readStoredFile(
         checksums.push(chunk.checksum);
         total += chunk.data.length;
       }
-      onProgress?.(chunks, total);
+
+      // Asked once, as soon as there is enough to answer with. Re-deriving it every chunk would
+      // join thousands of buffers over a 12.9 MB read to re-learn a number that cannot change.
+      if (expectedTotal === undefined && totalFromHead && parts.length > 0) {
+        expectedTotal = totalFromHead(parts[0]!);
+      }
+      onProgress?.(chunks, total, expectedTotal);
 
       if (chunk.last) break;
     }
