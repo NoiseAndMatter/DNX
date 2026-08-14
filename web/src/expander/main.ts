@@ -27,6 +27,7 @@ import { renderPlan } from "../render.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import { progressBar } from "../progress.js";
 import { renderToolNav } from "../toolnav.js";
 import { askConfirm } from "../dialog.js";
 import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
@@ -74,6 +75,7 @@ import { ProductId } from "../../../src/sysex/devices.js";
  * it with it, which this page has been bitten by before.
  */
 const status = statusBar();
+const progress = progressBar();
 
 // Drawn rather than written into the HTML, so the row cannot say different things on different
 // pages. Immediately, because a navigation control that appears late is one you click through.
@@ -112,7 +114,7 @@ function merging(): boolean {
 }
 
 /** The Digitone II this page talks to. Its counterpart for the Digitone 1 is `source`. */
-const instrument = new Instrument({ onStatus: (message) => status(message) });
+const instrument = new Instrument({ progress, onStatus: (message) => status(message) });
 
 /**
  * The bytes a plan produced, waiting for **Apply**.
@@ -202,6 +204,7 @@ function renderReport(): void {
  * listing and the slot-naming rule are not in this file.
  */
 const source = new Source({
+  progress,
   onChange(loaded) {
     replan();
     $("sourceInfo").hidden = false;

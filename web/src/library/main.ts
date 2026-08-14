@@ -53,6 +53,7 @@ import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
+import { describeBytes, progressBar } from "../progress.js";
 import { Session, tag } from "../../../src/librarian/session.js";
 import {
   type HistoryElements,
@@ -94,6 +95,7 @@ import {
 import { type DriveProject } from "../../../src/device/drive.js";
 
 const status = statusBar();
+const progress = progressBar();
 renderToolNav($("toolnav"), "library");
 
 interface State {
@@ -453,11 +455,22 @@ async function openDriveProject(): Promise<void> {
   }
 
   status(`Reading ${project.name} from slot ${project.index}…`);
-  const opened = await openDeviceProject(device, project, (chunks, bytes) => {
-    if (chunks % 64 === 0) {
-      status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
-    }
-  });
+  // **`working`, not a percentage.** A +Drive listing reports a flat 4 MiB allocation rather than
+  // the file's size, so there is no honest denominator here. See `progress.ts`.
+  progress.working(`Reading ${project.name}`);
+  let opened;
+  try {
+    opened = await openDeviceProject(device, project, (chunks, bytes) => {
+      if (chunks % 64 === 0) {
+        progress.working(`Reading ${project.name}`);
+        status(`Reading ${project.name}: ${describeBytes(bytes)}…`);
+      }
+    });
+  } finally {
+    // In a `finally`, so a read that threw does not leave a bar sweeping over a page that has
+    // given up — which reads as "still working" and is the one thing it must never say wrongly.
+    progress.done();
+  }
 
   // **No manifest, no project.** The +Drive sends no `manifest.json`; it is rebuilt from the payload
   // and the device's firmware string, and without that string there is no honest one. Refusing is
@@ -695,6 +708,8 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
       row.tags = tags;
       row.machine = machine;
       learned.set(index, { tags, machine });
+      // A real bar: the slots were counted before the first request went out.
+      progress.at(learned.size - reused.size, indices.length, `Reading ${bank.path}`);
       // **Coalesced to one repaint a frame.** Painting on every slot rebuilt a 256-row table 256
       // times over a bank — some 65,000 rows of DOM in six seconds, which is what made the page
       // feel frozen while it was working perfectly.
@@ -712,6 +727,7 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
       // how a preset bank's tags would end up cached as a kit bank's.
       if (state.tagRun !== run) return;
 
+      progress.done();
       state.reading = undefined;
 
       // **The last paint is not scheduled, it is done.** `requestAnimationFrame` does not fire in a
@@ -728,7 +744,10 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
         failed === 0 ? "ok" : "warn",
       );
     })
-    .catch(report);
+    .catch((error: unknown) => {
+      progress.done();
+      report(error);
+    });
 }
 
 /**

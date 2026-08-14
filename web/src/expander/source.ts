@@ -33,6 +33,7 @@ import {
   openDeviceProject,
 } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
+import { type Progress, describeBytes } from "../progress.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { readProjectName } from "../../../src/project/dn1.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -51,6 +52,13 @@ export interface SourceHooks {
   onChange(source: LoadedSource): void;
   /** Progress and news, in the words the status bar should show. */
   onStatus(message: string): void;
+  /**
+   * How far through, for the page's bar.
+   *
+   * Handed in rather than reached for, the same way `onStatus` is: this module talks to an
+   * instrument and has no business knowing which element on the page reports it.
+   */
+  progress: Progress;
 }
 
 export class Source {
@@ -124,11 +132,18 @@ export class Source {
     }
 
     this.hooks.onStatus(`Reading ${project.name} from slot ${project.index}…`);
-    const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-      if (chunks % 8 === 0) {
-        this.hooks.onStatus(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
-      }
-    });
+    this.hooks.progress.working(`Reading ${project.name}`);
+    let opened;
+    try {
+      opened = await openDeviceProject(connected, project, (chunks, bytes) => {
+        if (chunks % 8 === 0) {
+          this.hooks.progress.working(`Reading ${project.name}`);
+          this.hooks.onStatus(`Reading ${project.name}: ${describeBytes(bytes)}…`);
+        }
+      });
+    } finally {
+      this.hooks.progress.done();
+    }
 
     // Checked after the read rather than before, because the +Drive listing does not say what
     // family a stored project is — only the payload does. A DN2 project on a DN1's +Drive should be

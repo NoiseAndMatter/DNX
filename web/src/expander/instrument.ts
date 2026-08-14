@@ -43,12 +43,20 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
+import { type Progress, describeBytes } from "../progress.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 
 export interface InstrumentHooks {
   /** Progress and news, in the words the status bar should show. */
   onStatus(message: string): void;
+  /**
+   * How far through, for the page's bar.
+   *
+   * Handed in rather than reached for, the same way `onStatus` is: this module talks to an
+   * instrument and has no business knowing which element on the page reports it.
+   */
+  progress: Progress;
 }
 
 /** What a stored project came back as, ready for `Destination.fill`. */
@@ -107,11 +115,20 @@ export class Instrument {
     if (!project) throw new DeviceSourceError("browse the +Drive again — that listing is stale");
 
     this.hooks.onStatus(`Reading ${project.name} from slot ${project.index}…`);
-    const opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-      if (chunks % 8 === 0) {
-        this.hooks.onStatus(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
-      }
-    });
+    // `working`, not a percentage: a +Drive listing reports a flat 4 MiB allocation rather than the
+    // file's size, so there is no honest denominator. See `progress.ts`.
+    this.hooks.progress.working(`Reading ${project.name}`);
+    let opened;
+    try {
+      opened = await openDeviceProject(connected, project, (chunks, bytes) => {
+        if (chunks % 8 === 0) {
+          this.hooks.progress.working(`Reading ${project.name}`);
+          this.hooks.onStatus(`Reading ${project.name}: ${describeBytes(bytes)}…`);
+        }
+      });
+    } finally {
+      this.hooks.progress.done();
+    }
 
     // Checked after the read, because the listing does not say what family a stored project is —
     // only the payload does. The mirror of the check on the source side, and for the same reason:
@@ -141,10 +158,16 @@ export class Instrument {
     this.hooks.onStatus(
       `Reading ${connected.name} with ${describeDonor} as the donor — this takes about a minute…`,
     );
-    const { image, handle } = await readProject(connected, donorImage, (done, total, label) => {
-      if (done % 8 === 0 || done === total) this.hooks.onStatus(`Reading: ${done}/${total} — ${label}`);
-    });
-    return { image, handle, name: connected.name };
+    try {
+      const { image, handle } = await readProject(connected, donorImage, (done, total, label) => {
+        // A real bar: the plan is counted before the first request goes out.
+        this.hooks.progress.at(done, total, `Reading ${connected.name}`);
+        if (done % 8 === 0 || done === total) this.hooks.onStatus(`Reading: ${done}/${total} — ${label}`);
+      });
+      return { image, handle, name: connected.name };
+    } finally {
+      this.hooks.progress.done();
+    }
   }
 
   /**
@@ -157,9 +180,14 @@ export class Instrument {
     handle: DeviceProjectHandle,
     image: Uint8Array,
   ): Promise<Awaited<ReturnType<typeof writeBack>>> {
-    return await writeBack(handle, image, (done, total, label) => {
-      this.hooks.onStatus(`Writing ${done}/${total} — ${label}`);
-    });
+    try {
+      return await writeBack(handle, image, (done, total, label) => {
+        this.hooks.progress.at(done, total, "Writing");
+        this.hooks.onStatus(`Writing ${done}/${total} — ${label}`);
+      });
+    } finally {
+      this.hooks.progress.done();
+    }
   }
 
   #required(): ConnectedDevice {
