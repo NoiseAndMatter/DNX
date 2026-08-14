@@ -29,8 +29,8 @@ import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js"
 import { statusBar } from "../statusbar.js";
 import { progressBar } from "../progress.js";
 import { renderToolNav } from "../toolnav.js";
-import { askConfirm } from "../dialog.js";
 import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
+import { recordWriteMessage } from "../../../src/device/safewrite.js";
 import { type DriveProject } from "../../../src/device/drive.js";
 import {
   type ExpanderOptions,
@@ -591,38 +591,34 @@ async function exportDestination(): Promise<void> {
   status(`Exported ${base}.`);
 }
 
+/**
+ * Send everything merged so far to the project loaded on the instrument.
+ *
+ * **The question used to be asked here, and it said less than the write did.** It named no slots,
+ * no count, and could not mention that somebody had been playing on the device since the project
+ * was read — because at that point nothing had asked the device. It now comes from
+ * `safeWriteRecords` by way of `confirmRecordWrite`, after the destination has been read back, so
+ * it describes the write that is actually about to happen. Two pages asking two different questions
+ * about the same operation was the problem, not the wording of either.
+ */
 async function writeToDevice(): Promise<void> {
   const open = destination.open;
   if (!open?.handle) return;
   const handle = open.handle;
-
-  // Asked, always. `applyRearrange` refuses to overwrite without consent for the same reason: for
-  // most people the instrument holds the only copy.
-  const ok = await askConfirm({
-    title: "Write to the project loaded on the device?",
-    body: [
-      "Everything merged so far goes into the project currently loaded on the instrument.",
-      "It is not permanent until you press SAVE PROJECT on the device — and loading another " +
-        "project discards it.",
-    ],
-    confirmLabel: "Write to device",
-    danger: true,
-  });
-  if (!ok) {
-    status("Not written.");
-    return;
-  }
 
   $<HTMLButtonElement>("writeDevice").disabled = true;
   try {
     // Diffed against what the instrument gave us, not against the last merge — so every change
     // accumulated in the working project is sent, however many applies went into it.
     const outcome = await instrument.write(handle, open.image);
-    status(
-      `Wrote ${outcome.written} record(s), ${outcome.bytes.toLocaleString()} bytes. ` +
-        `Press SAVE PROJECT on the device to keep it.` +
-        (outcome.untransmittable.length > 0 ? ` Not sent: ${outcome.untransmittable.join(", ")}.` : ""),
-    );
+    if (outcome.cancelled) {
+      status("Not written.");
+      return;
+    }
+    const message = recordWriteMessage(outcome);
+    status(message.text, message.level);
+  } catch (error) {
+    status(`The write stopped: ${String(error)}`, "error");
   } finally {
     renderDestination();
   }

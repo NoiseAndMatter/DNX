@@ -42,6 +42,7 @@ import {
   readProject,
   writeBack,
 } from "../devicesource.js";
+import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import { type DriveProject } from "../../../src/device/drive.js";
 import { type Progress, describeBytes } from "../progress.js";
 import { deviceFor } from "../../../src/librarian/device.js";
@@ -175,15 +176,25 @@ export class Instrument {
    *
    * Diffed against what the instrument gave us, not against the last merge — so every change in the
    * working project is sent, however many applies went into it.
+   *
+   * The backup, the question and the read-back come from the same shared path the manager uses, and
+   * they are not this module's to choose. An expander write is the one on this page that destroys
+   * something: everything before it produces a plan, and this is where the plan reaches somebody's
+   * instrument.
    */
   async write(
     handle: DeviceProjectHandle,
     image: Uint8Array,
   ): Promise<Awaited<ReturnType<typeof writeBack>>> {
     try {
-      return await writeBack(handle, image, (done, total, label) => {
-        this.hooks.progress.at(done, total, "Writing");
-        this.hooks.onStatus(`Writing ${done}/${total} — ${label}`);
+      return await writeBack(handle, image, {
+        onBackup: downloadBackup((message) => this.hooks.onStatus(message)),
+        confirm: confirmRecordWrite,
+        onStatus: (message) => this.hooks.onStatus(message),
+        onProgress: (done, total, stage) => {
+          this.hooks.progress.at(done, total, STAGE_LABEL[stage]);
+          this.hooks.onStatus(`${STAGE_LABEL[stage]} ${done}/${total}`);
+        },
       });
     } finally {
       this.hooks.progress.done();

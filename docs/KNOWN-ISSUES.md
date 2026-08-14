@@ -5,6 +5,47 @@ converter.
 
 ---
 
+## Writing to a device took no copy, asked nothing and checked nothing — FIXED 2026-08-14
+
+**Write to device** in the manager did this the moment it was pressed: diff the image, send the
+records that differ, print `3 pattern(s) written`. No copy of what was in those slots. No question.
+No check that the device stored what was sent. The expander's write went through the same function
+and asked a generic question that named no slot and no count. The probe's +Drive write was a third
+version of the sequence, ending in *"check the slot on the instrument"*.
+
+Everything needed to do better already existed and every piece of it was optional:
+
+| what existed | who called it |
+|---|---|
+| `verifyWrite`, with a header saying *"a write is not finished until it has been read back"* | the probe page only |
+| `readBackRecords` | **nothing, ever** |
+| a confirmation naming the destination | the probe's slot write only |
+
+**A guard nobody is obliged to use is documentation.** Fixed by making the obligation structural:
+`src/device/safewrite.ts` is the only path, the primitives now require a `WritePermit` that only it
+can produce, and `test/safewrite.test.ts` scans the tree for anything reaching around it.
+
+A side effect worth recording on its own: `readBackRecords` declared `layout.patternSize` as the
+size it expected, which is what sizes the read timeout. A patternKit is `patternSize + kitSize` —
+99,840 bytes on a Digitone II, not 89,088 — so every read-back allowed 89% of the time it needed,
+and only the reader's slack covered it. It had never bitten because nothing had ever called the
+function. That is the **fifth** fact this codebase had written down twice; a test now pins
+`RESPONSE_SIZES[…].patternKit` against `patternSize + kitSize`.
+
+## The probe's slot write still has no backup of its destination — OPEN 2026-08-14
+
+`writeToChosenSlot` on the probe page carries four of the five safe-write rules: it judges the
+destination's occupancy against the device's own blank, names it in the confirmation, refuses on a
+bad record, and reads back and byte-compares afterwards. What it does not do is **keep a copy of
+what it is about to overwrite**: `existing` comes from the capture in memory, not from a fresh read,
+so a destination that was never captured has no backup at all — and the confirmation says so
+(*"not in the capture — unknown, so assume it holds something"*) rather than fixing it.
+
+It is exempt from the safe path for a real reason, recorded in `test/safewrite.test.ts` beside the
+exemption: it writes **one captured record to an arbitrary slot**, which is not an image diff and
+cannot go through `safeWriteRecords` at all. The fix is to give it a destination read of its own
+before the write, which is a probe-page change rather than a write-path one.
+
 ## Every converted parameter lock had its two value bytes swapped — FIXED 2026-08-07
 
 Reported from hardware: *"the expanded sounds showed a pan in the AMP page all the way to the
