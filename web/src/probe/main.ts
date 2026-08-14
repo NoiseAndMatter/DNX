@@ -90,7 +90,8 @@ import {
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, type StoredFile, readStoredFile } from "../../../src/device/storagesession.js";
-import { writeStoredFile } from "../../../src/device/storagewrite.js";
+import { CONTAINER_SLOT_OFFSET, safeWriteFile } from "../../../src/device/safewrite.js";
+import { STAGE_LABEL, confirmFileWrite } from "../safewriteui.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
@@ -1934,16 +1935,33 @@ async function readThenWrite(): Promise<void> {
     const corruptFrom = file.checksum ?? driveChecksum(file.bytes);
     const checksum = corrupt ? ((corruptFrom ^ 1) >>> 0) : undefined;
     wroteAnything = true;
-    const result = await writeStoredFile(target, file.bytes, checksum, {
+    // Through `safeWriteFile` like every other write in the codebase — the confirmation and the
+    // read-back are not optional here either. **The read-back is skipped only for the corruption
+    // run**, where the write is meant to be refused and a verifying read would report a failure
+    // that is the finding rather than a fault.
+    const result = await safeWriteFile({
       transport: apiTransport(output),
+      path: target,
+      name: source,
+      bytes: file.bytes,
       target: entry,
-      msgId: reserveMessageIds(IDS_FOR.wholeProject),
+      confirm: confirmFileWrite,
+      ...(checksum === undefined ? {} : { checksum }),
       chunkSize,
-      onProgress: (written, total) => {
-        bar.at(written, total, `Writing ${target}`);
-        status(`Writing ${target}: ${describeBytes(written)} of ${describeBytes(total)}…`);
+      msgId: reserveMessageIds(IDS_FOR.wholeProject),
+      verifyMsgId: reserveMessageIds(IDS_FOR.wholeProject),
+      skipVerify: corrupt,
+      onStatus: (message) => status(message),
+      onProgress: (written, total, stage) => {
+        bar.at(written, total, `${STAGE_LABEL[stage]} ${target}`);
+        status(`${STAGE_LABEL[stage]} ${target}: ${describeBytes(written)} of ${describeBytes(total)}…`);
       },
     });
+    if (result.cancelled) {
+      status("Not written.", "warn");
+      verdictCard("Write cancelled", [...log, ["Sent", "nothing"]]);
+      return;
+    }
 
     verdictCard(`${target} — ${result.committed ? "COMMITTED" : "not committed"}`, [
       ...log,
@@ -1961,6 +1979,16 @@ async function readThenWrite(): Promise<void> {
       ],
       ["Committed", result.committed ? "yes — 0x59 acknowledged" : "NO"],
       [
+        "Verified",
+        corrupt
+          ? "not checked — a corruption run is expected to be refused, so a read-back would " +
+            "report the finding as a fault"
+          : result.verified
+            ? `yes — read back and byte-identical, allowing for the slot index the device stamps ` +
+              `at +${CONTAINER_SLOT_OFFSET}`
+            : `NO — ${result.mismatches.map((m) => m.reason).join("; ")}`,
+      ],
+      [
         "Means",
         corrupt
           ? "the device ACCEPTED a wrong checksum, so the field is not validated and arbitrary " +
@@ -1969,9 +1997,14 @@ async function readThenWrite(): Promise<void> {
             ? `a MULTI-CHUNK write was accepted — ${result.chunks} chunks, each carrying the ` +
               `whole file's checksum. That is the open question in storagewrite.ts answered: the ` +
               `field is per file, not per chunk, so a project of ~6,294 chunks has no new ` +
-              `unknown in its way. Read it back and diff before believing it.`
-            : "the write sequence works. Check the slot on the instrument — an acknowledgement is " +
-              "not the same as bytes on the +Drive.",
+              `unknown in its way.` +
+              (result.verified ? " The read-back above confirms it." : " The read-back does NOT confirm it.")
+            : result.verified
+              ? "the write sequence works, and the file on the +Drive is the file we sent — the " +
+                "read-back is the proof, not the acknowledgement."
+              : "the device acknowledged the commit and the read-back disagrees with what was " +
+                "sent. An acknowledgement was never the same as bytes on the +Drive; this is what " +
+                "that looks like.",
       ],
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");

@@ -28,8 +28,15 @@ import {
   type DeviceIo,
   deliver,
   readProjectFromDevice,
-  writeChangedRecords,
 } from "../../src/device/deviceproject.js";
+import {
+  type BackupHook,
+  type ConfirmHook,
+  type RecordWriteReview,
+  type SafeRecordWriteResult,
+  type WriteStage,
+  safeWriteRecords,
+} from "../../src/device/safewrite.js";
 import {
   type ApiFrame,
   Code,
@@ -331,28 +338,41 @@ export async function readProject(
   };
 }
 
-/** Send the records the user's edits changed, and nothing else. */
+export interface WriteBackHooks {
+  /** Required, and required by the type: see `src/device/writepermit.ts`. */
+  onBackup: BackupHook;
+  confirm: ConfirmHook<RecordWriteReview>;
+  onStatus?: (message: string) => void;
+  onProgress?: (done: number, total: number, stage: WriteStage) => void;
+  limit?: number;
+}
+
+/**
+ * Send the records the user's edits changed, and nothing else.
+ *
+ * A thin adapter now: it turns a `DeviceProjectHandle` into the arguments `safeWriteRecords` wants
+ * and does nothing else. It used to call `writeChangedRecords` directly, which is precisely the
+ * shape this change removed — three surfaces each sending to an instrument by their own route, none
+ * of them backing anything up, none of them checking that the bytes landed.
+ */
 export async function writeBack(
   handle: DeviceProjectHandle,
   edited: Uint8Array,
-  onProgress: (done: number, total: number, label: string) => void,
-  limit?: number,
-): Promise<{ written: number; bytes: number; untransmittable: string[] }> {
-  const outcome = await writeChangedRecords({
+  hooks: WriteBackHooks,
+): Promise<SafeRecordWriteResult> {
+  return safeWriteRecords({
     productId: handle.productId,
     io: handle.io,
     before: handle.original,
     after: edited,
     layout: layoutFor(edited),
     witness: handle.witness,
-    onProgress,
-    ...(limit === undefined ? {} : { limit }),
+    onBackup: hooks.onBackup,
+    confirm: hooks.confirm,
+    ...(hooks.onStatus === undefined ? {} : { onStatus: hooks.onStatus }),
+    ...(hooks.onProgress === undefined ? {} : { onProgress: hooks.onProgress }),
+    ...(hooks.limit === undefined ? {} : { limit: hooks.limit }),
   });
-  return {
-    written: outcome.written.length,
-    bytes: outcome.bytes,
-    untransmittable: outcome.untransmittable,
-  };
 }
 
 // --- the +Drive: any project, not just the open one -----------------------------------------------

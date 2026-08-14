@@ -43,16 +43,16 @@ import { type SysExMessage, parseMessage } from "../sysex/container.js";
 import { ProductId } from "../sysex/devices.js";
 import { patternName } from "../sheet/naming.js";
 import { type ImageLayout } from "../project/dn2image.js";
-import { kitRecord, patternRecord } from "../project/dn2image.js";
+import { kitRecord, patternKitRecord, patternRecord } from "../project/dn2image.js";
 import {
   type RebuildPlan,
-  PLACEMENTS,
   applyRebuild,
   planRebuild,
 } from "../project/rebuild.js";
 import { DumpReader, type ReadReport } from "./dumpreader.js";
-import { type ReadStep, planProjectRead } from "./readplan.js";
+import { RESPONSE_SIZES, type ReadStep, planProjectRead } from "./readplan.js";
 import { WriteCode, dumpWrite, settleMsAfter, storageVersion } from "./dumpwrite.js";
+import { type WritePermit } from "./writepermit.js";
 
 /**
  * The transport, reduced to what this needs.
@@ -144,6 +144,15 @@ export interface WriteChangedOptions {
   onProgress?: (done: number, total: number, label: string) => void;
   /** Refuse to send more than this many records without the caller saying so. */
   limit?: number;
+  /**
+   * Proof this write came through `safewrite.ts`.
+   *
+   * Not checked here, because there is nothing here that could check it — whether a backup was
+   * taken and whether the person agreed are properties of a sequence, and this function is one step
+   * of that sequence. The type is the check: `WritePermit` cannot be constructed outside the safe
+   * path, so a caller that skipped it cannot call this at all.
+   */
+  permit: WritePermit;
 }
 
 export interface WrittenRecord {
@@ -178,17 +187,28 @@ export const DEFAULT_WRITE_LIMIT = 16;
 
 export class WriteTooLarge extends Error {}
 
-/**
- * Send only the records that changed.
- *
- * Diffing whole records rather than tracking edits is deliberate. It means this cannot disagree
- * with the librarian about what an operation did — whatever `rearrange` or `trackmove` produced,
- * the bytes are the bytes — and it works for an edit path that has not been written yet.
- */
-export async function writeChangedRecords(options: WriteChangedOptions): Promise<WriteOutcome> {
-  const { productId, io, before, after, layout, witness } = options;
-  const wait = io.wait ?? realWait;
+/** What a write is about to do, worked out before a byte goes anywhere. */
+export interface WritePlan {
+  /** Pattern slots whose record differs between the two images. */
+  changed: number[];
+  /** Regions that differ and cannot be transmitted at all. */
+  untransmittable: string[];
+}
 
+/**
+ * Work out what would be sent, without sending it.
+ *
+ * Split out of `writeChangedRecords` because **the safe path needs this answer before the write,
+ * not after it**: it is what the destination slots are read back from for a backup, and what the
+ * confirmation names. Two separate diffs would be two chances to disagree about which slots the
+ * user was warned about and which slots were actually overwritten.
+ */
+export function planChangedRecords(
+  before: Uint8Array,
+  after: Uint8Array,
+  layout: ImageLayout,
+  limit: number = DEFAULT_WRITE_LIMIT,
+): WritePlan {
   if (before.length !== after.length || before.length !== layout.imageSize) {
     throw new WriteTooLarge(
       `the two images are ${before.length} and ${after.length} bytes; this layout is ` +
@@ -206,9 +226,6 @@ export async function writeChangedRecords(options: WriteChangedOptions): Promise
     }
   }
 
-  const untransmittable = elsewhere(before, after, layout);
-
-  const limit = options.limit ?? DEFAULT_WRITE_LIMIT;
   if (changed.length > limit) {
     throw new WriteTooLarge(
       `${changed.length} patterns changed and the limit is ${limit}. That is a transfer rather ` +
@@ -218,13 +235,33 @@ export async function writeChangedRecords(options: WriteChangedOptions): Promise
     );
   }
 
+  return { changed, untransmittable: elsewhere(before, after, layout) };
+}
+
+/**
+ * Send only the records that changed.
+ *
+ * Diffing whole records rather than tracking edits is deliberate. It means this cannot disagree
+ * with the librarian about what an operation did — whatever `rearrange` or `trackmove` produced,
+ * the bytes are the bytes — and it works for an edit path that has not been written yet.
+ *
+ * **Reachable only through `safewrite.ts`.** This puts bytes on the wire that overwrite an
+ * instrument, and it takes no backup and asks nobody. `WritePermit` is what makes that a compile
+ * error rather than a habit; see `writepermit.ts`.
+ */
+export async function writeChangedRecords(options: WriteChangedOptions): Promise<WriteOutcome> {
+  const { productId, io, before, after, layout, witness } = options;
+  const wait = io.wait ?? realWait;
+
+  const { changed, untransmittable } = planChangedRecords(before, after, layout, options.limit);
+
   const written: WrittenRecord[] = [];
   let bytes = 0;
 
   for (const slot of changed) {
-    const payload = new Uint8Array(layout.patternSize + layout.kitSize);
-    payload.set(patternRecord(after, slot, layout), 0);
-    payload.set(kitRecord(after, slot, layout), layout.patternSize);
+    // The same assembly the verifier compares against — see `patternKitRecord`. Two derivations of
+    // "what a slot's record is" would make a verified write and a corrupt one indistinguishable.
+    const payload = patternKitRecord(after, slot, layout);
 
     const message = dumpWrite(productId, {
       code: WriteCode.PatternKit,
@@ -246,11 +283,23 @@ export async function writeChangedRecords(options: WriteChangedOptions): Promise
 }
 
 /**
- * Verify by reading back what was just written.
+ * Read whole patternKit records back off the device, by slot.
  *
  * Separate from the write on purpose. A device acknowledges nothing, so the write path cannot know
  * whether it succeeded, and a function that claimed to *write and verify* would be reporting one
  * outcome for two operations — which is how a partial success gets called a success.
+ * `safeWriteRecords` calls this **twice**, and the two calls mean different things: before the
+ * write it is the backup, after it is the proof.
+ *
+ * ## The size declared here is the patternKit's, not the pattern's
+ *
+ * `payloadBytes` is what `timeoutFor` sizes the wait from, and this asked for `layout.patternSize`
+ * — the pattern half alone, 89,088 of the 99,840 bytes a Digitone II actually sends back. So every
+ * read-back allowed 89% of the time it needed, and only the reader's slack covered the difference.
+ *
+ * It never bit because nothing called this function until the safe write path did. That is the
+ * fifth fact this codebase had written down twice: `RESPONSE_SIZES[…].patternKit` and
+ * `layout.patternSize + layout.kitSize` are the same number, and a test now pins them together.
  */
 export async function readBackRecords(
   options: { productId: number; io: DeviceIo; slots: readonly number[]; timeoutMs?: number },
@@ -265,7 +314,7 @@ export async function readBackRecords(
       objNr: slot,
       expect: 0x50,
       label: patternName(slot),
-      payloadBytes: PLACEMENTS[productId]?.layout.patternSize ?? 0,
+      payloadBytes: RESPONSE_SIZES[productId]?.patternKit ?? 0,
     };
     const reader = new DumpReader({
       productId,
