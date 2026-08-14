@@ -21,7 +21,16 @@
  * Same two-grid shape as the expander, for the same reason: it is the layout that makes a drag from
  * one collection to another an obvious gesture rather than a feature to explain.
  */
-.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .9rem; }
+/*
+ * Two collections and the timeline. The history column is fixed at 17rem — it holds short labels
+ * and a size, and letting it share the growth would take width from the table that needs it.
+ */
+.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 17rem; gap: .9rem; }
+/* Below this the timeline drops under the two collections rather than squeezing them. */
+@media (max-width: 92rem) {
+  .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .histpane { grid-column: 1 / -1; }
+}
 @media (max-width: 68rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
 
 .pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
@@ -85,6 +94,10 @@
       </select>
       <button class="btn" id="browse" disabled>Browse</button>
       <span class="spacer"></span>
+      <span class="lbl">History</span>
+      <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
+      <button class="btn" id="redo" disabled title="Nothing to redo">Redo</button>
+      <span class="sep"></span>
       <!--
         The only way out. Presets dragged into the pool change the project in this page and nothing
         else — the instrument is untouched, and the file on disk is untouched until this is pressed.
@@ -133,6 +146,18 @@
       </div>
       <div class="tagchips" id="libraryTags" hidden></div>
       <div class="libtablewrap" id="libraryGrid" hidden></div>
+    </section>
+
+    <!--
+      What you did, and the way back to any point in it.
+
+      A third column rather than a drawer, because it is the only thing on this page that says the
+      open project differs from the file it came from — and something that answers "can I take that
+      back" has to be visible before you need it, not after.
+    -->
+    <section class="section pane histpane">
+      <h2>History</h2>
+      <ul class="hist" id="history"><li class="hint">Nothing done yet.</li></ul>
     </section>
 
   </div>

@@ -77,6 +77,12 @@ import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } fr
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import {
+  type HistoryElements,
+  goToHistoryPoint as walkHistory,
+  renderHistory as drawHistory,
+  wireHistory,
+} from "../history.js";
 import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
 
@@ -300,82 +306,23 @@ const SCOPE_HINTS: Readonly<Record<TrackScope, string>> = {
  * asking to go where you are.
  */
 function goToHistoryPoint(step: string): void {
-  const [direction, countText] = step.split(":");
-  const count = Number(countText);
-  if (!Number.isFinite(count) || count <= 0) return;
-
-  let last: string | undefined;
-  for (let i = 0; i < count; i++) {
-    const label = direction === "redo" ? state.session?.redo() : state.session?.undo();
-    // Stop the moment the session says there is nothing left, rather than counting into thin air.
-    if (!label) break;
-    last = label;
-  }
-
-  if (last) {
-    status(
-      count === 1
-        ? `${direction === "redo" ? "Redid" : "Undid"} ${last}.`
-        : `${direction === "redo" ? "Redid" : "Undid"} ${count} steps, back to ${last}.`,
-    );
-  }
+  const said = walkHistory(state.session, step);
+  if (said) status(said);
   state.selection = [];
   render();
 }
 
 function renderHistory(): void {
-  const list = $("history");
-  const session = state.session;
-  const entries = session?.history() ?? [];
+  drawHistory(historyElements(), state.session);
+}
 
-  // Undone steps sit above the current position, so the list reads as one timeline: what would
-  // happen again at the top, what has happened below, and the line between them is where you are.
-  const future = session?.future() ?? [];
-
-  if (entries.length === 0 && future.length === 0) {
-    list.innerHTML = `<li class="hint">Nothing done yet.</li>`;
-  } else {
-    const row = (e: { label: string; bytes: number }, cls: string, step: string): string =>
-      `<li class="${cls}" data-step="${step}" tabindex="0" role="button" ` +
-      `title="Go to this point">${escapeHtml(e.label)}` +
-      `<span class="b">${(e.bytes / 1024).toFixed(0)} KB</span></li>`;
-
-    /**
-     * The project as it was opened, at the foot of the list.
-     *
-     * Every other row is an *action*; this one is the state before any of them, and without it the
-     * untouched original is the one place in the timeline you cannot click — reachable only by
-     * pressing Undo once per step. Reported from the hardware.
-     *
-     * **Offered only when undo can actually get there.** `trimmedSteps` counts steps dropped to stay
-     * inside the memory budget, and once any have gone the original is genuinely unreachable; a row
-     * promising it would be a lie the session cannot keep. So that case says what happened instead.
-     */
-    const origin =
-      entries.length === 0
-        ? ""
-        : session && session.trimmedSteps > 0
-          ? `<li class="hint">${session.trimmedSteps} earlier step(s) dropped — the original is no longer reachable</li>`
-          : `<li class="origin" data-step="undo:${entries.length}" tabindex="0" role="button" ` +
-            `title="Go back to the project as it was opened">as opened</li>`;
-
-    list.innerHTML = [
-      ...future.map((e, i) => row(e, "ahead", `redo:${future.length - i}`)),
-      ...entries.slice(0, 12).map((e, i) => row(e, "", `undo:${i}`)),
-      origin,
-    ].join("");
-  }
-
-  $<HTMLButtonElement>("undo").disabled = !session?.canUndo;
-  $<HTMLButtonElement>("redo").disabled = !session?.canRedo;
-  // **The label goes in the tooltip, not on the button.** Putting the action name on the control
-  // made it as wide as the longest operation name, which wrapped the top bar onto a second line and
-  // moved every other control down — a toolbar that changes height as you work is worse than one
-  // that says less. The name is still there for anyone who wants it, on hover.
-  const undo = $<HTMLButtonElement>("undo");
-  const redo = $<HTMLButtonElement>("redo");
-  undo.title = session?.undoLabel ? `Undo ${session.undoLabel}` : "Nothing to undo";
-  redo.title = session?.redoLabel ? `Redo ${session.redoLabel}` : "Nothing to redo";
+/** The three elements the shared panel writes to. Named once so both wirings agree. */
+function historyElements(): HistoryElements {
+  return {
+    list: $("history"),
+    undo: $<HTMLButtonElement>("undo"),
+    redo: $<HTMLButtonElement>("redo"),
+  };
 }
 
 function render(): void {
@@ -763,21 +710,7 @@ function wireOperations(): void {
    * Delegated from the list rather than bound per row, because the rows are rebuilt on every
    * render and listeners on replaced elements are how a control quietly stops working.
    */
-  $("history").addEventListener("click", (event) => {
-    const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-step]");
-    if (!row) return;
-    goToHistoryPoint(row.dataset.step ?? "");
-  });
-
-  // The rows are focusable and announce themselves as buttons, so they have to answer a keyboard
-  // like one.
-  $("history").addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const row = (event.target as HTMLElement).closest<HTMLElement>("li[data-step]");
-    if (!row) return;
-    event.preventDefault();
-    goToHistoryPoint(row.dataset.step ?? "");
-  });
+  wireHistory($("history"), goToHistoryPoint);
 
   // Caught, not `void`ed. An export that throws — a payload too short to carry a header, a ZIP the
   // browser refused to build — used to produce no download and no message, which reads to the user
