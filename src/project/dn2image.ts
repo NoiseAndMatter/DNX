@@ -168,6 +168,22 @@ export function kitRecord(image: Uint8Array, index: number, layout = layoutFor(i
 }
 
 /**
+ * One slot's pattern and kit, side by side, as a `0x50` payload carries them.
+ *
+ * Three copies of these three lines existed before this: here, in `writeChangedRecords` where the
+ * bytes are assembled to send, and in `safeWriteRecords` where they are assembled again to compare
+ * against what the device gives back. **The last two disagreeing would mean every verified write
+ * reported as corrupt, or a corrupt one reported as verified** — the two halves of a check derived
+ * separately from the same idea. So it is one function.
+ */
+export function patternKitRecord(image: Uint8Array, index: number, layout = layoutFor(image)): Uint8Array {
+  const out = new Uint8Array(layout.patternSize + layout.kitSize);
+  out.set(patternRecord(image, index, layout), 0);
+  out.set(kitRecord(image, index, layout), layout.patternSize);
+  return out;
+}
+
+/**
  * Rebuild the SysEx pattern-dump payload for pattern `index`.
  *
  * The result is exactly what an 8-in-7-decoded `F0 00 20 3C 15 00 50 ...` pattern dump
@@ -180,10 +196,7 @@ export function patternAsSysexPayload(image: Uint8Array, index: number): Uint8Ar
   if (layout !== DN2_LAYOUT) {
     throw new Error("patternAsSysexPayload is only verified for Digitone II images");
   }
-  const out = new Uint8Array(layout.patternSize + layout.kitSize);
-  out.set(patternRecord(image, index, layout), 0);
-  out.set(kitRecord(image, index, layout), layout.patternSize);
-  return out;
+  return patternKitRecord(image, index, layout);
 }
 
 /** Read the 16 sound-slot names of a DN2 kit. Empty string means an unused slot. */

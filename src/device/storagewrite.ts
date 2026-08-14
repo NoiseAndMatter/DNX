@@ -84,6 +84,7 @@
  */
 
 import { type ApiTransport } from "./storagesession.js";
+import { type WritePermit } from "./writepermit.js";
 import { RESPONSE_BIT } from "./api.js";
 import {
   type Entry,
@@ -117,6 +118,14 @@ export interface WriteStoredFileOptions {
    */
   chunkSize?: number;
   onProgress?: (written: number, total: number) => void;
+  /**
+   * Proof this write came through `safewrite.ts`. See `writepermit.ts`.
+   *
+   * The empty-slot rule below is a strong guard and it is not the whole job: it says nothing about
+   * whether the person was told what is about to happen, or whether anyone checked that the bytes
+   * landed. Those belong to the sequence, and the sequence lives in `safeWriteFile`.
+   */
+  permit: WritePermit;
 }
 
 export interface WriteResult {
@@ -163,6 +172,10 @@ export function refuseUnlessEmpty(target: Entry, path: string): void {
 
 /**
  * Write one file, and commit it.
+ *
+ * **Reachable only through `safeWriteFile`.** This is the raw sequence; the confirmation and the
+ * read-back that make it safe are one layer up, and `WritePermit` is what stops a new caller from
+ * arriving here directly.
  *
  * The commit is `0x59`, and nothing lands without it — so unlike the read session there is no
  * `finally` that closes on failure. **A write that fails should not be committed**, and a close in

@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildMessage, parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
@@ -11,6 +11,7 @@ import {
   readProjectFromDevice,
   writeChangedRecords,
 } from "../src/device/deviceproject.js";
+import { TEST_PERMIT } from "./permit.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
 
@@ -108,6 +109,7 @@ test("only the records that changed are sent", async () => {
     after,
     layout: DN2_LAYOUT,
     witness: patternKit(0),
+    permit: TEST_PERMIT,
   });
 
   assert.equal(outcome.written.length, 1);
@@ -127,6 +129,7 @@ test("an unedited project sends nothing at all", async () => {
     after: Uint8Array.from(image),
     layout: DN2_LAYOUT,
     witness: patternKit(0),
+    permit: TEST_PERMIT,
   });
   assert.deepEqual(outcome.written, []);
   assert.equal(sent.length, 0);
@@ -141,7 +144,7 @@ test("a change to the kit half alone is still a change", async () => {
 
   const { io } = fakeDevice();
   const outcome = await writeChangedRecords({
-    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0),
+    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), permit: TEST_PERMIT,
   });
 
   assert.deepEqual(outcome.written.map((w) => w.label), ["A8"]);
@@ -158,7 +161,7 @@ test("every send is followed by a settle", async () => {
 
   const { io, waits } = fakeDevice();
   await writeChangedRecords({
-    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0),
+    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), permit: TEST_PERMIT,
   });
 
   assert.equal(waits.length, 3, "one per record");
@@ -177,7 +180,7 @@ test("a transfer-sized change is refused unless the caller means it", async () =
   const { io, sent } = fakeDevice();
   await assert.rejects(
     () => writeChangedRecords({
-      productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0),
+      productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), permit: TEST_PERMIT,
     }),
     (e: unknown) => e instanceof WriteTooLarge && /that is a transfer rather than an edit/i.test(String(e)),
   );
@@ -185,7 +188,7 @@ test("a transfer-sized change is refused unless the caller means it", async () =
 
   // Raised deliberately, it proceeds.
   const outcome = await writeChangedRecords({
-    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), limit: 200,
+    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), limit: 200, permit: TEST_PERMIT,
   });
   assert.equal(outcome.written.length, DEFAULT_WRITE_LIMIT + 1);
 });
@@ -200,7 +203,7 @@ test("an edit the wire cannot carry is named, not silently dropped", async () =>
 
   const { io } = fakeDevice();
   const outcome = await writeChangedRecords({
-    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0),
+    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0), permit: TEST_PERMIT,
   });
 
   assert.deepEqual(outcome.written, []);
@@ -219,6 +222,7 @@ test("two images of different projects cannot be diffed", async () => {
       after: new Uint8Array(100),
       layout: DN2_LAYOUT,
       witness: patternKit(0),
+      permit: TEST_PERMIT,
     }),
     /Only two readings of the same project/,
   );
@@ -236,7 +240,7 @@ test("a write carrying the wrong storage version is refused by the writer's own 
   const { io } = fakeDevice();
   await assert.rejects(
     () => writeChangedRecords({
-      productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0, 3),
+      productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: patternKit(0, 3), permit: TEST_PERMIT,
     }),
     /storage version/,
   );
