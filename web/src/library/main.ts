@@ -383,7 +383,9 @@ async function loadKit(index: number, pattern: number): Promise<void> {
   if (!device || !bank || !project) return;
 
   status(`Reading ${bank.path}/${index}…`);
-  const { body } = await readLibraryObject(apiTransport(device), "kit", bank.bank, index);
+  // `object`, not `body` — a stored body can carry a prefix in front of the object, and what goes
+  // into a pattern's kit record is the object. See `objectInStoredBody`.
+  const { object: body } = await readLibraryObject(apiTransport(device), "kit", bank.bank, index);
 
   const projectDevice = deviceFor(project.image);
   const preview = planLoadKit(project.image, projectDevice, body, { pattern });
@@ -440,7 +442,10 @@ async function addToPool(index: number, slot: number): Promise<void> {
 
   const entry = bank.entries.find((e) => e.index === index);
   status(`Reading ${bank.path}/${index}…`);
-  const { body } = await readLibraryObject(apiTransport(device), "preset", bank.bank, index);
+  // **This is the line the drag was failing on.** A DN2 preset's stored body is 364 bytes and a
+  // pool slot is 359, so `poolwrite` refused it — correctly, since writing 364 would have run into
+  // the neighbouring slot. The five extra are a prefix; `object` is what belongs in the pool.
+  const { object: body } = await readLibraryObject(apiTransport(device), "preset", bank.bank, index);
 
   const projectDevice = deviceFor(project.image);
   // Planned before anything is written, so a refusal — a MIDI preset, an occupied slot with locks —

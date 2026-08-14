@@ -169,12 +169,19 @@ export function describeBank(bank: LibraryBank): string {
  * Read one library object and hand back the part a project holds.
  *
  * A stored file is the object inside the ordinary container — 31-byte header, body, 12-byte
- * trailer — and **the body is byte-for-byte what sits in a pool slot or a pattern's kit record of
- * the same family**. So the unwrapping happens once, here, and callers never see a file length
- * where they expect an object length. That distinction has already cost this project one bug: 302
- * against 345 looked like a mystery until the container was recognised.
+ * trailer. So the unwrapping happens once, here, and callers never see a file length where they
+ * expect an object length. That distinction has already cost this project one bug: 302 against 345
+ * looked like a mystery until the container was recognised.
  *
- * **The length is reported, not asserted.** It is the caller's business whether a 302-byte body
+ * **`body` is not always the object.** A Digitone II preset's body carries a five-byte prefix in
+ * front of it — see `objectInStoredBody`, which is where that was measured and why. So this returns
+ * both: `object` is what goes into a pool slot or a kit record, and `body` is what a write back to
+ * the +Drive would have to reproduce. **A caller putting bytes into a project wants `object`.**
+ *
+ * A second bug of the same shape as the first: 364 against 359 also looked like a mystery, and for
+ * a year the answer to both was "a container was not recognised".
+ *
+ * **The length is reported, not asserted.** It is the caller's business whether a 302-byte object
  * belongs where it is going — see the note at the top of this file about which device that 302 was
  * measured on, and `librarian/poolwrite.ts` for what happens when the families differ.
  */
@@ -184,7 +191,13 @@ export async function readLibraryObject(
   bank: string,
   index: number,
   options: ListLibraryOptions = {},
-): Promise<{ body: Uint8Array; declared: number; fileBytes: number }> {
+): Promise<{
+  body: Uint8Array;
+  object: Uint8Array;
+  prefix: Uint8Array;
+  declared: number;
+  fileBytes: number;
+}> {
   const path = slotPath(kind, bank, index);
   const file = await readStoredFile(path, {
     transport,
@@ -201,8 +214,75 @@ export async function readLibraryObject(
       `${path} declares ${payload.storedLength} bytes of object and carries ${body.length}`,
     );
   }
-  return { body, declared: payload.storedLength, fileBytes: file.bytes.length };
+  // The object, and whatever prefixes it. A DN2 preset's body is not its object — see
+  // `objectInStoredBody`. Returned alongside `body` rather than instead of it, because the raw body
+  // is what a write back to the +Drive has to reproduce.
+  const { object, prefix } = objectInStoredBody(body);
+  return { body, object, prefix, declared: payload.storedLength, fileBytes: file.bytes.length };
 }
 
 /** Where the container header ends and the object begins. */
 const HEADER_SIZE = 31;
+
+/** Elektron objects open with this. Kits and sounds carry it; pattern and settings records do not. */
+const MAGIC = [0xbe, 0xef, 0xba, 0xce] as const;
+
+function magicAt(body: Uint8Array, at: number): boolean {
+  return MAGIC.every((b, i) => body[at + i] === b);
+}
+
+/**
+ * The object inside a stored body, and whatever sits in front of it.
+ *
+ * **A Digitone II preset's stored body is not its sound object.** Measured 2026-08-14 on
+ * `/soundbanks/H/1`: the file is 407 bytes = 31 header + **364** body + 12 trailer, and the object
+ * is 359. The extra five are a **prefix** — `00 00 00 02 00` — after which `BEEFBACE` begins.
+ *
+ * Three independent readings agree, which is what makes this a fact rather than an alignment that
+ * happened to work:
+ *
+ * | | bytes | opens with |
+ * |---|---|---|
+ * | DN2 sound dump over SysEx | 359 | `BEEFBACE` |
+ * | DN1 stored preset body | 302 | `BEEFBACE` — **no prefix** |
+ * | DN2 stored preset body | 364 | five bytes, **then** `BEEFBACE` |
+ *
+ * And the anchors inside the object only make sense at the shifted position: the name at `+12`
+ * reads `BD 1 BR`, which is what the listing calls that slot, and the tag word at `+8` decodes to
+ * `KICK HARD` on a kick drum. Read unshifted, the name is mojibake and the tags come out
+ * `BRIGHT VINTAGE EPIC MINE FAVOURITE` — a set that is individually legal, because the vocabulary
+ * is closed, and obviously wrong for a bass drum. **A closed vocabulary is what let a wrong
+ * alignment look plausible; the name is what settled it.**
+ *
+ * ## Detected by the magic, never by the length
+ *
+ * The prefix is found by looking for `BEEFBACE`, not by testing whether the body is 364 bytes. A
+ * length test encodes today's two sizes and silently mis-handles the next object that differs;
+ * this one is self-verifying, works for kits unchanged, and refuses to guess when neither position
+ * holds the magic.
+ *
+ * The prefix is **returned rather than discarded** — writing a preset back to the +Drive has to put
+ * it back, and its meaning is not known. `00 00 00 02` is a big-endian 2 and the object's own
+ * version field at `+4` is also 2, so it may be a repeat of that; nothing here depends on it being
+ * one.
+ */
+export function objectInStoredBody(body: Uint8Array): { object: Uint8Array; prefix: Uint8Array } {
+  if (magicAt(body, 0)) return { object: body, prefix: body.subarray(0, 0) };
+
+  for (let at = 1; at <= MAX_PREFIX; at++) {
+    if (magicAt(body, at)) return { object: body.subarray(at), prefix: body.subarray(0, at) };
+  }
+
+  // Not an error: pattern and settings records legitimately carry no magic, and a caller that
+  // knows what it has may still want the bytes. Reported by giving back what arrived, unshifted.
+  return { object: body, prefix: body.subarray(0, 0) };
+}
+
+/**
+ * How far in to look for the magic.
+ *
+ * Bounded so that a body which simply does not contain `BEEFBACE` cannot be shifted by whatever
+ * offset a coincidental four-byte run happens to sit at. Eight is comfortably past the five bytes
+ * measured and far short of anything that could collide by accident.
+ */
+const MAX_PREFIX = 8;

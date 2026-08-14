@@ -54,6 +54,15 @@ import { auditPool } from "./poolaudit.js";
 
 export class PoolWriteError extends Error {}
 
+/**
+ * Bytes in front of the sound object in a Digitone II preset as the +Drive stores it.
+ *
+ * Here only so the refusal below can recognise that length and say something useful about it. The
+ * unwrapping itself belongs to `device/library.ts`, which is where the +Drive's storage shapes are
+ * known — this module works on objects and should not learn how they arrive.
+ */
+const STORED_PRESET_PREFIX = 5;
+
 interface PoolGeometry {
   layout: ImageLayout;
   offset: number;
@@ -133,20 +142,23 @@ function fitToPool(preset: Uint8Array, device: Device): FittedPreset {
     );
   }
 
-  // **A +Drive preset really is this size, and that is a gap rather than a caller's mistake.**
-  // Measured 2026-08-13: every entry in `/soundbanks/A` lists 364 bytes, while a DN2 sound object
-  // is 359 — confirmed twice over, from pool slots inside project files and from a SysEx dump of
-  // the same preset. So a stored preset carries five bytes more than the object it holds, and
-  // where they sit nobody has looked. `docs/device-storage.md` has the arithmetic.
+  // **The five bytes are located, so this is a caller's mistake again rather than a gap.**
   //
-  // This used to end "pass the body, not the file", which reads as *you handed me the wrong thing*
-  // — and it was the message shown when the librarian's own drag did the handing. Refusing is
-  // right either way; a 364-byte write into a 359-byte slot would run into the neighbouring one.
+  // A stored DN2 preset body is 364: a five-byte prefix, then the 359-byte object. Measured
+  // 2026-08-14 and confirmed three ways — see `objectInStoredBody` in `device/library.ts`, which
+  // does the unwrapping. `readLibraryObject` returns `object` alongside `body` for exactly this
+  // reason, and anything arriving here at 364 was handed the wrong one.
+  //
+  // Refusing stays right either way: a 364-byte write into a 359-byte slot runs into its
+  // neighbour. Only the advice changes, from "nobody knows" to "use the other field".
   throw new PoolWriteError(
     `this preset is ${preset.length} bytes and a pool slot is not that size ` +
       `(${DN1_SOUND_SIZE} on a Digitone 1, ${DN2_SOUND_SIZE} on a Digitone II), so nothing was ` +
-      `written. A preset stored on the +Drive is ${DN2_SOUND_SIZE + 5} bytes — five more than the ` +
-      `sound inside it — and which five is not yet known, so it cannot be unpacked into a slot yet.`,
+      `written.` +
+      (preset.length === DN2_SOUND_SIZE + STORED_PRESET_PREFIX
+        ? ` That is a preset as the +Drive stores it — ${STORED_PRESET_PREFIX} bytes of prefix and ` +
+          `then the sound. Unwrap it first: readLibraryObject hands back the object as well as the body.`
+        : ``),
   );
 }
 
