@@ -607,3 +607,60 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
   padding: .38rem .5rem; color: var(--fg); font: inherit; letter-spacing: .04em;
 }
 .askinput:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ---- the +Drive library table --------------------------------------------------------
+ *
+ * A bank is 256 presets and the question is "where is the kick I made last week". The pool
+ * keeps its grid, where the question is "what is in use" — see `librarytable.ts` for why the
+ * two are deliberately not one component.
+ */
+.libfind { display: flex; gap: .4rem; align-items: center; margin: 0 0 .5rem; }
+.libfind input[type="search"] {
+  flex: 1 1 auto; min-width: 0;
+  background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 3px;
+  padding: .34rem .5rem; color: var(--fg); font: inherit;
+}
+.libfind input[type="search"]:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+.libfind .lbl { display: flex; align-items: center; gap: .3rem; white-space: nowrap; }
+
+.tagchips { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0 0 .55rem; }
+.tagchip {
+  background: #1b2123; border: 1px solid var(--line-soft); border-radius: 999px;
+  padding: .18rem .55rem; cursor: pointer; color: var(--muted);
+  font-size: .68rem; letter-spacing: .06em; display: inline-flex; align-items: center; gap: .3rem;
+}
+.tagchip:hover { border-color: var(--teal); color: var(--fg); }
+.tagchip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tagchip .n { color: var(--dim); font-size: .64rem; }
+/* Pressed is a state the button reports, so the styling hangs off the same attribute a screen
+   reader uses rather than a class that could disagree with it. */
+.tagchip[aria-pressed="true"] {
+  background: var(--teal-dim); border-color: var(--teal); color: #eafffb;
+}
+.tagchip[aria-pressed="true"] .n { color: #eafffb; opacity: .75; }
+
+/* The rows scroll, the header does not — a 256-row bank is exactly when you stop knowing which
+   column is which. `overflow-x: auto` keeps a narrow pane from pushing the page sideways. */
+.libtablewrap { max-height: 30rem; overflow: auto; border: 1px solid var(--line-soft); border-radius: 3px; }
+.libtable { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.libtable thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2); border-bottom: 1px solid var(--line);
+  padding: .35rem .5rem; text-align: left; font-weight: 600;
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+}
+.libtable td { padding: .28rem .5rem; border-bottom: 1px solid var(--line-soft); }
+.libtable tbody tr.occupied { cursor: grab; }
+.libtable tbody tr.occupied:hover { background: #1d2726; }
+.libtable tbody tr.free td { color: var(--dim); }
+.libtable td.n { color: var(--dim); text-align: right; width: 3rem; font-variant-numeric: tabular-nums; }
+.libtable tr.occupied td.name { color: var(--teal); }
+.libtable td.machine, .libtable td.state { color: var(--muted); white-space: nowrap; }
+.libtable td.tags { line-height: 1.7; }
+.libtable .tag {
+  background: #232a2c; border: 1px solid var(--line-soft); border-radius: 2px;
+  padding: .04rem .28rem; font-size: .64rem; letter-spacing: .05em; color: var(--muted);
+}
+/* Three states, not two: nobody has read this slot is not the same as this slot has no tags. */
+.libtable .unread { color: var(--dim); font-style: italic; }
+.libtable .untagged { color: var(--dim); }

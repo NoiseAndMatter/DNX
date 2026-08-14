@@ -81,11 +81,24 @@
       <div class="plan hint" id="findings">Open a project to audit its pool.</div>
     </section>
 
-    <!-- The instrument's library: 2,048 presets or 1,024 kits, shared by every project. -->
+    <!--
+      The instrument's library: 2,048 presets or 1,024 kits, shared by every project.
+
+      **A table, where the pool keeps its grid.** The two are different questions. A pool is 128
+      slots and the grid answers "what is in use" at a glance; a bank is 256 and the question is
+      "where is the kick I made last week", which a wall of squares cannot answer. Rows still drag
+      onto pool cells — `GridDrag.bind` takes any element.
+    -->
     <section class="section pane">
       <h2>+Drive library <span class="count" id="librarySub">— connect an instrument</span></h2>
       <div class="tabs" id="libraryTabs" hidden></div>
-      <div class="grid" id="libraryGrid" hidden></div>
+      <div class="libfind" id="libraryFind" hidden>
+        <input type="search" id="librarySearch" placeholder="Search name, machine, tag, slot…" autocomplete="off">
+        <label class="lbl"><input type="checkbox" id="libraryOccupied"> used only</label>
+        <button class="btn" id="libraryClear" title="Clear the search and every selected tag">Clear</button>
+      </div>
+      <div class="tagchips" id="libraryTags" hidden></div>
+      <div class="libtablewrap" id="libraryGrid" hidden></div>
     </section>
 
   </div>
