@@ -40,23 +40,16 @@ import {
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 import { soundLockedSlots } from "../project/dn2pattern.js";
 import { type Device } from "./device.js";
+import { poolBase } from "../project/spec.js";
 
 const latin1 = new TextDecoder("latin1");
 
 export class PoolAuditError extends Error {}
 
 /** Where a family keeps its pool, and how wide a preset is in it. */
-interface PoolGeometry {
-  layout: ImageLayout;
-  offset: number;
-  size: number;
-}
-
-function geometryFor(device: Device): PoolGeometry {
-  return device.kind === "dn2"
-    ? { layout: DN2_LAYOUT, offset: DN2_POOL_OFFSET, size: DN2_SOUND_SIZE }
-    : { layout: DN1_LAYOUT, offset: DN1_POOL_OFFSET, size: DN1_SOUND_SIZE };
-}
+// `geometryFor` lived here **and** in the other of these two files, byte for byte identical. An
+// audit and a write disagreeing about where the pool is would be a corrupted project, so the
+// arithmetic is `poolSlotAt` in `project/spec.ts` and there is one of it.
 
 /** One preset slot, and what the project does with it. */
 export interface PoolSlot {
@@ -136,7 +129,8 @@ export function auditPool(
         `locks are read by expand/usage.ts; bringing the two together is the next step, not a cast.`,
     );
   }
-  const { layout, offset, size } = geometryFor(device);
+  const { layout } = device;
+  const { size } = device.spec.sound;
   const patterns = options.patterns ?? [...Array(layout.patternCount).keys()];
 
   const locksBySlot = new Map<number, Set<number>>();
@@ -149,7 +143,7 @@ export function auditPool(
     }
   }
 
-  const base = layout.tailBase + offset;
+  const base = poolBase(device.spec);
   const slots: PoolSlot[] = [];
   const free: number[] = [];
   const unused: number[] = [];
