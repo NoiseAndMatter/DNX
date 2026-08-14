@@ -50,6 +50,7 @@ import {
 import { convertDn1SoundToDn2Detailed } from "../project/soundmap.js";
 import { MACHINE, SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 import { type Device } from "./device.js";
+import { poolSlotAt } from "../project/spec.js";
 import { auditPool } from "./poolaudit.js";
 
 export class PoolWriteError extends Error {}
@@ -63,17 +64,9 @@ export class PoolWriteError extends Error {}
  */
 const STORED_PRESET_PREFIX = 5;
 
-interface PoolGeometry {
-  layout: ImageLayout;
-  offset: number;
-  size: number;
-}
-
-function geometryFor(device: Device): PoolGeometry {
-  return device.kind === "dn2"
-    ? { layout: DN2_LAYOUT, offset: DN2_POOL_OFFSET, size: DN2_SOUND_SIZE }
-    : { layout: DN1_LAYOUT, offset: DN1_POOL_OFFSET, size: DN1_SOUND_SIZE };
-}
+// `geometryFor` lived here **and** in the other of these two files, byte for byte identical. An
+// audit and a write disagreeing about where the pool is would be a corrupted project, so the
+// arithmetic is `poolSlotAt` in `project/spec.ts` and there is one of it.
 
 export interface AddPresetOptions {
   /** Where to put it. Defaults to the first free slot. */
@@ -120,7 +113,7 @@ interface FittedPreset {
  * would corrupt the slots either side.
  */
 function fitToPool(preset: Uint8Array, device: Device): FittedPreset {
-  const { size } = geometryFor(device);
+  const { size } = device.spec.sound;
   if (preset.length === size) return { sound: preset };
 
   // A Digitone 1 preset into a Digitone II pool: exactly the conversion the expander does, on
@@ -240,14 +233,13 @@ export function applyAddPreset(
   options: AddPresetOptions = {},
 ): { image: Uint8Array; plan: AddPresetPlan } {
   const plan = planAddPreset(image, device, preset, options);
-  const { layout, offset, size } = geometryFor(device);
   // Fitted again rather than carried on the plan. The plan is a *description* — the thing a person
   // is shown before saying yes — and putting 359 bytes of payload on it would make it two things.
   // `fitToPool` is deterministic, and it has already refused anything it cannot fit.
   const { sound } = fitToPool(preset, device);
 
   const out = Uint8Array.from(image);
-  out.set(sound, layout.tailBase + offset + plan.slot * size);
+  out.set(sound, poolSlotAt(device.spec, plan.slot));
   return { image: out, plan };
 }
 

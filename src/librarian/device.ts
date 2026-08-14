@@ -48,6 +48,7 @@ import {
   RECORD_VERSION as DN2_PATTERN_VERSION,
   readDn2Pattern,
 } from "../project/dn2pattern.js";
+import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
 import { isSongTableEmpty } from "../project/dn1tail.js";
 
 export type DeviceKind = "dn1" | "dn2";
@@ -88,6 +89,14 @@ export interface PatternSummary {
 }
 
 export interface Device {
+  /**
+   * Every number this family's format is made of.
+   *
+   * **The fields below it are conveniences, all read from here.** They stay because a hundred call
+   * sites say `device.patternCount`, and `device.spec.layout.patternCount` would be a worse
+   * sentence — but there is one source, so the two cannot disagree.
+   */
+  spec: DeviceSpec;
   kind: DeviceKind;
   name: string;
   layout: ImageLayout;
@@ -139,16 +148,17 @@ function versionOf(record: Uint8Array, offset: number): number {
 }
 
 const DN1: Device = {
-  kind: "dn1",
-  name: "Digitone 1",
-  layout: DN1_LAYOUT,
-  patternVersion: DN1_PATTERN_VERSION,
-  slotIndexOffset: DN1_PATTERN.slotIndexOffset,
-  patternNameOffset: DN1_PATTERN.nameOffset,
-  patternCount: DN1_LAYOUT.patternCount,
-  synthTrackCount: 4,
-  stepCount: 64,
-  hasKits: false,
+  spec: DN1_SPEC,
+  kind: DN1_SPEC.kind,
+  name: DN1_SPEC.name,
+  layout: DN1_SPEC.layout,
+  patternVersion: DN1_SPEC.pattern.version,
+  slotIndexOffset: DN1_SPEC.pattern.slotIndexOffset,
+  patternNameOffset: DN1_SPEC.pattern.nameOffset,
+  patternCount: DN1_SPEC.layout.patternCount,
+  synthTrackCount: DN1_SPEC.synthTrackCount,
+  stepCount: DN1_SPEC.stepCount,
+  hasKits: DN1_SPEC.hasKits,
   projectName: readDn1ProjectName,
 
   summarise(image, index) {
@@ -175,16 +185,17 @@ const DN1: Device = {
 };
 
 const DN2: Device = {
-  kind: "dn2",
-  name: "Digitone II",
-  layout: DN2_LAYOUT,
-  patternVersion: DN2_PATTERN_VERSION,
-  slotIndexOffset: DN2_PATTERN.slotIndexOffset,
-  patternNameOffset: DN2_PATTERN.nameOffset,
-  patternCount: DN2_LAYOUT.patternCount,
-  synthTrackCount: 16,
-  stepCount: 128,
-  hasKits: true,
+  spec: DN2_SPEC,
+  kind: DN2_SPEC.kind,
+  name: DN2_SPEC.name,
+  layout: DN2_SPEC.layout,
+  patternVersion: DN2_SPEC.pattern.version,
+  slotIndexOffset: DN2_SPEC.pattern.slotIndexOffset,
+  patternNameOffset: DN2_SPEC.pattern.nameOffset,
+  patternCount: DN2_SPEC.layout.patternCount,
+  synthTrackCount: DN2_SPEC.synthTrackCount,
+  stepCount: DN2_SPEC.stepCount,
+  hasKits: DN2_SPEC.hasKits,
   projectName: dn2ProjectName,
 
   summarise(image, index) {

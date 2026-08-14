@@ -34,8 +34,8 @@ import { DN1_BLANK, DN2_BLANK, decodeBlank } from "./blankdata.js";
  * The families differ: the DN2 kit record opens with `BEEFBACE` before its version field,
  * the DN1's does not, so every subsequent offset shifts by four.
  */
-const KIT_NAME_OFFSET: Record<Device["kind"], number> = { dn1: 4, dn2: 8 };
-const KIT_NAME_SIZE = 16;
+// Both of these used to live here as well as in `kitwrite.ts`, in two different shapes — a record
+// keyed by kind, and a bare 8. They are `spec.kit` now, so a kit's name has one address.
 
 /** Decoded once — the RLE and base64 work should not be repeated per slot cleared. */
 const CACHE = new Map<Device["kind"], { pattern: Uint8Array; kit: Uint8Array }>();
@@ -73,7 +73,7 @@ export function blankPatternKit(
 
   // An untouched kit has no name on either family. Clearing it rather than trusting the
   // captured bytes means the capture slot's name can never leak into every cleared slot.
-  const nameAt = KIT_NAME_OFFSET[device.kind];
+  const { nameOffset: nameAt, nameSize: KIT_NAME_SIZE } = device.spec.kit;
   kit.fill(0, nameAt, nameAt + KIT_NAME_SIZE);
 
   return { pattern, kit };
