@@ -346,7 +346,7 @@ export function writeOpenRequest(msgId: number, path: string, totalLength: numbe
  * | | was | is |
  * |---|---|---|
  * | +4 | byte offset — 0, 2,048, 4,096 | **chunk index** — 0, 1, 2, 3 |
- * | +12 | the whole file's length | **the chunk size** — 32,768 |
+ * | +12 | the whole file's length | **this chunk's own length** — 32,768 for a full one |
  *
  * **At one chunk both mistakes are invisible.** A byte offset and a chunk index are both `0`, and
  * the chunk size equals the file length. Every capture we had was a single chunk — a 269-byte sound
@@ -372,7 +372,15 @@ export function writeChunkRequest(
   chunkIndex: number,
   /** This chunk's own `driveChecksum`, not the whole file's. */
   checksum: number,
-  /** The transfer's chunk size, the same on every chunk including a short last one. */
+  /**
+   * **This chunk's own data length.**
+   *
+   * Measured 2026-08-15: a short final chunk declaring the transfer's nominal size is refused with
+   * `Invalid package checksum; corrupt transfer`, and declaring its real length is accepted. One
+   * rule covers every observation — Transfer's full chunks declared 32,768 because that was their
+   * length, its single-chunk uploads declared 269 and 18,064, and our own landed write declared
+   * 10,795.
+   */
   chunkSize: number,
   data: Uint8Array,
 ): Uint8Array {
