@@ -169,8 +169,35 @@ body.app > main { flex: 1; display: flex; flex-direction: column; gap: .7rem;
 
 /** The manager's workspace: the grid beside a fixed side panel. */
 body.app > main.split { display: grid; grid-template-columns: minmax(0,1fr) 20rem; }
-/* A flowing page keeps one column and a comfortable measure at any width. */
-body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 auto; }
+/*
+ * A flowing page keeps one column and a comfortable measure at any width.
+ *
+ * **The measure is a variable because not every `body.page` is prose.** 78rem is the right cap for
+ * a document you read top to bottom — the expander — and the wrong one for the library, which is
+ * two panes of data side by side and was throwing away 460px of a 1707px window. A page overrides
+ * `--page-max` in its own `<style>`; that is exactly the "layout unique to that page" this file's
+ * header allows, where a colour or a control would not be.
+ *
+ * The status line below reads the same variable. It used to repeat the number, so widening one
+ * would have left the other indented to a column that no longer existed.
+ */
+body.page { --page-max: 78rem; }
+/*
+ * **`wide` is the third page shape, and it is a modifier rather than a new one.**
+ *
+ * A `body.page` that is two panes of data rather than a column of prose. The library was throwing
+ * away 460px of a 1707px window while its tag column wrapped to two lines on most rows — 78rem is
+ * a measure chosen for reading, and nothing on that page is read that way.
+ *
+ * Here rather than in the page's own `<style>` because `body.page` is this file's selector, and a
+ * page redefining it is precisely the drift `test/web.test.ts`'s overlap budget exists to catch. It
+ * caught this on the first attempt. A page opts in with a class; it does not restate the rule.
+ *
+ * Still capped. Two 900px panes are a workspace; two 1400px panes are a spreadsheet nobody can
+ * scan across.
+ */
+body.page.wide { --page-max: 116rem; }
+body.page > main { display: block; padding: .9rem; max-width: var(--page-max); margin: 0 auto; }
 
 /*
  * The full-bleed bars align their contents with that column, not with the window edge.
@@ -185,7 +212,7 @@ body.page > main { display: block; padding: .9rem; max-width: 78rem; margin: 0 a
  * it spans the app, and indenting it moved the brand and the tool row when the page underneath
  * changed shape. See `toolnav.css`.
  */
-body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem); padding-right: calc((100% - min(78rem, 100%)) / 2 + .9rem); }
+body.page > .status { padding-left: calc((100% - min(var(--page-max), 100%)) / 2 + .9rem); padding-right: calc((100% - min(var(--page-max), 100%)) / 2 + .9rem); }
 .side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
 
 /* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
