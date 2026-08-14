@@ -1144,18 +1144,41 @@ So **a DN2 sound object is 359 bytes**, confirmed twice independently — the po
 files, and a dump of this very preset — and **a +Drive preset body carries 5 bytes more than the
 object it holds**.
 
-#### What those five bytes are is unknown
+#### The five bytes are a prefix — **[verified]** 2026-08-14
 
-Nobody has looked inside a +Drive preset body. They may lead, trail, or sit in a header; nothing here
-distinguishes those.
+`00 00 00 02 00`, and then the object. `/soundbanks/H/1` read as 407 bytes = 31 + **364** + 12; the
+body opens `00 00 00 02 00 be ef ba ce`, and `BEEFBACE` is where an Elektron object starts.
 
-**This is why the library refuses the drop**, and refusing is correct: writing 364 bytes into a
-359-byte pool slot would run into its neighbour, which is exactly what `poolwrite.ts` guards. The
-drag from library to pool cannot work until the five bytes are located — see
-`99_HardwareTest/device-test-results-2026-08-13-0030.md` for the failing case, which is T32 step 1.
+Three independent readings agree:
 
-A kit does not have this problem: 10,752 listed matches `DN2_KIT.kitSize` exactly. **Whatever the
-five bytes are, they are specific to presets.**
+| | bytes | opens with |
+|---|---|---|
+| DN2 sound dump over SysEx | 359 | `BEEFBACE` |
+| DN1 stored preset body | 302 | `BEEFBACE` — **no prefix at all** |
+| DN2 stored preset body | 364 | five bytes, **then** `BEEFBACE` |
+
+**The anchors are the evidence, not the arithmetic.** Five bytes can be taken off anything and leave
+359. What settles it is that the object's fields then read correctly: the name at `+12` is `BD 1 BR`,
+which is what the listing calls that slot, and the tag word at `+8` decodes to `KICK HARD` on a bass
+drum. Read unshifted, the name is mojibake and the tags come out `BRIGHT VINTAGE EPIC MINE
+FAVOURITE` — individually legal, because the tag vocabulary is closed, and obviously wrong for a
+kick. **A closed vocabulary is what let the wrong alignment look plausible; the name is what
+disqualified it.**
+
+What the prefix *means* is still open. `00 00 00 02` is a big-endian 2 and the object's own version
+field at `+4` is also 2, so it may be a repeat; nothing depends on that.
+
+`objectInStoredBody` in `device/library.ts` does the unwrapping, and finds the prefix **by looking
+for the magic rather than by testing the length** — a length test would encode today's two sizes and
+silently mis-handle the next object that differs. `readLibraryObject` returns `object` alongside
+`body`, because a write back to the +Drive has to reproduce the prefix.
+
+**This is what the library's drop was failing on**, and the refusal was right throughout: writing
+364 bytes into a 359-byte pool slot would run into its neighbour. See
+`99_HardwareTest/device-test-results-2026-08-13-0030.md` for the failing case, T32 step 1.
+
+A kit never had this problem: 10,752 listed matches `DN2_KIT.kitSize` exactly, and a DN1 preset's
+302 matches `DN1_SOUND_SIZE`. **The prefix is specific to Digitone II presets.**
 
 ## 11. A write lands in one chunk and is refused in two — **[verified]** 2026-08-13
 
