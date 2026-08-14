@@ -94,6 +94,7 @@ import { writeStoredFile } from "../../../src/device/storagewrite.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
+import { describeBytes, progressBar } from "../progress.js";
 import { askConfirm } from "../dialog.js";
 import {
   card,
@@ -120,6 +121,7 @@ import {
 } from "./dumpio.js";
 
 const status = statusBar();
+const bar = progressBar();
 
 // Drawn rather than written into the HTML, so the row cannot say different things on different
 // pages. Immediately, because a navigation control that appears late is one you click through.
@@ -888,6 +890,7 @@ async function readProject(): Promise<void> {
     productId,
     send: (bytes) => output.send([...bytes]),
     onProgress: (result, done, total) => {
+      bar.at(done, total, "Reading the project");
       const seconds = (Date.now() - started) / 1000;
       // Remaining time from the rate so far rather than from a constant: the two families differ
       // by an order of magnitude and a hard-coded estimate would be wrong on one of them.
@@ -923,6 +926,7 @@ async function readProject(): Promise<void> {
   } catch (error) {
     status(`The read stopped: ${error}`, "error");
   } finally {
+    bar.done();
     reading = undefined;
     $("readProject").textContent = "Read project";
     $<HTMLButtonElement>("request").disabled = false;
@@ -1738,7 +1742,9 @@ async function readFile(): Promise<void> {
       // session's — and with Transfer's, which numbers from the low hundreds.
       msgId: reserveMessageIds(IDS_FOR.wholeProject),
       onProgress: (chunks, bytes) => {
-        status(`Reading ${path}: ${chunks} chunks, ${bytes.toLocaleString()} bytes…`, "warn");
+        // No honest denominator for a +Drive read — see `progress.ts`.
+        bar.working(`Reading ${path}`);
+        status(`Reading ${path}: ${chunks} chunks, ${describeBytes(bytes)}…`, "warn");
       },
     });
 
@@ -1777,8 +1783,8 @@ async function readFile(): Promise<void> {
       }),
     );
   } finally {
-    // Whatever happened, the handle is released by now and the next press is safe. Moving to the
-    // next band is what stops this run's ids coming round again on the following one.
+    // Whatever happened, the handle is released by now and the next press is safe.
+    bar.done();
     readingFile = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
   }
@@ -1933,7 +1939,10 @@ async function readThenWrite(): Promise<void> {
       target: entry,
       msgId: reserveMessageIds(IDS_FOR.wholeProject),
       chunkSize,
-      onProgress: (written, total) => status(`Writing ${target}: ${written}/${total} bytes…`),
+      onProgress: (written, total) => {
+        bar.at(written, total, `Writing ${target}`);
+        status(`Writing ${target}: ${describeBytes(written)} of ${describeBytes(total)}…`);
+      },
     });
 
     verdictCard(`${target} — ${result.committed ? "COMMITTED" : "not committed"}`, [
@@ -1990,6 +1999,7 @@ async function readThenWrite(): Promise<void> {
       }),
     );
   } finally {
+    bar.done();
     readingFile = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
   }
