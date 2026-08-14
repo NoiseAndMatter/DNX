@@ -33,6 +33,12 @@ import {
   SOUND_NAME_SIZE,
 } from "../src/project/soundmap.js";
 import { decodeTags } from "../src/project/tags.js";
+import {
+  HEAD_LENGTH_MINIMUM,
+  LENGTH_BIAS,
+  fileLengthFromHead,
+  parsePayload,
+} from "../src/project/container.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 
@@ -160,3 +166,42 @@ test("a body with no magic anywhere is handed back unshifted", () => {
 function u32be(a: Uint8Array, at: number): number {
   return ((a[at]! << 24) | (a[at + 1]! << 16) | (a[at + 2]! << 8) | a[at + 3]!) >>> 0;
 }
+
+/**
+ * The container header declares how long the file will be.
+ *
+ * This is what lets a +Drive read report a percentage rather than only bytes arriving. It looked
+ * impossible at first: `parsePayload` reads `storedLength` from `raw.length - 8`, so the length
+ * appears to be a fact only available once the file is complete. **The same number is also at
+ * header offset 25**, which is inside the first chunk.
+ *
+ * Checked here against the trailer on files a device produced, four hundred times apart in size —
+ * because a header field that merely *looked* like a length would give a bar that quietly lied.
+ */
+test("a stored file's header declares the same length as its trailer", { skip }, () => {
+  for (const name of ["soundbanks_H_1_407B.bin", "kits_A_1_10795B.bin"]) {
+    const file = hardwareTest(name);
+
+    const fromHead = fileLengthFromHead(file);
+    assert.equal(fromHead, file.length, `${name}: the header should predict the whole file`);
+
+    // And it agrees with the trailer, which is where everything else reads it from.
+    const fromTrailer = parsePayload(file).storedLength + LENGTH_BIAS;
+    assert.equal(fromHead, fromTrailer, `${name}: header and trailer must not disagree`);
+  }
+});
+
+test("the length is readable from the first chunk alone", { skip }, () => {
+  // The whole point: a 2,048-byte first chunk has to answer for a 12.9 MB project.
+  const file = hardwareTest("kits_A_1_10795B.bin");
+  assert.equal(fileLengthFromHead(file.subarray(0, 2048)), file.length);
+  // And from the least that could possibly work.
+  assert.equal(fileLengthFromHead(file.subarray(0, HEAD_LENGTH_MINIMUM)), file.length);
+});
+
+test("too little, or not a container, answers nothing rather than guessing", () => {
+  // Used for a progress bar, so a wrong number is worse than none — a bar that overshoots its own
+  // total says the thing it exists to say, wrongly.
+  assert.equal(fileLengthFromHead(new Uint8Array(HEAD_LENGTH_MINIMUM - 1)), undefined);
+  assert.equal(fileLengthFromHead(new Uint8Array(64)), undefined, "no container magic");
+});

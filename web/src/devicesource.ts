@@ -418,7 +418,7 @@ export interface DriveProjectHandle {
 export async function openDeviceProject(
   device: ConnectedDevice,
   project: DriveProject,
-  onProgress: (chunks: number, bytes: number) => void,
+  onProgress: (chunks: number, bytes: number, total?: number) => void,
 ): Promise<DriveProjectHandle> {
   const read = await readDriveProject(apiTransport(device), project.index, {
     msgId: reserveMessageIds(IDS_FOR.wholeProject),
