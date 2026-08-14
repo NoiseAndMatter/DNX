@@ -95,11 +95,28 @@ interface State {
   /**
    * Which tag read is current.
    *
-   * Bumped on every browse. A read in flight compares against it and stops when it no longer
-   * matches — otherwise switching bank mid-read fills the new bank's rows with the old bank's tags,
-   * silently and plausibly, because both are lists of real tag names.
+   * Bumped **at the start of every browse**. A read in flight compares against it and stops when it
+   * no longer matches — otherwise switching bank mid-read fills the new bank's rows with the old
+   * bank's tags, silently and plausibly, because both are lists of real tag names.
    */
   tagRun: number;
+  /**
+   * The tag read in flight, so a new one can wait for it to let go of the device.
+   *
+   * **Two conversations must not share one instrument.** `apiTransport` builds a fresh `DeviceLink`
+   * per call, each with its own in-flight table and its own message ids from 1, and both listen to
+   * the same MIDI input — so a listing issued while a tag read is running sees the read's replies
+   * and matches one by id. Observed on hardware while switching bank mid-load:
+   *
+   *     expected 0xd3 to a listing and got 0xd4
+   *
+   * `0xd3` is the directory reply and `0xd4` is a file open's. The listing was handed the tag
+   * reader's answer. The probe learned this in 2026-08 and wrote it down — *"two presses produced
+   * two sessions numbering their messages from 1, on a transport with a single reply slot, so each
+   * stole the other's answers"* — and the library reproduced it because a bank switch is a second
+   * press by another name.
+   */
+  reading?: Promise<unknown>;
 }
 
 const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagRun: 0 };
@@ -270,6 +287,21 @@ async function browse(options: { force?: boolean } = {}): Promise<void> {
   const device = state.device;
   if (!device) throw new DeviceSourceError("connect a Digitone II first");
 
+  // **Stop the previous read before saying a word to the device.** Bumping the run makes the loop
+  // exit before its next request, and awaiting the promise waits for the one already in flight to
+  // land — a single round trip, so this is milliseconds, not the rest of the bank.
+  //
+  // Both halves are needed. Without the bump the old loop never stops; without the wait, its last
+  // request is still outstanding when the listing goes out, which is the case that crossed replies.
+  state.tagRun++;
+  const outstanding = state.reading;
+  if (outstanding) {
+    status("Finishing the read in progress…");
+    // Never rejects — `loadTags` catches — but awaited defensively: a throw here would leave the
+    // page unable to browse again, which is a worse failure than the one being prevented.
+    await outstanding.catch(() => undefined);
+  }
+
   status(`Listing ${kind()}s in bank ${state.bankLetter}…`);
   // **Always re-listed, never cached.** One message, and the only thing that can tell us whether
   // anything changed — which is what decides how many *bodies* have to be read. `bankcache.ts` has
@@ -392,6 +424,27 @@ function toggleTagAndRender(tag: TagName): void {
 }
 
 /**
+ * At most one repaint per frame.
+ *
+ * Tags arrive one slot at a time and each one used to redraw the whole table. For a bank that is
+ * 256 rebuilds of 256 rows — about 65,000 rows of DOM inside six seconds — and the main thread had
+ * no time left to answer a click. **The page was not blocked on the device; it was blocked on
+ * itself**, which is worth stating because it looked exactly like a protocol limitation.
+ *
+ * `requestAnimationFrame` rather than a timer: the work is painting, so the browser already knows
+ * when it is worth doing, and a hidden tab correctly stops doing it at all.
+ */
+let paintQueued = false;
+function schedulePaint(): void {
+  if (paintQueued) return;
+  paintQueued = true;
+  requestAnimationFrame(() => {
+    paintQueued = false;
+    renderTable();
+  });
+}
+
+/**
  * Read every occupied slot's tags, filling the table as they land.
  *
  * Started after the table is already on screen and deliberately not awaited by `browse` — a bank of
@@ -402,14 +455,16 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
   if (!device) return;
   if (indices.length === 0) return;
 
-  const run = ++state.tagRun;
+  // **Read, not bumped.** `browse` already advanced the run before it spoke to the device, and
+  // bumping again here would abandon this read the moment it started.
+  const run = state.tagRun;
   const collection = kind();
   // Starts from what the cache vouched for, so a partial re-read still stores the whole bank —
   // otherwise reading one changed slot would forget the 255 that did not change, and the visit
   // after this one would read everything again.
   const learned = new Map(reused);
 
-  readBankTags({
+  const running = readBankTags({
     transport: apiTransport(device),
     kind: collection,
     bank: bank.bank,
@@ -421,15 +476,31 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
       row.tags = tags;
       row.machine = machine;
       learned.set(index, { tags, machine });
-      renderTable();
+      // **Coalesced to one repaint a frame.** Painting on every slot rebuilt a 256-row table 256
+      // times over a bank — some 65,000 rows of DOM in six seconds, which is what made the page
+      // feel frozen while it was working perfectly.
+      schedulePaint();
     },
-  })
+  });
+
+  // Published before anything is awaited, so the next `browse` can wait for the device to be free.
+  state.reading = running;
+
+  running
     .then(({ read, failed }) => {
       // **Only a run that finished as the current one may store anything.** An abandoned run holds
       // a `learned` map for a bank nobody is looking at, and writing it under the *current* key is
       // how a preset bank's tags would end up cached as a kit bank's.
       if (state.tagRun !== run) return;
 
+      state.reading = undefined;
+
+      // **The last paint is not scheduled, it is done.** `requestAnimationFrame` does not fire in a
+      // hidden tab, so a bank that finished loading in the background stayed showing "reading…" on
+      // all 256 rows — measured, with the read demonstrably complete. It would have caught up on
+      // becoming visible, which is exactly the kind of self-healing nobody should have to rely on:
+      // the terminal state of a run has to be painted by the run.
+      renderTable();
       remember(banks, collection, bank, learned);
       status(
         failed === 0
