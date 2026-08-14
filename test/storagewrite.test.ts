@@ -104,7 +104,9 @@ test("open declares the length, the chunk carries the checksum, the close commit
   // 0x57: length before the path, which is not where anyone would put it.
   assert.deepEqual([...io.sent[0]!.body.subarray(0, 4)], [0, 0, 0x01, 0x0d]);
 
-  // 0x58: handle from the open, offset 0, the device's own checksum, then the total length.
+  // 0x58: handle from the open, chunk index 0, the device's own checksum, then the chunk size.
+  // At one chunk the chunk size equals the file length, which is exactly why this test passed for
+  // months while the field meant something else. See `writeChunkRequest`.
   const chunk = io.sent[1]!.body;
   assert.deepEqual([...chunk.subarray(0, 16)], [0, 0, 0, 7, 0, 0, 0, 0, 0xcb, 0x49, 0x92, 0x19, 0, 0, 0x01, 0x0d]);
   assert.deepEqual([...chunk.subarray(16)], [...bytes], "the payload follows unchanged");
@@ -114,30 +116,44 @@ test("open declares the length, the chunk carries the checksum, the close commit
   assert.equal(result.committed, true);
 });
 
-test("a long file is split, and every chunk states its offset", async () => {
+/**
+ * The field that cost months: chunks are **numbered**, not addressed by byte.
+ *
+ * `[0, 2048, 4096]` is what this asserted before, and it was wrong. Transfer's own upload of a
+ * 114,746-byte project sends `0, 1, 2, 3`, and the device's replies count the bytes for us. The old
+ * expectation agreed with the wire only at the first chunk, where the index and the offset are both
+ * zero — which is every single-chunk capture we had.
+ */
+test("a long file is split, and every chunk carries its index", async () => {
   const io = accepting();
   const bytes = new Uint8Array(5000).fill(0xab);
 
   const result = await writeStoredFile("/projects/9", bytes, 1, { transport: io, target: entry(), chunkSize: 2048, permit: TEST_PERMIT });
 
   assert.equal(result.chunks, 3);
-  const offsets = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 4));
-  assert.deepEqual(offsets, [0, 2048, 4096]);
+  const indices = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 4));
+  assert.deepEqual(indices, [0, 1, 2], "chunk numbers, not byte offsets");
+
+  // And field 4 is the chunk size, the same on every chunk — including the short last one, whose
+  // data is 904 bytes while it still declares 2,048.
+  const declared = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 12));
+  assert.deepEqual(declared, [2048, 2048, 2048], "the chunk size, not the file's total length");
+  assert.equal(io.sent.filter((s) => s.code === StorageCode.Write)[2]!.body.length - 16, 904);
 });
 
 /**
  * Each chunk declares **its own** checksum, not the whole file's.
  *
- * Measured on hardware 2026-08-13, read-only: a read reports one checksum per chunk, and
- * `driveChecksum` reproduces each of them over that chunk's own slice — `/kits/A/1`, 10,795 bytes
- * in six chunks, checked against the device's numbers.
+ * Measured on hardware 2026-08-13 from the read side — a read reports one checksum per chunk and
+ * `driveChecksum` reproduces each over that chunk's own slice — and confirmed 2026-08-15 by
+ * Transfer's own upload, whose three chunks carry three distinct values.
  *
- * This module used to send the whole file's value on every chunk. **At one chunk the two are the
- * same number**, so the single 269-byte upload the protocol was copied from could not tell them
- * apart, and the wrong model passed the only test there was. The test above is that case, and it
- * is exactly why this one has to exist beside it.
+ * This module used to default to the whole file's value. **At one chunk the two are the same
+ * number**, so the single 269-byte upload the protocol was copied from could not tell them apart,
+ * and the wrong model passed the only test there was. The single-chunk test above is that case, and
+ * it is exactly why this one has to exist beside it.
  */
-test("by default every chunk declares the whole file's checksum", async () => {
+test("by default every chunk declares its own slice's checksum", async () => {
   const io = accepting();
   // Deliberately not uniform bytes: a file of one repeated value gives identical slices, and two
   // chunks agreeing by accident would prove nothing either way.
@@ -153,12 +169,64 @@ test("by default every chunk declares the whole file's checksum", async () => {
   const writes = io.sent.filter((s) => s.code === StorageCode.Write);
   assert.equal(writes.length, 3);
 
-  const whole = driveChecksum(bytes);
+  const boundaries = [0, 2048, 4096, 5000];
   assert.deepEqual(
     writes.map((s) => u32(s.body, 8)),
-    [whole, whole, whole],
-    "the whole file's value on every chunk — the only form a device has accepted",
+    boundaries.slice(0, 3).map((from, i) => driveChecksum(bytes.subarray(from, boundaries[i + 1]!))),
   );
+  // And they really are three different numbers, so the assertion above cannot pass by coincidence.
+  assert.equal(new Set(writes.map((s) => u32(s.body, 8))).size, 3);
+  assert.notEqual(u32(writes[0]!.body, 8), driveChecksum(bytes), "not the whole file's value");
+});
+
+/**
+ * The captured upload, reproduced field for field.
+ *
+ * Transfer sending `MORNING_JA 1640(2)` — 114,746 bytes — to `/projects/12`, recorded with USBPcap
+ * on 2026-08-15. This is the only multi-chunk write anyone has ever seen, and every number below
+ * came off the wire rather than from a hypothesis.
+ *
+ * It exists because three separate guesses about these fields all passed a single-chunk test: the
+ * checksum's scope, the index-versus-offset question, and the meaning of field 4. **A single chunk
+ * cannot distinguish any of them**, so the regression test for all three has to be a multi-chunk
+ * one, tied to real captured values.
+ */
+test("Transfer's own upload is reproduced field for field", async () => {
+  const io = accepting();
+  const total = 114_746;
+  const bytes = new Uint8Array(total).map((_, i) => (i * 31 + (i >> 9)) & 0xff);
+
+  const result = await writeStoredFile("/projects/12", bytes, undefined, {
+    transport: io,
+    target: entry(),
+    permit: TEST_PERMIT,
+  });
+
+  // Four chunks of 32,768, the last partial — which is what the device's cumulative replies said:
+  // 32,768 / 65,536 / 98,304 / 114,746.
+  assert.equal(result.chunks, 4);
+  assert.equal(result.written, total);
+
+  const writes = io.sent.filter((s) => s.code === StorageCode.Write);
+  assert.deepEqual(writes.map((s) => u32(s.body, 4)), [0, 1, 2, 3], "chunk index");
+  assert.deepEqual(
+    writes.map((s) => u32(s.body, 12)),
+    [32_768, 32_768, 32_768, 32_768],
+    "the chunk size on every chunk, including the short one",
+  );
+  assert.deepEqual(
+    writes.map((s) => s.body.length - 16),
+    [32_768, 32_768, 32_768, total - 3 * 32_768],
+    "the data really is short on the last chunk while the declared size is not",
+  );
+
+  // The open declares the file's total; only the open does.
+  assert.equal(u32(io.sent[0]!.body, 0), total);
+
+  // Four distinct per-chunk checksums, none of them the whole file's.
+  const sums = writes.map((s) => u32(s.body, 8));
+  assert.equal(new Set(sums).size, 4);
+  assert.ok(!sums.includes(driveChecksum(bytes)));
 });
 
 test("a per-chunk function reaches the wire, because that hypothesis had to be tried", async () => {

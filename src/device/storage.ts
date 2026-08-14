@@ -322,35 +322,78 @@ export function writeOpenRequest(msgId: number, path: string, totalLength: numbe
  * Write one chunk.
  *
  * ```
- * 0x58   u32 handle   u32 offset   u32 checksum   u32 totalLength   data
+ * 0x58   u32 handle   u32 chunkIndex   u32 checksum   u32 chunkSize   data
  * ```
  *
- * **The checksum is a real obstacle, not a formality.** Its algorithm is unknown, and it is the
- * same field the *read* reply carries at offset 14 — the sound Transfer uploaded to
- * `/soundbanks/C/29` declared `cb 49 92 19`, and reading that same sound back reported `cb 49 92 19`
- * in the read reply. Two sides of one value, which identifies the field and not the function.
+ * ## Two fields were wrong, and one chunk could never show it
  *
- * So a first write can be proved without solving it: **read a file, keep the checksum the device
- * reported, write the identical bytes back with it.** If that is accepted, the field is a content
- * checksum and the algorithm can be fitted afterwards from pairs we already hold. If it is refused,
- * it is something else and we have learned that cheaply.
+ * **[verified] 2026-08-15** from a USBPcap capture of Transfer uploading a real Digitone II
+ * project — `MORNING_JA 1640(2)`, 114,746 bytes, to `/projects/12`:
+ *
+ * ```
+ * 0x57 open   totalLength 114,746   /projects/12
+ * 0x58 chunk  handle 14   index 0   checksum 0xcfb63302   chunkSize 32,768
+ * 0x58 chunk  handle 14   index 1   checksum 0xc41fcad1   chunkSize 32,768
+ * 0x58 chunk  handle 14   index 2   checksum 0x6e276d0e   chunkSize 32,768
+ * 0x59 commit handle 14   flag 1
+ * ```
+ *
+ * The replies carry **cumulative bytes written** — 32,768, 65,536, 98,304, 114,746 — so there were
+ * four chunks with the last one partial, and the capture simply lost a request.
+ *
+ * This module used to call field 2 an **offset** and field 4 the **total length**. Both are wrong:
+ *
+ * | | was | is |
+ * |---|---|---|
+ * | +4 | byte offset — 0, 2,048, 4,096 | **chunk index** — 0, 1, 2, 3 |
+ * | +12 | the whole file's length | **the chunk size** — 32,768 |
+ *
+ * **At one chunk both mistakes are invisible.** A byte offset and a chunk index are both `0`, and
+ * the chunk size equals the file length. Every capture we had was a single chunk — a 269-byte sound
+ * and an 18,064-byte file — so the code agreed with the wire in the one case that cannot tell them
+ * apart, and every multi-chunk write was refused with `Invalid package checksum; corrupt transfer`.
+ * That is the **third** time these fields have hidden behind a single chunk; the checksum's
+ * per-chunk meaning was the first.
+ *
+ * It was predictable from the read side, which has always been numbered: `readRequest` asks for a
+ * sequence, and the device rejects a byte range with `Invalid sequence number`. The write side is
+ * numbered the same way, and nobody checked.
+ *
+ * ## The checksum is per chunk
+ *
+ * Three chunks, three distinct values. It is the same field the *read* reply carries at offset 14 —
+ * the sound Transfer uploaded to `/soundbanks/C/29` declared `cb 49 92 19` and reading it back
+ * reported `cb 49 92 19` — and `driveChecksum` reproduces each one over that chunk's own slice.
  */
 export function writeChunkRequest(
   msgId: number,
   handle: number,
-  offset: number,
+  /** Which chunk this is, counting from zero. **Not a byte offset** — see above. */
+  chunkIndex: number,
+  /** This chunk's own `driveChecksum`, not the whole file's. */
   checksum: number,
-  totalLength: number,
+  /** The transfer's chunk size, the same on every chunk including a short last one. */
+  chunkSize: number,
   data: Uint8Array,
 ): Uint8Array {
   const body = new Uint8Array(16 + data.length);
   body.set(u32Bytes(handle), 0);
-  body.set(u32Bytes(offset), 4);
+  body.set(u32Bytes(chunkIndex), 4);
   body.set(u32Bytes(checksum), 8);
-  body.set(u32Bytes(totalLength), 12);
+  body.set(u32Bytes(chunkSize), 12);
   body.set(data, 16);
   return encodeMessage(msgId, StorageCode.Write, body);
 }
+
+/**
+ * The chunk size Transfer uses for an upload, and therefore one the device is known to accept.
+ *
+ * **Deliberately not `DEFAULT_CHUNK_SIZE`.** That one is the size a *read* asks for in `0x54`, and
+ * the two directions do not use the same number: reads run at 2,048 and the captured upload ran at
+ * 32,768. Naming them apart stops a later tidy-up from merging them into one constant that is
+ * silently wrong for one direction.
+ */
+export const WRITE_CHUNK_SIZE = 32_768;
 
 /**
  * Close a writer. **This is the commit** — nothing lands until it is sent.
