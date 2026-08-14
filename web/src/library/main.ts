@@ -53,6 +53,16 @@ import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
 import { askConfirm } from "../dialog.js";
+import {
+  type LibraryFilter,
+  type LibraryRow,
+  NO_FILTER,
+  filterRows,
+  toggleTag,
+} from "./filter.js";
+import { renderRows, renderTagChips, summarise } from "./librarytable.js";
+import { readBankTags } from "./slottags.js";
+import { type TagName } from "../../../src/project/tags.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
 import {
@@ -71,9 +81,20 @@ interface State {
   device?: ConnectedDevice;
   bank?: LibraryBank;
   bankLetter: string;
+  /** The rows behind the table, tags filled in as the reads land. */
+  rows: LibraryRow[];
+  filter: LibraryFilter;
+  /**
+   * Which tag read is current.
+   *
+   * Bumped on every browse. A read in flight compares against it and stops when it no longer
+   * matches — otherwise switching bank mid-read fills the new bank's rows with the old bank's tags,
+   * silently and plausibly, because both are lists of real tag names.
+   */
+  tagRun: number;
 }
 
-const state: State = { bankLetter: "A" };
+const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagRun: 0 };
 
 // --- the pool ------------------------------------------------------------------------------------
 
@@ -233,13 +254,25 @@ async function browse(): Promise<void> {
   if (!device) throw new DeviceSourceError("connect a Digitone II first");
 
   status(`Listing ${kind()}s in bank ${state.bankLetter}…`);
-  state.bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter);
+  const bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter);
+  state.bank = bank;
+
+  // Rows first, from the listing alone — everything except tags and machine is already here, and
+  // the table appears at once rather than after a bank's worth of round trips.
+  state.rows = bank.entries.map((e) => ({
+    index: e.index,
+    name: e.name,
+    occupied: e.occupied,
+    writable: e.writable,
+    size: e.size,
+  }));
+
   renderLibrary();
   renderDestination();
-  status(
-    `Bank ${state.bank.bank}: ${state.bank.used} of ${state.bank.entries.length} ${kind()}(s).`,
-    "ok",
-  );
+  status(`Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s). Reading tags…`, "ok");
+
+  // Not awaited. See `loadTags`.
+  loadTags(bank);
 }
 
 function renderLibrary(): void {
@@ -265,35 +298,91 @@ function renderLibrary(): void {
     tabs.append(button);
   }
 
-  const grid = $("libraryGrid");
-  grid.hidden = false;
+  $("libraryFind").hidden = false;
+  $("libraryTags").hidden = false;
+  $("libraryGrid").hidden = false;
   $("librarySub").textContent = `— ${bank.path}, ${bank.used} of ${bank.entries.length} used`;
 
-  renderGrid(
-    grid,
-    bank.entries.map((e) => ({
-      index: e.index,
-      id: String(e.index),
-      name: e.occupied ? e.name || "—" : "—",
-      // The instrument protects saved work, so an occupied slot reads as not writable. Worth
-      // showing, because it is what a future save would run into.
-      detail: e.occupied ? (e.writable ? "saved" : "saved · protected") : "free",
-      occupied: e.occupied,
-      supported: true,
-    })),
-    {
-      selected: [],
-      drag: { controller: drag, grid: "library" },
-      onClick: (index) => {
-        const entry = bank.entries.find((e) => e.index === index);
-        status(
-          entry?.occupied
-            ? `${bank.path}/${index} — ${entry.name || "unnamed"}, ${entry.size.toLocaleString()} bytes`
-            : `${bank.path}/${index} is free.`,
-        );
-      },
+  renderTable();
+}
+
+/**
+ * Draw the table from the current rows and filter.
+ *
+ * Called on every keystroke and every arriving tag, so it does the least it can: filtering is a
+ * single pass over at most 256 rows, and rebuilding the table is a few hundred short cells. Nothing
+ * here is worth memoising and a stale row is worse than a repaint.
+ */
+function renderTable(): void {
+  const bank = state.bank;
+  if (!bank) return;
+
+  const result = filterRows(state.rows, state.filter);
+  const filtered =
+    state.filter.query !== "" || state.filter.tags.length > 0 || state.filter.occupiedOnly;
+
+  renderRows($("libraryGrid"), result, {
+    drag,
+    onToggleTag: (tag) => toggleTagAndRender(tag),
+    onSelect: (index) => {
+      const row = state.rows.find((r) => r.index === index);
+      status(
+        row
+          ? `${bank.path}/${index} — ${row.name || "unnamed"}, ${row.size.toLocaleString()} bytes` +
+              (row.tags?.length ? ` · ${row.tags.join(" ")}` : "")
+          : `${bank.path}/${index}`,
+      );
     },
-  );
+  });
+
+  renderTagChips($("libraryTags"), state.rows, state.filter, toggleTagAndRender);
+  $("librarySub").textContent =
+    `— ${bank.path}, ${summarise(result, state.rows.length, filtered)}`;
+}
+
+function toggleTagAndRender(tag: TagName): void {
+  state.filter = { ...state.filter, tags: toggleTag(state.filter.tags, tag) };
+  renderTable();
+}
+
+/**
+ * Read every occupied slot's tags, filling the table as they land.
+ *
+ * Started after the table is already on screen and deliberately not awaited by `browse` — a bank of
+ * 256 is seconds of round trips, and nobody should wait for a tag column to read a name.
+ */
+function loadTags(bank: LibraryBank): void {
+  const device = state.device;
+  if (!device) return;
+
+  const run = ++state.tagRun;
+  const occupied = bank.entries.filter((e) => e.occupied).map((e) => e.index);
+  if (occupied.length === 0) return;
+
+  readBankTags({
+    transport: apiTransport(device),
+    kind: kind(),
+    bank: bank.bank,
+    indices: occupied,
+    keepGoing: () => state.tagRun === run,
+    onSlot: ({ index, tags, machine }) => {
+      const row = state.rows.find((r) => r.index === index);
+      if (!row) return;
+      row.tags = tags;
+      row.machine = machine;
+      renderTable();
+    },
+  })
+    .then(({ read, failed }) => {
+      if (state.tagRun !== run) return;
+      status(
+        failed === 0
+          ? `${bank.path}: tags read for all ${read} slot(s).`
+          : `${bank.path}: tags read for ${read} slot(s); ${failed} could not be read.`,
+        failed === 0 ? "ok" : "warn",
+      );
+    })
+    .catch(report);
 }
 
 /**
@@ -526,9 +615,38 @@ $("export").addEventListener("click", () => {
 
 $("kind").addEventListener("change", () => {
   // The two collections are different sizes and different objects, so a listing of one says nothing
-  // about the other. Clearing is more honest than leaving the previous grid under a new heading.
+  // about the other. Clearing is more honest than leaving the previous table under a new heading.
+  //
+  // **Bumping `tagRun` is what stops the reads.** Without it, a run started for a bank of presets
+  // keeps landing rows into a table now showing kits — and because the tag vocabulary is closed,
+  // every one of them would look like a real answer.
+  state.tagRun++;
   state.bank = undefined;
+  state.rows = [];
   $("libraryGrid").hidden = true;
   $("libraryTabs").hidden = true;
+  $("libraryFind").hidden = true;
+  $("libraryTags").hidden = true;
   $("librarySub").textContent = `— press Browse to list ${kind()}s`;
+});
+
+// --- finding one of 256 --------------------------------------------------------------------------
+
+$<HTMLInputElement>("librarySearch").addEventListener("input", (event) => {
+  // No debounce. Filtering is one pass over at most 256 rows and the table is a few hundred short
+  // cells; a delay here would be a delay somebody can feel, added to hide work that costs nothing.
+  state.filter = { ...state.filter, query: (event.target as HTMLInputElement).value };
+  renderTable();
+});
+
+$<HTMLInputElement>("libraryOccupied").addEventListener("change", (event) => {
+  state.filter = { ...state.filter, occupiedOnly: (event.target as HTMLInputElement).checked };
+  renderTable();
+});
+
+$("libraryClear").addEventListener("click", () => {
+  state.filter = { ...NO_FILTER };
+  $<HTMLInputElement>("librarySearch").value = "";
+  $<HTMLInputElement>("libraryOccupied").checked = false;
+  renderTable();
 });
