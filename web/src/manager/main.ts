@@ -77,6 +77,7 @@ import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } fr
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import { describeBytes, progressBar } from "../progress.js";
 import {
   type HistoryElements,
   goToHistoryPoint as walkHistory,
@@ -87,6 +88,7 @@ import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
 
 const status = statusBar();
+const progress = progressBar();
 
 // Drawn rather than written into the HTML, so the row cannot say different things on different
 // pages. Immediately, because a navigation control that appears late is one you click through.
@@ -888,8 +890,12 @@ async function openFromDrive(): Promise<void> {
 
   try {
     status(`Reading ${project.name} from slot ${project.index}…`);
+    progress.working(`Reading ${project.name}`);
     const opened = await openDeviceProject(drive.connected, project, (chunks, bytes) => {
-      if (chunks % 8 === 0) status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
+      if (chunks % 8 === 0) {
+        progress.working(`Reading ${project.name}`);
+        status(`Reading ${project.name}: ${describeBytes(bytes)}…`);
+      }
     });
 
     const device = deviceFor(opened.image);
@@ -934,6 +940,8 @@ async function openFromDrive(): Promise<void> {
       error instanceof DeviceSourceError ? error.message : `Could not open the slot: ${String(error)}`,
       "error",
     );
+  } finally {
+    progress.done();
   }
 }
 
@@ -1041,6 +1049,8 @@ async function loadFromDevice(): Promise<void> {
   try {
     status(`Reading ${connected.name} with ${describeDonor(donor)} as the donor — this takes about a minute…`);
     const { image, handle } = await readProject(connected, donor.project.image, (done, total, label) => {
+      // A real bar: the plan is 257 objects and it is counted before the first request.
+      progress.at(done, total, `Reading ${connected.name}`);
       // Every object, because a minute of silence is indistinguishable from a stall.
       if (done % 8 === 0 || done === total) status(`Reading ${connected.name}: ${done}/${total} — ${label}`);
     });
@@ -1074,6 +1084,8 @@ async function loadFromDevice(): Promise<void> {
   } catch (error) {
     connected.close();
     status(`Could not read the device: ${String(error)}`, "error");
+  } finally {
+    progress.done();
   }
 }
 
@@ -1092,9 +1104,10 @@ async function writeToDevice(): Promise<void> {
   button.disabled = true;
   try {
     status("Working out what changed…");
-    const result = await writeBack(handle, session.image, (done, total, label) =>
-      status(`Writing ${done}/${total} — ${label}`),
-    );
+    const result = await writeBack(handle, session.image, (done, total, label) => {
+      progress.at(done, total, "Writing");
+      status(`Writing ${done}/${total} — ${label}`);
+    });
 
     if (result.written === 0 && result.untransmittable.length === 0) {
       status("Nothing to write — the device already holds this.", "ok");
@@ -1119,6 +1132,7 @@ async function writeToDevice(): Promise<void> {
   } catch (error) {
     status(`The write stopped: ${String(error)}`, "error");
   } finally {
+    progress.done();
     button.disabled = false;
   }
 }
