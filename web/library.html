@@ -27,6 +27,19 @@
 .pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
 .pane .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
 
+/*
+ * A pattern whose kit was replaced this session.
+ *
+ * Amber, which is this app's colour for the kit — teal is the sequencer. That mapping is the whole
+ * reason it reads at a glance: a kit load changes the sound and leaves the trigs alone, and the
+ * cell says so in the one colour that already means "kit" everywhere else.
+ */
+.slot.justApplied { border-color: var(--amber); }
+.slot.justApplied .tc { color: var(--amber); }
+
+.applied { margin: .3rem 0 0; padding-left: 1.1rem; }
+.applied li { margin: .2rem 0; color: var(--muted); }
+
 /* Findings sit under the pool they describe, never beside the library. */
 #findings { margin-top: .8rem; }
 #findings li { margin: .2rem 0; }
