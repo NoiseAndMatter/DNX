@@ -72,6 +72,7 @@ import {
   remember,
 } from "./bankcache.js";
 import { type TagName } from "../../../src/project/tags.js";
+import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
 import {
@@ -478,7 +479,9 @@ async function browse(options: { force?: boolean } = {}): Promise<void> {
   // **Always re-listed, never cached.** One message, and the only thing that can tell us whether
   // anything changed — which is what decides how many *bodies* have to be read. `bankcache.ts` has
   // the asymmetry: 1 round trip to list, 256 to read.
-  const bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter);
+  const bank = await listLibraryBank(apiTransport(device), kind(), state.bankLetter, {
+    msgId: reserveMessageIds(IDS_FOR.oneMessage),
+  });
   state.bank = bank;
 
   const plan = planBankRead(
@@ -641,6 +644,7 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
     kind: collection,
     bank: bank.bank,
     indices,
+    msgId: reserveMessageIds(IDS_FOR.wholeBank),
     keepGoing: () => state.tagRun === run,
     onSlot: ({ index, tags, machine }) => {
       const row = state.rows.find((r) => r.index === index);
@@ -773,7 +777,9 @@ async function loadKit(index: number, pattern: number): Promise<void> {
   status(`Reading ${bank.path}/${index}…`);
   // `object`, not `body` — a stored body can carry a prefix in front of the object, and what goes
   // into a pattern's kit record is the object. See `objectInStoredBody`.
-  const { object: body } = await readLibraryObject(apiTransport(device), "kit", bank.bank, index);
+  const { object: body } = await readLibraryObject(apiTransport(device), "kit", bank.bank, index, {
+    msgId: reserveMessageIds(IDS_FOR.oneObject),
+  });
 
   const projectDevice = deviceFor(project.image);
   const preview = planLoadKit(project.image, projectDevice, body, { pattern });
@@ -842,7 +848,9 @@ async function addToPool(index: number, slot: number): Promise<void> {
   // **This is the line the drag was failing on.** A DN2 preset's stored body is 364 bytes and a
   // pool slot is 359, so `poolwrite` refused it — correctly, since writing 364 would have run into
   // the neighbouring slot. The five extra are a prefix; `object` is what belongs in the pool.
-  const { object: body } = await readLibraryObject(apiTransport(device), "preset", bank.bank, index);
+  const { object: body } = await readLibraryObject(apiTransport(device), "preset", bank.bank, index, {
+    msgId: reserveMessageIds(IDS_FOR.oneObject),
+  });
 
   const projectDevice = deviceFor(project.image);
   // Planned before anything is written, so a refusal — a MIDI preset, an occupied slot with locks —
