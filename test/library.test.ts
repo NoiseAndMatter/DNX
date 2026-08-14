@@ -17,7 +17,22 @@ import { test } from "node:test";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 import { decodeMessage } from "../src/device/api.js";
 import { parseListing } from "../src/device/storage.js";
-import { BANKS, BANK_SIZE, LIBRARY_ROOT, bankPath, describeBank, slotPath } from "../src/device/library.js";
+import {
+  BANKS,
+  BANK_SIZE,
+  LIBRARY_ROOT,
+  bankPath,
+  describeBank,
+  objectInStoredBody,
+  slotPath,
+} from "../src/device/library.js";
+import {
+  DN1_SOUND_SIZE,
+  DN2_SOUND_SIZE,
+  SOUND_NAME_OFFSET,
+  SOUND_NAME_SIZE,
+} from "../src/project/soundmap.js";
+import { decodeTags } from "../src/project/tags.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 
@@ -79,3 +94,69 @@ test("a bank describes itself by what is in it, and says nothing when empty", ()
     /A — 14 of 128/,
   );
 });
+
+/**
+ * A stored body is not always the object, and the prefix is found by its magic.
+ *
+ * These run on three files a real device produced — a DN2 stored preset, a DN1 stored preset, and
+ * a DN2 sound dump of the same object form. **None of them was made by this code**, which is the
+ * whole point: a synthetic 364-byte body would carry whatever prefix the writer of the test
+ * believed in, and would agree with `objectInStoredBody` by construction.
+ */
+function hardwareTest(name: string): Uint8Array {
+  // Built as a string the way `capture.test.ts` does. `CORPUS` is optional at the type level —
+  // these tests are `{ skip }` without one, so the path is only ever formed when it exists.
+  return new Uint8Array(readFileSync(join(`${CORPUS}`, "..", "99_HardwareTest", name)));
+}
+
+const HEADER = 31;
+const TRAILER = 12;
+
+test("a Digitone II stored preset carries five bytes in front of its sound", { skip }, () => {
+  const file = hardwareTest("soundbanks_H_1_407B.bin");
+  assert.equal(file.length, 407, "31 header + 364 body + 12 trailer");
+
+  const body = file.subarray(HEADER, file.length - TRAILER);
+  assert.equal(body.length, 364);
+
+  const { object, prefix } = objectInStoredBody(body);
+  assert.equal(prefix.length, 5, "364 - 359");
+  assert.equal(object.length, DN2_SOUND_SIZE, "and what is left is exactly a sound object");
+  assert.deepEqual([...object.subarray(0, 4)], [0xbe, 0xef, 0xba, 0xce]);
+
+  // **The anchors are the evidence, not the arithmetic.** Five bytes could be taken off anything
+  // and leave 359; that the name then reads as the slot's own listed name, and the tag word decodes
+  // to something a bass drum would be tagged, is what says the shift is right.
+  const name = new TextDecoder("latin1")
+    .decode(object.subarray(SOUND_NAME_OFFSET, SOUND_NAME_OFFSET + SOUND_NAME_SIZE))
+    .replace(/\0.*$/, "");
+  assert.equal(name, "BD 1 BR", "the name /soundbanks/H/1 lists");
+  assert.deepEqual(decodeTags(u32be(object, 8)), ["KICK", "HARD"]);
+});
+
+test("a Digitone 1 stored preset has no prefix at all", { skip }, () => {
+  // The control. If `objectInStoredBody` shifted by five unconditionally — or keyed off a length
+  // instead of the magic — this is the case that would break, and it is a case that already works
+  // in the shipped librarian.
+  const file = hardwareTest("soundbank_A1_345B_e48ff54e.bin");
+  const body = file.subarray(HEADER, file.length - TRAILER);
+  assert.equal(body.length, DN1_SOUND_SIZE, "302: a DN1 body is its object exactly");
+
+  const { object, prefix } = objectInStoredBody(body);
+  assert.equal(prefix.length, 0);
+  assert.equal(object.length, DN1_SOUND_SIZE);
+  assert.deepEqual([...object.subarray(0, 4)], [0xbe, 0xef, 0xba, 0xce]);
+});
+
+test("a body with no magic anywhere is handed back unshifted", () => {
+  // Pattern and settings records legitimately carry no `BEEFBACE`. Shifting one by a coincidental
+  // four-byte run would be far worse than doing nothing.
+  const body = new Uint8Array(64).fill(0x11);
+  const { object, prefix } = objectInStoredBody(body);
+  assert.equal(prefix.length, 0);
+  assert.equal(object.length, 64);
+});
+
+function u32be(a: Uint8Array, at: number): number {
+  return ((a[at]! << 24) | (a[at + 1]! << 16) | (a[at + 2]! << 8) | a[at + 3]!) >>> 0;
+}
