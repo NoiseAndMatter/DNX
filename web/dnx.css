@@ -189,8 +189,24 @@ body.page > .status { padding-left: calc((100% - min(78rem, 100%)) / 2 + .9rem);
 .side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
 
 /* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
-.grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+/*
+ * **`minmax(0, 1fr)`, not `1fr`.** `1fr` is shorthand for `minmax(auto, 1fr)`, so a track never
+ * shrinks below its content's minimum — the columns stop being equal and the row simply gets wider
+ * than the box, painting over whatever is beside it.
+ *
+ * Measured on the library, whose two panes are side by side: eight `1fr` tracks computed to
+ * 111.8 + 85.7 + 98.8 + 118.3 + 118.3 + 105.3 + 105.3 + 105.3 = **849px inside a 602px container**,
+ * and the last cell of every row ended 281px into the pane next door. A preset called
+ * `AUTOSHAKER%16` is all it takes.
+ *
+ * Nothing clipped, because grid overflow is visible by default — so it did not look like a layout
+ * bug, it looked like two panels drawn on top of each other.
+ */
+.grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
 .slot {
+  /* A grid item defaults to `min-width: auto` for the same reason, so the cell has to allow itself
+     to be narrower than its longest word before the track above can honour its share. */
+  min-width: 0;
   position: relative; text-align: left; cursor: pointer; min-height: 4.1rem;
   background: #1b2123; border: 1px solid var(--line-soft); border-radius: 3px;
   padding: .32rem .4rem; display: flex; flex-direction: column; gap: .1rem;
