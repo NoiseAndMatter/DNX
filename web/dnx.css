@@ -707,3 +707,55 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 /* Three states, not two: nobody has read this slot is not the same as this slot has no tags. */
 .libtable .unread { color: var(--dim); font-style: italic; }
 .libtable .untagged { color: var(--dim); }
+
+/* ---- progress, in the status bar ------------------------------------------------------
+ *
+ * Inserted into `#status` by `progress.ts` and removed when the work finishes, so no page needed
+ * markup for it and a page at rest looks exactly as it did.
+ */
+/*
+ * Its own element at the foot of the window, **not** a child of `#status`.
+ *
+ * That element's text is written with `textContent`, which replaces every child — a bar appended
+ * inside it was deleted by the next message about the operation it was drawing. See `progress.ts`.
+ */
+.progress {
+  position: fixed; right: 1rem; bottom: .62rem; z-index: 30;
+  /* Fixed width, so the number beside it cannot shuffle the bar sideways as it changes. */
+  width: 12rem;
+  height: .5rem; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+.progress > i {
+  display: block; height: 100%; width: 0;
+  background: var(--teal);
+  transition: width .12s linear;
+}
+/* The percentage sits outside the track, or a bar under 20% has nowhere to put its own label. */
+.progress > b {
+  position: absolute; right: 12.6rem; bottom: -.3rem;
+  font-size: .66rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The indeterminate mode: a stripe that travels, promising nothing.
+ *
+ * Used where the total genuinely is not known — a +Drive read, where the listing reports a flat
+ * 4 MiB allocation rather than the file's size. See `progress.ts`.
+ */
+.progress.working { background: var(--panel-2); }
+.progress.working::after {
+  content: ""; position: absolute; inset: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, var(--teal-dim), var(--teal), var(--teal-dim), transparent);
+  animation: progress-sweep 1.1s ease-in-out infinite;
+}
+@keyframes progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+/* Somebody who asked for less motion gets a still bar rather than none — it still says "working". */
+@media (prefers-reduced-motion: reduce) {
+  .progress.working::after { animation: none; opacity: .5; width: 100%; }
+}
