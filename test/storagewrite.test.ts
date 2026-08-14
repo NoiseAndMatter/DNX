@@ -13,6 +13,7 @@ import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js
 import { type Entry, StorageCode, driveChecksum } from "../src/device/storage.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
 import { refuseUnlessEmpty, writeStoredFile } from "../src/device/storagewrite.js";
+import { TEST_PERMIT } from "./permit.js";
 
 /** A listing entry, defaulting to the empty-and-writable case the write path requires. */
 function entry(over: Partial<Entry> = {}): Entry {
@@ -67,7 +68,7 @@ test('"we could not tell" does not read as "it is empty"', () => {
 test("an occupied target is refused before anything reaches the wire", async () => {
   const io = accepting();
   await assert.rejects(
-    writeStoredFile("/projects/2", Uint8Array.of(1, 2, 3), 0, { transport: io, target: entry({ occupied: true }) }),
+    writeStoredFile("/projects/2", Uint8Array.of(1, 2, 3), 0, { transport: io, target: entry({ occupied: true }), permit: TEST_PERMIT }),
     /overwrite/,
   );
   assert.deepEqual(io.sent, [], "nothing was sent");
@@ -76,7 +77,7 @@ test("an occupied target is refused before anything reaches the wire", async () 
 test("an empty file is refused", async () => {
   const io = accepting();
   await assert.rejects(
-    writeStoredFile("/projects/9", new Uint8Array(0), 0, { transport: io, target: entry() }),
+    writeStoredFile("/projects/9", new Uint8Array(0), 0, { transport: io, target: entry(), permit: TEST_PERMIT }),
     /empty file/,
   );
   assert.deepEqual(io.sent, []);
@@ -91,6 +92,7 @@ test("open declares the length, the chunk carries the checksum, the close commit
   const result = await writeStoredFile("/soundbanks/C/29", bytes, 0xcb499219, {
     transport: io,
     target: entry(),
+    permit: TEST_PERMIT,
   });
 
   assert.deepEqual(io.sent.map((s) => s.code), [
@@ -116,7 +118,7 @@ test("a long file is split, and every chunk states its offset", async () => {
   const io = accepting();
   const bytes = new Uint8Array(5000).fill(0xab);
 
-  const result = await writeStoredFile("/projects/9", bytes, 1, { transport: io, target: entry(), chunkSize: 2048 });
+  const result = await writeStoredFile("/projects/9", bytes, 1, { transport: io, target: entry(), chunkSize: 2048, permit: TEST_PERMIT });
 
   assert.equal(result.chunks, 3);
   const offsets = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 4));
@@ -144,6 +146,7 @@ test("by default every chunk declares the whole file's checksum", async () => {
   await writeStoredFile("/projects/9", bytes, undefined, {
     transport: io,
     target: entry(),
+    permit: TEST_PERMIT,
     chunkSize: 2048,
   });
 
@@ -168,6 +171,7 @@ test("a per-chunk function reaches the wire, because that hypothesis had to be t
   await writeStoredFile("/projects/9", bytes, (slice) => driveChecksum(slice), {
     transport: io,
     target: entry(),
+    permit: TEST_PERMIT,
     chunkSize: 2048,
   });
 
@@ -189,6 +193,7 @@ test("a declared checksum overrides every chunk, for the corruption experiment",
   await writeStoredFile("/projects/9", bytes, 0xdeadbeef, {
     transport: io,
     target: entry(),
+    permit: TEST_PERMIT,
     chunkSize: 2048,
   });
 
@@ -210,7 +215,7 @@ test("the device's own refusal is what the caller is told", async () => {
   };
 
   await assert.rejects(
-    writeStoredFile("/soundbanks/C/29", Uint8Array.of(1), 0, { transport: io, target: entry() }),
+    writeStoredFile("/soundbanks/C/29", Uint8Array.of(1), 0, { transport: io, target: entry(), permit: TEST_PERMIT }),
     /Slot 29 already taken/,
   );
 });
@@ -230,7 +235,7 @@ test("a failed chunk never reaches the commit", async () => {
   };
 
   await assert.rejects(
-    writeStoredFile("/projects/9", Uint8Array.of(1, 2, 3), 0, { transport: io, target: entry() }),
+    writeStoredFile("/projects/9", Uint8Array.of(1, 2, 3), 0, { transport: io, target: entry(), permit: TEST_PERMIT }),
     /device went silent/,
   );
   assert.ok(!io.sent.includes(StorageCode.WriteClose), "nothing was committed");

@@ -64,6 +64,8 @@ import {
   readProject,
   writeBack,
 } from "../devicesource.js";
+import { recordWriteMessage } from "../../../src/device/safewrite.js";
+import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import {
   type Level,
   actionFor,
@@ -1097,6 +1099,11 @@ async function loadFromDevice(): Promise<void> {
  *
  * A move is two messages, a rename one. The alternative, writing the image back, is 14.6 MB and
  * minutes of transfer to change one slot.
+ *
+ * **Every step of the sequence lives in `safeWriteRecords`, not here.** This button used to
+ * overwrite patterns on a live instrument the moment it was pressed: no copy of what was there, no
+ * question, and no check that the bytes landed. All three now happen on the way past, and this
+ * function's whole job is to draw the bar and report what came back.
  */
 async function writeToDevice(): Promise<void> {
   const handle = deviceHandle;
@@ -1107,31 +1114,31 @@ async function writeToDevice(): Promise<void> {
   button.disabled = true;
   try {
     status("Working out what changed…");
-    const result = await writeBack(handle, session.image, (done, total, label) => {
-      progress.at(done, total, "Writing");
-      status(`Writing ${done}/${total} — ${label}`);
+    const result = await writeBack(handle, session.image, {
+      onBackup: downloadBackup((message) => status(message)),
+      confirm: confirmRecordWrite,
+      onStatus: (message) => status(message),
+      onProgress: (done, total, stage) => {
+        // Named, because three reads and a write in sequence look identical on a bar that only
+        // counts — and the backup pass runs before anything has been sent, which is the one a
+        // person most wants to be able to tell apart.
+        progress.at(done, total, STAGE_LABEL[stage]);
+        status(`${STAGE_LABEL[stage]} ${done}/${total}`);
+      },
     });
 
-    if (result.written === 0 && result.untransmittable.length === 0) {
-      status("Nothing to write — the device already holds this.", "ok");
+    if (result.cancelled) {
+      status("Write cancelled — nothing was sent.", "warn");
       return;
     }
 
-    // Said plainly and every time. A write lands in the active project, not the +Drive, so it is
-    // lost the moment another project is loaded — which is also the undo.
-    const parts = [
-      `${result.written} pattern(s) written, ${result.bytes.toLocaleString()} bytes.`,
-      "**Press SAVE PROJECT on the device to keep this** — a write reaches the active project, not",
-      "the +Drive, so it survives a power cycle but is lost when another project is loaded.",
-    ];
-    if (result.untransmittable.length > 0) {
-      parts.push(`NOT sent: ${result.untransmittable.join("; ")}. Export to a file for those.`);
-    }
-    status(parts.join(" ").replace(/\*\*/g, ""), result.untransmittable.length > 0 ? "warn" : "ok");
+    const message = recordWriteMessage(result);
+    status(message.text, message.level);
 
-    // The device now holds what we sent, so that becomes the baseline the next write diffs
-    // against. Without this, writing twice would resend everything the first write already did.
-    handle.original = Uint8Array.from(session.image);
+    // Only when the device demonstrably holds what we sent. The baseline used to move on the
+    // strength of having transmitted, so a write that did not land would have been diffed away and
+    // never offered again — the failure would have erased its own evidence.
+    if (result.verified) handle.original = Uint8Array.from(session.image);
   } catch (error) {
     status(`The write stopped: ${String(error)}`, "error");
   } finally {
