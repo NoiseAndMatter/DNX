@@ -40,20 +40,27 @@
  * upload the protocol was originally copied from is the one case that cannot distinguish any of
  * them, which is why three separate wrong guesses all looked verified.
  *
- * ## A project write is 114 KB, not 12.9 MB
+ * ## The writer wants the **stored** form, and a read gives you either
  *
- * The same capture settled something nobody had thought to ask. **Reads and writes carry different
- * representations of a project:**
+ * `readStoredFile` omits the trailing byte on `0x54`, so it returns the **raw uncompressed image** —
+ * which is what the rest of DNX wants, because `imageFrom` slices it directly with no LZ4 step. Ask
+ * for the same file with `STORED_FORM` and the device returns the **compressed payload** instead.
+ * `/kits/A/1` is 10,795 bytes raw and **3,481 stored**, and the two headers differ in one byte:
+ * `+29`, `00` versus `01`.
  *
- * | | bytes |
+ * **The writer only accepts the stored form.** Handing it the raw one gets every chunk accepted and
+ * then a commit that fails with `Footer was not processed` — an unguessable error, arriving after
+ * the whole file has gone over the wire. `refuseRawForm` checks the shape before anything is sent.
+ *
+ * This was written down in `storage.ts` months ago, on `STORED_FORM`: *"a caller wanting a `.dnprj`
+ * to save to disk wants exactly what Transfer asks for."* Nobody connected it to writing, and an
+ * earlier attempt to write a project sent the 12.9 MB raw form and drew no reply at all — which
+ * looked like a transport ceiling and was really the wrong representation.
+ *
+ * | `/kits/A/1` | bytes |
  * |---|---|
- * | what a +Drive **read** returns | 12,889,647 — the uncompressed image plus `LENGTH_BIAS` |
- * | what Transfer **writes** | **114,746** — the compressed payload, exactly as a `.dn2prj` holds it |
- *
- * So a write is ~112× smaller than a read of the same project, and `buildPayload` already produces
- * the compressed form from an edited image. An attempt to write the 12.9 MB read-back form in one
- * message drew no reply at all, which was mistaken for a transport ceiling and was really the wrong
- * representation.
+ * | raw image (what `readStoredFile` returns today) | 10,795 |
+ * | **stored payload — what a write takes** | **3,481** |
  *
  * The read side is separately settled and was settled without writing anything. `readStoredFile`
  * collects one checksum per chunk and `driveChecksum` reproduces every one over that chunk's own
@@ -159,6 +166,45 @@ const DEFAULT_CHUNK_SIZE = WRITE_CHUNK_SIZE;
  *
  * That last one is the important one. The other two are checks; this one is the refusal to guess.
  */
+/**
+ * Where an Elektron container says which form it is in.
+ *
+ * `00` is the raw, uncompressed image; `01` is the stored, compressed payload. Measured on the same
+ * kit read both ways — `/kits/A/1` came back as 10,795 bytes with `00` here and **3,481 bytes with
+ * `01`**, the two headers differing in this byte alone.
+ */
+export const FORM_FLAG_OFFSET = 29;
+export const FORM_STORED = 0x01;
+
+/**
+ * Refuse to write the raw form, which the +Drive will not accept.
+ *
+ * **This cost most of a session.** `readStoredFile` omits the trailing byte on `0x54` and so gets
+ * the raw uncompressed image, which is what every other part of DNX wants — `imageFrom` slices it
+ * directly, no LZ4 step, nothing to get wrong. But the **writer wants the stored form**, and handing
+ * it a raw container gets every chunk accepted and then a commit that fails with
+ * `Footer was not processed`.
+ *
+ * That error is unguessable, and it arrives after the whole file has gone over the wire. So the
+ * shape is checked here instead, before anything is sent, and the message names the fix.
+ *
+ * `storage.ts` had recorded the trailing byte's meaning months ago — *"a caller wanting a `.dnprj`
+ * to save to disk wants exactly what Transfer asks for"* — and nothing connected that to writing.
+ */
+export function refuseRawForm(bytes: Uint8Array, path: string): void {
+  // Too short to carry a container header at all: not this function's business to judge.
+  if (bytes.length <= FORM_FLAG_OFFSET) return;
+  if (bytes[FORM_FLAG_OFFSET] === FORM_STORED) return;
+  throw new ListingError(
+    `refusing to write ${path}: these bytes are the raw uncompressed form (flag ` +
+      `0x${bytes[FORM_FLAG_OFFSET]!.toString(16).padStart(2, "0")} at +${FORM_FLAG_OFFSET}), and the ` +
+      `+Drive stores the compressed form. Read the source with STORED_FORM — the trailing 0x01 on ` +
+      `an 0x54 open — or build a payload with buildPayload. Sending the raw form gets every chunk ` +
+      `accepted and then "Footer was not processed" at the commit, which is a long way to travel ` +
+      `for a shape that can be checked here.`,
+  );
+}
+
 export function refuseUnlessEmpty(target: Entry, path: string): void {
   if (target.occupied === undefined) {
     throw new ListingError(
@@ -217,19 +263,9 @@ export async function writeStoredFile(
 
   refuseUnlessEmpty(target, path);
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
+  refuseRawForm(bytes, path);
 
-  /**
-   * The chunk size actually used, and therefore the one declared on every chunk.
-   *
-   * **Clamped to the file, because that is what Transfer does.** All three captured uploads agree:
-   * a 269-byte sound declared 269, an 18,064-byte file declared 18,064, and only the 114,746-byte
-   * project declared 32,768 — the size it genuinely chunked at. So the field is "the chunk size for
-   * this transfer", and a transfer that fits in one message chooses the file's own length.
-   *
-   * Not cosmetic. The one write this project has ever landed was a 10,795-byte kit in a single
-   * chunk declaring 10,795, and raising the default to 32,768 without clamping would have changed
-   * that message — quietly altering the only case known to work.
-   */
+  /** How much this transfer slices at. What each chunk *declares* is its own length — see below. */
   const chunkSize = Math.min(requested, bytes.length);
 
   let nextId = options.msgId ?? 1;
@@ -266,8 +302,15 @@ export async function writeStoredFile(
         ? checksum(slice, written, bytes)
         : (checksum ?? driveChecksum(slice));
     const reply = await transport.request(
-      // Index and chunk size — **not** offset and total length. See `writeChunkRequest`.
-      writeChunkRequest(chunkId, handle, chunkIndex, sum, chunkSize, slice),
+      // Index, and **this chunk's own length** — not offset and total length.
+      //
+      // Measured on hardware 2026-08-15. Declaring the transfer's nominal size on a short final
+      // chunk is refused with `Invalid package checksum; corrupt transfer`; declaring the slice's
+      // real length gets every chunk accepted. That reading also fits every capture: Transfer's
+      // full chunks declared 32,768 because that *was* their length, its single-chunk uploads
+      // declared 269 and 18,064 for the same reason, and the one write this project has landed
+      // declared 10,795. One rule explains all of them.
+      writeChunkRequest(chunkId, handle, chunkIndex, sum, slice.length, slice),
       chunkId,
       timeoutMs,
     );

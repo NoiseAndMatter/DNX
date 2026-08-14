@@ -12,8 +12,21 @@ import { test } from "node:test";
 import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
 import { type Entry, StorageCode, driveChecksum } from "../src/device/storage.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
-import { refuseUnlessEmpty, writeStoredFile } from "../src/device/storagewrite.js";
+import { FORM_FLAG_OFFSET, refuseRawForm, refuseUnlessEmpty, writeStoredFile } from "../src/device/storagewrite.js";
 import { TEST_PERMIT } from "./permit.js";
+
+/**
+ * Stamp the stored-form flag, so a fixture looks like something the +Drive would accept.
+ *
+ * `refuseRawForm` reads `+29`, and every fixture below is bytes-with-a-shape rather than a real
+ * container. Without this they would all be refused before reaching the code under test — which is
+ * the guard working, and would make these tests about the guard instead of about chunking.
+ */
+function stored(bytes: Uint8Array): Uint8Array {
+  const out = Uint8Array.from(bytes);
+  if (out.length > 29) out[29] = 0x01;
+  return out;
+}
 
 /** A listing entry, defaulting to the empty-and-writable case the write path requires. */
 function entry(over: Partial<Entry> = {}): Entry {
@@ -87,7 +100,7 @@ test("an empty file is refused", async () => {
 
 test("open declares the length, the chunk carries the checksum, the close commits", async () => {
   const io = accepting();
-  const bytes = Uint8Array.from({ length: 269 }, (_, i) => i & 0xff);
+  const bytes = stored(Uint8Array.from({ length: 269 }, (_, i) => i & 0xff));
 
   const result = await writeStoredFile("/soundbanks/C/29", bytes, 0xcb499219, {
     transport: io,
@@ -126,7 +139,7 @@ test("open declares the length, the chunk carries the checksum, the close commit
  */
 test("a long file is split, and every chunk carries its index", async () => {
   const io = accepting();
-  const bytes = new Uint8Array(5000).fill(0xab);
+  const bytes = stored(new Uint8Array(5000).fill(0xab));
 
   const result = await writeStoredFile("/projects/9", bytes, 1, { transport: io, target: entry(), chunkSize: 2048, permit: TEST_PERMIT });
 
@@ -134,10 +147,10 @@ test("a long file is split, and every chunk carries its index", async () => {
   const indices = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 4));
   assert.deepEqual(indices, [0, 1, 2], "chunk numbers, not byte offsets");
 
-  // And field 4 is the chunk size, the same on every chunk — including the short last one, whose
-  // data is 904 bytes while it still declares 2,048.
+  // And field 4 is each chunk's own length — so the short last one declares 904, not 2,048.
+  // Declaring the nominal size there is refused on hardware; see `writeChunkRequest`.
   const declared = io.sent.filter((s) => s.code === StorageCode.Write).map((s) => u32(s.body, 12));
-  assert.deepEqual(declared, [2048, 2048, 2048], "the chunk size, not the file's total length");
+  assert.deepEqual(declared, [2048, 2048, 904], "each chunk's own length, not the file's total");
   assert.equal(io.sent.filter((s) => s.code === StorageCode.Write)[2]!.body.length - 16, 904);
 });
 
@@ -157,7 +170,7 @@ test("by default every chunk declares its own slice's checksum", async () => {
   const io = accepting();
   // Deliberately not uniform bytes: a file of one repeated value gives identical slices, and two
   // chunks agreeing by accident would prove nothing either way.
-  const bytes = new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff);
+  const bytes = stored(new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff));
 
   await writeStoredFile("/projects/9", bytes, undefined, {
     transport: io,
@@ -194,7 +207,7 @@ test("by default every chunk declares its own slice's checksum", async () => {
 test("Transfer's own upload is reproduced field for field", async () => {
   const io = accepting();
   const total = 114_746;
-  const bytes = new Uint8Array(total).map((_, i) => (i * 31 + (i >> 9)) & 0xff);
+  const bytes = stored(new Uint8Array(total).map((_, i) => (i * 31 + (i >> 9)) & 0xff));
 
   const result = await writeStoredFile("/projects/12", bytes, undefined, {
     transport: io,
@@ -211,13 +224,13 @@ test("Transfer's own upload is reproduced field for field", async () => {
   assert.deepEqual(writes.map((s) => u32(s.body, 4)), [0, 1, 2, 3], "chunk index");
   assert.deepEqual(
     writes.map((s) => u32(s.body, 12)),
-    [32_768, 32_768, 32_768, 32_768],
-    "the chunk size on every chunk, including the short one",
+    [32_768, 32_768, 32_768, total - 3 * 32_768],
+    "each chunk's own length — the last one is short and says so",
   );
   assert.deepEqual(
     writes.map((s) => s.body.length - 16),
-    [32_768, 32_768, 32_768, total - 3 * 32_768],
-    "the data really is short on the last chunk while the declared size is not",
+    writes.map((s) => u32(s.body, 12)),
+    "the declared length always equals the data actually carried",
   );
 
   // The open declares the file's total; only the open does.
@@ -229,12 +242,40 @@ test("Transfer's own upload is reproduced field for field", async () => {
   assert.ok(!sums.includes(driveChecksum(bytes)));
 });
 
+
+/**
+ * The raw form is refused before a byte is sent.
+ *
+ * On hardware the raw form gets **every chunk accepted** and then fails at the commit with
+ * `Footer was not processed` — after the whole file has crossed the wire, with an error nobody could
+ * guess from. One byte at `+29` says which form a container is in, so the shape is checked here.
+ */
+test("the raw uncompressed form is refused, and the message says how to fix it", async () => {
+  const io = accepting();
+  const raw = new Uint8Array(500).fill(7);
+  raw[FORM_FLAG_OFFSET] = 0x00;
+
+  await assert.rejects(
+    writeStoredFile("/kits/A/15", raw, undefined, { transport: io, target: entry(), permit: TEST_PERMIT }),
+    /raw uncompressed form/,
+  );
+  assert.deepEqual(io.sent, [], "nothing was sent — the point is to fail before the transfer");
+
+  // And the stored form passes the same check.
+  const ok = Uint8Array.from(raw);
+  ok[FORM_FLAG_OFFSET] = 0x01;
+  assert.doesNotThrow(() => refuseRawForm(ok, "/kits/A/15"));
+
+  // Something too short to hold a container header is not this guard's business to judge.
+  assert.doesNotThrow(() => refuseRawForm(new Uint8Array(4), "/kits/A/15"));
+});
+
 test("a per-chunk function reaches the wire, because that hypothesis had to be tried", async () => {
   // The device refused this on hardware: `Invalid package checksum; corrupt transfer`. The test
   // asserts the *mechanism*, not that the device likes it — the next hypothesis about this field
   // should be a call rather than an edit to `storagewrite.ts`, and this is what keeps that true.
   const io = accepting();
-  const bytes = new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff);
+  const bytes = stored(new Uint8Array(5000).map((_, i) => (i * 7 + (i >> 5)) & 0xff));
 
   await writeStoredFile("/projects/9", bytes, (slice) => driveChecksum(slice), {
     transport: io,
@@ -256,7 +297,7 @@ test("a declared checksum overrides every chunk, for the corruption experiment",
   // field is enforced. It must reach *every* chunk, or a multi-chunk corruption test would send
   // one bad chunk and two good ones and prove nothing.
   const io = accepting();
-  const bytes = new Uint8Array(3000).fill(0x5a);
+  const bytes = stored(new Uint8Array(3000).fill(0x5a));
 
   await writeStoredFile("/projects/9", bytes, 0xdeadbeef, {
     transport: io,
