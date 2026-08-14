@@ -24,44 +24,49 @@
  * Test 2 is the one worth having, and it is only cheap because test 1 tells us what a success looks
  * like first.
  *
- * ## One chunk works at any size. More than one is refused. — 2026-08-13
+ * ## Multi-chunk writes work — the addressing was wrong, not the protocol — 2026-08-15
  *
- * Measured on a Digitone II, three runs over the same 10,795-byte kit into the same empty slot:
+ * For months a single chunk committed and every multi-chunk write was refused with `Invalid package
+ * checksum; corrupt transfer`, at 2,048 and at 8,192, with per-chunk and whole-file checksums
+ * alike. Chunk *count* looked like the only variable that mattered, and the conclusion drawn was
+ * that a continuation `0x58` was somehow broken.
  *
- * | chunks | chunk size | checksum declared | result |
- * |---|---|---|---|
- * | 6 | 2,048 | each chunk's own | `Invalid package checksum; corrupt transfer` |
- * | 6 | 2,048 | the whole file's | `Invalid package checksum; corrupt transfer` |
- * | 2 | 8,192 | the whole file's | `Invalid package checksum; corrupt transfer` |
- * | **1** | 16,384 | the whole file's | **COMMITTED, and it read back** |
+ * It was not. A USBPcap capture of Transfer uploading a real project settled it: **`0x58` is
+ * addressed by chunk index and declares the chunk size**, and this module was sending a byte offset
+ * and the whole file's length. `writeChunkRequest` has the capture and the field table.
  *
- * Same bytes, same target, same checksum value in the last three. **The only variable that changes
- * the outcome is the chunk count** — not the size of a chunk, and not which value the field
- * carries. Something else about a continuation `0x58` is wrong, and the device's wording points at
- * the checksum only because that is the check it fails first.
+ * **At one chunk every one of those mistakes is invisible** — index and offset are both `0`, chunk
+ * size equals file length, and this chunk's checksum equals the whole file's. The single 269-byte
+ * upload the protocol was originally copied from is the one case that cannot distinguish any of
+ * them, which is why three separate wrong guesses all looked verified.
  *
- * 8,192 was worth trying rather than guessed at: digi-roll's protocol notes record elk-herd's
- * +Drive `FileWrite` (`0x40`–`0x42`, a different opcode set from this one) as *"chunked at 8192
- * bytes"*. It is refused here exactly as 2,048 is, which is what rules chunk *size* out.
+ * ## The writer wants the **stored** form, and a read gives you either
  *
- * Two things this does settle:
+ * `readStoredFile` omits the trailing byte on `0x54`, so it returns the **raw uncompressed image** —
+ * which is what the rest of DNX wants, because `imageFrom` slices it directly with no LZ4 step. Ask
+ * for the same file with `STORED_FORM` and the device returns the **compressed payload** instead.
+ * `/kits/A/1` is 10,795 bytes raw and **3,481 stored**, and the two headers differ in one byte:
+ * `+29`, `00` versus `01`.
  *
- * - **The field is validated**, not decorative. That was the experiment this module was built for,
- *   and it got answered by a write that was trying to be correct rather than by the corruption run.
- * - **Anything that fits in one message is writable today**, and 10,795 bytes does. Presets and
- *   kits are unblocked; a ~12.9 MB project is not.
+ * **The writer only accepts the stored form.** Handing it the raw one gets every chunk accepted and
+ * then a commit that fails with `Footer was not processed` — an unguessable error, arriving after
+ * the whole file has gone over the wire. `refuseRawForm` checks the shape before anything is sent.
  *
- * The read side is separately settled, and was settled without writing anything. `readStoredFile`
+ * This was written down in `storage.ts` months ago, on `STORED_FORM`: *"a caller wanting a `.dnprj`
+ * to save to disk wants exactly what Transfer asks for."* Nobody connected it to writing, and an
+ * earlier attempt to write a project sent the 12.9 MB raw form and drew no reply at all — which
+ * looked like a transport ceiling and was really the wrong representation.
+ *
+ * | `/kits/A/1` | bytes |
+ * |---|---|
+ * | raw image (what `readStoredFile` returns today) | 10,795 |
+ * | **stored payload — what a write takes** | **3,481** |
+ *
+ * The read side is separately settled and was settled without writing anything. `readStoredFile`
  * collects one checksum per chunk and `driveChecksum` reproduces every one over that chunk's own
- * slice — all six verified once the slices were taken at the lengths the device actually sent.
- * **Reads and writes do not use this field the same way**, which is worth stating plainly because
- * assuming they did is what produced the first refusal above.
+ * slice — `/kits/A/1`, 10,795 bytes in six chunks, all verified against the device's own numbers.
  *
- * **Why nothing caught this earlier:** at one chunk, "this chunk's checksum" and "the whole file's"
- * are the same number, and the single 269-byte upload the protocol was copied from is the one case
- * that cannot distinguish them.
- *
- * `checksum` takes a function so the next hypothesis is a call rather than an edit here.
+ * `checksum` still takes a function so a further hypothesis is a call rather than an edit here.
  *
  * ## The device stamps the slot index — kit container +24
  *
@@ -92,6 +97,7 @@ import {
   ListingError,
   StorageCode,
   u32,
+  WRITE_CHUNK_SIZE,
   writeChunkRequest,
   writeCloseRequest,
   writeOpenRequest,
@@ -137,7 +143,15 @@ export interface WriteResult {
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000;
-const DEFAULT_CHUNK_SIZE = 2048;
+
+/**
+ * What a write chunks at, unless a caller says otherwise.
+ *
+ * `WRITE_CHUNK_SIZE`, which is Transfer's own choice of 32,768 — not the 2,048 a *read* asks for.
+ * This used to be 2,048 by copying the read path, which was never verified against a real upload
+ * and is now known to differ.
+ */
+const DEFAULT_CHUNK_SIZE = WRITE_CHUNK_SIZE;
 
 /**
  * Refuse any destination that is not demonstrably empty.
@@ -152,6 +166,45 @@ const DEFAULT_CHUNK_SIZE = 2048;
  *
  * That last one is the important one. The other two are checks; this one is the refusal to guess.
  */
+/**
+ * Where an Elektron container says which form it is in.
+ *
+ * `00` is the raw, uncompressed image; `01` is the stored, compressed payload. Measured on the same
+ * kit read both ways — `/kits/A/1` came back as 10,795 bytes with `00` here and **3,481 bytes with
+ * `01`**, the two headers differing in this byte alone.
+ */
+export const FORM_FLAG_OFFSET = 29;
+export const FORM_STORED = 0x01;
+
+/**
+ * Refuse to write the raw form, which the +Drive will not accept.
+ *
+ * **This cost most of a session.** `readStoredFile` omits the trailing byte on `0x54` and so gets
+ * the raw uncompressed image, which is what every other part of DNX wants — `imageFrom` slices it
+ * directly, no LZ4 step, nothing to get wrong. But the **writer wants the stored form**, and handing
+ * it a raw container gets every chunk accepted and then a commit that fails with
+ * `Footer was not processed`.
+ *
+ * That error is unguessable, and it arrives after the whole file has gone over the wire. So the
+ * shape is checked here instead, before anything is sent, and the message names the fix.
+ *
+ * `storage.ts` had recorded the trailing byte's meaning months ago — *"a caller wanting a `.dnprj`
+ * to save to disk wants exactly what Transfer asks for"* — and nothing connected that to writing.
+ */
+export function refuseRawForm(bytes: Uint8Array, path: string): void {
+  // Too short to carry a container header at all: not this function's business to judge.
+  if (bytes.length <= FORM_FLAG_OFFSET) return;
+  if (bytes[FORM_FLAG_OFFSET] === FORM_STORED) return;
+  throw new ListingError(
+    `refusing to write ${path}: these bytes are the raw uncompressed form (flag ` +
+      `0x${bytes[FORM_FLAG_OFFSET]!.toString(16).padStart(2, "0")} at +${FORM_FLAG_OFFSET}), and the ` +
+      `+Drive stores the compressed form. Read the source with STORED_FORM — the trailing 0x01 on ` +
+      `an 0x54 open — or build a payload with buildPayload. Sending the raw form gets every chunk ` +
+      `accepted and then "Footer was not processed" at the commit, which is a long way to travel ` +
+      `for a shape that can be checked here.`,
+  );
+}
+
 export function refuseUnlessEmpty(target: Entry, path: string): void {
   if (target.occupied === undefined) {
     throw new ListingError(
@@ -204,12 +257,16 @@ export async function writeStoredFile(
     transport,
     target,
     timeoutMs = DEFAULT_TIMEOUT_MS,
-    chunkSize = DEFAULT_CHUNK_SIZE,
+    chunkSize: requested = DEFAULT_CHUNK_SIZE,
     onProgress,
   } = options;
 
   refuseUnlessEmpty(target, path);
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
+  refuseRawForm(bytes, path);
+
+  /** How much this transfer slices at. What each chunk *declares* is its own length — see below. */
+  const chunkSize = Math.min(requested, bytes.length);
 
   let nextId = options.msgId ?? 1;
   const id = (): number => nextId++;
@@ -226,27 +283,34 @@ export async function writeStoredFile(
   while (written < bytes.length) {
     const slice = bytes.subarray(written, Math.min(written + chunkSize, bytes.length));
     const chunkId = id();
-    // **The checksum covers this chunk, not the whole file** — measured 2026-08-13, and it is the
-    // reason a project could not be written.
+    // **The index, not the byte offset.** They are both 0 on the first chunk, which is the whole
+    // reason this was wrong for months — see `writeChunkRequest`.
+    const chunkIndex = chunks;
+    // **The checksum covers this chunk, not the whole file** — measured 2026-08-13 from the read
+    // side, and confirmed 2026-08-15 by Transfer's own upload, whose three chunks carry three
+    // distinct values.
     //
-    // This used to send the whole file's value on every chunk, copied from the one upload ever
-    // captured: Transfer sending a 269-byte sound in a *single* chunk. **At one chunk the two
-    // models are identical**, so the only case ever tested was the only case that could not tell
-    // them apart, and the guess sat here looking verified.
+    // This used to default to the whole file's value, copied from the one upload captured at the
+    // time: Transfer sending a 269-byte sound in a *single* chunk. **At one chunk the two models
+    // are identical**, so the only case ever tested was the only case that could not tell them
+    // apart, and the guess sat here looking verified.
     //
-    // Settled without writing anything. A read reports a checksum per chunk, and `driveChecksum`
-    // reproduces all of them over their own slices — `/kits/A/1`, 10,795 bytes in six chunks, four
-    // of four checked byte-exact against the device's own numbers. A cumulative reading matches
-    // only the first chunk, which is again the case where every model agrees.
-    //
-    // `declared` overrides it for the corruption experiment, where sending a knowingly wrong value
-    // is the whole point.
+    // An explicit `checksum` still overrides, for the corruption experiment where sending a
+    // knowingly wrong value is the point.
     const sum =
       typeof checksum === "function"
         ? checksum(slice, written, bytes)
-        : (checksum ?? driveChecksum(bytes));
+        : (checksum ?? driveChecksum(slice));
     const reply = await transport.request(
-      writeChunkRequest(chunkId, handle, written, sum, bytes.length, slice),
+      // Index, and **this chunk's own length** — not offset and total length.
+      //
+      // Measured on hardware 2026-08-15. Declaring the transfer's nominal size on a short final
+      // chunk is refused with `Invalid package checksum; corrupt transfer`; declaring the slice's
+      // real length gets every chunk accepted. That reading also fits every capture: Transfer's
+      // full chunks declared 32,768 because that *was* their length, its single-chunk uploads
+      // declared 269 and 18,064 for the same reason, and the one write this project has landed
+      // declared 10,795. One rule explains all of them.
+      writeChunkRequest(chunkId, handle, chunkIndex, sum, slice.length, slice),
       chunkId,
       timeoutMs,
     );
