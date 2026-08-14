@@ -64,6 +64,18 @@
     <div class="bar">
       <span class="lbl">Project</span>
       <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
+      <!--
+        The other half, and the one that was missing: you could browse 2,048 presets off the +Drive
+        but had to reach for a file picker for the project you were putting them in.
+
+        **Read-only costs this page nothing**, which is why it is offered plainly. The manager has to
+        mark a +Drive-opened project unwritable, because a write there goes to the *active* project
+        and edits meant for slot 47 would land in slot 3. This tool never writes to the instrument at
+        all — it exports a file — so the distinction that complicates the manager does not exist here.
+      -->
+      <button class="btn" id="driveBrowse" disabled title="List the projects stored on the instrument">From +Drive…</button>
+      <select id="driveProjects" hidden title="Which stored project to open"></select>
+      <button class="btn" id="driveOpen" hidden>Open</button>
       <span class="sep"></span>
       <span class="lbl">Instrument</span>
       <button class="btn" id="connect">Connect a Digitone II…</button>
