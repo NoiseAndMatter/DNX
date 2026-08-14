@@ -79,7 +79,10 @@ import {
   DeviceSourceError,
   apiTransport,
   connectDevice,
+  listDeviceProjects,
+  openDeviceProject,
 } from "../devicesource.js";
+import { type DriveProject } from "../../../src/device/drive.js";
 
 const status = statusBar();
 renderToolNav($("toolnav"), "library");
@@ -143,18 +146,32 @@ const banks: BankCache = new Map();
  */
 const applied = new Map<number, string>();
 
+/** The +Drive listing, so Open can resolve the chosen slot without listing again. */
+let driveProjects: DriveProject[] = [];
+
 // --- the pool ------------------------------------------------------------------------------------
 
 async function loadProject(file: File): Promise<void> {
   status(`Reading ${file.name}…`);
-  const loaded = await openProject(file);
+  adopt(await openProject(file), file.name);
+}
+
+/**
+ * Take a project as the one being edited, wherever it came from.
+ *
+ * **Extracted when the +Drive became a second source.** A file and a stored slot arrive by very
+ * different routes — a picker and a 12.9 MB read — and converge here, so the family check, the
+ * audit, the cleared history and the rendering happen once. Two copies of this would be two answers
+ * to "is this project usable", and the one that drifted would be the one nobody was looking at.
+ */
+function adopt(loaded: LoadedProject, label: string): void {
   const device = deviceFor(loaded.image);
 
   // Refused rather than shown wrongly: the audit walks Digitone II patterns, and DN2 offsets over
   // DN1 bytes would produce names and counts that are all invented.
   if (device.kind !== "dn2") {
     throw new DeviceSourceError(
-      `${file.name} is a ${device.name} project. The pool audit reads Digitone II patterns; the ` +
+      `${label} is a ${device.name} project. The pool audit reads Digitone II patterns; the ` +
         `Digitone 1's preset locks are read elsewhere and are not joined up yet.`,
     );
   }
@@ -165,9 +182,9 @@ async function loadProject(file: File): Promise<void> {
   // kits loaded into patterns nobody has touched.
   applied.clear();
   $("poolInfo").hidden = false;
-  $("poolInfo").textContent = file.name;
+  $("poolInfo").textContent = label;
   renderDestination();
-  status(`${file.name} open. ${describePoolAudit(state.audit)[0]}`, "ok");
+  status(`${label} open. ${describePoolAudit(state.audit)[0]}`, "ok");
 }
 
 function poolSlotView(index: number): Omit<SlotView, "index"> {
@@ -332,6 +349,95 @@ function describeSlot(index: number): void {
   );
 }
 
+/**
+ * List the projects stored on the instrument.
+ *
+ * One message, and it is the cheap half. Reading one of them is 12.9 MB.
+ */
+async function browseDriveProjects(): Promise<void> {
+  const device = state.device;
+  if (!device) throw new DeviceSourceError("connect a Digitone II first");
+
+  status(`Listing the +Drive on ${device.name}…`);
+  driveProjects = await listDeviceProjects(device);
+
+  const select = $<HTMLSelectElement>("driveProjects");
+  select.replaceChildren(
+    ...driveProjects.map((p) => {
+      const option = document.createElement("option");
+      option.value = String(p.index);
+      // Slot number first: it is what addresses the project and what the instrument's own screen
+      // shows. A name alone is ambiguous — a +Drive can hold two projects called NEW PROJECT.
+      option.textContent = `${p.index}. ${p.name}`;
+      return option;
+    }),
+  );
+  select.hidden = false;
+  $("driveOpen").hidden = false;
+  status(`${driveProjects.length} project(s) on the +Drive. Choose one and press Open.`, "ok");
+}
+
+/**
+ * Read one stored project and edit it here.
+ *
+ * **The long one.** A Digitone II project is 12,889,647 bytes — some 6,294 chunks — so this reports
+ * progress and cannot be allowed to overlap anything else talking to the instrument.
+ *
+ * Abandoning the bank's tag read to do it is the right trade rather than a regrettable one: opening
+ * a project is a deliberate foreground action, the bank is cached, and revisiting it costs a listing
+ * rather than another 256 reads.
+ */
+async function openDriveProject(): Promise<void> {
+  const device = state.device;
+  if (!device) throw new DeviceSourceError("connect a Digitone II first");
+
+  const index = Number($<HTMLSelectElement>("driveProjects").value);
+  const project = driveProjects.find((p) => p.index === index);
+  if (!project) {
+    status("That slot is no longer in the listing. Browse again.", "warn");
+    return;
+  }
+
+  // Same discipline as `browse`, and for the same reason: two conversations must not share one
+  // instrument. See the note on `State.reading` — a listing issued over a running read was handed
+  // that read's reply, and a 12.9 MB read is the worst possible thing to have racing.
+  state.tagRun++;
+  const outstanding = state.reading;
+  if (outstanding) {
+    status("Finishing the read in progress…");
+    await outstanding.catch(() => undefined);
+  }
+
+  status(`Reading ${project.name} from slot ${project.index}…`);
+  const opened = await openDeviceProject(device, project, (chunks, bytes) => {
+    if (chunks % 64 === 0) {
+      status(`Reading ${project.name}: ${bytes.toLocaleString()} bytes…`);
+    }
+  });
+
+  // **No manifest, no project.** The +Drive sends no `manifest.json`; it is rebuilt from the payload
+  // and the device's firmware string, and without that string there is no honest one. Refusing is
+  // better than opening something that cannot be exported — export is this tool's only way out.
+  if (!opened.manifest) {
+    throw new DeviceSourceError(
+      `${project.name} was read, but the instrument did not report its firmware, so the project ` +
+        `file cannot be rebuilt honestly. Nothing was opened — this tool's only output is an ` +
+        `exported file, and one without a manifest would not load.`,
+    );
+  }
+
+  adopt(
+    {
+      fileName: `${project.name}.dn2prj`,
+      manifest: opened.manifest,
+      payload: opened.payload,
+      image: opened.image,
+    },
+    `${project.name} · slot ${project.index}`,
+  );
+  $<HTMLButtonElement>("export").disabled = false;
+}
+
 // --- the library ---------------------------------------------------------------------------------
 
 async function connect(): Promise<void> {
@@ -341,6 +447,7 @@ async function connect(): Promise<void> {
   $("deviceInfo").textContent = state.device.name;
   $<HTMLSelectElement>("kind").disabled = false;
   $<HTMLButtonElement>("browse").disabled = false;
+  $<HTMLButtonElement>("driveBrowse").disabled = false;
   status(`${state.device.name} connected. Choose presets or kits, then Browse.`, "ok");
 }
 
@@ -800,6 +907,14 @@ function report(error: unknown): void {
 $<HTMLInputElement>("projectFile").addEventListener("change", (event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (file) loadProject(file).catch(report);
+});
+
+$("driveBrowse").addEventListener("click", () => {
+  browseDriveProjects().catch(report);
+});
+
+$("driveOpen").addEventListener("click", () => {
+  openDriveProject().catch(report);
 });
 
 $("connect").addEventListener("click", () => {
