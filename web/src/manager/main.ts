@@ -73,6 +73,7 @@ import {
   describeSong,
   focusKey,
   renderSongControls,
+  revealRow,
   renderSongRows,
   renderSongTabs,
   restoreFocus,
@@ -413,7 +414,12 @@ function currentSongs(): Song[] | undefined {
  * Every edit on the panel goes through here. The alternative — mutating `state.session.image` —
  * would leave the history with nothing to diff and quietly break undo for songs only.
  */
-function editSong(label: string, change: (image: Uint8Array, song: number) => Uint8Array): void {
+function editSong(
+  label: string,
+  change: (image: Uint8Array, song: number) => Uint8Array,
+  /** A row to bring into view afterwards — the one the edit created or moved. */
+  reveal?: number,
+): void {
   const session = state.session;
   if (!session || songSlot === undefined) return;
   // Where the cursor is, before the table that holds it is rebuilt. Without this, bumping a number
@@ -429,6 +435,7 @@ function editSong(label: string, change: (image: Uint8Array, song: number) => Ui
     status(label);
     render();
     restoreFocus($("songRows"), focus);
+    if (reveal !== undefined) revealRow($("songRows"), reveal);
   } catch (error) {
     // Refusals here are real: an out-of-range tempo, a row that does not exist. Said plainly rather
     // than swallowed, because the panel would otherwise look like it had ignored the edit.
@@ -476,9 +483,12 @@ function renderSongs(): void {
     onField: (row, field, value) => {
       editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));
     },
-    onInsert: (row) => editSong(`insert song row ${row + 2}`, (image, s) => insertRow(image, s, row)),
+    // Reveal the row that was made, not the one that was clicked: an insert goes *below* it.
+    onInsert: (row) =>
+      editSong(`insert song row ${row + 2}`, (image, s) => insertRow(image, s, row), row + 1),
     onDelete: (row) => editSong(`delete song row ${row + 1}`, (image, s) => deleteRow(image, s, row)),
-    onMove: (from, to) => editSong(`move song row ${from + 1} to ${to + 1}`, (image, s) => moveRow(image, s, from, to)),
+    onMove: (from, to) =>
+      editSong(`move song row ${from + 1} to ${to + 1}`, (image, s) => moveRow(image, s, from, to), to),
     onToggleMute: (row, track) =>
       editSong(`toggle T${track} on song row ${row + 1}`, (image, s) => toggleRowMute(image, s, row, track)),
   });
@@ -761,7 +771,11 @@ const drag = new GridDrag({
       if (from.grid === SONG_GRID) {
         const at = from.indices[0]!;
         if (at !== index) {
-          editSong(`move song row ${at + 1} to ${index + 1}`, (image, song) => moveRow(image, song, at, index));
+          editSong(
+            `move song row ${at + 1} to ${index + 1}`,
+            (image, song) => moveRow(image, song, at, index),
+            index,
+          );
         }
         return;
       }
