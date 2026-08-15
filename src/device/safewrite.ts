@@ -91,7 +91,7 @@ import {
 import { WriteCode, verifyWrite } from "./dumpwrite.js";
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { type ChunkChecksum, refuseUnlessEmpty, writeStoredFile } from "./storagewrite.js";
-import { WRITE_CHUNK_SIZE } from "./storage.js";
+import { STORED_FORM, WRITE_CHUNK_SIZE } from "./storage.js";
 import { type Entry } from "./storage.js";
 import { type WritePermit } from "./writepermit.js";
 
@@ -574,18 +574,23 @@ export async function safeWriteFile(
 /**
  * Read what a slot holds right now, as a file that can be written straight back.
  *
- * Read in its **stored** form, which is the form a write takes — so restoring is `safeWriteFile` in
- * the other direction and needs no conversion step. The raw form would be 12.9 MB of the same
- * information and could not be restored at all without recompressing it, which is the one part of
- * the format we match by *specification* rather than byte-for-byte.
+ * **`STORED_FORM`, and that is the whole point of the function.** The stored form is the form a
+ * `0x58` accepts, so restoring is `safeWriteFile` in the other direction with no conversion step.
  *
- * This is a second read of a file we are about to destroy, so it deliberately does not reuse
- * anything cached: whatever is in the slot at this moment is what gets copied.
+ * The first hardware run of this, 2026-08-15, did **not** pass it — `readStoredFile` defaults to
+ * raw — and produced a 12,889,647-byte image with no container header, saved under a `.dn2prj`
+ * name, that `refuseRawForm` would have rejected on the way back in. A backup that cannot be
+ * restored is not a backup, and it was the *only* thing standing where the empty-slot rule used
+ * to. It also cost 6,294 round trips instead of 3.
+ *
+ * This is a second read of a file we are about to destroy, so it deliberately reuses nothing:
+ * whatever is in the slot at this moment is what gets copied.
  */
 async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
   const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
   const existing = await readStoredFile(options.path, {
     transport: options.transport,
+    form: STORED_FORM,
     ...(options.verifyMsgId === undefined ? {} : { msgId: options.verifyMsgId }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
   });

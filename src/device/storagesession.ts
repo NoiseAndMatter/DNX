@@ -41,7 +41,9 @@
 import { type ApiFrame, RESPONSE_BIT } from "./api.js";
 import {
   type Chunk,
+  DEFAULT_CHUNK_SIZE,
   ListingError,
+  STORED_FORM,
   StorageCode,
   closeRequest,
   openRequest,
@@ -65,6 +67,22 @@ export interface ApiTransport {
 
 export interface ReadStoredFileOptions {
   transport: ApiTransport;
+  /**
+   * Ask for the **compressed** file rather than the expanded image.
+   *
+   * Two genuinely different answers to the same path, and the difference is not a detail: a DN2
+   * project is 12,889,647 bytes raw and about 79,000 stored — 6,294 chunks against 3.
+   *
+   * Raw is the default because it is what most of DNX wants: an image is the thing every edit,
+   * diff and decode operates on. Ask for stored when the bytes are going to be **written back**,
+   * because that is the only form a `0x58` accepts — `refuseRawForm` rejects the other one at the
+   * door, so a backup taken raw is a backup that cannot be restored.
+   *
+   * That is not hypothetical. The first overwrite run on hardware, 2026-08-15, backed up slot 13
+   * without this: 12.9 MB, no container header, saved under a `.dn2prj` name it had no right to,
+   * and unwritable by the very function that produced it.
+   */
+  form?: typeof STORED_FORM;
   /** First message id; each request takes the next. Never 0 — see `api.ts`. */
   msgId?: number;
   timeoutMs?: number;
@@ -254,7 +272,7 @@ export async function readStoredFile(
   // Built **before** the try, so a request this module refuses to construct cannot trigger the
   // release of a handle that was never allocated. A close on nothing is harmless, but a cleanup
   // that runs when no resource was taken is a lie the logs would repeat.
-  const open = openRequest(openId, path, FREEZES);
+  const open = openRequest(openId, path, FREEZES, DEFAULT_CHUNK_SIZE, options.form);
 
   let opened;
   try {
