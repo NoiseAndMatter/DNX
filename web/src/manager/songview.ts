@@ -30,8 +30,29 @@
  * module renders what it is handed, which is what lets it be tested without a browser.
  */
 
-import { type Song, type SongRow, LABELS, mutedTracks } from "../../../src/project/dn2song.js";
+import { type Song, type SongRow, LABELS, LIMITS, mutedTracks } from "../../../src/project/dn2song.js";
 import { patternName } from "../../../src/sheet/naming.js";
+
+/**
+ * The drag controller, reduced to what a song row needs.
+ *
+ * Structural rather than an import of `GridDrag`, the same way `DeviceIo` is a two-method view of a
+ * MIDI port. `grid.ts` is a browser module — it iterates a `NodeList` — and importing it here would
+ * drag the DOM's iterable lib into the Node typecheck that runs over this file's tests, for the sake
+ * of one method.
+ */
+export interface RowDragBinder {
+  bind(element: HTMLElement, grid: string, index: number): void;
+}
+
+/**
+ * The drag "grid" a song row belongs to.
+ *
+ * `GridDrag` routes by name, so a song row is a third grid alongside patterns and tracks. Named here
+ * rather than spelled as a string at each end: the manager compares against it in two places, and a
+ * typo in either would make rows silently undroppable rather than raise anything.
+ */
+export const SONG_GRID = "song";
 
 export interface SongTab {
   index: number;
@@ -93,6 +114,19 @@ export interface SongViewHooks {
   onSelect: (index: number) => void;
 }
 
+/** The fields a row exposes for editing, all of them plain numbers. */
+export type EditableField = "repeats" | "length" | "tempo" | "swing" | "label";
+
+export interface SongEditHooks {
+  /** So a row can be a drop target for a pattern, and a drag source for reordering. */
+  drag: RowDragBinder;
+  onField: (row: number, field: EditableField, value: number) => void;
+  onInsert: (row: number) => void;
+  onDelete: (row: number) => void;
+  onMove: (from: number, to: number) => void;
+  onToggleMute: (row: number, track: number) => void;
+}
+
 const cell = (text: string, className?: string): HTMLTableCellElement => {
   const td = document.createElement("td");
   // Every string here reaches the DOM through `textContent`. A song name and a pattern name both
@@ -129,7 +163,115 @@ export function renderSongTabs(host: HTMLElement, tabs: readonly SongTab[], hook
   }
 }
 
-const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing", "Mutes"] as const;
+const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing", "Mutes", ""] as const;
+
+/**
+ * A number a person can type into.
+ *
+ * Committed on `change` rather than `input`, so an edit is one undo step when the field is left
+ * rather than one per keystroke. Typing `135` through an `input` listener would be three steps, two
+ * of them values nobody asked for.
+ */
+function numberCell(
+  value: number,
+  range: { min: number; max: number },
+  step: number,
+  onCommit: (value: number) => void,
+): HTMLTableCellElement {
+  const td = document.createElement("td");
+  td.className = "num";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = "rowedit";
+  input.value = String(value);
+  input.min = String(range.min);
+  input.max = String(range.max);
+  input.step = String(step);
+  input.addEventListener("change", () => {
+    const next = Number(input.value);
+    // Reverted rather than sent: the operations refuse an out-of-range value, and letting that
+    // round-trip would leave the box showing a number the project does not hold.
+    if (!Number.isFinite(next) || next < range.min || next > range.max) {
+      input.value = String(value);
+      return;
+    }
+    if (next !== value) onCommit(next);
+  });
+  td.append(input);
+  return td;
+}
+
+/** The label picker, offering exactly the vocabulary the device offers. */
+function labelCell(row: SongRow, onCommit: (value: number) => void): HTMLTableCellElement {
+  const td = document.createElement("td");
+  const select = document.createElement("select");
+  select.className = "rowedit";
+  for (const [i, name] of LABELS.entries()) {
+    const option = document.createElement("option");
+    option.value = String(i);
+    option.textContent = name;
+    option.selected = i === row.label;
+    select.append(option);
+  }
+  // A label this build does not know still has to be shown as itself, rather than silently
+  // becoming (EMPTY) the moment the row is drawn.
+  if (LABELS[row.label] === undefined) {
+    const option = document.createElement("option");
+    option.value = String(row.label);
+    option.textContent = describeLabel(row);
+    option.selected = true;
+    select.append(option);
+  }
+  select.addEventListener("change", () => onCommit(Number(select.value)));
+  td.append(select);
+  return td;
+}
+
+/**
+ * The sixteen mute toggles.
+ *
+ * Chips rather than a text field, because a mute mask is sixteen independent facts and typing
+ * `2, 3, 5` would need parsing, validating and explaining. Clicking a numbered chip needs none of
+ * that, and it matches the instrument, where muting a track is pressing its [TRIG] key.
+ */
+function muteCell(row: SongRow, rowIndex: number, hooks: SongEditHooks): HTMLTableCellElement {
+  const td = document.createElement("td");
+  td.className = "mutes";
+  for (let track = 1; track <= 16; track++) {
+    const on = (row.mute & (1 << (track - 1))) !== 0;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = on ? "mutechip on" : "mutechip";
+    chip.textContent = String(track);
+    chip.title = `${on ? "Unmute" : "Mute"} track ${track} on row ${rowIndex + 1}`;
+    chip.addEventListener("click", () => hooks.onToggleMute(rowIndex, track));
+    td.append(chip);
+  }
+  return td;
+}
+
+/** Insert, delete and reorder, per row. */
+function rowActions(rowIndex: number, song: Song, hooks: SongEditHooks): HTMLTableCellElement {
+  const td = document.createElement("td");
+  td.className = "rowacts";
+  const button = (text: string, title: string, enabled: boolean, run: () => void): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn ghost tiny";
+    b.textContent = text;
+    b.title = title;
+    b.disabled = !enabled;
+    b.addEventListener("click", run);
+    return b;
+  };
+  td.append(
+    button("\u2191", "Move this row up", rowIndex > 0, () => hooks.onMove(rowIndex, rowIndex - 1)),
+    button("\u2193", "Move this row down", rowIndex < song.rowCount - 1, () => hooks.onMove(rowIndex, rowIndex + 1)),
+    button("+", "Insert a copy of this row below it", song.rowCount < 99, () => hooks.onInsert(rowIndex)),
+    button("\u2715", "Delete this row", true, () => hooks.onDelete(rowIndex)),
+  );
+  return td;
+}
 
 /**
  * Draw one song's rows.
@@ -137,14 +279,25 @@ const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing",
  * An empty song gets a sentence rather than an empty table: a table with headers and no rows reads
  * as a failure to load, and "this song has no rows" is a different fact.
  */
-export function renderSongRows(host: HTMLElement, song: Song): void {
+export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHooks): void {
   host.textContent = "";
 
   if (song.rowCount === 0) {
     const p = document.createElement("p");
     p.className = "hint";
-    p.textContent = `Song ${song.index + 1} has no rows. Build one on the instrument, in SONG mode.`;
+    p.textContent = hooks
+      ? `Song ${song.index + 1} has no rows yet.`
+      : `Song ${song.index + 1} has no rows. Build one on the instrument, in SONG mode.`;
     host.append(p);
+    if (hooks) {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "btn";
+      add.textContent = "Add the first row";
+      // -1 inserts at the top, and an empty song has nothing to copy, so it gets a blank row.
+      add.addEventListener("click", () => hooks.onInsert(-1));
+      host.append(add);
+    }
     return;
   }
 
@@ -165,18 +318,37 @@ export function renderSongRows(host: HTMLElement, song: Song): void {
   for (const [i, row] of song.rows.entries()) {
     const tr = document.createElement("tr");
     tr.dataset["row"] = String(i);
-    tr.append(
-      cell(String(i + 1), "num"),
-      // The pattern in the manager's own vocabulary — `A1`, `H16` — not a raw slot number, so it
-      // can be found in the grid above without arithmetic.
-      cell(patternName(row.pattern)),
-      cell(describeLabel(row)),
-      cell(`${row.repeats}x`, "num"),
-      cell(String(row.length), "num"),
-      cell(`${row.tempo}`, "num"),
-      cell(`${row.swing}%`, "num"),
-      cell(describeMutes(row), row.mute === 0 ? "dim" : ""),
-    );
+    // The pattern always reads in the manager's own vocabulary — `A1`, `H16` — never a raw slot
+    // number, so a row can be found in the grid above without arithmetic.
+    if (hooks) {
+      // The row is both a drop target for a pattern and a drag source for reordering, exactly as a
+      // grid cell is. `GridDrag.bind` takes any element, which is why the table could gain the
+      // gesture without inventing a second one.
+      hooks.drag.bind(tr, SONG_GRID, i);
+      tr.append(
+        cell(String(i + 1), "num"),
+        cell(patternName(row.pattern), "ptn"),
+        labelCell(row, (value) => hooks.onField(i, "label", value)),
+        numberCell(row.repeats, LIMITS.repeats, 1, (v) => hooks.onField(i, "repeats", v)),
+        numberCell(row.length, LIMITS.length, 1, (v) => hooks.onField(i, "length", v)),
+        numberCell(row.tempo, LIMITS.tempo, 0.1, (v) => hooks.onField(i, "tempo", v)),
+        numberCell(row.swing, LIMITS.swing, 1, (v) => hooks.onField(i, "swing", v)),
+        muteCell(row, i, hooks),
+        rowActions(i, song, hooks),
+      );
+    } else {
+      tr.append(
+        cell(String(i + 1), "num"),
+        cell(patternName(row.pattern)),
+        cell(describeLabel(row)),
+        cell(`${row.repeats}x`, "num"),
+        cell(String(row.length), "num"),
+        cell(`${row.tempo}`, "num"),
+        cell(`${row.swing}%`, "num"),
+        cell(describeMutes(row), row.mute === 0 ? "dim" : ""),
+        cell(""),
+      );
+    }
     tbody.append(tr);
   }
   table.append(tbody);
