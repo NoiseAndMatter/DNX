@@ -789,10 +789,29 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * one you want — so it gets the same answer rather than a second table style.
  */
 /*
- * Full width and first: a song row is eight columns, and stacking it in the 20rem side column would
- * make the panel unreadable to save space the main column was not short of.
+ * First, and **the same width as the patterns below it**.
+ *
+ * It spanned both columns for a while. Aligning it to the main column instead lines the song table
+ * up with the pattern grid it refers to — a row saying `A5` sits directly above the cell called A5 —
+ * and it lets the side column own its full height rather than starting halfway down the window.
  */
-.panel.songs { grid-column: 1 / -1; }
+.panel.songs { grid-column: 1; }
+/*
+ * The side column spans both rows and **stays put while the main column scrolls**.
+ *
+ * `align-self: start` stops it stretching to the height of two rows of content, and `sticky` keeps
+ * Operations, Selection and History reachable when the song table and the pattern grid together run
+ * past the bottom of the window. Without it, the controls for a selection scroll away from the
+ * selection they act on.
+ */
+body.app > main.split > .side {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+}
 /*
  * The heading *is* the button. Transparent and inheriting the heading's type, so it reads as a
  * heading and behaves as a disclosure — the first attempt was a 10px chevron in muted grey at the
@@ -822,11 +841,18 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .songtable td.num, .songtable th:nth-child(n+4):nth-child(-n+7) { text-align: right; }
 .songtable td.num { font-variant-numeric: tabular-nums; }
 /*
- * The slack goes to the last column rather than being shared out. Eight narrow columns spread
- * evenly across a full-width panel leaves each value stranded in the middle of its own gap.
+ * The slack goes to **mutes**, which is sixteen chips and the only column that can use it.
+ *
+ * It went to `:last-child` while the table had eight columns and mutes was last. Adding the actions
+ * column moved the target: 34% of the table went to two small buttons, and the label picker was
+ * squeezed until `BRIDGE` read as `BRIDGI`. A width tied to a position breaks the moment a column
+ * is added, so this names the column instead.
  */
-.songtable th:last-child, .songtable td:last-child { width: 34%; }
+.songtable th:nth-child(8), .songtable td:nth-child(8) { width: 28%; }
 .songtable th:first-child, .songtable td:first-child { width: 3.5rem; }
+.songtable th:last-child, .songtable td:last-child { width: 4rem; }
+/* Wide enough for the longest label the device offers, so none is shown cut off. */
+.songtable select.rowedit { min-width: 6.5rem; }
 .songtable td.dim { color: var(--dim); }
 .songtable tbody tr:hover { background: #1d2726; }
 
