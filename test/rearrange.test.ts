@@ -382,17 +382,23 @@ test("DN1: a project with no song reports its song table as empty", { skip: skip
   assert.ok(state === "empty" || state === "occupied", `unexpected DN1 song state ${state}`);
 });
 
-test("DN2: the song table is unknown, and the plan says so rather than claiming safety", {
-  skip: skipDn2,
-}, () => {
+/**
+ * This asserted `unknown` until 2026-08-15, when the DN2 song table was located on hardware.
+ *
+ * The old expectation was correct for as long as it stood: the table sat somewhere in the
+ * unidentified tail bytes, so the plan warned that it *could not check* rather than claiming a
+ * safety it did not have. Now it can check, and a project with no songs earns no warning at all —
+ * which is the point of having done the work.
+ */
+test("DN2: a project with no song is checked, not merely warned about", { skip: skipDn2 }, () => {
   const img = image(DN2_PROJECTS, DN2_FILE);
-  assert.equal(deviceFor(img).songState(img), "unknown");
+  assert.equal(deviceFor(img).songState(img), "empty");
 
   const plan = planRearrange(img, swap(0, 5));
-  assert.equal(plan.ok, true, "an unknown song table warns, it does not block");
+  assert.equal(plan.ok, true);
   assert.ok(
-    plan.findings.some((f) => f.severity === "warning" && /song table/.test(f.message)),
-    "expected a warning about the unlocatable DN2 song table",
+    !plan.findings.some((f) => /song table has\s+never been located|cannot check this project for songs/.test(f.message)),
+    "the DN2 song table is located now; nothing should still say it is not",
   );
 });
 
