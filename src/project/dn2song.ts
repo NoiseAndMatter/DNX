@@ -21,9 +21,12 @@
  *
  * ## What is deliberately not decoded
  *
- * A row's `+3`, `+4` and `+11..28` were zero in every row of every capture. They are **not** claimed
- * to be padding — nothing has been observed that would set them, which is a statement about the
- * captures rather than about the format. `rawRow` hands the bytes back so a caller can look.
+ * A row's `+3`, `+4`, `+11..26` and `+28` were zero in every row of every capture. They are **not**
+ * claimed to be padding — nothing observed has set them, which is a statement about the captures
+ * rather than about the format. `rawRow` hands the bytes back so a caller can look.
+ *
+ * `+27` was in that list until a capture varied swing, which is the pattern to expect: these bytes
+ * fall one at a time as somebody thinks to change the right control.
  *
  * That distinction cost something once already: a first pass walked the label list, never landed on
  * value 16, and recorded it as reserved. It is **FADE** — the walk had missed it. *An absence in a
@@ -82,6 +85,15 @@ export const ROW = {
   mute: 7,
   /** `u16be`, in sequencer steps. */
   length: 9,
+  /**
+   * Swing, stored as **percent minus 50**, so 0 is 50% and 30 is 80%.
+   *
+   * Measured 2026-08-15: a row set to 57% read `7`, a row set to the maximum 80% read `30`. The
+   * manual gives the range as 50-80, which closes exactly onto a single byte of 0..30.
+   *
+   * Per row, always — the manual is explicit that swing is never a song-wide setting, unlike tempo.
+   */
+  swing: 27,
 } as const;
 
 /**
@@ -89,8 +101,18 @@ export const ROW = {
  *
  * The DN1 does the same at `+0x838` of its 2,560-byte record (`dn1tail.ts`). Different geometry,
  * same idea — which is a small piece of evidence that both were read correctly.
+ *
+ * **Measured rather than fitted.** Every tempo in the first captures was a round number, and a round
+ * number cannot tell x120 from x100 or x10. A row set to 135.1 read 16,212 — exactly 135.1 x 120 —
+ * and the device's 0.1 BPM step moves the raw value by 12.
+ *
+ * > **Anything that writes a tempo must round, not truncate.** `135.2 * 120` is `16223.999...` in
+ * > binary, and truncating stores a tempo 1/120 BPM low. Found by a test fixture doing exactly that.
  */
 export const TEMPO_SCALE = 120;
+
+/** Swing is stored as an offset from this. */
+export const SWING_BASE = 50;
 
 /** What the END row does. */
 export const END_LOOP = 0xff;
@@ -132,6 +154,8 @@ export interface SongRow {
   mute: number;
   /** Steps played from the pattern. */
   length: number;
+  /** Swing as a percentage, 50..80. Already offset from `SWING_BASE`. */
+  swing: number;
 }
 
 export interface Song {
@@ -201,6 +225,7 @@ export function readRow(record: Uint8Array, row: number): SongRow {
     tempo: u16(r, ROW.tempo) / TEMPO_SCALE,
     mute: u16(r, ROW.mute),
     length: u16(r, ROW.length),
+    swing: SWING_BASE + r[ROW.swing]!,
   };
 }
 

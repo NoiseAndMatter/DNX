@@ -27,6 +27,7 @@ import {
   ROW,
   SONG,
   SONG_TABLE,
+  SWING_BASE,
   TEMPO_SCALE,
   isSongTableEmpty,
   mutedTracks,
@@ -45,16 +46,19 @@ function putRow(
   image: Uint8Array,
   song: number,
   row: number,
-  f: { pattern: number; repeats: number; label: number; bpm: number; mute: number; length: number },
+  f: { pattern: number; repeats: number; label: number; bpm: number; mute: number; length: number; swing?: number },
 ): void {
   const at = songTableBase() + song * SONG_TABLE.recordSize + SONG.rowOffset + row * SONG.rowSize;
   const u16 = (o: number, v: number): void => { image[at + o] = (v >> 8) & 0xff; image[at + o + 1] = v & 0xff; };
   image[at + ROW.pattern] = f.pattern;
   image[at + ROW.repeatsLessOne] = f.repeats - 1;
   image[at + ROW.label] = f.label;
-  u16(ROW.tempo, f.bpm * TEMPO_SCALE);
+  // **Rounded, not truncated.** 135.2 x 120 is 16223.999... in binary, and truncating stores a
+  // tempo 1/120 BPM low. The device stores integers; anything that writes songs must round.
+  u16(ROW.tempo, Math.round(f.bpm * TEMPO_SCALE));
   u16(ROW.mute, f.mute);
   u16(ROW.length, f.length);
+  image[at + ROW.swing] = (f.swing ?? SWING_BASE) - SWING_BASE;
 }
 
 function putSongHeader(image: Uint8Array, song: number, name: string, rowCount: number, endMode: number): void {
@@ -114,6 +118,7 @@ test("a song reads back the fields that were written into it", () => {
 
   assert.deepEqual(song.rows[0], {
     pattern: 0, repeats: 1, label: 2, labelName: "INTRO", tempo: 90, mute: 0x8000, length: 128,
+    swing: 50,
   });
   assert.equal(song.rows[1]!.repeats, 2);
   assert.equal(song.rows[2]!.labelName, "FADE");
@@ -141,6 +146,57 @@ test("the mute mask reads as track numbers, bit 0 being track 1", () => {
   const song = readSong(image, 0);
   assert.deepEqual(mutedTracks(song.rows[0]!), [16], "bit 15 is track 16");
   assert.deepEqual(mutedTracks(song.rows[1]!), [2, 3, 5, 7, 8, 10, 12]);
+});
+
+
+test("swing is stored as an offset from 50%", () => {
+  // Measured: a row set to 57% reads 7, a row set to the maximum 80% reads 30. The manual's 50-80
+  // range closes exactly onto one byte of 0..30, which is why the offset is not a guess.
+  const image = emptyImage();
+  putSongHeader(image, 0, "SW", 3, END_LOOP);
+  putRow(image, 0, 0, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16, swing: 57 });
+  putRow(image, 0, 1, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16, swing: 80 });
+  putRow(image, 0, 2, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16 });
+
+  const at = songTableBase() + SONG.rowOffset + ROW.swing;
+  assert.equal(image[at], 7, "57% is stored as 7");
+  assert.equal(image[at + SONG.rowSize], 30, "80% is stored as 30");
+
+  const song = readSong(image, 0);
+  assert.equal(song.rows[0]!.swing, 57);
+  assert.equal(song.rows[1]!.swing, 80);
+  assert.equal(song.rows[2]!.swing, 50, "an untouched row is 50%, not 0");
+  assert.equal(SWING_BASE, 50);
+});
+
+test("swing sits in what used to be the unexplained tail of a row", () => {
+  // +27 was among the bytes recorded as "zero in every capture" until one varied swing. The point
+  // of keeping that list honest is that its members fall one at a time; this asserts the field is
+  // inside the row rather than past it.
+  assert.ok(ROW.swing < SONG.rowSize);
+  assert.ok(ROW.swing > ROW.length + 1, "after the fields already decoded");
+});
+
+
+test("tempo is exact at the device's 0.1 BPM resolution", () => {
+  // 135.1 was set on hardware precisely because every other tempo in the capture was a round
+  // number, and a round number cannot tell a x120 scale from a x100 or a x10 one. It read 16,212,
+  // which is 135.1 x 120 exactly — and one 0.1 BPM step moves the raw value by 12.
+  const image = emptyImage();
+  putSongHeader(image, 0, "T", 2, END_LOOP);
+  putRow(image, 0, 0, { pattern: 0, repeats: 1, label: 0, bpm: 135.1, mute: 0, length: 16 });
+  putRow(image, 0, 1, { pattern: 0, repeats: 1, label: 0, bpm: 135.2, mute: 0, length: 16 });
+
+  const at = songTableBase() + SONG.rowOffset + ROW.tempo;
+  const raw = (image[at]! << 8) | image[at + 1]!;
+  assert.equal(raw, 16_212);
+  assert.equal(raw, 135.1 * TEMPO_SCALE);
+
+  const next = songTableBase() + SONG.rowOffset + SONG.rowSize + ROW.tempo;
+  assert.equal(((image[next]! << 8) | image[next + 1]!) - raw, 12, "0.1 BPM is 12 raw units");
+
+  const song = readSong(image, 0);
+  assert.ok(Math.abs(song.rows[0]!.tempo - 135.1) < 1e-9);
 });
 
 test("end mode distinguishes loop from stop", () => {
