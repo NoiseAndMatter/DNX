@@ -171,15 +171,22 @@ body.app > main { flex: 1; display: flex; flex-direction: column; gap: .7rem;
 /*
  * The manager's two columns, with the song card spanning both above them.
  *
- * **The rows are stated because a grid item stretches to its row by default**, and the song card
- * folded to a 32px heading was still 196px tall — the row had taken a share of the window height and
- * the panel had grown to fill it. `min-content` sizes row 1 to the card, folded or not, and `1fr`
- * gives the rest to the patterns and the side column.
+ * **Row 1 is stated because a grid item stretches to its row by default**: the song card folded to a
+ * 32px heading was still 196px tall, because the row had taken a share of the window and the panel
+ * grew to fill it. `min-content` sizes it to the card, folded or not.
+ *
+ * **Row 2 is `auto`, and that is not a detail.** It was `1fr` for one commit, which pinned the
+ * second row to whatever height was left over — so the side column was clipped with 99px of the
+ * history panel below the fold, the page grew a scrollbar of its own, and the status bar moved. Two
+ * scroll contexts fighting, reported as "the bottom bar relocates, and goes back when the song bar
+ * collapses".
+ *
+ * `auto` is what this grid had before the song card existed. Only row 1 ever needed stating.
  */
 body.app > main.split {
   display: grid;
   grid-template-columns: minmax(0,1fr) 20rem;
-  grid-template-rows: min-content 1fr;
+  grid-template-rows: min-content auto;
 }
 /*
  * A flowing page keeps one column and a comfortable measure at any width.
