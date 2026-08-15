@@ -493,3 +493,22 @@ export function renderSongControls(
   // re-drag cannot rebuild.
   host.append(button("Clear song", "Empty this song slot", hooks.onClear, "btn danger"));
 }
+
+/**
+ * Bring a row into view inside the table's own scroll area.
+ *
+ * The row list scrolls inside a fixed-height wrapper, so a song longer than about nine rows has a
+ * bottom you cannot see. Inserting from the last visible row put the new row **below the fold**: the
+ * count rose and the card grew to its clamp, but nothing appeared to happen — reported as *"it adds
+ * rows as the card grows but no actual rows are visible"*.
+ *
+ * Called after any edit that adds or moves a row, so the row you just acted on is the row you can
+ * see. `nearest` rather than `center`, because scrolling a row that was already visible would make
+ * every field edit jump the table under the cursor.
+ */
+export function revealRow(host: HTMLElement, row: number): void {
+  const target = host.querySelector<HTMLElement>(`tbody tr[data-row="${row}"]`);
+  // `scrollIntoView` on an element inside a scrollable ancestor moves that ancestor, not the page,
+  // as long as the block is `nearest`.
+  target?.scrollIntoView({ block: "nearest" });
+}
