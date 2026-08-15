@@ -822,3 +822,31 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .songtable th:first-child, .songtable td:first-child { width: 3.5rem; }
 .songtable td.dim { color: var(--dim); }
 .songtable tbody tr:hover { background: #1d2726; }
+
+/* ---- song row editing ----------------------------------------------------------------
+ *
+ * The controls sit inside the table rather than in a separate form, because a song row is a row of
+ * a table and an editor beside it would mean holding "which row am I changing" in your head.
+ */
+.songtable input.rowedit, .songtable select.rowedit {
+  background: #171c1e; color: var(--fg); border: 1px solid var(--line-soft);
+  border-radius: 2px; padding: .1rem .25rem; font: inherit; font-size: .75rem; width: 100%;
+}
+.songtable input.rowedit { text-align: right; max-width: 5.5rem; }
+.songtable select.rowedit { max-width: 8rem; }
+.songtable input.rowedit:focus, .songtable select.rowedit:focus { border-color: var(--teal); outline: none; }
+.songtable td.ptn { font-weight: 600; color: var(--teal); }
+/* Sixteen chips, so muting is a click on a numbered track exactly as it is on the instrument. */
+.songtable td.mutes { white-space: nowrap; line-height: 1; }
+.mutechip {
+  background: #171c1e; color: var(--dim); border: 1px solid var(--line-soft);
+  border-radius: 2px; width: 1.35rem; padding: .1rem 0; margin-right: 1px;
+  font-size: .62rem; cursor: pointer;
+}
+.mutechip:hover { color: var(--fg); border-color: var(--line); }
+.mutechip.on { background: var(--amber); color: #14181a; border-color: var(--amber); font-weight: 700; }
+.songtable td.rowacts { white-space: nowrap; text-align: right; }
+.btn.tiny { padding: .05rem .3rem; font-size: .7rem; min-width: 0; }
+/* A row being dragged onto, using the same marks the pattern grid uses. */
+.songtable tbody tr.target { outline: 1px solid var(--teal); outline-offset: -1px; }
+.songtable tbody tr.dragging { opacity: .5; }

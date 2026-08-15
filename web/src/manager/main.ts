@@ -66,7 +66,15 @@ import {
 } from "../devicesource.js";
 import { recordWriteMessage } from "../../../src/device/safewrite.js";
 import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
-import { describeSong, renderSongRows, renderSongTabs, songTabs } from "./songview.js";
+import { SONG_GRID, describeSong, renderSongRows, renderSongTabs, songTabs } from "./songview.js";
+import {
+  deleteRow,
+  insertRow,
+  moveRow,
+  setRow,
+  setRowPattern,
+  toggleRowMute,
+} from "../../../src/librarian/songedit.js";
 import { DN2_LAYOUT, layoutFor } from "../../../src/project/dn2image.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import {
@@ -383,6 +391,30 @@ function currentSongs(): Song[] | undefined {
   return readSongs(image);
 }
 
+/**
+ * Apply one song edit through the session, so undo and redo work on it like everything else.
+ *
+ * Every edit on the panel goes through here. The alternative — mutating `state.session.image` —
+ * would leave the history with nothing to diff and quietly break undo for songs only.
+ */
+function editSong(label: string, change: (image: Uint8Array, song: number) => Uint8Array): void {
+  const session = state.session;
+  if (!session || songSlot === undefined) return;
+  try {
+    const changed = session.apply(tag(label), (image) => change(image, songSlot!));
+    if (!changed) {
+      status("Nothing changed.", "warn");
+      return;
+    }
+    status(label);
+    render();
+  } catch (error) {
+    // Refusals here are real: an out-of-range tempo, a row that does not exist. Said plainly rather
+    // than swallowed, because the panel would otherwise look like it had ignored the edit.
+    status(`Not done — ${error instanceof Error ? error.message : String(error)}`, "warn");
+  }
+}
+
 function renderSongs(): void {
   const panel = $("songPanel");
   const songs = currentSongs();
@@ -407,7 +439,17 @@ function renderSongs(): void {
       renderSongs();
     },
   });
-  renderSongRows($("songRows"), song);
+  renderSongRows($("songRows"), song, {
+    drag,
+    onField: (row, field, value) => {
+      editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));
+    },
+    onInsert: (row) => editSong(`insert song row ${row + 2}`, (image, s) => insertRow(image, s, row)),
+    onDelete: (row) => editSong(`delete song row ${row + 1}`, (image, s) => deleteRow(image, s, row)),
+    onMove: (from, to) => editSong(`move song row ${from + 1} to ${to + 1}`, (image, s) => moveRow(image, s, from, to)),
+    onToggleMute: (row, track) =>
+      editSong(`toggle T${track} on song row ${row + 1}`, (image, s) => toggleRowMute(image, s, row, track)),
+  });
 }
 
 // --- selection ----------------------------------------------------------------------------
@@ -464,6 +506,17 @@ const drag = new GridDrag({
   },
 
   hintFor(from, grid, index, modifiers) {
+    // A pattern dropped on a song row sets that row's pattern. It is not a move, a copy or a swap —
+    // nothing leaves the grid — so it does not go through `dropHint`, whose whole vocabulary is
+    // about slots changing places.
+    if (grid === SONG_GRID) {
+      if (from.grid !== "pattern" || from.indices.length !== 1) return undefined;
+      return {
+        action: "copy",
+        label: nameAt("pattern", from.indices[0]!),
+        status: `put ${nameAt("pattern", from.indices[0]!)} on song row ${index + 1}`,
+      };
+    }
     const level = grid as Level;
     const hint = dropHint({ level: from.grid as Level, indices: from.indices }, level, index, modifiers);
     if (!hint) return undefined;
@@ -478,6 +531,17 @@ const drag = new GridDrag({
   },
 
   onDrop(from, grid, index, modifiers) {
+    if (grid === SONG_GRID) {
+      if (from.grid !== "pattern" || from.indices.length !== 1) {
+        status("A song row takes one pattern at a time.", "warn");
+        return;
+      }
+      editSong(
+        `put ${nameAt("pattern", from.indices[0]!)} on song row ${index + 1}`,
+        (image, song) => setRowPattern(image, song, index, from.indices[0]!),
+      );
+      return;
+    }
     const level = grid as Level;
     const action = actionFor(modifiers);
     const refused = refuseDrop({ level: from.grid as Level, indices: from.indices }, level, index, action);
