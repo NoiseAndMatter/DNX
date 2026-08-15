@@ -883,3 +883,11 @@ body.app > main.split > .side {
 /* A row being dragged onto, using the same marks the pattern grid uses. */
 .songtable tbody tr.target { outline: 1px solid var(--teal); outline-offset: -1px; }
 .songtable tbody tr.dragging { opacity: .5; }
+
+/* The song-level controls: rename, end mode, tempo, clear. */
+.songcontrols { display: flex; align-items: center; gap: .4rem; padding: 0 0 .55rem; flex-wrap: wrap; }
+.songcontrols .songtempo {
+  display: flex; align-items: center; gap: .35rem;
+  font-size: .7rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase;
+}
+.songcontrols .songtempo input { max-width: 5rem; }

@@ -117,6 +117,16 @@ export interface SongViewHooks {
 /** The fields a row exposes for editing, all of them plain numbers. */
 export type EditableField = "repeats" | "length" | "tempo" | "swing" | "label";
 
+/** The song itself, as opposed to one of its rows. */
+export interface SongLevelHooks {
+  onRename: () => void;
+  onToggleEnd: () => void;
+  onClear: () => void;
+  onTempo: (bpm: number) => void;
+  /** Start a song in an empty slot: one action, not "add a row" followed by "and now name it". */
+  onNewSong: () => void;
+}
+
 export interface SongEditHooks {
   /** So a row can be a drop target for a pattern, and a drag source for reordering. */
   drag: RowDragBinder;
@@ -292,21 +302,15 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
   host.textContent = "";
 
   if (song.rowCount === 0) {
+    // No "add the first row" button here. `renderSongControls` offers **New song…**, which makes
+    // the row *and* names it — and an empty slot with two ways to start a song is the same fault as
+    // the up/down arrows that reordering already had a gesture for.
     const p = document.createElement("p");
     p.className = "hint";
     p.textContent = hooks
       ? `Song ${song.index + 1} has no rows yet.`
       : `Song ${song.index + 1} has no rows. Build one on the instrument, in SONG mode.`;
     host.append(p);
-    if (hooks) {
-      const add = document.createElement("button");
-      add.type = "button";
-      add.className = "btn";
-      add.textContent = "Add the first row";
-      // -1 inserts at the top, and an empty song has nothing to copy, so it gets a blank row.
-      add.addEventListener("click", () => hooks.onInsert(-1));
-      host.append(add);
-    }
     return;
   }
 
@@ -413,4 +417,79 @@ export function restoreFocus(
       /* the caret is a nicety; focus is the point */
     }
   }
+}
+
+/**
+ * The controls that act on the song rather than on a row.
+ *
+ * In the body beside the tabs, **not in the heading** — the heading is itself a button, and putting
+ * controls inside it would nest interactive elements and make the fold target unpredictable.
+ *
+ * These were implemented and tested in `songedit.ts` for a whole release before anything could
+ * reach them. A song could gain rows but never a name, which made a new song feel broken in a way
+ * the row editing never did.
+ */
+export function renderSongControls(
+  host: HTMLElement,
+  song: Song,
+  hooks: SongLevelHooks,
+): void {
+  host.textContent = "";
+
+  const button = (text: string, title: string, run: () => void, cls = "btn"): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.textContent = text;
+    b.title = title;
+    b.addEventListener("click", run);
+    return b;
+  };
+
+  if (song.rowCount === 0) {
+    // An empty slot has nothing to rename, loop or clear. Offering those would be four disabled
+    // controls where one enabled one is the whole story.
+    host.append(button("New song…", `Start song ${song.index + 1} with one row and a name`, hooks.onNewSong));
+    return;
+  }
+
+  host.append(
+    button("Rename…", "Rename this song", hooks.onRename),
+    // The label says what the song does now, and pressing it changes that. A button reading "Stop"
+    // on a song that stops would be ambiguous about whether it describes or commands.
+    button(
+      song.loops ? "Ends: loop" : "Ends: stop",
+      song.loops ? "Ends by looping — press to make it stop" : "Ends by stopping — press to make it loop",
+      hooks.onToggleEnd,
+    ),
+  );
+
+  const tempo = document.createElement("label");
+  tempo.className = "songtempo";
+  tempo.append(document.createTextNode("Song BPM"));
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = "rowedit";
+  input.value = String(song.tempo);
+  input.min = String(LIMITS.tempo.min);
+  input.max = String(LIMITS.tempo.max);
+  input.step = "0.1";
+  input.dataset["row"] = "song";
+  input.dataset["field"] = "tempo";
+  input.title =
+    "The song's own tempo. The manual: setting it overrides all previously set row and pattern tempos.";
+  input.addEventListener("change", () => {
+    const next = Number(input.value);
+    if (!Number.isFinite(next) || next < LIMITS.tempo.min || next > LIMITS.tempo.max) {
+      input.value = String(song.tempo);
+      return;
+    }
+    if (next !== song.tempo) hooks.onTempo(next);
+  });
+  tempo.append(input);
+  host.append(tempo);
+
+  // Last, and marked, because it is the only one here that destroys work and the only one a
+  // re-drag cannot rebuild.
+  host.append(button("Clear song", "Empty this song slot", hooks.onClear, "btn danger"));
 }
