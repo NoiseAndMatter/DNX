@@ -25,7 +25,8 @@
     "convert": "tsx src/cli/convert.ts",
     "sheet": "tsx src/cli/sheet.ts",
     "build:web": "tsc -p tsconfig.web.json",
-    "web": "npm run build:web && tsx src/cli/serve.ts"
+    "web": "npm run build:web && tsx src/cli/serve.ts",
+    "projectdiff": "tsx src/cli/projectdiff.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
