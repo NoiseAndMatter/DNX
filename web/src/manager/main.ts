@@ -65,6 +65,9 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { recordWriteMessage } from "../../../src/device/safewrite.js";
+import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
+import { describeSong, renderSongRows, renderSongTabs, songTabs } from "./songview.js";
+import { DN2_LAYOUT, layoutFor } from "../../../src/project/dn2image.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import {
   type Level,
@@ -334,6 +337,7 @@ function render(): void {
   renderGrid();
   renderSelection();
   renderHistory();
+  renderSongs();
   $("scopeHint").textContent = SCOPE_HINTS[state.scope];
 
   // Enabled only when there is something to send. An edit is what makes a write meaningful, and a
@@ -341,6 +345,69 @@ function render(): void {
   if (deviceHandle && state.session) {
     $<HTMLButtonElement>("writedevice").disabled = state.session.image === deviceHandle.original;
   }
+}
+
+
+// --- songs --------------------------------------------------------------------------------
+//
+// **Read-only, and shown beside the patterns rather than instead of them.** A song is an
+// arrangement *of* patterns, so the two belong on screen together; see `songview.ts`.
+//
+// Digitone II only. The DN1 keeps its songs in a different place and a different shape, and
+// `dn1tail.ts` deliberately does not decode the interior of one of its rows — so there is nothing
+// honest to draw for that family yet, and an empty panel would imply there was.
+
+/**
+ * Which song the panel is showing, or undefined until a project picks one.
+ *
+ * Reset when a project opens so the panel does not carry a slot across from the last one — song 12
+ * of a project that had twelve is an empty tab in a project that has two.
+ */
+let songSlot: number | undefined;
+
+/**
+ * Whether the song panel is folded to a strip.
+ *
+ * Module state rather than a DOM read, because `render()` runs on every change and would otherwise
+ * have to infer the fold from the class it is about to rewrite. Deliberately **not** reset when a
+ * project opens: somebody who folded it away is not asking to see it again because they loaded
+ * another file.
+ */
+let songsFolded = false;
+
+/** The songs of the open project, or undefined when there is nothing to show. */
+function currentSongs(): Song[] | undefined {
+  const image = state.session?.image;
+  if (!image) return undefined;
+  if (layoutFor(image) !== DN2_LAYOUT) return undefined;
+  return readSongs(image);
+}
+
+function renderSongs(): void {
+  const panel = $("songPanel");
+  const songs = currentSongs();
+  if (!songs) {
+    panel.hidden = true;
+    return;
+  }
+
+  // Opened on the song the instrument itself had selected, the first time a project is drawn. More
+  // often the one somebody wants than slot 1, and it costs nothing to honour.
+  panel.hidden = false;
+  panel.classList.toggle("folded", songsFolded);
+  $("songFold").setAttribute("aria-expanded", String(!songsFolded));
+  // The caret only; the title is a sibling span and must survive the update.
+  panel.querySelector(".caret")!.textContent = songsFolded ? "▸" : "▾";
+  songSlot ??= selectedSong(state.session!.image);
+  const song = songs[songSlot] ?? songs[0]!;
+  $("songTitle").textContent = describeSong(song);
+  renderSongTabs($("songTabs"), songTabs(songs, song.index), {
+    onSelect: (index) => {
+      songSlot = index;
+      renderSongs();
+    },
+  });
+  renderSongRows($("songRows"), song);
 }
 
 // --- selection ----------------------------------------------------------------------------
@@ -733,6 +800,11 @@ function wireOperations(): void {
     void writeToDevice();
   });
 
+  $("songFold").addEventListener("click", () => {
+    songsFolded = !songsFolded;
+    renderSongs();
+  });
+
   $("browsedrive").addEventListener("click", () => {
     void browseDrive();
   });
@@ -905,7 +977,8 @@ async function openFromDrive(): Promise<void> {
 
     const device = deviceFor(opened.image);
     state.device = device;
-    state.session = new Session(opened.image);
+    songSlot = undefined;
+  state.session = new Session(opened.image);
     state.selection = [];
     state.bank = 0;
     state.trackFor = undefined;
@@ -959,6 +1032,7 @@ async function load(file: File): Promise<void> {
 
   state.file = loaded;
   state.device = device;
+  songSlot = undefined;
   state.session = new Session(loaded.image);
   state.selection = [];
   state.bank = 0;
@@ -1065,7 +1139,8 @@ async function loadFromDevice(): Promise<void> {
     // the one that has to carry the file's identity too.
     state.file = donor.project;
     state.device = device;
-    state.session = new Session(image);
+    songSlot = undefined;
+  state.session = new Session(image);
     state.selection = [];
     state.bank = 0;
     state.trackFor = undefined;
