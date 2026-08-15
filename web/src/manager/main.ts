@@ -65,8 +65,18 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { recordWriteMessage } from "../../../src/device/safewrite.js";
+import { emptyProjectSlots, writeProjectToDrive } from "../driveproject.js";
+import { buildPayload } from "../../../src/project/write.js";
 import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
-import { SONG_GRID, describeSong, renderSongRows, renderSongTabs, songTabs } from "./songview.js";
+import {
+  SONG_GRID,
+  describeSong,
+  focusKey,
+  renderSongRows,
+  renderSongTabs,
+  restoreFocus,
+  songTabs,
+} from "./songview.js";
 import {
   deleteRow,
   insertRow,
@@ -400,6 +410,10 @@ function currentSongs(): Song[] | undefined {
 function editSong(label: string, change: (image: Uint8Array, song: number) => Uint8Array): void {
   const session = state.session;
   if (!session || songSlot === undefined) return;
+  // Where the cursor is, before the table that holds it is rebuilt. Without this, bumping a number
+  // with the arrow keys worked exactly once: the first press committed, the row was re-rendered,
+  // and the second press had nothing focused to act on.
+  const focus = focusKey();
   try {
     const changed = session.apply(tag(label), (image) => change(image, songSlot!));
     if (!changed) {
@@ -408,6 +422,7 @@ function editSong(label: string, change: (image: Uint8Array, song: number) => Ui
     }
     status(label);
     render();
+    restoreFocus($("songRows"), focus);
   } catch (error) {
     // Refusals here are real: an out-of-range tempo, a row that does not exist. Said plainly rather
     // than swallowed, because the panel would otherwise look like it had ignored the edit.
@@ -452,6 +467,126 @@ function renderSongs(): void {
   });
 }
 
+
+// --- saving a whole project to the +Drive ---------------------------------------------------
+//
+// **A different destination from "Write to device", not a mode of it.** That one sends the pattern
+// records that changed into the project the musician has *loaded*. This writes the whole project —
+// songs included, which no dump can carry, because they live in the tail — into a *stored* slot.
+//
+// Only empty slots are offered, and `refuseUnlessEmpty` refuses anything else even if one were.
+// For most people the +Drive is the only copy of that work and there is no undo on the instrument.
+
+/**
+ * The instrument to work with, or a message saying why there is none.
+ *
+ * `chooseDevice` already handles the whole question — one instrument is used silently, two put up
+ * a picker and refuse until something is chosen. Reimplementing that here would give this page two
+ * answers to "which device", and they would disagree the first time somebody plugged in a second.
+ */
+async function driveDevice(): Promise<ConnectedDevice | undefined> {
+  try {
+    return await chooseDevice();
+  } catch (error) {
+    status(`No instrument: ${error instanceof Error ? error.message : String(error)}`, "error");
+    return undefined;
+  }
+}
+
+/** Offer the empty slots. Listing is one round trip and tells the truth about right now. */
+async function browseDriveTargets(): Promise<void> {
+  const device = await driveDevice();
+  if (!device) return;
+  try {
+    status("Reading the +Drive listing…");
+    const empty = await emptyProjectSlots(device);
+    const select = $<HTMLSelectElement>("drivetarget");
+    select.textContent = "";
+    for (const slot of empty) {
+      const option = document.createElement("option");
+      option.value = String(slot);
+      option.textContent = `Slot ${slot}`;
+      select.append(option);
+    }
+    select.hidden = empty.length === 0;
+    $("dodrivesave").hidden = empty.length === 0;
+    $<HTMLButtonElement>("dodrivesave").disabled = empty.length === 0;
+    status(
+      empty.length === 0
+        ? "Every project slot on the +Drive is occupied. Free one on the instrument first — this " +
+          "will not overwrite anything."
+        : `${empty.length} empty slot(s). Pick one and press Save to slot.`,
+      empty.length === 0 ? "warn" : "ok",
+    );
+  } catch (error) {
+    status(`Could not read the +Drive: ${String(error)}`, "error");
+  } finally {
+    device.close();
+  }
+}
+
+/** Write the open project into the chosen slot, and check it came back. */
+async function saveToDrive(): Promise<void> {
+  const { file, session } = state;
+  if (!session) return;
+  if (!file) {
+    // The same gap `exportProject` has: a project read off the +Drive has no manifest, and the
+    // container header an export copies verbatim comes from the file it was opened as.
+    status(
+      "This project came off the device without a manifest, so there is no container header to " +
+        "build a file from. Open it from a file first.",
+      "warn",
+    );
+    return;
+  }
+
+  const slot = Number($<HTMLSelectElement>("drivetarget").value);
+  if (!Number.isInteger(slot)) return;
+
+  const device = await driveDevice();
+  if (!device) return;
+
+  const button = $<HTMLButtonElement>("dodrivesave");
+  button.disabled = true;
+  try {
+    // The compressed payload, exactly as an export writes into the ZIP. `buildPayload` copies the
+    // 31-byte container header verbatim, which is what carries the stored-form flag the +Drive
+    // requires — see `refuseRawForm`.
+    const payload = buildPayload(file.payload.raw, session.image);
+    const result = await writeProjectToDrive({
+      device,
+      slot,
+      payload,
+      image: session.image,
+      name: state.device?.projectName(session.image) ?? "project",
+      onStatus: (message) => status(message),
+      onProgress: (done, total, stage) => {
+        progress.at(done, total, stage === "write" ? "Writing" : "Verifying");
+      },
+    });
+
+    if (result.cancelled) {
+      status("Not written.", "warn");
+      return;
+    }
+    if (!result.committed || !result.verified) {
+      status(`Slot ${slot}: ${result.problem ?? "the write could not be verified"}`, "error");
+      return;
+    }
+    status(
+      `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
+        `${result.chunks} chunk(s), read back and decoded to the same project.`,
+      "ok",
+    );
+  } catch (error) {
+    status(`The save stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+  } finally {
+    progress.done();
+    button.disabled = false;
+    device.close();
+  }
+}
+
 // --- selection ----------------------------------------------------------------------------
 
 function onSlotClick(level: Level, index: number, event: MouseEvent): void {
@@ -492,6 +627,10 @@ function onSlotClick(level: Level, index: number, event: MouseEvent): void {
  */
 const drag = new GridDrag({
   onDragStart(grid, index) {
+    // A song row is not a slot and has no selection. Dragging one must not disturb the pattern
+    // selection, which is what `state.selection` means everywhere else on this page.
+    if (grid === SONG_GRID) return [index];
+
     // Dragging one of several selected slots drags the whole selection; dragging anything else
     // drags just that one, and takes the selection with it so the two never disagree.
     const level = grid as Level;
@@ -510,6 +649,17 @@ const drag = new GridDrag({
     // nothing leaves the grid — so it does not go through `dropHint`, whose whole vocabulary is
     // about slots changing places.
     if (grid === SONG_GRID) {
+      // A row dragged onto another row reorders the song. Reordering is a move, and it is the only
+      // way to reorder — there are no up/down buttons, because two ways to do one thing is how a
+      // vocabulary stops being one.
+      if (from.grid === SONG_GRID) {
+        if (from.indices[0] === index) return undefined;
+        return {
+          action: "move",
+          label: `row ${index + 1}`,
+          status: `move song row ${from.indices[0]! + 1} to ${index + 1}`,
+        };
+      }
       if (from.grid !== "pattern" || from.indices.length !== 1) return undefined;
       return {
         action: "copy",
@@ -532,6 +682,13 @@ const drag = new GridDrag({
 
   onDrop(from, grid, index, modifiers) {
     if (grid === SONG_GRID) {
+      if (from.grid === SONG_GRID) {
+        const at = from.indices[0]!;
+        if (at !== index) {
+          editSong(`move song row ${at + 1} to ${index + 1}`, (image, song) => moveRow(image, song, at, index));
+        }
+        return;
+      }
       if (from.grid !== "pattern" || from.indices.length !== 1) {
         status("A song row takes one pattern at a time.", "warn");
         return;
@@ -871,6 +1028,14 @@ function wireOperations(): void {
 
   $("browsedrive").addEventListener("click", () => {
     void browseDrive();
+  });
+
+  $("savetodrive").addEventListener("click", () => {
+    void browseDriveTargets();
+  });
+
+  $("dodrivesave").addEventListener("click", () => {
+    void saveToDrive();
   });
 
   $("opendrive").addEventListener("click", () => {
