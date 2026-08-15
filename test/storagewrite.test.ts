@@ -78,6 +78,31 @@ test('"we could not tell" does not read as "it is empty"', () => {
   );
 });
 
+test("an occupied slot is allowed only when overwriting was asked for by name", () => {
+  const target = entry({ occupied: true, name: "MORNING_JAM" });
+  assert.throws(() => refuseUnlessEmpty(target, "/projects/2"), /would overwrite it/);
+  assert.doesNotThrow(() => refuseUnlessEmpty(target, "/projects/2", true));
+});
+
+test('"we could not tell" is still refused, even when overwriting was asked for', () => {
+  // The one part of the empty-slot rule that has no override, and the reason is not symmetry.
+  // Consenting to replace something means knowing what it is; an unlisted entry means nobody does,
+  // and the backup taken in that state would be of a file we could not name either.
+  assert.throws(
+    () => refuseUnlessEmpty(entry({ occupied: undefined }), "/projects/9", true),
+    /cannot tell whether/,
+  );
+});
+
+test("a write-protected slot stays refused when overwriting was asked for", () => {
+  // Permission is the device's answer, not ours to override — `overwrite` says "replace what is
+  // there", not "ignore what the instrument said about this slot".
+  assert.throws(
+    () => refuseUnlessEmpty(entry({ occupied: true, writable: false }), "/projects/1", true),
+    /write-protected/,
+  );
+});
+
 test("an occupied target is refused before anything reaches the wire", async () => {
   const io = accepting();
   await assert.rejects(

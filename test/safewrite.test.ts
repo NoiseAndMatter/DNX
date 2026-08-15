@@ -23,14 +23,20 @@ import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js
 import { type DeviceIo, deliver } from "../src/device/deviceproject.js";
 import { RESPONSE_SIZES } from "../src/device/readplan.js";
 import { DN1_LAYOUT } from "../src/project/dn2image.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
+import { type Entry, StorageCode } from "../src/device/storage.js";
+import { type ApiTransport } from "../src/device/storagesession.js";
 import {
   type Backup,
+  type FileWriteReview,
   type RecordWriteReview,
+  type SafeFileWriteOptions,
   CONTAINER_SLOT_OFFSET,
   WriteRefusal,
   compareStored,
   describeRecordWrite,
   recordWriteMessage,
+  safeWriteFile,
   safeWriteRecords,
 } from "../src/device/safewrite.js";
 
@@ -521,16 +527,176 @@ test("only the two named places can mint a permit", () => {
   assert.deepEqual(minting.sort(), [...MAY_MINT].sort());
 });
 
-test("the +Drive write has no backup hook, and the empty-slot rule is why", () => {
-  // The exemption implemented as its reason. `safeWriteFile` takes no backup because
-  // `refuseUnlessEmpty` guarantees there is nothing to copy — so if that call ever leaves, the
-  // missing hook becomes a hole, and this fails rather than the hole opening quietly.
-  const safe = readFileSync(join(import.meta.dirname, "..", "src/device/safewrite.ts"), "utf8");
-  const fileWrite = safe.slice(safe.indexOf("export async function safeWriteFile"));
-  assert.match(fileWrite, /refuseUnlessEmpty\(target, path\)/, "the empty-slot check is gone");
-  assert.doesNotMatch(
-    fileWrite.slice(0, fileWrite.indexOf("export function compareStored")),
-    /onBackup/,
-    "if the file path now takes a backup, the exemption above needs rewriting rather than extending",
+// --- the +Drive file path: overwriting, and what it costs ----------------------------------------
+//
+// The empty-slot rule used to stand in for a backup: nothing could be written anywhere occupied, so
+// there was never anything to copy. Saving a project back over the slot it was opened from is the
+// case that argument does not cover, so the rule now has an opening — and these are the tests that
+// keep the opening the shape it was cut. **A backup is not optional on this path any more; it is
+// what replaced the rule that made it unnecessary.**
+
+/** The stored-form flag at `+29`, without which the write path refuses the payload outright. */
+function payload(fill: number, length = 64): Uint8Array {
+  const bytes = new Uint8Array(length).fill(fill);
+  bytes[29] = 0x01;
+  return bytes;
+}
+
+/**
+ * A +Drive slot that can be read and written, and remembers the order it was asked.
+ *
+ * `holds` is what a read returns — so a backup taken before the write gets the old contents and one
+ * taken after would get the new, which is the difference these tests are looking for. The write
+ * replaces it at the commit, exactly as the instrument does.
+ */
+function slot(holds: Uint8Array): ApiTransport & { log: number[]; holds: Uint8Array } {
+  const state = { log: [] as number[], holds };
+  let staged: number[] = [];
+  return {
+    ...state,
+    get log(): number[] { return state.log; },
+    get holds(): Uint8Array { return state.holds; },
+    request(request: Uint8Array, msgId: number): Promise<ApiFrame> {
+      const { code, body } = decodeMessage(request);
+      state.log.push(code);
+      const reply = (b: number[]): ApiFrame => ({
+        msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.from(b), isResponse: true,
+      });
+      switch (code) {
+        case StorageCode.Open: return Promise.resolve(reply([1, 0, 0, 0, 1, 0, 0, 8, 0, 1]));
+        case StorageCode.Read: {
+          // Sequence 0 draws the empty leading reply and sequence 1 the file, which is the shape
+          // `readStoredFile` expects — the whole slot fits in one chunk at 64 bytes.
+          const seq = ((body[4] ?? 0) << 24) | ((body[5] ?? 0) << 16) | ((body[6] ?? 0) << 8) | (body[7] ?? 0);
+          if (seq === 0) {
+            return Promise.resolve(reply([1, 0, 0, 0, 1, 0x40, 0x12, 0xc3, 0x44, 0x41, 0xbc, 0xff,
+              0x90, 0, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0]));
+          }
+          const data = [...state.holds];
+          return Promise.resolve(reply([
+            1, 0, 0, 0, 1, ...u32be(1), 0, 0, 3, 0xe8, 1, 0, 0, 0, 0, ...u32be(data.length), ...data,
+          ]));
+        }
+        case StorageCode.Close: return Promise.resolve(reply([1, 0, 0, 0, 1, 0, 0, 0, 0x81]));
+        case StorageCode.WriteOpen: staged = []; return Promise.resolve(reply([1, 0, 0, 0, 7]));
+        case StorageCode.Write:
+          staged.push(...body.subarray(16));
+          return Promise.resolve(reply([1, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 1, 0]));
+        case StorageCode.WriteClose:
+          state.holds = Uint8Array.from(staged);
+          return Promise.resolve(reply([1, 0, 0, 0, 7, 0, 0, 1, 0]));
+        default: return Promise.reject(new Error(`unexpected 0x${code.toString(16)}`));
+      }
+    },
+  };
+}
+
+function u32be(v: number): number[] {
+  return [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
+}
+
+function occupied(over: Partial<Entry> = {}): Entry {
+  return { name: "MORNING_JAM", kind: "file", index: 5, occupied: true, writable: true, ...over };
+}
+
+function fileWrite(io: ApiTransport, over: Partial<SafeFileWriteOptions> = {}): SafeFileWriteOptions {
+  return {
+    transport: io,
+    path: "/projects/6",
+    name: "SONGWORK",
+    bytes: payload(0x22),
+    target: occupied(),
+    confirm: () => true,
+    ...over,
+  };
+}
+
+test("an empty slot still takes no backup — nothing there to copy", async () => {
+  const io = slot(new Uint8Array());
+  let asked = 0;
+  const result = await safeWriteFile(
+    fileWrite(io, { target: occupied({ occupied: false, name: "" }), onBackup: () => void asked++ }),
   );
+
+  assert.equal(asked, 0, "an onBackup passed for an empty slot is ignored, not called for form's sake");
+  assert.equal(result.committed, true);
+});
+
+test("overwriting without a backup hook is refused before anything is sent", async () => {
+  // The pairing, as behaviour. `refuseUnlessEmpty` was the reason this path could skip the backup;
+  // the moment a caller can get past it, the backup is the thing standing where the rule stood.
+  const io = slot(payload(0x11));
+  await assert.rejects(
+    safeWriteFile(fileWrite(io, { overwrite: true })),
+    (error: Error) => error instanceof WriteRefusal && /without a backup hook/.test(error.message),
+  );
+  assert.deepEqual(io.log, [], "refused before the transport was touched at all");
+});
+
+test("the backup holds what was in the slot, and is taken before the first byte goes out", async () => {
+  const io = slot(payload(0x11));
+  const backups: Backup[] = [];
+  const result = await safeWriteFile(
+    fileWrite(io, { overwrite: true, onBackup: (b) => void backups.push(b) }),
+  );
+
+  assert.equal(backups.length, 1);
+  assert.deepEqual([...backups[0]!.bytes], [...payload(0x11)], "the old contents, not the new");
+  assert.deepEqual(backups[0]!.slots, [5]);
+  assert.match(backups[0]!.name, /^MORNING_JAM-before-/, "named after what it is a copy of");
+
+  // The ordering that matters: the read that took the copy finished before the write opened. Only
+  // the first Close counts — the verifying read afterwards opens and closes the file again.
+  const opened = io.log.indexOf(StorageCode.WriteOpen);
+  assert.ok(io.log.indexOf(StorageCode.Close) < opened, "backed up before the write opened");
+  assert.equal(result.committed, true);
+  assert.deepEqual([...io.holds], [...payload(0x22)], "and the slot now holds the new project");
+});
+
+test("a backup that cannot be saved stops the write", async () => {
+  // The record path's rule, and for the same reason: a browser that blocked the download leaves the
+  // person with no copy, and this is the one path where that copy is the only one.
+  const io = slot(payload(0x11));
+  await assert.rejects(
+    safeWriteFile(fileWrite(io, {
+      overwrite: true,
+      onBackup: () => { throw new Error("download blocked"); },
+    })),
+    /download blocked/,
+  );
+  assert.deepEqual([...io.holds], [...payload(0x11)], "the slot is untouched");
+  assert.equal(io.log.includes(StorageCode.WriteOpen), false);
+});
+
+test("the confirmation is told what is being destroyed, not just where it is going", async () => {
+  // "Save to slot 5" and "replace MORNING_JAM in slot 5" are different questions. A hook that is
+  // handed the same review for both cannot ask the second one.
+  const reviews: FileWriteReview[] = [];
+  await safeWriteFile(fileWrite(slot(payload(0x11)), {
+    overwrite: true,
+    onBackup: () => {},
+    confirm: (review) => { reviews.push(review); return true; },
+  }));
+  assert.equal(reviews[0]?.replacing, "MORNING_JAM");
+
+  reviews.length = 0;
+  await safeWriteFile(fileWrite(slot(new Uint8Array()), {
+    target: occupied({ occupied: false, name: "" }),
+    confirm: (review) => { reviews.push(review); return true; },
+  }));
+  assert.equal(reviews[0]?.replacing, undefined, "an empty slot replaces nothing, and says so");
+});
+
+test("saying no to an overwrite costs nothing — no backup, no write", async () => {
+  const io = slot(payload(0x11));
+  let asked = 0;
+  const result = await safeWriteFile(fileWrite(io, {
+    overwrite: true,
+    onBackup: () => void asked++,
+    confirm: () => false,
+  }));
+
+  assert.equal(result.cancelled, true);
+  assert.equal(asked, 0, "a backup downloaded for a write nobody made is litter");
+  assert.deepEqual(io.log, [], "and nothing reached the device");
 });

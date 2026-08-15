@@ -48,15 +48,22 @@ export const STAGE_LABEL: Record<WriteStage, string> = {
 };
 
 /**
- * Offer the backup as a `.syx` download.
+ * Offer the backup as a download.
  *
  * `onStatus` is called with the filename because that is the only evidence the user has that a
  * backup exists at all — see the note above about what a download can and cannot promise.
+ *
+ * `what` names the thing copied, because the two callers back up genuinely different objects and
+ * the count alone cannot tell them apart: a whole project and a single pattern both arrive as one
+ * slot, and "Backup of 1 pattern(s)" would be a plain untruth in front of a 250 KB project file.
  */
-export function downloadBackup(onStatus: (message: string) => void): BackupHook {
+export function downloadBackup(
+  onStatus: (message: string) => void,
+  what: (backup: Backup) => string = (b) => `${b.slots.length} pattern(s)`,
+): BackupHook {
   return (backup: Backup): void => {
     saveBlob(new Blob([backup.bytes as BlobPart], { type: "application/octet-stream" }), backup.name);
-    onStatus(`Backup of ${backup.slots.length} pattern(s) saved as ${backup.name}`);
+    onStatus(`Backup of ${what(backup)} saved as ${backup.name}`);
   };
 }
 
@@ -79,8 +86,13 @@ export const confirmRecordWrite: ConfirmHook<RecordWriteReview> = (review) =>
 /** Ask before writing a file to the +Drive. */
 export const confirmFileWrite: ConfirmHook<FileWriteReview> = (review) =>
   askConfirm({
-    title: `Write ${review.name} to ${review.path}?`,
+    // The question itself changes, not just the small print. "Write SONGWORK to /projects/6?" and
+    // "Replace MORNING JAM in /projects/6?" are answered differently by the same person.
+    title:
+      review.replacing === undefined
+        ? `Write ${review.name} to ${review.path}?`
+        : `Replace ${review.replacing} with ${review.name}?`,
     body: describeFileWrite(review),
-    confirmLabel: "Write to the +Drive",
+    confirmLabel: review.replacing === undefined ? "Write to the +Drive" : "Replace it",
     danger: true,
   });
