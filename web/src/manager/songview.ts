@@ -128,6 +128,13 @@ export interface SongLevelHooks {
 }
 
 export interface SongEditHooks {
+  /**
+   * The name of the pattern in a slot, or `undefined` when it has none.
+   *
+   * Passed in rather than read here. This module draws and decides nothing — resolving a name means
+   * summarising a pattern record, which is the librarian's job and needs the device.
+   */
+  patternNameFor: (slot: number) => string | undefined;
   /** So a row can be a drop target for a pattern, and a drag source for reordering. */
   drag: RowDragBinder;
   onField: (row: number, field: EditableField, value: number) => void;
@@ -174,6 +181,34 @@ export function renderSongTabs(host: HTMLElement, tabs: readonly SongTab[], hook
 }
 
 const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing", "Mutes", ""] as const;
+
+/**
+ * The pattern a row plays: its slot, then its name.
+ *
+ * `A5` alone is enough to find it in the grid and tells you nothing about what it *is*, which is the
+ * question somebody reading an arrangement is actually asking. The two are styled apart so the slot
+ * stays scannable down the column while the name reads as prose beside it.
+ *
+ * An unnamed pattern gets nothing rather than a placeholder — every factory pattern is unnamed, and
+ * a column of "—" would be sixteen rows of noise.
+ */
+function patternCell(slot: number, name: string | undefined): HTMLTableCellElement {
+  const td = document.createElement("td");
+  td.className = "ptn";
+
+  const id = document.createElement("span");
+  id.className = "ptnid";
+  id.textContent = patternName(slot);
+  td.append(id);
+
+  if (name !== undefined && name.trim() !== "" && name !== "—") {
+    const label = document.createElement("span");
+    label.className = "ptnname";
+    label.textContent = name;
+    td.append(label);
+  }
+  return td;
+}
 
 /**
  * A number a person can type into.
@@ -340,7 +375,7 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
       hooks.drag.bind(tr, SONG_GRID, i);
       tr.append(
         cell(String(i + 1), "num"),
-        cell(patternName(row.pattern), "ptn"),
+        patternCell(row.pattern, hooks.patternNameFor(row.pattern)),
         labelCell(i, row, (value) => hooks.onField(i, "label", value)),
         numberCell(i, "repeats", row.repeats, LIMITS.repeats, 1, (v) => hooks.onField(i, "repeats", v)),
         numberCell(i, "length", row.length, LIMITS.length, 1, (v) => hooks.onField(i, "length", v)),

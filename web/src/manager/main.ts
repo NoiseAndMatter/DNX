@@ -480,6 +480,15 @@ function renderSongs(): void {
   });
   renderSongRows($("songRows"), song, {
     drag,
+    // Summarised through the device, the same call the pattern grid uses — so a name in a song row
+    // and the same name in the grid can never disagree.
+    patternNameFor: (slot) => {
+      const image = state.session?.image;
+      const device = state.device;
+      if (!image || !device) return undefined;
+      const summary = device.summarise(image, slot);
+      return summary.supported ? summary.name : undefined;
+    },
     onField: (row, field, value) => {
       editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));
     },

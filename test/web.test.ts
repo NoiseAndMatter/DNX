@@ -664,10 +664,15 @@ test("crc32 matches the known ZIP checksum of a known string", () => {
  * card does not stretch to a share of the window, and row 2 must stay `auto` so the layout below it
  * behaves exactly as it did before the card existed.
  */
-test("the manager's second grid row is auto, not a fraction of the window", () => {
+test("the song card cannot stretch into its grid row", () => {
   const css = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
   const rule = /body\.app > main\.split \{[^}]*\}/.exec(css)?.[0] ?? "";
   assert.ok(rule, "the split layout rule is gone");
-  assert.match(rule, /grid-template-rows:\s*min-content auto/);
-  assert.doesNotMatch(rule, /1fr;/, "a fractional second row clips the side column and moves the status bar");
+  assert.match(rule, /grid-template-rows:\s*min-content 1fr/);
+
+  // And the card must not stretch into whatever row 1 turns out to be. The side column spans both
+  // rows, so its height grows the tracks it spans — `min-content` on row 1 does not prevent that.
+  // Without this the card was 446px tall holding 196px of content, and clicking anything that added
+  // a history entry made it grow again, which read as "rows are being added but I cannot see them".
+  assert.match(css, /main\.split > \.panel\.songs \{[^}]*align-self:\s*start/);
 });
