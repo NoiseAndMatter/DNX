@@ -186,8 +186,27 @@ body.app > main { flex: 1; display: flex; flex-direction: column; gap: .7rem;
 body.app > main.split {
   display: grid;
   grid-template-columns: minmax(0,1fr) 20rem;
-  grid-template-rows: min-content auto;
+  /*
+   * **Row 2 takes the slack, and the song card never stretches.**
+   *
+   * The side column spans both rows, so its height forces the row tracks to add up to at least its
+   * own — and `min-content` on row 1 does not stop that, because a spanning item grows the tracks it
+   * spans. The song card then stretched into a row far taller than its contents: 446px of card for
+   * 196px of content, and 616px once the side column got taller still.
+   *
+   * That is what "it adds rows as the card grows but no actual rows are visible" was. **No rows were
+   * being added.** Every click added a history entry, the side column grew, row 1 grew with it, and
+   * the card stretched. The row count in the heading said 1 the whole time.
+   *
+   * `1fr` on row 2 sends the excess there instead. It was `1fr` once before and clipped the side
+   * column (#215) — but that was when `.side` sat *inside* row 2 and got squeezed by it. It spans
+   * both rows now and carries its own `max-height`, which is what makes the same keyword safe here.
+   * Verified in both states, including a side column twice the window's height.
+   */
+  grid-template-rows: min-content 1fr;
 }
+/* Belt as well as braces: never stretch, whatever the row ends up being. */
+body.app > main.split > .panel.songs { align-self: start; }
 /*
  * A flowing page keeps one column and a comfortable measure at any width.
  *
@@ -848,8 +867,20 @@ body.app > main.split > .side {
  * squeezed until `BRIDGE` read as `BRIDGI`. A width tied to a position breaks the moment a column
  * is added, so this names the column instead.
  */
-.songtable th:nth-child(8), .songtable td:nth-child(8) { width: 28%; }
-.songtable th:first-child, .songtable td:first-child { width: 3.5rem; }
+/*
+ * Sized to what each column holds. The numeric ones were taking a share of the table proportional to
+ * nothing — `2` and `60` sat in columns wide enough for a name — while the pattern column had a slot
+ * label and now has a name beside it too.
+ */
+.songtable th:nth-child(1), .songtable td:nth-child(1) { width: 3rem; }   /* Row */
+.songtable th:nth-child(2), .songtable td:nth-child(2) { width: 12rem; }  /* Pattern + name */
+.songtable th:nth-child(3), .songtable td:nth-child(3) { width: 9rem; }   /* Label */
+.songtable th:nth-child(4), .songtable td:nth-child(4) { width: 4.5rem; } /* Plays */
+.songtable th:nth-child(5), .songtable td:nth-child(5) { width: 5rem; }   /* Length */
+.songtable th:nth-child(6), .songtable td:nth-child(6) { width: 5.5rem; } /* Tempo */
+.songtable th:nth-child(7), .songtable td:nth-child(7) { width: 5rem; }   /* Swing */
+/* Mutes has no width: every other column is sized to its content, so the slack lands here — which
+ * is the only column that can use it, being sixteen chips. */
 .songtable th:last-child, .songtable td:last-child { width: 4rem; }
 /* Wide enough for the longest label the device offers, so none is shown cut off. */
 .songtable select.rowedit { min-width: 6.5rem; }
@@ -868,7 +899,10 @@ body.app > main.split > .side {
 .songtable input.rowedit { text-align: right; max-width: 5.5rem; }
 .songtable select.rowedit { max-width: 8rem; }
 .songtable input.rowedit:focus, .songtable select.rowedit:focus { border-color: var(--teal); outline: none; }
-.songtable td.ptn { font-weight: 600; color: var(--teal); }
+/* The slot stays scannable down the column; the name reads as prose beside it. */
+.songtable td.ptn { white-space: nowrap; }
+.songtable .ptnid { font-weight: 600; color: var(--teal); }
+.songtable .ptnname { color: var(--muted); margin-left: .45rem; font-size: .72rem; }
 /* Sixteen chips, so muting is a click on a numbered track exactly as it is on the instrument. */
 .songtable td.mutes { white-space: nowrap; line-height: 1; }
 .mutechip {
