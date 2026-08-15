@@ -50,6 +50,7 @@ import {
 } from "../project/dn2pattern.js";
 import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
 import { isSongTableEmpty } from "../project/dn1tail.js";
+import { isSongTableEmpty as isDn2SongTableEmpty } from "../project/dn2song.js";
 
 export type DeviceKind = "dn1" | "dn2";
 
@@ -62,8 +63,12 @@ export type DeviceKind = "dn1" | "dn2";
  *
  * - `empty` — checked, and no song holds anything. Rearranging is safe.
  * - `occupied` — checked, and a song exists. Rearranging may desync it.
- * - `unknown` — **we have never located this device's song table.** True of the DN2, whose
- *   song mode sits in the ~98,800 unidentified tail bytes.
+ * - `unknown` — we have never located this device's song table.
+ *
+ * **`unknown` is now unreachable for both families**, and the state stays because that is the
+ * honest shape: it was true of the Digitone II from the day this was written until the table was
+ * located on hardware, and a third device or an unreadable image would need it again. Deleting it
+ * would mean a future "we cannot tell" had nowhere to go but `empty`.
  */
 export type SongState = "empty" | "occupied" | "unknown";
 
@@ -220,14 +225,15 @@ const DN2: Device = {
   },
 
   /**
-   * Always `unknown`.
+   * Real since 2026-08-15, when the song table was located on hardware.
    *
-   * The DN2 song table has never been located — `docs/dn2-format.md` places song mode among
-   * the unidentified tail bytes. Returning `unknown` rather than `empty` is the whole point
-   * of the tri-state: it keeps the manager from claiming a safety it cannot demonstrate.
+   * This returned `unknown` for as long as it existed, because the table sat somewhere in the
+   * unidentified tail bytes and the manager could not demonstrate a safety it did not have. It can
+   * now: `dn2song.ts` reads each record's declared row count, and a project with no rows anywhere is
+   * one a rearrangement cannot desync.
    */
-  songState() {
-    return "unknown";
+  songState(image) {
+    return isDn2SongTableEmpty(image, DN2_LAYOUT) ? "empty" : "occupied";
   },
 };
 
