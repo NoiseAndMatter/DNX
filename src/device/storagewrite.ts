@@ -132,6 +132,14 @@ export interface WriteStoredFileOptions {
    * landed. Those belong to the sequence, and the sequence lives in `safeWriteFile`.
    */
   permit: WritePermit;
+  /**
+   * Allow an occupied destination.
+   *
+   * Decided a layer up, where the backup is taken and the person is asked — `safeWriteFile` will
+   * not set this without both. Repeated here rather than skipped because the check below stays the
+   * last gate before the wire, and it should refuse a caller that forgot as loudly as before.
+   */
+  overwrite?: boolean;
 }
 
 export interface WriteResult {
@@ -205,14 +213,17 @@ export function refuseRawForm(bytes: Uint8Array, path: string): void {
   );
 }
 
-export function refuseUnlessEmpty(target: Entry, path: string): void {
+export function refuseUnlessEmpty(target: Entry, path: string, allowOverwrite = false): void {
   if (target.occupied === undefined) {
     throw new ListingError(
       `cannot tell whether ${path} is empty — this entry did not come from a directory listing, ` +
         `and "unknown" must not be treated as "empty" when the +Drive is the only copy`,
     );
   }
-  if (target.occupied) {
+  // **`allowOverwrite` does not reach the check above, and must not.** "We could not tell what is
+  // in there" is not a state anybody can consent to overwriting — the caller would be agreeing to
+  // destroy something nobody has identified, and could not have taken a meaningful backup either.
+  if (target.occupied && !allowOverwrite) {
     throw new ListingError(
       `${path} holds "${target.name}" — writing there would overwrite it. Pick an empty slot; ` +
         `a listing marks them, and there is no undo on the instrument.`,
@@ -261,7 +272,7 @@ export async function writeStoredFile(
     onProgress,
   } = options;
 
-  refuseUnlessEmpty(target, path);
+  refuseUnlessEmpty(target, path, options.overwrite === true);
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
   refuseRawForm(bytes, path);
 
