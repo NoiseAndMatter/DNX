@@ -24,6 +24,8 @@ handful of bytes and settled the rest. The last one moved **two bytes in 12.9 MB
 | a third song using `(EMPTY)` and `(PTN NAME)` | label values 0 and 1 |
 | song 1 → STOP | LOOP vs STOP, separated from any new-song default |
 | a row set to FADE | label value 16 |
+| swing 57% and 80%, plus a song in slot 16 | the swing byte, and the last slot reading at the predicted offset |
+| a tempo of 135.1 | the × 120 scale, exactly, at 0.1 BPM resolution |
 
 ---
 
@@ -72,19 +74,35 @@ stated, which is what makes it certain rather than suggestive.
 | `+5` | 2 | **tempo** | `u16be`, BPM × 120 |
 | `+7` | 2 | **mute mask** | `u16be`, bit *n* mutes track *n+1* |
 | `+9` | 2 | **length** | `u16be`, sequencer steps |
-| `+11` | 18 | — | zero in every row seen |
+| `+11` | 16 | — | zero in every row seen |
+| `+27` | 1 | **swing** | percent **minus 50**, so 0 is 50% and 30 is 80% |
+| `+28` | 1 | — | zero in every row seen |
 
-**`+3..4` and `+11..28` are not claimed to be padding.** Nothing observed has set them, which is a
-statement about the captures rather than about the format. `rawRow` hands the bytes back.
+**`+3..4`, `+11..26` and `+28` are not claimed to be padding.** Nothing observed has set them, which
+is a statement about the captures rather than about the format. `rawRow` hands the bytes back.
+
+`+27` was on that list until a capture varied swing. That is the pattern to expect: these bytes fall
+one at a time, as somebody thinks to change the right control.
 
 Row length matched the patterns' own lengths — 128, 63, 256, then 2 — confirming the manual's "the
 default value is the same as the pattern length".
+
+### Swing
+
+Per row, always — the manual is explicit that swing is never song-wide, unlike tempo. Stored as
+**percent minus 50**: a row set to 57% read `7`, and one set to the maximum 80% read `30`. The
+manual's 50-80 range closes exactly onto a single byte of 0..30, so the offset is measured rather
+than fitted.
 
 ### The tempo encoding is shared with the Digitone 1
 
 Both families store tempo as `u16be` BPM × 120: the DN1 at `+0x838` of its 2,560-byte record, the DN2
 at `+0xb4c` of its 3,072-byte one. Different geometry, same idea — a small independent sign that both
 were read correctly.
+
+**× 120 is measured, not fitted.** Every tempo in the first captures was a round number, and a round
+number cannot tell × 120 from × 100 or × 10. So one row was set to **135.1**, which read **16,212** —
+135.1 × 120 exactly. The device's 0.1 BPM step moves the raw value by 12.
 
 ---
 
@@ -135,4 +153,5 @@ anywhere is one a rearrangement cannot desync.
 - **Writing.** Nothing here has been written back to an instrument. A song edit cannot go over the
   dump protocol at all — the tail is not transmittable — so it needs a whole-project +Drive write.
 - **`+3..4` and `+11..28`** of a row, and `+0xb47` / `+0xb4a..b` of a record.
-- **Swing**, which the manual says is always per row. Nothing in the captures varied it.
+- **`+3..4`, `+11..26` and `+28`** of a row, and `+0xb47` / `+0xb4a..b` of a record — 19 bytes of the
+  29-byte row remain unexplained, though every field the song editor exposes is now accounted for.
