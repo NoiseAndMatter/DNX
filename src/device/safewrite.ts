@@ -86,6 +86,7 @@ import {
 import { WriteCode, verifyWrite } from "./dumpwrite.js";
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { type ChunkChecksum, refuseUnlessEmpty, writeStoredFile } from "./storagewrite.js";
+import { WRITE_CHUNK_SIZE } from "./storage.js";
 import { type Entry } from "./storage.js";
 import { type WritePermit } from "./writepermit.js";
 
@@ -414,6 +415,7 @@ export interface SafeFileWriteOptions {
    * push on it. `undefined` is the answer that has ever worked.
    */
   checksum?: number | ChunkChecksum;
+  /** Bytes per chunk. Defaults to `WRITE_CHUNK_SIZE`, which is what Transfer uses. */
   chunkSize?: number;
   /** Message ids for the write, and separately for the verifying read. */
   msgId?: number;
@@ -476,7 +478,17 @@ export async function safeWriteFile(
   // "this will overwrite Chords 3" after agreeing to a write is not consent.
   refuseUnlessEmpty(target, path);
 
-  const chunkSize = options.chunkSize ?? bytes.length;
+  // **`WRITE_CHUNK_SIZE`, the same default `writeStoredFile` uses.**
+  //
+  // This defaulted to `bytes.length` — the whole file in one message — while the layer below it
+  // defaulted to 32,768. Two defaults for one idea, and the difference was invisible: the first
+  // project ever written to a +Drive went as a single 78,820-byte message and reported "1 chunk",
+  // so the chunk numbering fixed in #208 was never exercised by the path people actually use.
+  //
+  // Both are now known to work on hardware — a single 78,820-byte message, and the same project in
+  // three chunks of 32,768, each committed and read back as the same image. 32,768 is what Elektron
+  // Transfer uses, so it is the one with a second implementation behind it.
+  const chunkSize = options.chunkSize ?? WRITE_CHUNK_SIZE;
   const review: FileWriteReview = {
     path,
     name: options.name,

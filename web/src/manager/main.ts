@@ -68,6 +68,7 @@ import { recordWriteMessage } from "../../../src/device/safewrite.js";
 import { emptyProjectSlots, writeProjectToDrive } from "../driveproject.js";
 import { buildPayload } from "../../../src/project/write.js";
 import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
+import { projectName, writeProjectName } from "../../../src/project/dn2image.js";
 import {
   SONG_GRID,
   describeSong,
@@ -594,6 +595,41 @@ async function saveToDrive(): Promise<void> {
   const slot = Number($<HTMLSelectElement>("drivetarget").value);
   if (!Number.isInteger(slot)) return;
 
+  /*
+   * **Name it, because the device lists projects by name and nothing else.**
+   *
+   * The first two projects written to the +Drive both showed as `EMPTY` — the template's name,
+   * carried through because nothing ever set one. Two slots that look identical on the instrument
+   * is not a cosmetic problem: the slot number is the only thing telling them apart, and it is not
+   * what you read when you are looking for your work.
+   *
+   * Applied as an undoable session edit rather than to a private copy, so what is written is what
+   * the manager says is open. A project silently saved under a name the page never showed would be
+   * worse than no naming at all.
+   */
+  const current = projectName(session.image);
+  const named = await askText({
+    title: `Name the project going to slot ${slot}`,
+    body: [
+      "This is the name the instrument lists it under. Up to 15 characters; the device has no " +
+        "lowercase, so anything typed in lower case is stored upper.",
+    ],
+    value: current,
+    maxLength: 15,
+    confirmLabel: "Continue",
+  });
+  if (named === undefined) return;
+
+  const wanted = named.toUpperCase().trim();
+  if (wanted !== "" && wanted !== current) {
+    const changed = session.apply(tag(`name the project ${wanted}`), (image) => {
+      const copy = Uint8Array.from(image);
+      writeProjectName(copy, wanted);
+      return copy;
+    });
+    if (changed) render();
+  }
+
   const device = await driveDevice();
   if (!device) return;
 
@@ -609,7 +645,7 @@ async function saveToDrive(): Promise<void> {
       slot,
       payload,
       image: session.image,
-      name: state.device?.projectName(session.image) ?? "project",
+      name: projectName(session.image),
       onStatus: (message) => status(message),
       onProgress: (done, total, stage) => {
         progress.at(done, total, stage === "write" ? "Writing" : "Verifying");
