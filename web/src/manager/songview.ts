@@ -173,6 +173,8 @@ const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing",
  * of them values nobody asked for.
  */
 function numberCell(
+  row: number,
+  field: EditableField,
   value: number,
   range: { min: number; max: number },
   step: number,
@@ -183,6 +185,10 @@ function numberCell(
   const input = document.createElement("input");
   input.type = "number";
   input.className = "rowedit";
+  // Named so focus can be put back on the same control after the table is rebuilt. Editing a row
+  // re-renders the whole song, which replaces every element in it — see `focusKey`.
+  input.dataset["row"] = String(row);
+  input.dataset["field"] = field;
   input.value = String(value);
   input.min = String(range.min);
   input.max = String(range.max);
@@ -202,10 +208,12 @@ function numberCell(
 }
 
 /** The label picker, offering exactly the vocabulary the device offers. */
-function labelCell(row: SongRow, onCommit: (value: number) => void): HTMLTableCellElement {
+function labelCell(rowIndex: number, row: SongRow, onCommit: (value: number) => void): HTMLTableCellElement {
   const td = document.createElement("td");
   const select = document.createElement("select");
   select.className = "rowedit";
+  select.dataset["row"] = String(rowIndex);
+  select.dataset["field"] = "label";
   for (const [i, name] of LABELS.entries()) {
     const option = document.createElement("option");
     option.value = String(i);
@@ -264,9 +272,10 @@ function rowActions(rowIndex: number, song: Song, hooks: SongEditHooks): HTMLTab
     b.addEventListener("click", run);
     return b;
   };
+  // **No up/down arrows.** Reordering is dragging, which the row already supports and which every
+  // other grid in this app uses. Two ways to do one thing, one of them worse, is how a vocabulary
+  // stops being a vocabulary.
   td.append(
-    button("\u2191", "Move this row up", rowIndex > 0, () => hooks.onMove(rowIndex, rowIndex - 1)),
-    button("\u2193", "Move this row down", rowIndex < song.rowCount - 1, () => hooks.onMove(rowIndex, rowIndex + 1)),
     button("+", "Insert a copy of this row below it", song.rowCount < 99, () => hooks.onInsert(rowIndex)),
     button("\u2715", "Delete this row", true, () => hooks.onDelete(rowIndex)),
   );
@@ -328,11 +337,11 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
       tr.append(
         cell(String(i + 1), "num"),
         cell(patternName(row.pattern), "ptn"),
-        labelCell(row, (value) => hooks.onField(i, "label", value)),
-        numberCell(row.repeats, LIMITS.repeats, 1, (v) => hooks.onField(i, "repeats", v)),
-        numberCell(row.length, LIMITS.length, 1, (v) => hooks.onField(i, "length", v)),
-        numberCell(row.tempo, LIMITS.tempo, 0.1, (v) => hooks.onField(i, "tempo", v)),
-        numberCell(row.swing, LIMITS.swing, 1, (v) => hooks.onField(i, "swing", v)),
+        labelCell(i, row, (value) => hooks.onField(i, "label", value)),
+        numberCell(i, "repeats", row.repeats, LIMITS.repeats, 1, (v) => hooks.onField(i, "repeats", v)),
+        numberCell(i, "length", row.length, LIMITS.length, 1, (v) => hooks.onField(i, "length", v)),
+        numberCell(i, "tempo", row.tempo, LIMITS.tempo, 0.1, (v) => hooks.onField(i, "tempo", v)),
+        numberCell(i, "swing", row.swing, LIMITS.swing, 1, (v) => hooks.onField(i, "swing", v)),
         muteCell(row, i, hooks),
         rowActions(i, song, hooks),
       );
@@ -361,3 +370,47 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
 
 /** Every label the device offers, for anything that needs the vocabulary. */
 export const LABEL_NAMES = LABELS;
+
+/**
+ * Which editor a person is in, so it can be handed back after a re-render.
+ *
+ * Editing a field re-renders the song, which replaces every element in the table — so the input
+ * being typed into stops existing, and focus falls to the document. **Bumping a number with the
+ * arrow keys twice in a row was impossible**: the first press committed, the table was rebuilt, and
+ * the second press went nowhere.
+ *
+ * Restoring focus by row and field rather than by element identity, because the element is gone. The
+ * caret goes to the end, which is where a number input wants it.
+ */
+export function focusKey(): { row: string; field: string; selectionStart: number | null } | undefined {
+  const active = document.activeElement as HTMLInputElement | HTMLSelectElement | null;
+  const row = active?.dataset?.["row"];
+  const field = active?.dataset?.["field"];
+  if (row === undefined || field === undefined) return undefined;
+  return {
+    row,
+    field,
+    selectionStart: active instanceof HTMLInputElement ? active.selectionStart : null,
+  };
+}
+
+/** Put focus back where `focusKey` found it, if that control still exists. */
+export function restoreFocus(
+  host: HTMLElement,
+  key: { row: string; field: string; selectionStart: number | null } | undefined,
+): void {
+  if (!key) return;
+  const selector = `[data-row="${key.row}"][data-field="${key.field}"]`;
+  const target = host.querySelector<HTMLInputElement | HTMLSelectElement>(selector);
+  if (!target) return;
+  target.focus();
+  if (target instanceof HTMLInputElement && key.selectionStart !== null) {
+    // `setSelectionRange` throws on a number input in some browsers, and a lost caret is a far
+    // smaller problem than a thrown error mid-render.
+    try {
+      target.setSelectionRange(key.selectionStart, key.selectionStart);
+    } catch {
+      /* the caret is a nicety; focus is the point */
+    }
+  }
+}

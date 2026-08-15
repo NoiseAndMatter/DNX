@@ -67,6 +67,15 @@
   <button class="btn primary" id="export" disabled>Export…</button>
   <!-- The only control here that changes an instrument, and it looks unlike the others. -->
   <button class="btn danger" id="writedevice" hidden disabled>Write to device</button>
+  <!--
+    A different destination with a different meaning, so it is a separate control rather than a mode
+    of the one above. "Write to device" sends changed pattern records to the project the musician has
+    *loaded*; this writes the whole project — songs included, which no dump can carry — into a
+    *stored* slot. Only empty slots are offered: there is no undo on the instrument.
+  -->
+  <button class="btn" id="savetodrive" hidden>Save to +Drive…</button>
+  <select id="drivetarget" hidden title="An empty +Drive project slot"></select>
+  <button class="btn danger" id="dodrivesave" hidden disabled>Save to slot</button>
 </div>
 
 <div class="tabs" id="tabs" hidden></div>
