@@ -60,19 +60,82 @@ it disagrees with us, one of the two is wrong and it is worth knowing which.
 DNX moves what already exists between instruments and slots, and editorial features stay behind the
 manager. So this is worth reading for what it proves about the format, not as a feature to match.
 
-Not yet cloned or read. Three questions to take to it first:
+**Read, and two of its ideas are now in DNX.** Its per-device spec module became `src/project/spec.ts`
+(#206) — one file per machine rather than twenty numbers spread across modules named after formats.
+Its `safe-write.js` became `src/device/safewrite.ts` (#207): backup, confirm, write, verify, in one
+path a caller cannot go around.
 
-- **Does it write over SysEx, or by building a project file?** That says which of the two protocols
-  it trusts, and `docs/device-storage.md` records how differently those behave.
-- **What does it do about the checksum?** T26 and T30 on the test sheet are still closing that from
-  our side.
-- **Does it handle the DT2 and the DN2 through one representation?** If so, that is direct evidence
-  about how much of the pattern format the two devices share — something we have so far only
-  inferred from elk-herd's Digitakt code.
+The three questions this section used to hold are answered:
 
-**Check the licence before reading any of it closely**, the way `elk-herd`'s BSD 2-Clause was checked
-below. Unknown until then, so treat it as all-rights-reserved and keep its text out of this
-repository.
+- **It writes over SysEx**, using the dump protocol rather than the +Drive file API.
+- **It gates on OS build** — `WRITE_ALLOWED_BUILDS` per device, extended only after re-verifying on
+  the new firmware. DNX's equivalent is stronger and different: it checks the storage version of the
+  record being written against a record the device itself just produced, so the check is against the
+  instrument rather than against our table. Worth noting their allowlist names `0049` for the DN2 and
+  this author's instrument is on `0050`.
+- **It handles the DT2 and the DN2 through one representation**, with a per-device `SPEC`. Direct
+  evidence that the two share most of the pattern format — previously inferred only from elk-herd's
+  Digitakt code.
+
+What is still worth taking from it: its browser-side **backup stash**, so a restore does not depend
+on a download the browser may have blocked. `safewriteui.ts` records why that was deliberately left
+out of #207.
+
+**Check the licence before copying any of it verbatim**, the way `elk-herd`'s BSD 2-Clause was
+checked below. What has been adopted so far is shape and reasoning, attributed in the module headers.
+
+## Digitone2Link — a third opinion on the +Drive API
+
+<https://github.com/enshtein/Digitone2Link>, by enshtein. A Tauri desktop app — Rust backend,
+TypeScript/React front end — that browses a Digitone II's preset library. **Read-only by design**:
+it downloads sounds and states plainly that it never overwrites anything on the device.
+
+**It independently implements the same +Drive file API**, which is the first outside confirmation
+DNX has had that this protocol is real and read the right way:
+
+| | Digitone2Link | DNX |
+|---|---|---|
+| header | `F0 00 20 3C 10 00` | the same |
+| listing / open / read / close | `0x53` / `0x54` / `0x55` / `0x56` | the same |
+| paths | `/soundbanks/{bank}/{slot}` | the same |
+| banks | `A`–`H` | the same |
+| framing | 7-bit packing, high bits gathered into a leading byte | `encode87` |
+
+Everything DNX knows about this API was decoded from captures of Elektron Transfer plus our own
+experiments. A second implementation arriving at the same codes and the same path grammar is a
+cross-check we could not otherwise buy.
+
+### Where it differs is the useful part — tags
+
+DNX reads tags as a **`tagBits` u32be bitfield at object +8**, against a closed 32-name vocabulary in
+`src/project/tags.ts`. **The table itself is not in doubt** — it is confirmed by photographs of the
+device's TAGS screen and cross-checked against eight bit assignments derived independently from 664
+named sounds in 53 projects.
+
+What is fragile is **alignment**, not the table. A stored preset's body carries a 5-byte prefix
+before the object, and `library.ts` finds the object by magic precisely because getting that wrong is
+invisible: the vocabulary is closed, so a misaligned read still yields real tag names and looks
+entirely plausible. That question was settled by checking the *name* decoded correctly, not the tags,
+for exactly this reason.
+
+Digitone2Link gets tags from somewhere else entirely — a ZIP manifest's JSON at `/MetaInfo/Tags`, and
+a `sound_tags` array from the device's own `/.metadata`. **That is an independent route to the same
+fact**, and a cheap standing check on alignment: run both over a bank, and agreement confirms the
+object was found in the right place. It cannot be fooled the way a bitfield read at the wrong offset
+can.
+
+Two other things to take from it:
+
+- **`/.metadata` is a path DNX does not use.** Worth listing, whatever it turns out to hold.
+- **Its name parsing is cruder than ours** — it scans for printable runs (`0x20`–`0x7e`) rather than
+  reading a known offset. Ours should win any disagreement, but a disagreement would still be worth
+  understanding, because a printable-run scan finds names our offset would miss if the offset moved.
+
+**No second opinion on writing.** It does not write, so it says nothing about `0x57`/`0x58`/`0x59`,
+the chunk numbering, or the stored-versus-raw form question that `storagewrite.ts` settled.
+
+**Licence unchecked.** Treat it as all-rights-reserved until confirmed and keep its text out of this
+repository; the table above is protocol fact, which is not anyone's to license.
 
 ## elk-herd — the closest prior art
 
