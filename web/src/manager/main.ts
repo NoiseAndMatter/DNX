@@ -72,19 +72,25 @@ import {
   SONG_GRID,
   describeSong,
   focusKey,
+  renderSongControls,
   renderSongRows,
   renderSongTabs,
   restoreFocus,
   songTabs,
 } from "./songview.js";
 import {
+  clearSong,
   deleteRow,
   insertRow,
   moveRow,
+  renameSong,
+  setEndMode,
   setRow,
   setRowPattern,
+  setSongTempo,
   toggleRowMute,
 } from "../../../src/librarian/songedit.js";
+import { END_LOOP, END_STOP } from "../../../src/project/dn2song.js";
 import { DN2_LAYOUT, layoutFor } from "../../../src/project/dn2image.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import {
@@ -454,6 +460,17 @@ function renderSongs(): void {
       renderSongs();
     },
   });
+  renderSongControls($("songControls"), song, {
+    onRename: () => void renameCurrentSong(song),
+    onToggleEnd: () =>
+      editSong(
+        song.loops ? `song ${song.index + 1} ends by stopping` : `song ${song.index + 1} loops`,
+        (image, s) => setEndMode(image, s, song.loops ? END_STOP : END_LOOP),
+      ),
+    onClear: () => void clearCurrentSong(song),
+    onTempo: (bpm) => editSong(`set song ${song.index + 1} tempo`, (image, s) => setSongTempo(image, s, bpm)),
+    onNewSong: () => void startSong(song),
+  });
   renderSongRows($("songRows"), song, {
     drag,
     onField: (row, field, value) => {
@@ -585,6 +602,65 @@ async function saveToDrive(): Promise<void> {
     button.disabled = false;
     device.close();
   }
+}
+
+
+/** Rename, through the same dialog every other name on this page uses. */
+async function renameCurrentSong(song: Song): Promise<void> {
+  const name = await askText({
+    title: `Rename song ${song.index + 1}`,
+    body: [
+      "Up to 16 characters. The device has no lowercase, so anything typed in lower case is stored" +
+        " upper.",
+    ],
+    value: song.name,
+    maxLength: 16,
+    confirmLabel: "Rename",
+  });
+  if (name === undefined) return;
+  editSong(`rename song ${song.index + 1}`, (image, s) => renameSong(image, s, name.toUpperCase()));
+}
+
+/**
+ * Clear a song, after saying what is about to go.
+ *
+ * The only song-level control that destroys work, and the only one a re-drag cannot rebuild — a
+ * cleared arrangement is gone whatever else is on screen. So it names the song and counts its rows
+ * rather than asking "are you sure".
+ */
+async function clearCurrentSong(song: Song): Promise<void> {
+  const named = song.name.trim() === "" ? "" : ` "${song.name}"`;
+  const ok = await askConfirm({
+    title: `Clear song ${song.index + 1}${named}?`,
+    body: [
+      `${song.rowCount} row${song.rowCount === 1 ? "" : "s"} and the song's name are removed. The` +
+        ` patterns themselves are untouched — a song only refers to them.`,
+      "Undo brings it back; nothing reaches the instrument until you save.",
+    ],
+    confirmLabel: "Clear the song",
+    danger: true,
+  });
+  if (ok) editSong(`clear song ${song.index + 1}`, (image, s) => clearSong(image, s));
+}
+
+/**
+ * Start a song in an empty slot: a row and a name, in one action.
+ *
+ * Two steps would leave a song that exists and cannot be named until you notice the rename button
+ * has appeared, which is how the panel behaved before these controls existed.
+ */
+async function startSong(song: Song): Promise<void> {
+  const name = await askText({
+    title: `New song in slot ${song.index + 1}`,
+    body: ["Up to 16 characters. It starts with one row, which you can drag a pattern onto."],
+    value: "",
+    maxLength: 16,
+    confirmLabel: "Create",
+  });
+  if (name === undefined) return;
+  editSong(`new song ${song.index + 1}`, (image, s) =>
+    renameSong(insertRow(image, s, -1), s, name.toUpperCase()),
+  );
 }
 
 // --- selection ----------------------------------------------------------------------------

@@ -32,6 +32,7 @@ import {
   setEndMode,
   setRow,
   setRowPattern,
+  setSongTempo,
   toggleRowMute,
 } from "../src/librarian/songedit.js";
 
@@ -155,6 +156,17 @@ test("end mode survives a round trip", () => {
   const image = setEndMode(withSong(2), 0, END_STOP);
   assert.equal(readSong(image, 0).loops, false);
   assert.equal(readSong(image, 0).endMode, END_STOP);
+});
+
+test("the song's own tempo is separate from any row's", () => {
+  // The manual: "selecting song tempo on any row overrides all the previously set row and pattern
+  // tempos". Two fields that look alike on screen and mean different things, so changing one must
+  // not touch the other.
+  const image = setSongTempo(withSong(3), 0, 174.5);
+  const song = readSong(image, 0);
+  assert.equal(song.tempo, 174.5);
+  assert.deepEqual(song.rows.map((r) => r.tempo), [120, 120, 120], "the rows kept theirs");
+  assert.throws(() => setSongTempo(image, 0, 500), Dn2SongError);
 });
 
 test("clearing empties the slot, name and all", () => {

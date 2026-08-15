@@ -112,6 +112,11 @@
     </h2>
     <div class="body" id="songBody">
       <div class="tabs songtabs" id="songTabs"></div>
+      <!--
+        Acts on the song, not a row. In the body rather than the heading, because the heading is
+        itself the fold button and controls inside it would be nested interactive elements.
+      -->
+      <div class="songcontrols" id="songControls"></div>
       <div id="songRows"></div>
     </div>
   </section>

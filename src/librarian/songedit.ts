@@ -193,6 +193,22 @@ export function renameSong(
   return edit(image, index, (song) => ({ ...song, name }), layout);
 }
 
+/**
+ * Set the song's own tempo.
+ *
+ * Distinct from a row's. The manual is explicit: *"Selecting song tempo on any row overrides all
+ * the previously set row and pattern tempos"* — so this is the value that wins, and changing it is
+ * not the same edit as changing a row's, however similar the two fields look on screen.
+ */
+export function setSongTempo(
+  image: Uint8Array,
+  index: number,
+  tempo: number,
+  layout: ImageLayout = DN2_LAYOUT,
+): Uint8Array {
+  return edit(image, index, (song) => ({ ...song, tempo }), layout);
+}
+
 /** Set whether the song loops or stops at the end. */
 export function setEndMode(
   image: Uint8Array,
