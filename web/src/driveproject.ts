@@ -1,0 +1,272 @@
+/**
+ * Writing a whole project to a +Drive slot.
+ *
+ * ## Why this exists at all
+ *
+ * A song lives in the image **tail**, and the tail is not transmittable: `writeChangedRecords` sends
+ * pattern records and reports everything else as `untransmittable`. So the manager's existing write
+ * — dump records into the *active* project — can never carry a song edit. The only route is to write
+ * the whole project as a file into a +Drive slot, which the chunk-numbering and stored-form fixes
+ * made possible.
+ *
+ * That gives the manager two write destinations with genuinely different meanings, and the UI must
+ * not blur them:
+ *
+ * | edit | goes to | by |
+ * |---|---|---|
+ * | patterns, kits | the **active** project | dump records, `safeWriteRecords` |
+ * | songs, or anything wholesale | a **stored** slot | this |
+ *
+ * ## What is actually new here, and what is not
+ *
+ * It is tempting to say this is the first time an instrument has been asked to read a payload **we**
+ * compressed. **It is not.** `99_HardwareTest/` holds projects that are byte-identical to what
+ * `buildPayload` produces — `CLAUDE_TEST`, `GLITCH_EXPLORE_EXPANDED`, `HWTEST_BASE_1629` and others
+ * — and those are the files loaded onto the instrument for the expander and rearrange hardware
+ * tests. The device has read our LZ4 repeatedly and played what came out.
+ *
+ * So the compression is **not** the risk. What is new is only the **transport**: the same payload
+ * that reached the device through Elektron Transfer now goes over SysEx as a +Drive write. Every
+ * earlier +Drive write sent bytes that had been read off the same device minutes before; this sends
+ * bytes DNX assembled. That is a smaller gap than it first looked, and worth stating precisely
+ * rather than dramatically.
+ *
+ * ## Verification compares images, not bytes
+ *
+ * `lz4encode.ts` says it plainly: LZ4 is a deterministic *format* and not a deterministic
+ * *encoding*, so a rebuilt payload usually differs from the original while decoding to exactly the
+ * same image. Ours is not even consistently larger — `HWTRK 1430-T5` is 109,907 bytes from Elektron
+ * and 106,022 from us.
+ *
+ * A byte comparison would therefore fail on a correct write, which is the sort of false alarm that
+ * teaches people to ignore a check. So the read-back is **decoded** and the images compared.
+ *
+ * ## Empty slots only
+ *
+ * `refuseUnlessEmpty` is not relaxed here. For most people the +Drive is the only copy of that work,
+ * and there is no undo on the instrument.
+ */
+
+import { type ConnectedDevice, apiTransport } from "./devicesource.js";
+import { firstDifference, projectPath } from "./driveslot.js";
+
+export { firstDifference, projectPath };
+import { type Entry, listRequest, parseListing } from "../../src/device/storage.js";
+import { IDS_FOR, reserveMessageIds } from "./messageids.js";
+import { decodeProjectImage } from "../../src/project/dn2codec.js";
+import { safeWriteFile } from "../../src/device/safewrite.js";
+import { confirmFileWrite } from "./safewriteui.js";
+import { STORED_FORM, openRequest, parseOpen, readRequest, parseRead, closeRequest, FREEZES } from "../../src/device/storage.js";
+
+export class DriveWriteError extends Error {}
+
+/**
+ * The destination's listing entry, **taken now**.
+ *
+ * Not cached and not passed in. `refuseUnlessEmpty` refuses an entry that did not come from a
+ * listing, and an entry from ten minutes ago is not evidence about what is in a slot at the moment
+ * of writing — somebody may have saved to it from the instrument's front panel since.
+ */
+export async function entryForSlot(device: ConnectedDevice, slot: number): Promise<Entry> {
+  const transport = apiTransport(device);
+  const id = reserveMessageIds(IDS_FOR.oneMessage);
+  const reply = await transport.request(listRequest(id, "/projects"), id, 10_000);
+  const entry = parseListing(reply.body).entries.find((e) => e.index === slot);
+  if (!entry) {
+    throw new DriveWriteError(
+      `slot ${slot} is not in the +Drive's project listing, so there is nothing to check before ` +
+        `writing to it`,
+    );
+  }
+  return entry;
+}
+
+export interface WriteProjectResult {
+  slot: number;
+  cancelled: boolean;
+  /** Bytes of payload sent. */
+  written: number;
+  chunks: number;
+  committed: boolean;
+  /**
+   * True when the project read back decodes to the image that was sent.
+   *
+   * **Images, not bytes.** See the module note: our compression differs from Elektron's, so a
+   * byte comparison would fail on a correct write.
+   */
+  verified: boolean;
+  /** Why not, when `verified` is false. */
+  problem?: string;
+}
+
+export interface WriteProjectOptions {
+  device: ConnectedDevice;
+  slot: number;
+  /** The compressed payload, as `buildPayload` produces and a `.dn2prj` carries. */
+  payload: Uint8Array;
+  /** The decoded image the payload should reconstitute — the thing actually being checked. */
+  image: Uint8Array;
+  name: string;
+  onStatus?: (message: string) => void;
+  onProgress?: (done: number, total: number, stage: "write" | "verify") => void;
+}
+
+/**
+ * Write a project into an empty +Drive slot, and prove it landed.
+ *
+ * Verification reads the slot back in its **stored** form and decodes it. That checks the whole
+ * chain — our compression, the device's storage, the device's idea of the container — against the
+ * one thing that matters: does the project come back as the project that was sent.
+ */
+export async function writeProjectToDrive(
+  options: WriteProjectOptions,
+): Promise<WriteProjectResult> {
+  const { device, slot, payload, image, name } = options;
+  const status = options.onStatus ?? ((): void => {});
+
+  const target = await entryForSlot(device, slot);
+  const transport = apiTransport(device);
+
+  const result = await safeWriteFile({
+    transport,
+    path: projectPath(slot),
+    name,
+    bytes: payload,
+    target,
+    confirm: confirmFileWrite,
+    msgId: reserveMessageIds(IDS_FOR.wholeProject),
+    verifyMsgId: reserveMessageIds(IDS_FOR.wholeProject),
+    // A project is minutes of transfer, not seconds. The 5-second default is sized for a preset.
+    timeoutMs: 120_000,
+    // Byte verification is the wrong check here, so it is skipped and replaced below rather than
+    // left to report a difference that means nothing.
+    skipVerify: true,
+    ...(options.onStatus === undefined ? {} : { onStatus: options.onStatus }),
+    onProgress: (done, total) => options.onProgress?.(done, total, "write"),
+  });
+
+  if (result.cancelled) {
+    return { slot, cancelled: true, written: 0, chunks: 0, committed: false, verified: false };
+  }
+
+  if (!result.committed) {
+    return {
+      slot,
+      cancelled: false,
+      written: result.written,
+      chunks: result.chunks,
+      committed: false,
+      verified: false,
+      problem: "the device did not acknowledge the commit, so nothing landed",
+    };
+  }
+
+  status("Verifying — reading the project back off the +Drive…");
+  const back = await readStoredForm(device, slot, (done) =>
+    options.onProgress?.(done, payload.length, "verify"),
+  );
+
+  let decoded: Uint8Array;
+  try {
+    decoded = decodeProjectImage(back).image;
+  } catch (error) {
+    return {
+      slot,
+      cancelled: false,
+      written: result.written,
+      chunks: result.chunks,
+      committed: true,
+      verified: false,
+      problem:
+        `the slot read back but could not be decoded (${String(error)}). The device stored ` +
+        `something; whether it is a usable project is exactly what this could not confirm.`,
+    };
+  }
+
+  const at = firstDifference(decoded, image);
+  return {
+    slot,
+    cancelled: false,
+    written: result.written,
+    chunks: result.chunks,
+    committed: true,
+    verified: at === undefined,
+    ...(at === undefined
+      ? {}
+      : {
+          problem:
+            `the project read back decodes to a different image — first difference at byte ` +
+            `${at.toLocaleString()} of ${image.length.toLocaleString()}`,
+        }),
+  };
+}
+
+
+/**
+ * Read a stored file in its compressed form.
+ *
+ * `readDriveProject` asks for the raw uncompressed image, which is what the rest of DNX wants and
+ * is 12.9 MB. For checking a write, the stored form is the same information in ~250 KB.
+ */
+async function readStoredForm(
+  device: ConnectedDevice,
+  slot: number,
+  onProgress: (bytes: number) => void,
+): Promise<Uint8Array> {
+  const transport = apiTransport(device);
+  let next = reserveMessageIds(IDS_FOR.wholeProject);
+  const id = (): number => next++;
+
+  const openId = id();
+  const opened = parseOpen(
+    (await transport.request(
+      openRequest(openId, projectPath(slot), FREEZES, 2048, STORED_FORM),
+      openId,
+      20_000,
+    )).body,
+  );
+
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (let sequence = 0; sequence < 8192; sequence++) {
+      const readId = id();
+      const chunk = parseRead(
+        (await transport.request(readRequest(readId, opened.handle, sequence), readId, 20_000)).body,
+      );
+      if (chunk.data.length > 0) {
+        parts.push(chunk.data);
+        total += chunk.data.length;
+        onProgress(total);
+      }
+      if (chunk.last) break;
+    }
+  } finally {
+    const closeId = id();
+    await transport.request(closeRequest(closeId, opened.handle), closeId, 20_000).catch(() => {});
+  }
+
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+/**
+ * Slots with nothing in them, for a picker that should not offer to overwrite anything.
+ *
+ * Read from a **fresh listing** rather than from `DriveProject`, which carries a name and an
+ * allocation but not occupancy — `listProjects` reports every slot, named or not. Occupancy is a
+ * property of the directory entry, and the only place it is stated.
+ */
+export async function emptyProjectSlots(device: ConnectedDevice): Promise<number[]> {
+  const transport = apiTransport(device);
+  const id = reserveMessageIds(IDS_FOR.oneMessage);
+  const reply = await transport.request(listRequest(id, "/projects"), id, 10_000);
+  return parseListing(reply.body)
+    .entries.filter((e) => e.occupied === false)
+    .map((e) => e.index);
+}
