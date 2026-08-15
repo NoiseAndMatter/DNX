@@ -1,0 +1,191 @@
+/**
+ * A project's songs, as tabs and a table of rows.
+ *
+ * ## Why a panel of its own, beside the patterns
+ *
+ * A song is an arrangement **of patterns**, so the two have to be visible together: the question a
+ * person asks of this panel is *"which pattern is row 7, and where is it in the grid"*. Putting the
+ * songs behind a tab that replaces the pattern grid would answer that by making you remember.
+ *
+ * It lands in the main column below the grid because `main.split` is a two-column layout and a third
+ * child flows to column 1, row 2 — full width, which a nine-column table needs and the 20rem side
+ * column could never give it.
+ *
+ * ## Sixteen tabs, one per song
+ *
+ * The same `.tabs` / `.tab` markup the bank tabs use, so the gesture is the one already learned. A
+ * tab shows its row count the way a bank tab shows its pattern count, which makes "which of these
+ * sixteen has anything in it" answerable without clicking through all of them.
+ *
+ * ## Read-only, deliberately, for now
+ *
+ * `deviceproject.ts` says songs are "the one thing this project has always refused to risk", and a
+ * song row references a pattern **by slot** — the reference a rearrangement invalidates. So this
+ * shows before it touches. Editing needs a whole-project +Drive write, because the tail a song lives
+ * in cannot go over the dump protocol at all.
+ *
+ * ## Everything here draws; nothing here decides
+ *
+ * Reading is `src/project/dn2song.ts`, which is pure and tested against hardware captures. This
+ * module renders what it is handed, which is what lets it be tested without a browser.
+ */
+
+import { type Song, type SongRow, LABELS, mutedTracks } from "../../../src/project/dn2song.js";
+import { patternName } from "../../../src/sheet/naming.js";
+
+export interface SongTab {
+  index: number;
+  /** 1-based, as the device numbers them. */
+  label: string;
+  name: string;
+  rowCount: number;
+  selected: boolean;
+}
+
+/** What the tab strip should show, given every song in the project. */
+export function songTabs(songs: readonly Song[], selected: number): SongTab[] {
+  return songs.map((s) => ({
+    index: s.index,
+    label: String(s.index + 1),
+    name: s.name,
+    rowCount: s.rowCount,
+    selected: s.index === selected,
+  }));
+}
+
+/**
+ * How a row's mutes read.
+ *
+ * Track numbers rather than a hex mask: somebody can check `T2, T3, T5` against the instrument and
+ * cannot check `0x0016`. **`T`-prefixed** because that is what the manager's own track grid calls
+ * them, and a bare `1` in a table of numbers reads as a count rather than a track.
+ *
+ * "none" rather than an empty cell, so an unmuted row is distinguishable from one this build failed
+ * to read.
+ */
+export function describeMutes(row: SongRow): string {
+  const tracks = mutedTracks(row);
+  return tracks.length === 0 ? "none" : tracks.map((t) => `T${t}`).join(", ");
+}
+
+/** A label for display, falling back to the raw number for a value this build does not know. */
+export function describeLabel(row: SongRow): string {
+  return row.labelName ?? `? (${row.label})`;
+}
+
+/**
+ * A one-line summary of a song, for the panel heading.
+ *
+ * Names the END behaviour, because a song that loops and one that stops are different pieces of
+ * music and the difference is invisible in the row table.
+ */
+export function describeSong(song: Song): string {
+  if (song.rowCount === 0) return `Song ${song.index + 1} — empty`;
+  const name = song.name.trim() === "" ? "(unnamed)" : song.name;
+  return (
+    `Song ${song.index + 1} · ${name} · ${song.rowCount} row${song.rowCount === 1 ? "" : "s"} · ` +
+    `${song.tempo} BPM · ends by ${song.loops ? "looping" : "stopping"}`
+  );
+}
+
+export interface SongViewHooks {
+  /** A tab was clicked. */
+  onSelect: (index: number) => void;
+}
+
+const cell = (text: string, className?: string): HTMLTableCellElement => {
+  const td = document.createElement("td");
+  // Every string here reaches the DOM through `textContent`. A song name and a pattern name both
+  // come out of a project file, which is not ours and may contain anything.
+  td.textContent = text;
+  if (className) td.className = className;
+  return td;
+};
+
+/** Draw the tab strip. */
+export function renderSongTabs(host: HTMLElement, tabs: readonly SongTab[], hooks: SongViewHooks): void {
+  host.textContent = "";
+  for (const tab of tabs) {
+    const button = document.createElement("button");
+    button.className = "tab";
+    button.type = "button";
+    button.setAttribute("aria-selected", String(tab.selected));
+    button.append(document.createTextNode(tab.label));
+
+    // The row count, the way a bank tab carries its pattern count — so "which of these sixteen
+    // holds anything" is answerable without clicking through all of them.
+    if (tab.rowCount > 0) {
+      const n = document.createElement("span");
+      n.className = "n";
+      n.textContent = String(tab.rowCount);
+      button.append(n);
+    }
+    button.title = tab.name.trim() === ""
+      ? `Song ${tab.label}${tab.rowCount ? ` — ${tab.rowCount} rows` : " — empty"}`
+      : `Song ${tab.label} — ${tab.name}`;
+
+    button.addEventListener("click", () => hooks.onSelect(tab.index));
+    host.append(button);
+  }
+}
+
+const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing", "Mutes"] as const;
+
+/**
+ * Draw one song's rows.
+ *
+ * An empty song gets a sentence rather than an empty table: a table with headers and no rows reads
+ * as a failure to load, and "this song has no rows" is a different fact.
+ */
+export function renderSongRows(host: HTMLElement, song: Song): void {
+  host.textContent = "";
+
+  if (song.rowCount === 0) {
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = `Song ${song.index + 1} has no rows. Build one on the instrument, in SONG mode.`;
+    host.append(p);
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "libtable songtable";
+
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  for (const c of COLUMNS) {
+    const th = document.createElement("th");
+    th.textContent = c;
+    hr.append(th);
+  }
+  thead.append(hr);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const [i, row] of song.rows.entries()) {
+    const tr = document.createElement("tr");
+    tr.dataset["row"] = String(i);
+    tr.append(
+      cell(String(i + 1), "num"),
+      // The pattern in the manager's own vocabulary — `A1`, `H16` — not a raw slot number, so it
+      // can be found in the grid above without arithmetic.
+      cell(patternName(row.pattern)),
+      cell(describeLabel(row)),
+      cell(`${row.repeats}x`, "num"),
+      cell(String(row.length), "num"),
+      cell(`${row.tempo}`, "num"),
+      cell(`${row.swing}%`, "num"),
+      cell(describeMutes(row), row.mute === 0 ? "dim" : ""),
+    );
+    tbody.append(tr);
+  }
+  table.append(tbody);
+
+  const wrap = document.createElement("div");
+  wrap.className = "libtablewrap";
+  wrap.append(table);
+  host.append(wrap);
+}
+
+/** Every label the device offers, for anything that needs the vocabulary. */
+export const LABEL_NAMES = LABELS;

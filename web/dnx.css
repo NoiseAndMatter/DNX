@@ -168,7 +168,19 @@ body.app > main { flex: 1; display: flex; flex-direction: column; gap: .7rem;
   padding: .7rem .9rem 0; min-height: 0; }
 
 /** The manager's workspace: the grid beside a fixed side panel. */
-body.app > main.split { display: grid; grid-template-columns: minmax(0,1fr) 20rem; }
+/*
+ * The manager's two columns, with the song card spanning both above them.
+ *
+ * **The rows are stated because a grid item stretches to its row by default**, and the song card
+ * folded to a 32px heading was still 196px tall — the row had taken a share of the window height and
+ * the panel had grown to fill it. `min-content` sizes row 1 to the card, folded or not, and `1fr`
+ * gives the rest to the patterns and the side column.
+ */
+body.app > main.split {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 20rem;
+  grid-template-rows: min-content 1fr;
+}
 /*
  * A flowing page keeps one column and a comfortable measure at any width.
  *
@@ -759,3 +771,54 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 @media (prefers-reduced-motion: reduce) {
   .progress.working::after { animation: none; opacity: .5; width: 100%; }
 }
+
+/* ---- songs ---------------------------------------------------------------------------
+ *
+ * The song panel sits in the main column below the pattern grid, because `main.split` places a
+ * third child at column 1, row 2. Stated rather than left to flow, so a fourth panel added later
+ * cannot silently push this one into the side column.
+ *
+ * It reuses `.libtable` from the +Drive library: same question shape — a list of rows you scan for
+ * one you want — so it gets the same answer rather than a second table style.
+ */
+/*
+ * Full width and first: a song row is eight columns, and stacking it in the 20rem side column would
+ * make the panel unreadable to save space the main column was not short of.
+ */
+.panel.songs { grid-column: 1 / -1; }
+/*
+ * The heading *is* the button. Transparent and inheriting the heading's type, so it reads as a
+ * heading and behaves as a disclosure — the first attempt was a 10px chevron in muted grey at the
+ * far end of the strip, which is not a control anybody would find.
+ */
+.songfold {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  width: 100%; background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; letter-spacing: inherit; text-align: left;
+}
+.songfold:hover { color: var(--fg); }
+.songfold .caret { color: var(--teal); font-size: .9rem; }
+/*
+ * Shorter than the library's 30rem. This panel is *above* the pattern grid, so every pixel it takes
+ * pushes the grid down — at 30rem the patterns were off the bottom of a 1512px-tall window, which
+ * defeats having both on screen at once. It scrolls inside itself and folds away, so it does not
+ * need to be tall to be useful.
+ */
+.songs .libtablewrap { max-height: 18rem; }
+/* Collapsed is a strip, not a hidden panel: the heading still says which song and how many rows. */
+.panel.songs.folded > .body { display: none; }
+.songtabs { padding: 0 0 .5rem; background: transparent; flex-wrap: wrap; }
+/*
+ * Numbers right, and their headings with them. A right-aligned column under a left-aligned heading
+ * reads as two columns, which is what the first draft looked like.
+ */
+.songtable td.num, .songtable th:nth-child(n+4):nth-child(-n+7) { text-align: right; }
+.songtable td.num { font-variant-numeric: tabular-nums; }
+/*
+ * The slack goes to the last column rather than being shared out. Eight narrow columns spread
+ * evenly across a full-width panel leaves each value stranded in the middle of its own gap.
+ */
+.songtable th:last-child, .songtable td:last-child { width: 34%; }
+.songtable th:first-child, .songtable td:first-child { width: 3.5rem; }
+.songtable td.dim { color: var(--dim); }
+.songtable tbody tr:hover { background: #1d2726; }
