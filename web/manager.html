@@ -72,6 +72,41 @@
 <div class="tabs" id="tabs" hidden></div>
 
 <main class="split">
+  <!--
+    **Songs are the first card, and they span the full width.**
+
+    A song is an arrangement *of patterns*, so the two belong on screen together — but a song row is
+    eight columns wide and a 20rem side column could never hold it. So this spans both columns of
+    `main.split` and sits above the grid rather than beside it, and the pattern panel keeps its own
+    full width underneath.
+
+    Collapsible, because it is only sometimes the thing you are working on. Collapsed it is a strip
+    that still says which song is selected and how many rows it has, so folding it away does not also
+    hide whether there is anything there.
+
+    Read-only for now. A song row references a pattern by slot, which is exactly the reference a
+    rearrangement invalidates, and editing one cannot go over the dump protocol at all.
+  -->
+  <section class="panel songs" id="songPanel" hidden>
+    <!--
+      **The whole heading is the toggle**, not a caret at the end of it. Folded, this strip is the
+      only thing the panel shows, and a 27x17 grey chevron is a poor target for the one control it
+      has. One button spanning the heading is also the honest markup for a disclosure — a nested
+      clickable heading would not be.
+    -->
+    <h2>
+      <button class="songfold" id="songFold" aria-expanded="true"
+              title="Collapse or expand the song panel">
+        <span id="songTitle">Songs</span>
+        <span class="caret" aria-hidden="true">▾</span>
+      </button>
+    </h2>
+    <div class="body" id="songBody">
+      <div class="tabs songtabs" id="songTabs"></div>
+      <div id="songRows"></div>
+    </div>
+  </section>
+
   <section class="panel" id="gridPanel">
     <h2><span id="bankTitle">Patterns</span></h2>
     <div class="body">
