@@ -526,8 +526,11 @@ function renderSongs(): void {
 // records that changed into the project the musician has *loaded*. This writes the whole project —
 // songs included, which no dump can carry, because they live in the tail — into a *stored* slot.
 //
-// Only empty slots are offered, and `refuseUnlessEmpty` refuses anything else even if one were.
-// For most people the +Drive is the only copy of that work and there is no undo on the instrument.
+// Empty slots are offered, **plus the one slot the open project came out of** — see `origin`. That
+// is the whole of the relaxation: any other occupied slot is still refused by `refuseUnlessEmpty`
+// even if something contrived to offer it, because for most people the +Drive is the only copy of
+// that work and there is no undo on the instrument. The origin slot is allowed because it is not
+// somebody else's work, it is this work, and it buys a backup on the way past.
 
 /**
  * The instrument to work with, or a message saying why there is none.
@@ -545,30 +548,52 @@ async function driveDevice(): Promise<ConnectedDevice | undefined> {
   }
 }
 
-/** Offer the empty slots. Listing is one round trip and tells the truth about right now. */
+/**
+ * Offer the empty slots, and the slot this project came from.
+ *
+ * Listing is one round trip and tells the truth about right now, which is the point — the origin
+ * slot is offered only if the **listing** still shows it occupied. If somebody deleted it from the
+ * front panel since, it comes back as an ordinary empty slot and no backup is taken, because there
+ * is nothing left there to copy.
+ */
 async function browseDriveTargets(): Promise<void> {
   const device = await driveDevice();
   if (!device) return;
   try {
     status("Reading the +Drive listing…");
     const empty = await emptyProjectSlots(device);
+    const back = origin && !empty.includes(origin.slot) ? origin : undefined;
     const select = $<HTMLSelectElement>("drivetarget");
     select.textContent = "";
+    if (back) {
+      // First, and selected: it is the destination somebody who opened a project off the device
+      // means nine times in ten, and burying it under seventy empty slots would be pretending
+      // otherwise.
+      const option = document.createElement("option");
+      option.value = String(back.slot);
+      option.textContent = `Slot ${back.slot} — replace ${back.name}`;
+      select.append(option);
+    }
     for (const slot of empty) {
       const option = document.createElement("option");
       option.value = String(slot);
       option.textContent = `Slot ${slot}`;
       select.append(option);
     }
-    select.hidden = empty.length === 0;
-    $("dodrivesave").hidden = empty.length === 0;
-    $<HTMLButtonElement>("dodrivesave").disabled = empty.length === 0;
+    const none = empty.length === 0 && !back;
+    select.hidden = none;
+    $("dodrivesave").hidden = none;
+    $<HTMLButtonElement>("dodrivesave").disabled = none;
     status(
-      empty.length === 0
-        ? "Every project slot on the +Drive is occupied. Free one on the instrument first — this " +
-          "will not overwrite anything."
-        : `${empty.length} empty slot(s). Pick one and press Save to slot.`,
-      empty.length === 0 ? "warn" : "ok",
+      none
+        ? "Every project slot on the +Drive is occupied, and this project did not come off the " +
+          "device — so there is nowhere it could go without destroying something. Free a slot on " +
+          "the instrument first."
+        : back
+          ? `Slot ${back.slot} holds ${back.name}, the project you opened — saving there replaces ` +
+            `it, and copies it to your machine first. ${empty.length} empty slot(s) otherwise.`
+          : `${empty.length} empty slot(s). Pick one and press Save to slot.`,
+      none ? "warn" : "ok",
     );
   } catch (error) {
     status(`Could not read the +Drive: ${String(error)}`, "error");
@@ -595,6 +620,11 @@ async function saveToDrive(): Promise<void> {
   const slot = Number($<HTMLSelectElement>("drivetarget").value);
   if (!Number.isInteger(slot)) return;
 
+  // Replacing is allowed for exactly one slot, and this is the line that decides it. Compared
+  // against `origin` rather than against the listing's occupancy: "the slot is full" is not the
+  // permission, "this is the project that was in it" is.
+  const replacing = origin && origin.slot === slot ? origin : undefined;
+
   /*
    * **Name it, because the device lists projects by name and nothing else.**
    *
@@ -609,7 +639,9 @@ async function saveToDrive(): Promise<void> {
    */
   const current = projectName(session.image);
   const named = await askText({
-    title: `Name the project going to slot ${slot}`,
+    title: replacing
+      ? `Name the project replacing ${replacing.name} in slot ${slot}`
+      : `Name the project going to slot ${slot}`,
     body: [
       "This is the name the instrument lists it under. Up to 15 characters; the device has no " +
         "lowercase, so anything typed in lower case is stored upper.",
@@ -646,9 +678,22 @@ async function saveToDrive(): Promise<void> {
       payload,
       image: session.image,
       name: projectName(session.image),
+      ...(replacing
+        ? {
+            overwrite: true,
+            // **Downloaded, not merely read.** The write is about to destroy the only copy of that
+            // project, so the copy has to leave the browser before it starts — a backup held in a
+            // variable is no backup at all once the page is closed on a failed write. The same
+            // hook the pattern write uses, with the noun corrected.
+            onBackup: downloadBackup(
+              (message) => status(message, "ok"),
+              () => `${replacing.name} from slot ${replacing.slot}`,
+            ),
+          }
+        : {}),
       onStatus: (message) => status(message),
       onProgress: (done, total, stage) => {
-        progress.at(done, total, stage === "write" ? "Writing" : "Verifying");
+        progress.at(done, total, STAGE_LABEL[stage]);
       },
     });
 
@@ -662,7 +707,8 @@ async function saveToDrive(): Promise<void> {
     }
     status(
       `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
-        `${result.chunks} chunk(s), read back and decoded to the same project.`,
+        `${result.chunks} chunk(s), read back and decoded to the same project.` +
+        (replacing ? ` It replaced ${replacing.name}, which was downloaded first.` : ""),
       "ok",
     );
   } catch (error) {
@@ -1226,6 +1272,46 @@ let drive: { connected: ConnectedDevice; projects: DriveProject[] } | undefined;
 let chosenPort: string | undefined;
 
 /**
+ * The +Drive slot the open project was read out of, when it was read out of one.
+ *
+ * **The only slot this page will overwrite.** Everything else the picker offers is empty, and
+ * `refuseUnlessEmpty` refuses an occupied slot that did not come with `overwrite` — so this is the
+ * whole extent of the relaxation, held in one variable rather than inferred from a name or a
+ * matching size.
+ *
+ * `undefined` for a project opened from a file, and cleared whenever the open project changes. A
+ * stale origin would offer to overwrite a slot on the strength of a project that is no longer the
+ * one on screen, which is the one way this feature could destroy something.
+ */
+let origin: { slot: number; name: string } | undefined;
+
+/**
+ * Take a newly opened project as the one on screen.
+ *
+ * The three open routes — a file, a +Drive slot, a live read — each rebuilt this by hand, seven
+ * assignments apiece, and the differences between the copies were all accidental. That was survivable
+ * while every field was merely a view; `origin` is not, because a copy that forgot to clear it would
+ * offer to overwrite a +Drive slot on the authority of a project that is no longer open.
+ *
+ * So the reset is one function and `from` is a required argument. A new route cannot forget the
+ * field, because there is nowhere to put the project without answering where it came from.
+ */
+function beginProject(
+  image: Uint8Array,
+  from: { slot: number; name: string } | undefined,
+): void {
+  state.device = deviceFor(image);
+  state.session = new Session(image);
+  state.selection = [];
+  state.bank = 0;
+  // A new project is a new set of patterns; staying drilled into slot 7 of the old one would show
+  // the right index of the wrong thing.
+  state.trackFor = undefined;
+  songSlot = undefined;
+  origin = from;
+}
+
+/**
  * Connect — but to the instrument the person meant.
  *
  * **The manager cannot pick for you and should not pretend to.** The expander can: its two devices
@@ -1354,13 +1440,8 @@ async function openFromDrive(): Promise<void> {
       );
     });
 
-    const device = deviceFor(opened.image);
-    state.device = device;
-    songSlot = undefined;
-  state.session = new Session(opened.image);
-    state.selection = [];
-    state.bank = 0;
-    state.trackFor = undefined;
+    beginProject(opened.image, { slot: project.index, name: project.name });
+    const device = state.device!;
     // **What makes this project exportable.** The stored file is complete — its own container
     // header, its own payload — so the export needs no donor and inherits nothing from another
     // project. Leaving this unset is what made Export do nothing at all: the button was enabled,
@@ -1369,8 +1450,9 @@ async function openFromDrive(): Promise<void> {
     state.file = opened.manifest
       ? { fileName: `${project.name}.dn2prj`, manifest: opened.manifest, payload: opened.payload, image: opened.image }
       : undefined;
-    // No write handle: this is not the project the instrument has open, so there is nothing here
-    // that could be written back safely.
+    // No write handle: this is not the project the instrument has *loaded*, so the dump path — which
+    // writes into whatever is loaded — must stay shut. Saving the file back over its own slot is a
+    // different route entirely, and that is what `origin` below is for.
     deviceHandle = undefined;
 
     $("device").hidden = false;
@@ -1384,7 +1466,8 @@ async function openFromDrive(): Promise<void> {
     render();
 
     const route = state.file
-      ? "Read-only: export to a file, because a write would go to whichever project the instrument currently has loaded."
+      ? `Edit it and save it straight back to slot ${project.index}, or export it to a file. ` +
+        "Writing patterns to the *loaded* project is off — this is not it."
       : "Export is unavailable: the device did not answer with its firmware version, and a project " +
         "file's manifest has to carry a real one. Reconnect and open the slot again.";
     status(
@@ -1407,17 +1490,11 @@ async function openFromDrive(): Promise<void> {
 async function load(file: File): Promise<void> {
   status(`Reading ${file.name}…`);
   const loaded = await openProject(file);
-  const device = deviceFor(loaded.image);
 
   state.file = loaded;
-  state.device = device;
-  songSlot = undefined;
-  state.session = new Session(loaded.image);
-  state.selection = [];
-  state.bank = 0;
-  // A new project is a new set of patterns; staying drilled into slot 7 of the old one would
-  // show the right index of the wrong thing.
-  state.trackFor = undefined;
+  // A file has no slot behind it, so there is nothing to save back over.
+  beginProject(loaded.image, undefined);
+  const device = state.device!;
 
   $("device").hidden = false;
   $("device").textContent = device.name;
@@ -1513,16 +1590,13 @@ async function loadFromDevice(): Promise<void> {
       if (done % 8 === 0 || done === total) status(`Reading ${connected.name}: ${done}/${total} — ${label}`);
     });
 
-    const device = deviceFor(image);
     // The donor's manifest is what an export writes out, so the project that supplied the bytes is
     // the one that has to carry the file's identity too.
     state.file = donor.project;
-    state.device = device;
-    songSlot = undefined;
-  state.session = new Session(image);
-    state.selection = [];
-    state.bank = 0;
-    state.trackFor = undefined;
+    // Read out of the *loaded* project, which is not a +Drive slot — the instrument does not say
+    // which slot, if any, it was loaded from, and guessing is not available.
+    beginProject(image, undefined);
+    const device = state.device!;
     deviceHandle = handle;
 
     $("device").hidden = false;

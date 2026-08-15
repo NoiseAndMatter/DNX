@@ -50,16 +50,21 @@
  * | | `safeWriteRecords` | `safeWriteFile` |
  * |---|---|---|
  * | destination | the loaded project, one slot | a stored file, whole |
- * | backup | **required** — it overwrites | none, and see below |
+ * | backup | **required** — it overwrites | only when it overwrites, and see below |
  * | re-fetch / moved | yes | n/a, the target must be empty |
  * | confirm | required | required |
  * | verify | byte-exact | byte-exact except the slot stamp |
  *
- * **The file path takes no backup hook, and that is the empty-slot rule doing the work.**
- * `refuseUnlessEmpty` will not write into an occupied slot, an unlisted one, or one it cannot prove
- * is empty — so there is nothing to copy. That exemption is written as exactly that reason: if the
- * empty-slot rule is ever relaxed, the missing backup hook becomes a hole, and `safewrite.test.ts`
- * pins the pair together so the relaxation cannot happen quietly.
+ * **A file write into an empty slot takes no backup, and that is the empty-slot rule doing the
+ * work.** `refuseUnlessEmpty` will not write into an unlisted slot or one it cannot prove is empty,
+ * so there is nothing to copy.
+ *
+ * **Overwriting is the exception, and it pays for being one.** `overwrite` allows an occupied
+ * target and *requires* `onBackup` in the same breath — the empty-slot rule was the whole reason
+ * there was no backup, so the moment it is relaxed the backup stops being optional. The pairing is
+ * enforced here and pinned in `safewrite.test.ts`, which is what stops the relaxation happening
+ * quietly. What it never permits is overwriting a slot whose contents are **unknown**: nobody can
+ * consent to replacing something that has not been identified, so that check has no override.
  *
  * ## What is not verified on hardware yet
  *
@@ -397,6 +402,14 @@ export interface FileWriteReview {
   chunks: number;
   /** The listing entry the empty-slot rule was checked against. */
   target: Entry;
+  /**
+   * The name of what is about to be destroyed, when the slot is occupied.
+   *
+   * Present *only* for an overwrite, so a confirmation cannot phrase the two cases alike by
+   * accident: "save to slot 5" and "replace CHORDS 3 in slot 5" are different questions, and the
+   * second one is the one somebody can answer wrongly.
+   */
+  replacing?: string;
 }
 
 export interface SafeFileWriteOptions {
@@ -408,6 +421,21 @@ export interface SafeFileWriteOptions {
   bytes: Uint8Array;
   /** The destination's entry, **from a listing taken now**. See `refuseUnlessEmpty`. */
   target: Entry;
+  /**
+   * Replace what is in the slot.
+   *
+   * **Requires `onBackup`**, and is refused without one: the absent backup and the empty-slot rule
+   * were the same decision, so relaxing one reopens the other. See the module note.
+   */
+  overwrite?: boolean;
+  /**
+   * Handed the slot's current contents, before a byte of the new file is sent. **Required when
+   * `overwrite`**, ignored otherwise — an empty slot has nothing to copy.
+   *
+   * Throwing aborts the write, which is the intended way to refuse: a UI that could not save the
+   * copy should stop rather than proceed without one.
+   */
+  onBackup?: BackupHook;
   /** Required. Return false to cancel. */
   confirm: ConfirmHook<FileWriteReview>;
   /**
@@ -458,9 +486,9 @@ export const CONTAINER_SLOT_OFFSET = 24;
 /**
  * Write one file to the +Drive, safely.
  *
- * No backup hook, and that is `refuseUnlessEmpty` doing the work: the destination must be provably
- * empty in a listing taken now, so there is nothing there to copy. The two are a pair, checked as a
- * pair in `safewrite.test.ts`.
+ * The destination must be provably empty in a listing taken now, so there is nothing there to copy
+ * and no backup is taken — unless `overwrite` is set, which allows an occupied slot and makes
+ * `onBackup` mandatory. The two are a pair, checked as a pair in `safewrite.test.ts`.
  */
 export async function safeWriteFile(
   options: SafeFileWriteOptions,
@@ -476,7 +504,14 @@ export async function safeWriteFile(
   // Checked here as well as inside `writeStoredFile`, and not as belt and braces: this is the step
   // that stands in for the backup, so it has to run **before the person is asked**. Being told
   // "this will overwrite Chords 3" after agreeing to a write is not consent.
-  refuseUnlessEmpty(target, path);
+  const overwrite = options.overwrite === true;
+  if (overwrite && typeof options.onBackup !== "function") {
+    throw new WriteRefusal(
+      "refusing to overwrite a +Drive slot without a backup hook — a write into an empty slot " +
+        "needs no copy because there is nothing there, and overwriting is exactly the case that does",
+    );
+  }
+  refuseUnlessEmpty(target, path, overwrite);
 
   // **`WRITE_CHUNK_SIZE`, the same default `writeStoredFile` uses.**
   //
@@ -495,9 +530,18 @@ export async function safeWriteFile(
     bytes: bytes.length,
     chunks: Math.max(1, Math.ceil(bytes.length / chunkSize)),
     target,
+    ...(overwrite && target.occupied ? { replacing: target.name || path } : {}),
   };
   if (!(await options.confirm(review))) {
     return { cancelled: true, written: 0, chunks: 0, committed: false, mismatches: [], verified: false };
+  }
+
+  // Step order copied from the record path, for the same two reasons: a backup downloaded for a
+  // write somebody then cancels is rude, and a write that began before the copy was taken is worse.
+  if (overwrite && target.occupied && options.onBackup) {
+    status(`Copying ${target.name || path} before replacing it…`);
+    progress(0, bytes.length, "backup");
+    await options.onBackup(await currentContents(options));
   }
 
   const result = await writeStoredFile(path, bytes, options.checksum, {
@@ -505,6 +549,7 @@ export async function safeWriteFile(
     target,
     permit: PERMIT,
     chunkSize,
+    overwrite,
     ...(options.msgId === undefined ? {} : { msgId: options.msgId }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     onProgress: (written, total) => progress(written, total, "write"),
@@ -524,6 +569,32 @@ export async function safeWriteFile(
 
   const mismatches = compareStored(bytes, readBack.bytes);
   return { ...result, cancelled: false, mismatches, verified: mismatches.length === 0 };
+}
+
+/**
+ * Read what a slot holds right now, as a file that can be written straight back.
+ *
+ * Read in its **stored** form, which is the form a write takes — so restoring is `safeWriteFile` in
+ * the other direction and needs no conversion step. The raw form would be 12.9 MB of the same
+ * information and could not be restored at all without recompressing it, which is the one part of
+ * the format we match by *specification* rather than byte-for-byte.
+ *
+ * This is a second read of a file we are about to destroy, so it deliberately does not reuse
+ * anything cached: whatever is in the slot at this moment is what gets copied.
+ */
+async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
+  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+  const existing = await readStoredFile(options.path, {
+    transport: options.transport,
+    ...(options.verifyMsgId === undefined ? {} : { msgId: options.verifyMsgId }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  });
+  const label = (options.target.name || "slot").replace(/[^A-Za-z0-9 _-]/g, "_").trim();
+  return {
+    name: `${label === "" ? "slot" : label}-before-${stamp}.dn2prj`,
+    bytes: existing.bytes,
+    slots: [options.target.index],
+  };
 }
 
 /**
@@ -614,13 +685,21 @@ export function describeRecordWrite(review: RecordWriteReview): string[] {
 export function describeFileWrite(review: FileWriteReview): string[] {
   const lines = [
     `${review.name} — ${review.bytes.toLocaleString()} bytes — will be written to ${review.path}.`,
-    `That slot is empty in a listing taken just now, and an occupied one is refused rather than ` +
-      `overwritten. There is no undo on the instrument.`,
   ];
+  // **The destructive case gets its own sentence, and it leads.** Somebody skimming a dialog reads
+  // the first line; putting "this replaces X" second, after a line about byte counts, is how a
+  // warning gets agreed to without being read.
+  lines.push(
+    review.replacing === undefined
+      ? `That slot is empty in a listing taken just now, and an occupied one is refused rather ` +
+          `than overwritten. There is no undo on the instrument.`
+      : `This replaces ${review.replacing}, which is in that slot now. A copy of it is downloaded ` +
+          `before anything is sent — that copy is the only undo there is.`,
+  );
   if (review.chunks > 1) {
     lines.push(
-      `This needs ${review.chunks} messages, and a Digitone II has refused every multi-message ` +
-        `write tried so far. Expect it to fail.`,
+      `It goes in ${review.chunks} messages. That has been verified on a Digitone II — a project ` +
+        `written in three chunks read back as the same project — so it is expected to work.`,
     );
   }
   return lines;

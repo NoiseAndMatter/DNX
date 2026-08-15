@@ -41,10 +41,21 @@
  * A byte comparison would therefore fail on a correct write, which is the sort of false alarm that
  * teaches people to ignore a check. So the read-back is **decoded** and the images compared.
  *
- * ## Empty slots only
+ * ## Empty slots, and the one slot that is not
  *
- * `refuseUnlessEmpty` is not relaxed here. For most people the +Drive is the only copy of that work,
- * and there is no undo on the instrument.
+ * `refuseUnlessEmpty` is relaxed in exactly one case: **the slot this project was opened from.**
+ * Everything else is still refused, because for most people the +Drive is the only copy of that
+ * work and there is no undo on the instrument.
+ *
+ * That case is not a special favour, it is the ordinary one. Open a project off the instrument, edit
+ * a song, save — anything else is "save a copy", and a tool that could only ever do that leaves the
+ * user to delete the original from the front panel and rename the copy. The restriction was written
+ * to hold *until writing was proven*, and it now is: a project committed and read back at one chunk
+ * (slot 13) and at three (slot 14), 2026-08-14.
+ *
+ * What replaces the rule is `overwrite`'s own condition — **a backup, taken off the device and
+ * handed to the caller before a byte is sent.** `safeWriteFile` refuses the flag without a hook. So
+ * the copy that the empty-slot rule used to make unnecessary is now simply made.
  */
 
 import { type ConnectedDevice, apiTransport } from "./devicesource.js";
@@ -54,7 +65,7 @@ export { firstDifference, projectPath };
 import { type Entry, listRequest, parseListing } from "../../src/device/storage.js";
 import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
-import { safeWriteFile } from "../../src/device/safewrite.js";
+import { type BackupHook, safeWriteFile } from "../../src/device/safewrite.js";
 import { confirmFileWrite } from "./safewriteui.js";
 import { STORED_FORM, openRequest, parseOpen, readRequest, parseRead, closeRequest, FREEZES } from "../../src/device/storage.js";
 
@@ -107,8 +118,17 @@ export interface WriteProjectOptions {
   /** The decoded image the payload should reconstitute — the thing actually being checked. */
   image: Uint8Array;
   name: string;
+  /**
+   * Replace what is in the slot.
+   *
+   * Set only for the slot the open project came from — see the module note. Requires `onBackup`,
+   * and `safeWriteFile` refuses it without one.
+   */
+  overwrite?: boolean;
+  /** Handed the slot's current contents before the write. **Required with `overwrite`.** */
+  onBackup?: BackupHook;
   onStatus?: (message: string) => void;
-  onProgress?: (done: number, total: number, stage: "write" | "verify") => void;
+  onProgress?: (done: number, total: number, stage: "write" | "verify" | "backup") => void;
 }
 
 /**
@@ -134,6 +154,8 @@ export async function writeProjectToDrive(
     bytes: payload,
     target,
     confirm: confirmFileWrite,
+    ...(options.overwrite === true ? { overwrite: true } : {}),
+    ...(options.onBackup === undefined ? {} : { onBackup: options.onBackup }),
     msgId: reserveMessageIds(IDS_FOR.wholeProject),
     verifyMsgId: reserveMessageIds(IDS_FOR.wholeProject),
     // A project is minutes of transfer, not seconds. The 5-second default is sized for a preset.
@@ -142,7 +164,9 @@ export async function writeProjectToDrive(
     // left to report a difference that means nothing.
     skipVerify: true,
     ...(options.onStatus === undefined ? {} : { onStatus: options.onStatus }),
-    onProgress: (done, total) => options.onProgress?.(done, total, "write"),
+    // The stage is forwarded rather than flattened: with a backup in front of it, a bar that said
+    // "writing" through a two-minute read of the old project would be describing the wrong thing.
+    onProgress: (done, total, stage) => options.onProgress?.(done, total, stage),
   });
 
   if (result.cancelled) {
