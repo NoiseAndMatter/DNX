@@ -650,3 +650,24 @@ test("crc32 matches the known ZIP checksum of a known string", () => {
   // "123456789" has a documented CRC-32 of 0xCBF43926 — a standard check value.
   assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
 });
+
+/**
+ * The manager's grid rows, which a one-character change broke.
+ *
+ * Row 2 was `1fr` for one commit. That pins the second row to whatever height is left over, so with
+ * the song card expanded the side column was clipped — 99px of the history panel below the fold —
+ * and the page grew a scrollbar of its own on top of the one `.side` already has. Two scroll
+ * contexts fighting, reported as *"the bottom bar relocates, and goes back when the song bar
+ * collapses"*.
+ *
+ * Pinned as a string because that is the whole bug: `min-content` is needed on row 1 so a folded
+ * card does not stretch to a share of the window, and row 2 must stay `auto` so the layout below it
+ * behaves exactly as it did before the card existed.
+ */
+test("the manager's second grid row is auto, not a fraction of the window", () => {
+  const css = readFileSync(resolve(HERE, "../web/dnx.css"), "utf8");
+  const rule = /body\.app > main\.split \{[^}]*\}/.exec(css)?.[0] ?? "";
+  assert.ok(rule, "the split layout rule is gone");
+  assert.match(rule, /grid-template-rows:\s*min-content auto/);
+  assert.doesNotMatch(rule, /1fr;/, "a fractional second row clips the side column and moves the status bar");
+});
