@@ -293,3 +293,154 @@ export function isSongTableEmpty(image: Uint8Array, layout: ImageLayout = DN2_LA
   }
   return true;
 }
+
+// --- writing ---------------------------------------------------------------------------------
+//
+// **Nothing here reaches an instrument.** A song lives in the image tail, which the dump protocol
+// cannot carry, so an edited project can only be exported as a file or written whole to the +Drive.
+// That is a deliberate gap: `deviceproject.ts` calls songs "the one thing this project has always
+// refused to risk", and every write below is one an export makes visible before anything is sent.
+
+/**
+ * What a field may hold, from the manual and from what has been measured.
+ *
+ * Refused rather than clamped. A caller asking for a 2,000-step row has a bug, and silently storing
+ * 1,024 would hide it in a project that then plays something nobody asked for.
+ */
+export const LIMITS = {
+  /** Pattern slots on a Digitone II. */
+  pattern: { min: 0, max: 127 },
+  /**
+   * Plays before the song advances.
+   *
+   * The manual gives no range. The byte holds `repeats - 1`, so 256 is the ceiling the format
+   * imposes; **only 1-3 have ever been seen on hardware**, and the rest is inference from the field
+   * width rather than measurement.
+   */
+  repeats: { min: 1, max: 256 },
+  /** Steps played from the pattern. Manual: 2-1024, the last 25 shown as K00-K24. */
+  length: { min: 2, max: 1024 },
+  /** BPM. The manual's range for the instrument; 60-135.1 measured. */
+  tempo: { min: 30, max: 300 },
+  /** Manual: 50-80, and the byte is the offset from 50, so 0-30. */
+  swing: { min: SWING_BASE, max: SWING_BASE + 30 },
+  /** Index into `LABELS`. */
+  label: { min: 0, max: LABELS.length - 1 },
+} as const;
+
+function must(value: number, range: { min: number; max: number }, what: string): void {
+  if (!Number.isFinite(value) || value < range.min || value > range.max) {
+    throw new Dn2SongError(`${what} ${value} is outside ${range.min}..${range.max}`);
+  }
+}
+
+const putU16 = (bytes: Uint8Array, at: number, value: number): void => {
+  bytes[at] = (value >> 8) & 0xff;
+  bytes[at + 1] = value & 0xff;
+};
+
+/**
+ * Write one row into a record, in place.
+ *
+ * Every field is validated first, so a refused row leaves the record untouched rather than half
+ * written — the failure mode of writing as you go is a song that is neither what it was nor what
+ * was asked for.
+ */
+export function writeRow(record: Uint8Array, row: number, values: SongRow): void {
+  must(values.pattern, LIMITS.pattern, "pattern");
+  must(values.repeats, LIMITS.repeats, "repeats");
+  must(values.label, LIMITS.label, "label");
+  must(values.tempo, LIMITS.tempo, "tempo");
+  must(values.length, LIMITS.length, "length");
+  must(values.swing, LIMITS.swing, "swing");
+  if (!Number.isInteger(values.mute) || values.mute < 0 || values.mute > 0xffff) {
+    throw new Dn2SongError(`mute mask ${values.mute} does not fit in 16 bits`);
+  }
+
+  const r = rawRow(record, row);
+  r[ROW.pattern] = values.pattern;
+  // Zero-based on disk: one play is stored as 0.
+  r[ROW.repeatsLessOne] = values.repeats - 1;
+  r[ROW.label] = values.label;
+  // **Rounded, never truncated.** `135.2 * 120` is `16223.999...` in binary, and truncating stores
+  // a tempo 1/120 BPM low — caught by a test fixture doing exactly that.
+  putU16(r, ROW.tempo, Math.round(values.tempo * TEMPO_SCALE));
+  putU16(r, ROW.mute, values.mute);
+  putU16(r, ROW.length, values.length);
+  r[ROW.swing] = values.swing - SWING_BASE;
+}
+
+/** Clear a row to all zeros — the shape an unused row has in every capture. */
+export function clearRow(record: Uint8Array, row: number): void {
+  rawRow(record, row).fill(0);
+}
+
+export interface SongMeta {
+  name: string;
+  rowCount: number;
+  /** `END_LOOP` or `END_STOP`. */
+  endMode: number;
+  /** The song's own tempo in BPM. */
+  tempo: number;
+}
+
+const latin1Encode = (text: string, size: number): Uint8Array => {
+  const out = new Uint8Array(size);
+  for (let i = 0; i < Math.min(text.length, size); i++) {
+    const code = text.charCodeAt(i);
+    // Latin-1 only: the device has no way to show anything else, and a multi-byte character would
+    // silently become two wrong ones.
+    out[i] = code <= 0xff ? code : 0x3f;
+  }
+  return out;
+};
+
+/** Write a song's name, row count, end mode and tempo. */
+export function writeSongMeta(record: Uint8Array, meta: SongMeta): void {
+  if (meta.rowCount < 0 || meta.rowCount > SONG.rowCount) {
+    throw new Dn2SongError(`row count ${meta.rowCount} is outside 0..${SONG.rowCount}`);
+  }
+  must(meta.tempo, LIMITS.tempo, "song tempo");
+  record.set(latin1Encode(meta.name, SONG.nameSize), SONG.nameOffset);
+  record[SONG.rowCountOffset] = meta.rowCount;
+  record[SONG.endModeOffset] = meta.endMode;
+  putU16(record, SONG.tempoOffset, Math.round(meta.tempo * TEMPO_SCALE));
+}
+
+/**
+ * Write a whole song into a copy of an image.
+ *
+ * Returns a new image rather than mutating: the manager's session diffs before against after to
+ * make an undo step, so an operation that edited in place would have nothing to diff.
+ *
+ * Rows past `rowCount` are cleared rather than left as they were. A song shortened from twelve rows
+ * to three would otherwise keep nine rows of stale arrangement just past the end — invisible in the
+ * device's editor and very visible in a byte diff.
+ */
+export function writeSong(
+  image: Uint8Array,
+  index: number,
+  song: Omit<Song, "index" | "loops">,
+  layout: ImageLayout = DN2_LAYOUT,
+): Uint8Array {
+  if (song.rows.length !== song.rowCount) {
+    throw new Dn2SongError(
+      `song says ${song.rowCount} rows and carries ${song.rows.length}. Those must agree, or the ` +
+        `device plays a different arrangement from the one on screen.`,
+    );
+  }
+
+  const out = Uint8Array.from(image);
+  const record = songRecord(out, index, layout);
+  writeSongMeta(record, {
+    name: song.name,
+    rowCount: song.rowCount,
+    endMode: song.endMode,
+    tempo: song.tempo,
+  });
+  for (let r = 0; r < SONG.rowCount; r++) {
+    if (r < song.rowCount) writeRow(record, r, song.rows[r]!);
+    else clearRow(record, r);
+  }
+  return out;
+}
