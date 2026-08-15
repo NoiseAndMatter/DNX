@@ -370,6 +370,21 @@ function render(): void {
   if (deviceHandle && state.session) {
     $<HTMLButtonElement>("writedevice").disabled = state.session.image === deviceHandle.original;
   }
+
+  /*
+   * **Save to +Drive appears when there is a project that can be written.**
+   *
+   * It shipped `hidden` in the markup and nothing ever unhid it, so the whole whole-project write
+   * was unreachable — the feature existed, was tested, and could not be pressed. Exactly the fault
+   * the song-level edits had, found the same way: by opening the page and looking for the button.
+   *
+   * Decided here rather than at each of the three places a project opens, because that is how the
+   * control ends up shown in two of them and forgotten in the third.
+   *
+   * `state.file` is the condition, not `state.session`: writing needs the container header an
+   * export copies verbatim, and a project read off the device has no manifest to take one from.
+   */
+  $("savetodrive").hidden = !(state.session && state.file);
 }
 
 
