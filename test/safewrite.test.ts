@@ -549,16 +549,22 @@ function payload(fill: number, length = 64): Uint8Array {
  * taken after would get the new, which is the difference these tests are looking for. The write
  * replaces it at the commit, exactly as the instrument does.
  */
-function slot(holds: Uint8Array): ApiTransport & { log: number[]; holds: Uint8Array } {
-  const state = { log: [] as number[], holds };
+function slot(
+  holds: Uint8Array,
+): ApiTransport & { log: number[]; holds: Uint8Array; opens: Uint8Array[] } {
+  const state = { log: [] as number[], holds, opens: [] as Uint8Array[] };
   let staged: number[] = [];
   return {
     ...state,
     get log(): number[] { return state.log; },
     get holds(): Uint8Array { return state.holds; },
+    // The open request verbatim, because the stored-form flag is a byte of it and nothing else
+    // observable says which of the two files the device was asked for.
+    get opens(): Uint8Array[] { return state.opens; },
     request(request: Uint8Array, msgId: number): Promise<ApiFrame> {
       const { code, body } = decodeMessage(request);
       state.log.push(code);
+      if (code === StorageCode.Open) state.opens.push(body);
       const reply = (b: number[]): ApiFrame => ({
         msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.from(b), isResponse: true,
       });
@@ -642,6 +648,14 @@ test("the backup holds what was in the slot, and is taken before the first byte 
 
   assert.equal(backups.length, 1);
   assert.deepEqual([...backups[0]!.bytes], [...payload(0x11)], "the old contents, not the new");
+
+  // **The form, which the first hardware run got wrong.** `readStoredFile` defaults to raw, so a
+  // backup taken without asking is a 12.9 MB image that `refuseRawForm` rejects on the way back —
+  // unrestorable, and the only thing standing where the empty-slot rule used to. The flag is the
+  // last byte of the open request.
+  const open = io.opens[0];
+  assert.ok(open, "the backup opened the file");
+  assert.equal(open.at(-1), 0x01, "the backup asks for STORED_FORM, not the raw image");
   assert.deepEqual(backups[0]!.slots, [5]);
   assert.match(backups[0]!.name, /^MORNING_JAM-before-/, "named after what it is a copy of");
 

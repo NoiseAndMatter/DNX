@@ -67,7 +67,8 @@ import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
 import { type BackupHook, safeWriteFile } from "../../src/device/safewrite.js";
 import { confirmFileWrite } from "./safewriteui.js";
-import { STORED_FORM, openRequest, parseOpen, readRequest, parseRead, closeRequest, FREEZES } from "../../src/device/storage.js";
+import { STORED_FORM } from "../../src/device/storage.js";
+import { readStoredFile } from "../../src/device/storagesession.js";
 
 export class DriveWriteError extends Error {}
 
@@ -230,53 +231,27 @@ export async function writeProjectToDrive(
  * Read a stored file in its compressed form.
  *
  * `readDriveProject` asks for the raw uncompressed image, which is what the rest of DNX wants and
- * is 12.9 MB. For checking a write, the stored form is the same information in ~250 KB.
+ * is 12.9 MB. For checking a write, the stored form is the same information in ~79 KB.
+ *
+ * **This used to be a private read loop, and it should never have been one.** It open/read/closed
+ * by hand because `readStoredFile` could not ask for the stored form; the moment that gained a
+ * `form` option the copy was simply a worse version of it — no retry on a dropped reply, no check
+ * that the chunk index is the one asked for, and a `finally` that swallowed the close. On a link
+ * that dropped replies at 199, 700 and 899 chunks in one evening, "no retry" is not a detail.
  */
 async function readStoredForm(
   device: ConnectedDevice,
   slot: number,
   onProgress: (bytes: number) => void,
 ): Promise<Uint8Array> {
-  const transport = apiTransport(device);
-  let next = reserveMessageIds(IDS_FOR.wholeProject);
-  const id = (): number => next++;
-
-  const openId = id();
-  const opened = parseOpen(
-    (await transport.request(
-      openRequest(openId, projectPath(slot), FREEZES, 2048, STORED_FORM),
-      openId,
-      20_000,
-    )).body,
-  );
-
-  const parts: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (let sequence = 0; sequence < 8192; sequence++) {
-      const readId = id();
-      const chunk = parseRead(
-        (await transport.request(readRequest(readId, opened.handle, sequence), readId, 20_000)).body,
-      );
-      if (chunk.data.length > 0) {
-        parts.push(chunk.data);
-        total += chunk.data.length;
-        onProgress(total);
-      }
-      if (chunk.last) break;
-    }
-  } finally {
-    const closeId = id();
-    await transport.request(closeRequest(closeId, opened.handle), closeId, 20_000).catch(() => {});
-  }
-
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const part of parts) {
-    out.set(part, at);
-    at += part.length;
-  }
-  return out;
+  const file = await readStoredFile(projectPath(slot), {
+    transport: apiTransport(device),
+    form: STORED_FORM,
+    msgId: reserveMessageIds(IDS_FOR.wholeProject),
+    timeoutMs: 20_000,
+    onProgress: (_chunks, bytes) => onProgress(bytes),
+  });
+  return file.bytes;
 }
 
 /**
