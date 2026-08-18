@@ -213,12 +213,12 @@ const SPEC = [
   { t: 1,  len: 16, speed: 1,   machine: "FM TONE",  preset: "SUB PLUCK",  fill: .95, acc: .25, oct: 3, pool: [2, 5, 9, 5] },
   { t: 2,  len: 12, speed: 1,   machine: "FM DRUM",  preset: "RIM TOK",    fill: .70, acc: .35, oct: 5, pool: [2] },
   { t: 3,  len: 64, speed: 1,   machine: "WAVETONE", preset: "GLASS LEAD", fill: .48, acc: .18, oct: 5, pool: [9, 0, 2, 4, 5, 7, 0, 9] },
-  { t: 4,  len: 24, speed: 1,   machine: "SWARMER",  preset: "WIDE PAD",   fill: .25, acc: .05, oct: 4, pool: [5, 0, 9, 7] },
+  { t: 4,  len: 24, speed: 1,   machine: "SWARMER",  preset: "WIDE PAD",   fill: .25, acc: .05, oct: 4, pool: [5, 0, 9, 7], chord: [7] },
   { t: 5,  len: 7,  speed: 1,   machine: "FM DRUM",  preset: "TIN HAT",    fill: 1.0, acc: .40, oct: 6, pool: [6] },
   { t: 6,  len: 64, speed: .5,  machine: "FM TONE",  preset: "DEEP BASS",  fill: .30, acc: .10, oct: 2, pool: [2, 2, 7, 10] },
   { t: 7,  len: 16, speed: 1,   machine: "FM DRUM",  preset: "KICK 909",   fill: .88, acc: .30, oct: 2, pool: [2] },
   { t: 8,  len: 16, speed: 2,   machine: "WAVETONE", preset: "NOISE HAT",  fill: .38, acc: .12, oct: 6, pool: [11] },
-  { t: 9,  len: 48, speed: 1,   machine: "FM TONE",  preset: "STAB CHORD", fill: .14, acc: .50, oct: 4, pool: [5, 9, 0, 4] },
+  { t: 9,  len: 48, speed: 1,   machine: "FM TONE",  preset: "STAB CHORD", fill: .14, acc: .50, oct: 4, pool: [5, 9, 0, 4], chord: [3, 7, 10] },
   { t: 10, len: 64, speed: 1,   machine: "MIDI",     preset: "EXT SYNTH",  fill: .17, acc: .15, oct: 4, pool: [7, 10, 2, 10] },
 ];
 
@@ -232,9 +232,27 @@ const tracks = SPEC.map((s) => {
     const percussive = s.machine === "FM DRUM";
     // The figure advances with the step, so it repeats with the track and phases against the rest.
     const pc = s.pool[step % s.pool.length];
+    /*
+     * **Every note on the trig, not just the first.**
+     *
+     * A note p-lock is not in the lock table at all — `plockparams.ts` lists `TRIG 1 NOTE` under
+     * NOT_LOCKABLE because the trig slot itself carries `track | step | note | velocity |
+     * noteLength | microTiming`. So the note we already read *is* the locked note; there is no
+     * second value to go and fetch, and pitch analysis has been reading p-locked notes all along
+     * without anyone saying so.
+     *
+     * What was genuinely being dropped is **chords**: `Dn2Trig` decodes a `notes` array and this
+     * mockup counted one pitch per trig. A four-note stab is four pitches and four voices, so
+     * every pitch count and the whole voice budget were under-reported.
+     */
+    const chord = s.chord && random() < 0.6
+      ? s.chord.map((iv) => (pc + iv) % 12)
+      : [];
+    const notes = [pc, ...chord];
     trigs.push({
       step,
       pc,
+      notes,
       note: s.oct * 12 + pc,
       vel: accented ? 108 + Math.floor(random() * 20) : 62 + Math.floor(random() * 38),
       // Gate length. Drums are short; melodic notes sustain, but not for most of a bar — the
@@ -242,7 +260,7 @@ const tracks = SPEC.map((s) => {
       // voices at once, which is not music, it is a stress test.
       // A pad sustains, a lead does not, a drum barely at all. Tuned so the pattern peaks just
       // over the 16-voice budget: a mockup that never trips the alert cannot show the alert.
-      len: 1 + Math.floor(random() * (percussive ? 2 : s.preset === "WIDE PAD" ? 11 : 5)),
+      len: 1 + Math.floor(random() * (percussive ? 2 : s.preset === "WIDE PAD" ? 7 : 5)),
       micro: random() < 0.12 ? Math.round((random() * 2 - 1) * 23) : 0,
       // A trig that names its own preset instead of the track's.
       lock: random() < (s.machine === "FM DRUM" ? 0.22 : 0.04),
@@ -280,7 +298,9 @@ function voicesPerStep(list, window) {
       for (const g of t.trigs) {
         const at = rep * t.len + g.step;
         if (at >= window) continue;
-        for (let k = 0; k < g.len && at + k < window; k++) held[at + k]++;
+        // A chord trig spends one voice PER NOTE. Counting the trig once under-reported
+        // every chord in the pattern, which is exactly where a voice budget gets spent.
+        for (let k = 0; k < g.len && at + k < window; k++) held[at + k] += g.notes.length;
       }
     }
   }
@@ -292,11 +312,14 @@ function pitchByPreset(list) {
   const out = NOTE_NAMES.map((name) => ({ name, total: 0, byMachine: {}, presets: {} }));
   for (const t of list) {
     for (const g of t.trigs) {
-      const cell = out[g.pc];
       const preset = g.lock ? LOCK_PRESETS[g.step % LOCK_PRESETS.length] : t.preset;
-      cell.total++;
-      cell.byMachine[t.machine] = (cell.byMachine[t.machine] ?? 0) + 1;
-      cell.presets[preset] = (cell.presets[preset] ?? 0) + 1;
+      for (const pc of g.notes) {
+        const cell = out[pc];
+        cell.total++;
+        cell.byMachine[t.machine] = (cell.byMachine[t.machine] ?? 0) + 1;
+        cell.presets[preset] = (cell.presets[preset] ?? 0) + 1;
+        (cell.byTrack ??= {})[t.t] = (cell.byTrack?.[t.t] ?? 0) + 1;
+      }
     }
   }
   return out;
@@ -406,9 +429,19 @@ function phaseStrip(list, window, mode, w) {
           if (accented) { r = 3.4; extra = `<circle cx="${cxp}" cy="${cy}" r="5.4" fill="none"
             stroke="${fill}" stroke-width="${W.limit}" opacity=".8"/>`; }
         } else if (mode === "length") {
-          // A bar whose width is the note's gate, which is what "duration" means here.
-          const bw = Math.max(2.5, Math.min(g.len, t.len) * stepW - 1.5);
-          out += `<rect x="${cxp - stepW / 2 + .75}" y="${cy - 2.5}" width="${bw}" height="5"
+          /*
+           * A bar whose width is the note's gate.
+           *
+           * **Clipped to the plot's right edge.** It was not, and a long note near the end of the
+           * window ran straight through the axis and over the "64 steps" labels beyond it — the
+           * bar was sized from the note alone, with nothing saying where the drawing area stops.
+           * A gate that would extend past the window is truncated, which is also what the
+           * sequencer does to it.
+           */
+          const x0 = cxp - stepW / 2 + .75;
+          const right = padL + plot;
+          const bw = Math.max(2.5, Math.min(g.len * stepW - 1.5, right - x0));
+          out += `<rect x="${x0}" y="${cy - 2.5}" width="${bw}" height="5"
             rx="2.5" fill="${fill}" opacity=".85"
             ${tip(`T${t.t} step ${g.step + 1}`, `${NOTE_NAMES[g.pc]} · length ${g.len} steps`)}/>`;
           continue;
@@ -840,7 +873,7 @@ function pitchWindows(list, total, win, hop) {
       for (let rep = 0; rep * t.len < total; rep++) {
         for (const g of t.trigs) {
           const s = rep * t.len + g.step;
-          if (s >= at && s < at + win) counts[g.pc]++;
+          if (s >= at && s < at + win) for (const pc of g.notes) counts[pc]++;
         }
       }
     }
@@ -903,6 +936,86 @@ function keyTimeline(windows, cycle, w) {
   });
   return svg(w, h, "Pitch classes and the fitted key across the full cycle", out);
 }
+
+/**
+ * The same span, one row per track: what each track is playing, bar by bar.
+ *
+ * The pitch-class view answers *what is sounding*; this answers *who is playing it*, which is the
+ * view you need to see one track pulling against the rest.
+ *
+ * **Twelve hues, and this is the one place that is allowed.** Eight is the ceiling for a
+ * categorical palette because the reader has to tell arbitrary, unordered things apart. Pitch
+ * class is neither arbitrary nor unordered -- it is *cyclic*, and a hue wheel is its conventional
+ * encoding, the one case where wrapping round to the start is the truth rather than an artefact.
+ *
+ * It still never carries identity alone: **the note letter is drawn in the cell**, so the colour
+ * is a fast index into something the text already says and colour-blind readers lose nothing.
+ */
+const pcHue = (pc) => `hsl(${pc * 30} 52% 56%)`;
+
+function trackWindows(list, total, win, hop) {
+  const rows = list.map((t) => ({ t, cells: [] }));
+  for (let at = 0; at + win <= total; at += hop) {
+    rows.forEach((row) => {
+      const counts = new Map();
+      for (let rep = 0; rep * row.t.len < total; rep++) {
+        for (const g of row.t.trigs) {
+          const s = rep * row.t.len + g.step;
+          if (s < at || s >= at + win) continue;
+          for (const pc of g.notes) counts.set(pc, (counts.get(pc) ?? 0) + 1);
+        }
+      }
+      const sorted = [...counts].sort((a, b) => b[1] - a[1]);
+      row.cells.push({ at, top: sorted[0], all: sorted,
+                       n: sorted.reduce((acc, [, n]) => acc + n, 0) });
+    });
+  }
+  return rows;
+}
+
+function trackTimeline(rows, w) {
+  const rowH = 15, gap = 3, padL = 30, padR = 88;
+  const h = rows.length * (rowH + gap) + 14;
+  const plot = w - padL - padR;
+  const cw = plot / rows[0].cells.length;
+  let out = "";
+
+  rows.forEach((row, i) => {
+    const y = i * (rowH + gap);
+    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" fill="#1a1f21"/>`;
+    row.cells.forEach((c, j) => {
+      if (!c.top) return;
+      const x = padL + j * cw;
+      out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw - .5)}" height="${rowH}"
+        fill="${pcHue(c.top[0])}" opacity="${0.4 + 0.6 * Math.min(1, c.n / 8)}"
+        ${tip(`T${row.t.t} ${esc(row.t.preset)} bar ${Math.floor(c.at / 16) + 1}`,
+          c.all.map(([pc, n]) => `${NOTE_NAMES[pc]} &#215;${n}`).join(" &#183; "))}/>`;
+      // The letter, wherever a cell is wide enough. Dark ink on a mid-tone hue stays readable
+      // right around the wheel.
+      if (cw > 13) {
+        out += `<text x="${x + cw / 2}" y="${y + rowH / 2 + 3}" text-anchor="middle"
+          font-size="${T.value}" fill="#0d1112" opacity=".8">${NOTE_NAMES[c.top[0]]}</text>`;
+      }
+    });
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${row.t.t}</text>`;
+    out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
+      fill="var(--ink3)">${esc(row.t.preset)}</text>`;
+  });
+
+  const every = Math.max(1, Math.round(rows[0].cells.length / 10));
+  rows[0].cells.forEach((c, j) => {
+    if (j % every) return;
+    out += `<text x="${padL + j * cw + 2}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${Math.floor(c.at / 16) + 1}</text>`;
+  });
+  return svg(w, h, "What each track plays, bar by bar, across the full cycle", out);
+}
+
+/** The chromatic wheel as a legend, so the hue mapping is stated rather than guessed. */
+const pcLegend = () => `<div class="legend">` + NOTE_NAMES.map((n, pc) =>
+  `<span class="item"><span class="sw" style="background:${pcHue(pc)}"></span>
+   <span>${n}</span></span>`).join("") + `</div>`;
 
 const legend = (items) => `<div class="legend">` + items.map(([label, v]) =>
   `<span class="item"><span class="sw" style="background:var(${v})"></span>
@@ -1084,7 +1197,14 @@ document.getElementById("cards").innerHTML =
     </figure>
     ${legend(MACHINES.map((m) => [m, MACHINE_VAR[m]]))}
 
-    <figure style="margin-top:1.1rem">
+    <div class="ctrl" style="margin-top:1.1rem">
+      <label for="keymode">Timeline</label>
+      <select id="keymode">
+        <option value="pitch">By pitch class &mdash; what is sounding</option>
+        <option value="track">By track &mdash; who is playing it</option>
+      </select>
+    </div>
+    <figure>
       <figcaption>A key belongs to a <b>moment</b>, not to a pattern. With per-track scale on the
         tracks phase against one another, so what sounds together genuinely changes bar by bar
         without anything being edited — across the full ${cycle / 16}-bar cycle the fit moves
@@ -1092,8 +1212,8 @@ document.getElementById("cards").innerHTML =
         best fit, <b>faded where it cannot really tell</b>.</figcaption>
       <div class="chart" id="c-keytime"></div>
     </figure>
-    ${legend([["Minor fit", "--s7"], ["Major fit", "--s4"], ["More notes", "--q6"],
-              ["Fewer notes", "--q2"]])}
+    <div id="keylegend">${legend([["Minor fit", "--s7"], ["Major fit", "--s4"],
+      ["More notes", "--q6"], ["Fewer notes", "--q2"]])}</div>
 
     <div class="inferred">
       <span class="h">Best fit over the whole cycle — an inference, not a reading</span>
@@ -1127,7 +1247,26 @@ mount(document.getElementById("c-phase"), (w) => phaseStrip(live, MASTER_LEN, mo
 mount(document.getElementById("c-realign"), (w) => realignBars(live, cycle, w));
 mount(document.getElementById("c-voice"), (w) => voiceArea(voices, VOICES, w));
 mount(document.getElementById("c-lanes"), (w) => voiceLanes(live, MASTER_LEN, voices, VOICES, w));
-mount(document.getElementById("c-keytime"), (w) => keyTimeline(keyWindows, cycle, w));
+const keymodeEl = document.getElementById("keymode");
+let keymode = keymodeEl.value;
+const trackRows = trackWindows(tonal, cycle, 16, 16);
+const KEY_LEGEND = {
+  pitch: legend([["Minor fit", "--s7"], ["Major fit", "--s4"], ["More notes", "--q6"],
+                 ["Fewer notes", "--q2"]]),
+  track: pcLegend(),
+};
+const drawKey = (w) => keymode === "track"
+  ? trackTimeline(trackRows, w) : keyTimeline(keyWindows, cycle, w);
+mount(document.getElementById("c-keytime"), drawKey);
+document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
+keymodeEl.addEventListener("change", (e) => {
+  keymode = e.target.value;
+  const el = document.getElementById("c-keytime");
+  el.dataset.w = "";
+  el.innerHTML = drawKey(Math.floor(el.clientWidth));
+  el.dataset.w = Math.floor(el.clientWidth);
+  document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
+});
 mount(document.getElementById("c-density"), (w) => densityBars(live, w));
 mount(document.getElementById("c-micro"), (w) => microDiverging(micro.buckets, w));
 mount(document.getElementById("c-pitch"), (w) => pitchBars(pitch, w));
