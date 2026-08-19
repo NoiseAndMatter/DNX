@@ -245,15 +245,18 @@ const tracks = SPEC.map((s) => {
      * mockup counted one pitch per trig. A four-note stab is four pitches and four voices, so
      * every pitch count and the whole voice budget were under-reported.
      */
-    const chord = s.chord && random() < 0.6
-      ? s.chord.map((iv) => (pc + iv) % 12)
-      : [];
-    const notes = [pc, ...chord];
+    const root = s.oct * 12 + pc;
+    const voicing = s.chord && random() < 0.6 ? s.chord : [];
+    // Real note numbers, not pitch classes: a stack has to be ordered low to high, and a pitch
+    // class cannot say which of two notes is the lower one.
+    const midi = [root, ...voicing.map((iv) => root + iv)];
+    const notes = midi.map((n) => n % 12);
     trigs.push({
       step,
       pc,
       notes,
-      note: s.oct * 12 + pc,
+      midi,
+      note: root,
       vel: accented ? 108 + Math.floor(random() * 20) : 62 + Math.floor(random() * 38),
       // Gate length. Drums are short; melodic notes sustain, but not for most of a bar — the
       // first pass allowed up to 10 steps across ten tracks and produced a pattern holding 27
@@ -953,28 +956,129 @@ function keyTimeline(windows, cycle, w) {
  */
 const pcHue = (pc) => `hsl(${pc * 30} 52% 56%)`;
 
-function trackWindows(list, total, win, hop) {
+/*
+ * Naming a chord from a set of pitch classes.
+ *
+ * Every template is tried against every possible root and the best match wins, with a tie broken
+ * toward the root that is **diatonic to the window's fitted key** — the same set of notes can be a
+ * C6 or an Am7 and only the surrounding key has an opinion about which.
+ *
+ * It is offered as *a possible name*, in the user's own words, and it is an inference twice over:
+ * the key underneath it is a fit, and a vertical set of notes is not the same thing as a chord
+ * someone played. Both are stated in the tooltip rather than smoothed away.
+ */
+const CHORD_SHAPES = [
+  [[0, 4, 7], ""], [[0, 3, 7], "m"], [[0, 3, 6], "dim"], [[0, 4, 8], "aug"],
+  [[0, 5, 7], "sus4"], [[0, 2, 7], "sus2"],
+  [[0, 4, 7, 11], "maj7"], [[0, 3, 7, 10], "m7"], [[0, 4, 7, 10], "7"],
+  [[0, 3, 6, 10], "m7b5"], [[0, 3, 6, 9], "dim7"], [[0, 4, 7, 9], "6"], [[0, 3, 7, 9], "m6"],
+  [[0, 2, 4, 7], "add9"], [[0, 2, 5, 7], "sus4add9"],
+];
+const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+const MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10];
+const DEGREE = ["I", "II", "III", "IV", "V", "VI", "VII"];
+
+function chordName(pcs, key) {
+  const set = [...new Set(pcs)].sort((a, b) => a - b);
+  if (set.length === 0) return null;
+  if (set.length === 1) return { name: NOTE_NAMES[set[0]], kind: "single note" };
+  if (set.length === 2) {
+    const iv = (set[1] - set[0] + 12) % 12;
+    const names = { 1: "minor 2nd", 2: "major 2nd", 3: "minor 3rd", 4: "major 3rd", 5: "4th",
+                    6: "tritone", 7: "5th", 8: "minor 6th", 9: "major 6th", 10: "minor 7th",
+                    11: "major 7th" };
+    return { name: `${NOTE_NAMES[set[0]]}+${NOTE_NAMES[set[1]]}`, kind: names[iv] ?? "dyad" };
+  }
+
+  const scale = key && key.minor ? MINOR_SCALE : MAJOR_SCALE;
+  const inKey = (pc) => key ? scale.includes((pc - key.root + 12) % 12) : false;
+
+  let best = null;
+  for (let root = 0; root < 12; root++) {
+    const rel = set.map((pc) => (pc - root + 12) % 12).sort((a, b) => a - b);
+    for (const [shape, suffix] of CHORD_SHAPES) {
+      const covered = shape.filter((iv) => rel.includes(iv)).length;
+      const extra = rel.filter((iv) => !shape.includes(iv)).length;
+      // Exact matches first; then the shape that explains the most notes with the fewest strays.
+      const score = covered * 3 - extra * 2 - Math.abs(shape.length - rel.length)
+        + (inKey(root) ? 1 : 0);
+      if (covered < 3) continue;
+      if (!best || score > best.score) {
+        best = { score, root, suffix, exact: extra === 0 && covered === shape.length };
+      }
+    }
+  }
+  if (!best) return { name: set.map((pc) => NOTE_NAMES[pc]).join(" "), kind: "no common shape" };
+
+  let kind = best.exact ? "" : "approximate";
+  if (key) {
+    const deg = MAJOR_SCALE.indexOf((best.root - key.root + 12) % 12);
+    const scaleDeg = (key.minor ? MINOR_SCALE : MAJOR_SCALE)
+      .indexOf((best.root - key.root + 12) % 12);
+    if (scaleDeg >= 0) {
+      const numeral = best.suffix.startsWith("m") || best.suffix === "dim"
+        ? DEGREE[scaleDeg].toLowerCase() : DEGREE[scaleDeg];
+      kind = `${numeral}${best.suffix === "dim" ? "\u00b0" : ""} in ${key.name}` +
+             (best.exact ? "" : ", approximate");
+    }
+    void deg;
+  }
+  return { name: `${NOTE_NAMES[best.root]}${best.suffix}`, kind };
+}
+
+/**
+ * What each track has sounding in each window, as a set of real note numbers.
+ *
+ * `keyAt(i)` supplies the key a cell's chord should be read against, because the same notes are a
+ * C6 or an Am7 depending on what is around them and only the fitted key has an opinion. It is a
+ * function rather than an array so the caller decides the scale of the context: a per-bar view
+ * uses that bar's own fit, while a four-bar view uses the fit over all four — a key fitted to a
+ * single beat would be noise.
+ */
+function trackWindows(list, total, win, hop, keyAt) {
   const rows = list.map((t) => ({ t, cells: [] }));
-  for (let at = 0; at + win <= total; at += hop) {
+  let w = 0;
+  for (let at = 0; at + win <= total; at += hop, w++) {
     rows.forEach((row) => {
-      const counts = new Map();
+      const counts = new Map();          // midi note -> how often it sounds in this window
       for (let rep = 0; rep * row.t.len < total; rep++) {
         for (const g of row.t.trigs) {
-          const s = rep * row.t.len + g.step;
-          if (s < at || s >= at + win) continue;
-          for (const pc of g.notes) counts.set(pc, (counts.get(pc) ?? 0) + 1);
+          const st = rep * row.t.len + g.step;
+          if (st < at || st >= at + win) continue;
+          for (const n of g.midi) counts.set(n, (counts.get(n) ?? 0) + 1);
         }
       }
-      const sorted = [...counts].sort((a, b) => b[1] - a[1]);
-      row.cells.push({ at, top: sorted[0], all: sorted,
-                       n: sorted.reduce((acc, [, n]) => acc + n, 0) });
+      /*
+       * **One bar per distinct note, not per trig.** A bass repeating one note eight times in a
+       * bar is one line, because the stack answers *what is sounding here* rather than how busy
+       * the track is -- density already has its own chart and does not need saying twice.
+       */
+      const stack = [...counts.keys()].sort((a, b) => a - b);
+      row.cells.push({
+        at, stack, counts,
+        n: [...counts.values()].reduce((acc, v) => acc + v, 0),
+        chord: chordName(stack.map((n) => n % 12), keyAt?.(w)),
+      });
     });
   }
   return rows;
 }
 
-function trackTimeline(rows, w) {
-  const rowH = 15, gap = 3, padL = 30, padR = 88;
+/**
+ * One row per track, and inside each cell the notes sounding, as thin stacked bars.
+ *
+ * **A piano roll's readability without its vertical cost.** A real roll spends its height on tonal
+ * distance, which needs 73 rows to show a couple of octaves and leaves most of them empty. Here the
+ * bars are ordered low to high but spaced evenly, so a triad is three lines however wide the
+ * voicing is, and ten tracks fit in the height one track would otherwise take.
+ *
+ * Colour is the note. Twelve hues, and this is the one place they are allowed: pitch class is
+ * *cyclic*, not arbitrary and unordered, and a hue wheel is its conventional encoding — the one
+ * case where wrapping round to the start is the truth rather than an artefact. Identity never
+ * rests on it alone, because the stack is named on hover.
+ */
+function trackTimeline(rows, stepsPerCell, w) {
+  const rowH = 26, gap = 4, padL = 30, padR = 88, barH = 3, barGap = 1.5;
   const h = rows.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const cw = plot / rows[0].cells.length;
@@ -982,20 +1086,26 @@ function trackTimeline(rows, w) {
 
   rows.forEach((row, i) => {
     const y = i * (rowH + gap);
-    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" fill="#1a1f21"/>`;
+    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
     row.cells.forEach((c, j) => {
-      if (!c.top) return;
+      if (!c.stack.length) return;
       const x = padL + j * cw;
-      out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw - .5)}" height="${rowH}"
-        fill="${pcHue(c.top[0])}" opacity="${0.4 + 0.6 * Math.min(1, c.n / 8)}"
-        ${tip(`T${row.t.t} ${esc(row.t.preset)} bar ${Math.floor(c.at / 16) + 1}`,
-          c.all.map(([pc, n]) => `${NOTE_NAMES[pc]} &#215;${n}`).join(" &#183; "))}/>`;
-      // The letter, wherever a cell is wide enough. Dark ink on a mid-tone hue stays readable
-      // right around the wheel.
-      if (cw > 13) {
-        out += `<text x="${x + cw / 2}" y="${y + rowH / 2 + 3}" text-anchor="middle"
-          font-size="${T.value}" fill="#0d1112" opacity=".8">${NOTE_NAMES[c.top[0]]}</text>`;
-      }
+      // Packed from the bottom and centred, so a one-note cell does not sit on the floor while a
+      // four-note cell fills the row — the group reads as a group.
+      const stackH = c.stack.length * barH + (c.stack.length - 1) * barGap;
+      const y0 = y + (rowH - stackH) / 2;
+      c.stack.forEach((n, k) => {
+        out += `<rect x="${x + .5}" y="${y0 + (c.stack.length - 1 - k) * (barH + barGap)}"
+          width="${Math.max(1.5, cw - 1)}" height="${barH}" rx="1.25"
+          fill="${pcHue(n % 12)}"/>`;
+      });
+      // One target for the whole stack: the chord is a property of the group, not of a bar in it.
+      out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw)}" height="${rowH}"
+        fill="transparent" ${tip(
+          `T${row.t.t} ${esc(row.t.preset)} \u00b7 bar ${Math.floor(c.at / 16) + 1}`,
+          `${c.stack.map((n) => NOTE_NAMES[n % 12]).join(" ")}` +
+          (c.chord ? ` &mdash; <b>${esc(c.chord.name)}</b>` +
+            (c.chord.kind ? ` <span class="r">${esc(c.chord.kind)}</span>` : "") : ""))}/>`;
     });
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
       font-size="${T.label}" fill="var(--ink2)">T${row.t.t}</text>`;
@@ -1003,19 +1113,28 @@ function trackTimeline(rows, w) {
       fill="var(--ink3)">${esc(row.t.preset)}</text>`;
   });
 
-  const every = Math.max(1, Math.round(rows[0].cells.length / 10));
+  /*
+   * At beat resolution the bar line is what you count in, so it is drawn as well as labelled;
+   * at bar resolution there is nothing coarser to draw and the labels stand alone.
+   */
+  const perBar = 16 / stepsPerCell;
+  const every = stepsPerCell === 16 ? Math.max(1, Math.round(rows[0].cells.length / 10)) : perBar;
   rows[0].cells.forEach((c, j) => {
     if (j % every) return;
-    out += `<text x="${padL + j * cw + 2}" y="${h - 3}" font-size="${T.tick}"
+    if (stepsPerCell < 16) {
+      out += `<line x1="${padL + j * cw}" y1="0" x2="${padL + j * cw}" y2="${h - 14}"
+        stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+    }
+    out += `<text x="${padL + j * cw + 3}" y="${h - 3}" font-size="${T.tick}"
       fill="var(--ink3)">${Math.floor(c.at / 16) + 1}</text>`;
   });
-  return svg(w, h, "What each track plays, bar by bar, across the full cycle", out);
+  return svg(w, h, "The notes each track plays, stacked low to high", out);
 }
 
 /** The chromatic wheel as a legend, so the hue mapping is stated rather than guessed. */
 const pcLegend = () => `<div class="legend">` + NOTE_NAMES.map((n, pc) =>
-  `<span class="item"><span class="sw" style="background:${pcHue(pc)}"></span>
-   <span>${n}</span></span>`).join("") + `</div>`;
+  `<span class="item"><span class="sw" style="background:${pcHue(pc)};height:3px;width:14px">
+   </span><span>${n}</span></span>`).join("") + `</div>`;
 
 const legend = (items) => `<div class="legend">` + items.map(([label, v]) =>
   `<span class="item"><span class="sw" style="background:var(${v})"></span>
@@ -1203,13 +1322,16 @@ document.getElementById("cards").innerHTML =
         <option value="pitch">By pitch class &mdash; what is sounding</option>
         <option value="track">By track &mdash; who is playing it</option>
       </select>
+      <span id="spanctrl" hidden>
+        <label for="keyspan" style="margin-left:.4rem">Span</label>
+        <select id="keyspan">
+          <option value="beat">4 bars — a column per beat</option>
+          <option value="bar">Full cycle — a column per bar</option>
+        </select>
+      </span>
     </div>
     <figure>
-      <figcaption>A key belongs to a <b>moment</b>, not to a pattern. With per-track scale on the
-        tracks phase against one another, so what sounds together genuinely changes bar by bar
-        without anything being edited — across the full ${cycle / 16}-bar cycle the fit moves
-        <b>${changes} times</b>. Above, the pitch classes actually sounding in each bar; below, the
-        best fit, <b>faded where it cannot really tell</b>.</figcaption>
+      <figcaption id="keycap"></figcaption>
       <div class="chart" id="c-keytime"></div>
     </figure>
     <div id="keylegend">${legend([["Minor fit", "--s7"], ["Major fit", "--s4"],
@@ -1248,25 +1370,66 @@ mount(document.getElementById("c-realign"), (w) => realignBars(live, cycle, w));
 mount(document.getElementById("c-voice"), (w) => voiceArea(voices, VOICES, w));
 mount(document.getElementById("c-lanes"), (w) => voiceLanes(live, MASTER_LEN, voices, VOICES, w));
 const keymodeEl = document.getElementById("keymode");
+const keyspanEl = document.getElementById("keyspan");
 let keymode = keymodeEl.value;
-const trackRows = trackWindows(tonal, cycle, 16, 16);
+let keyspan = keyspanEl.value;
+
+/*
+ * **The track view defaults to four bars at beat resolution, and that is a correction.**
+ *
+ * It first drew the same 84 bars as the pitch view, and at seventeen pixels a column the stacks
+ * became a texture: every bar looked alike, and a chart you cannot read one column of is not
+ * showing you music. This view's unit of meaning is a chord, not a trend, so it wants few wide
+ * columns.
+ *
+ * The full cycle is still offered, because "where does this track change" is a real question. It
+ * is just a different one from "what is it playing here".
+ */
+const masterFit = fitKey(pitchWindows(tonal, MASTER_LEN, MASTER_LEN, MASTER_LEN)[0].counts);
+const trackRowsBeat = trackWindows(tonal, MASTER_LEN, 4, 4, () => masterFit);
+const trackRowsBar = trackWindows(tonal, cycle, 16, 16, (i) => keyWindows[i]?.fit);
 const KEY_LEGEND = {
   pitch: legend([["Minor fit", "--s7"], ["Major fit", "--s4"], ["More notes", "--q6"],
                  ["Fewer notes", "--q2"]]),
   track: pcLegend(),
 };
 const drawKey = (w) => keymode === "track"
-  ? trackTimeline(trackRows, w) : keyTimeline(keyWindows, cycle, w);
-mount(document.getElementById("c-keytime"), drawKey);
-document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
-keymodeEl.addEventListener("change", (e) => {
-  keymode = e.target.value;
+  ? trackTimeline(keyspan === "beat" ? trackRowsBeat : trackRowsBar,
+                  keyspan === "beat" ? 4 : 16, w)
+  : keyTimeline(keyWindows, cycle, w);
+
+const CAPTION = {
+  pitch: `A key belongs to a <b>moment</b>, not to a pattern. With per-track scale on the tracks
+    phase against one another, so what sounds together genuinely changes bar by bar without
+    anything being edited — across the full ${cycle / 16}-bar cycle the fit moves
+    <b>${changes} times</b>. Above, the pitch classes actually sounding in each bar; below, the
+    best fit, <b>faded where it cannot really tell</b>.`,
+  "track-beat": `Every note each track has sounding, stacked low to high. Spacing is even rather
+    than tonal — a triad is three lines whatever the voicing — so six tracks fit in the
+    height a piano roll spends on one. <b>Hover a stack for a possible chord name.</b>`,
+  "track-bar": `The same stacks across the whole ${cycle / 16}-bar cycle, a column per bar, with
+    the chord read against the key fitted around it. Good for finding <b>where a track
+    changes</b>; too dense to read a single chord from — switch the span back to four bars
+    for that.`,
+};
+const capFor = () => keymode === "track" ? CAPTION[`track-${keyspan}`] : CAPTION.pitch;
+
+function repaintKey() {
   const el = document.getElementById("c-keytime");
   el.dataset.w = "";
   el.innerHTML = drawKey(Math.floor(el.clientWidth));
   el.dataset.w = Math.floor(el.clientWidth);
   document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
-});
+  document.getElementById("keycap").innerHTML = capFor();
+  document.getElementById("spanctrl").hidden = keymode !== "track";
+}
+
+mount(document.getElementById("c-keytime"), drawKey);
+document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
+document.getElementById("keycap").innerHTML = capFor();
+document.getElementById("spanctrl").hidden = keymode !== "track";
+keymodeEl.addEventListener("change", (e) => { keymode = e.target.value; repaintKey(); });
+keyspanEl.addEventListener("change", (e) => { keyspan = e.target.value; repaintKey(); });
 mount(document.getElementById("c-density"), (w) => densityBars(live, w));
 mount(document.getElementById("c-micro"), (w) => microDiverging(micro.buckets, w));
 mount(document.getElementById("c-pitch"), (w) => pitchBars(pitch, w));
