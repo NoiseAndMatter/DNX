@@ -1095,8 +1095,14 @@ function trackTimeline(rows, stepsPerCell, w) {
       const stackH = c.stack.length * barH + (c.stack.length - 1) * barGap;
       const y0 = y + (rowH - stackH) / 2;
       c.stack.forEach((n, k) => {
-        out += `<rect x="${x + .5}" y="${y0 + (c.stack.length - 1 - k) * (barH + barGap)}"
-          width="${Math.max(1.5, cw - 1)}" height="${barH}" rx="1.25"
+        /*
+         * The gap between cells is 3px, not 1. At 1px, two consecutive beats holding the same
+         * notes drew as one unbroken line and the beat boundary vanished — the row read as a
+         * single long note instead of four repeats of a chord. The gap is what makes a repeated
+         * chord look repeated.
+         */
+        out += `<rect x="${x + 1.5}" y="${y0 + (c.stack.length - 1 - k) * (barH + barGap)}"
+          width="${Math.max(1.5, cw - 3)}" height="${barH}" rx="1.25"
           fill="${pcHue(n % 12)}"/>`;
       });
       // One target for the whole stack: the chord is a property of the group, not of a bar in it.
