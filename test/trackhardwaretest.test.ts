@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { clear, moveMany, swap } from "../src/librarian/shuffle.js";
 import { type TrackSummary } from "../src/librarian/tracksummary.js";
+import { MACHINE } from "../src/project/machine.js";
 import {
   FIRST_STEP,
   REFERENCE,
@@ -18,6 +19,7 @@ function track(index: number, over: Partial<TrackSummary> = {}): TrackSummary {
     label: `T${index + 1}`,
     presetName: "",
     machine: "FM TONE",
+    machineValue: MACHINE.fmTone,
     midi: false,
     trigCount: 0,
     lockCount: 0,

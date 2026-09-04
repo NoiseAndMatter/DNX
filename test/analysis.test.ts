@@ -18,6 +18,7 @@ import {
   trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
+import { realignBars } from "../web/src/analysis/charts.js";
 import { MACHINE } from "../src/project/machine.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -165,6 +166,7 @@ test("on-grid trigs are counted but kept out of the microtiming buckets", () => 
 test("a track with nothing on it is not a row on any chart", () => {
   const subject: AnalysisSubject = {
     label: "x", tempo: 120, masterLength: 16, voiceBudget: 16, defaultVelocity: 100,
+    gateLengthKnown: true,
     tracks: [track({ number: 1, trigs: [trig(0, [60])] }), track({ number: 2 })],
   };
   assert.deepEqual(playing(subject).map((t) => t.number), [1]);
@@ -283,6 +285,33 @@ test("pitch class wraps, including below zero", () => {
   assert.equal(pitchClass(60), 0);
   assert.equal(pitchClass(71), 11);
   assert.equal(pitchClass(-1), 11);
+});
+
+/* ---- charts, where the geometry can go wrong without throwing --------------------------- */
+
+test("every track the same length does not produce NaN geometry", () => {
+  /*
+   * **A log scale divides by the log of the largest value, which is zero when nothing varies.**
+   * Every bar becomes `0/0`, an SVG rect with a `NaN` width draws nothing at all, and its label
+   * lands at x=0 on top of the track name — a chart that silently disappears rather than failing.
+   *
+   * The synthetic data always had mixed track lengths, so this never happened in the mockup. The
+   * very first real project hit it immediately, and it is the *common* case: 51 of the 64 corpus
+   * patterns measured run every track at the master length.
+   */
+  const same = [16, 16, 16].map((length, i) => track({ number: i + 1, length }));
+  const out = realignBars(same, cycleSteps(same), 800);
+  assert.doesNotMatch(out, /NaN/, "a NaN width draws nothing and says nothing");
+  assert.match(out, /width="800"/, "equal repetitions are equal, and are drawn full width");
+});
+
+test("mixed track lengths still scale, and the culprit is the longest cycle", () => {
+  const mixed = [track({ number: 1, length: 16 }), track({ number: 2, length: 7 })];
+  const out = realignBars(mixed, cycleSteps(mixed), 800);
+  assert.doesNotMatch(out, /NaN/);
+  // T2 repeats 16 times against T1's 7, so it is what stretches the cycle and takes the alert
+  // colour. Reading the first bar drawn is reading the sorted order the chart puts them in.
+  assert.match(out.slice(0, out.indexOf("</text>")), /--s2/);
 });
 
 /* ---- the boundary that makes all of the above possible --------------------------------- */
