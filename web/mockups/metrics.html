@@ -1,0 +1,1471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX — metrics mockup</title>
+<!--
+  A mockup, not a page. It links the real stylesheet from ../ so it sits on the real surface, in
+  the real tokens, at the real 13px — a mockup that invents its own look would look good and prove
+  nothing.
+
+  The data below is SYNTHETIC and generated from a fixed seed. No project is read, no device is
+  needed, and none of the user's music is in this file.
+
+  What survives review becomes `web/src/analysis/charts.ts`, so the drawing functions are written
+  as if they already were that module: data in, SVG string out, no globals.
+-->
+<link rel="stylesheet" href="../dnx.css">
+<link rel="stylesheet" href="../toolnav.css">
+<style>
+/*
+ * Chart tokens, scoped to `.viz` rather than `:root`.
+ *
+ * `:root` is declared in dnx.css and no page may re-declare a shared selector — the overlap budget
+ * in test/web.test.ts is 0. Scoping is also simply better: these are a chart palette, not the app's
+ * palette, and keeping them apart is the point.
+ */
+.viz {
+  --s1: #4f86c6; --s2: #d4553f; --s3: #159e8a; --s4: #bd7f1c;
+  --s5: #c9679f; --s6: #6f9e2a; --s7: #a06fd8; --s8: #c2724a;
+
+  /* Sequential, one hue light->dark, for magnitude. Never a rainbow. */
+  --q1: #1d3550; --q2: #27506f; --q3: #2f6c92; --q4: #3a86b4; --q5: #57a3cf; --q6: #86c4e6;
+
+  /* Diverging, two poles + a neutral middle. Only for genuine polarity. */
+  --dneg: #4f86c6; --dpos: #d4553f;
+
+  /* Reserved status. Never reused as "series 9". */
+  --crit: #e05a4d;
+
+  --ink: var(--fg); --ink2: var(--muted); --ink3: var(--dim); --rule: var(--line-soft);
+}
+
+.cards { display: flex; flex-direction: column; gap: .9rem; }
+
+/* ---- stat tiles ---- */
+.tiles { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tile {
+  flex: 1 1 9rem; background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: .5rem .65rem;
+}
+.tile .k {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink3);
+  display: block; margin-bottom: .2rem;
+}
+/*
+ * Hero numbers, one step down from the first draft.
+ *
+ * Tabular figures so a changing value cannot shift the ones beside it — the reason every design
+ * system that ships a stat tile specifies them.
+ */
+.tile .v { font-size: 1.25rem; line-height: 1.15; font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em; }
+.tile .u { font-size: .7rem; color: var(--ink2); margin-left: .15rem; }
+.tile .note { display: block; margin-top: .15rem; font-size: .66rem; color: var(--ink2); }
+.tile.flag { border-color: var(--crit); }
+.tile.flag .v { color: var(--crit); }
+
+/* ---- figure ---- */
+figure { margin: 0; }
+/*
+ * The caption went UP, not down. It was .68rem against 13px body — small enough to read as a
+ * footnote, when it is the sentence that says what the chart is for.
+ */
+figcaption { font-size: .78rem; line-height: 1.45; color: var(--ink2); margin-bottom: .5rem; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.chart { width: 100%; }
+.viz svg { display: block; }
+
+/* ---- legend ---- */
+.legend { display: flex; flex-wrap: wrap; gap: .1rem .85rem; margin: .5rem 0 0;
+  font-size: .72rem; color: var(--ink2); }
+.legend .item { display: flex; align-items: center; gap: .35rem; }
+.legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+/* ---- chart toolbar ---- */
+.ctrl { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.ctrl label { font-size: .66rem; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink3); }
+.ctrl select { font-size: .74rem; padding: .15rem .35rem; max-width: 12rem; }
+
+/* ---- the honest-inference block ---- */
+.inferred { margin-top: .6rem; padding: .5rem .6rem; border-left: 2px solid var(--line);
+  background: #1b2022; border-radius: 0 3px 3px 0; }
+.inferred .h { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink3); }
+.inferred .fit { font-size: .9rem; margin: .15rem 0; }
+.inferred .why { font-size: .72rem; line-height: 1.5; color: var(--ink2); margin: 0; }
+
+/* ---- table view ---- */
+details.tabular { margin-top: .55rem; }
+details.tabular summary { cursor: pointer; font-size: .72rem; color: var(--ink2); }
+details.tabular table { margin-top: .4rem; border-collapse: collapse; font-size: .74rem; }
+details.tabular th, details.tabular td {
+  padding: .18rem .6rem .18rem 0; text-align: left; font-variant-numeric: tabular-nums; }
+details.tabular th { color: var(--ink3); font-weight: 600; font-size: .64rem;
+  text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; pointer-events: none; z-index: 20; opacity: 0; transition: opacity .08s;
+  background: #101315; border: 1px solid var(--line); border-radius: 3px;
+  padding: .32rem .5rem; font-size: .74rem; line-height: 1.5; max-width: 22rem;
+  box-shadow: 0 4px 14px #0009;
+}
+#tip.on { opacity: 1; }
+#tip .t { color: var(--ink3); font-size: .62rem; text-transform: uppercase; letter-spacing: .08em;
+  display: block; }
+#tip .r { color: var(--ink2); }
+#tip .r b { color: var(--ink); font-weight: 500; }
+
+.mockbanner { background: #2a2118; border: 1px solid var(--amber); color: var(--amber);
+  border-radius: 4px; padding: .4rem .7rem; font-size: .74rem; margin-bottom: .9rem; }
+</style>
+</head>
+<body class="page wide">
+
+<div class="topbar">
+  <span class="brand"><span class="d">DNX</span></span>
+  <span id="toolnav">
+    <nav class="toolnav" aria-label="Tools">
+      <a class="tool" href="../index.html">expander</a>
+      <a class="tool" href="../manager.html" aria-current="page">manager</a>
+      <a class="tool" href="../library.html">library</a>
+      <a class="tool" href="../probe.html">probe</a>
+    </nav>
+  </span>
+  <span class="spacer"></span>
+  <span class="device">Digitone II</span>
+  <span class="projname">ACID RUN — B3</span>
+</div>
+
+<main class="viz">
+  <div class="mockbanner">
+    Mockup — synthetic data, no project loaded. Lands in the manager as a card spanning both
+    columns, the way the song card already does.
+  </div>
+  <div class="cards" id="cards"></div>
+</main>
+
+<div id="tip"></div>
+
+<script type="module">
+/* =====================================================================================
+ * TYPE AND WEIGHT SCALE
+ *
+ * Chart text is in real pixels because every chart's viewBox is set to its own rendered width
+ * (see `mount`). Before that it was not: the viewBox was a fixed 940 while the card rendered at
+ * ~1130, so a declared 10px landed at 12px against 13px body text — which is why the labels read
+ * as huge, and why the scale drifted as the window changed.
+ *
+ * The ramp follows the convention shared by IBM Carbon, Adobe Spectrum and the FT's visual
+ * vocabulary: chart text sits a step or two BELOW body text and never competes with it, and
+ * structural lines are hairlines while only the data itself carries weight.
+ * ===================================================================================== */
+const T = {
+  tick: 10,     // axis and scale numbers
+  label: 10,    // series and category names (T1, machine)
+  value: 9,     // numbers printed against a mark
+  flag: 10,     // the one call-out per chart
+};
+const W = {
+  series: 1.25, // the data line. Was 2 — the single biggest cause of the heaviness.
+  limit: 1,     // a reference or budget line
+  axis: 1,      // baseline
+  grid: 1,      // gridlines, carried at low opacity rather than low weight
+};
+const GRID_OP = 0.55;
+
+/* =====================================================================================
+ * SYNTHETIC DATA — generated from a fixed seed so the page is stable between reloads.
+ * Trigs are generated first and every metric is derived from them, which is how the real
+ * analysis modules will work.
+ * ===================================================================================== */
+
+const VOICES = 16;            // DN2. The DN1 is 8. A device property, not a file field.
+const TEMPO = 138;
+const MASTER_LEN = 64;
+const DEFAULT_VEL = 100;      // the device's default. Above it reads as an accent.
+
+/** mulberry32 — small, seeded, and good enough for plausible-looking test data. */
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/*
+ * Each track gets its **own repeating pitch figure**, not a random draw from one shared scale.
+ *
+ * The first version had every melodic track pick at random from D natural minor, and the key
+ * timeline came out perfectly flat — the fit moved 0 times across 84 bars. That was the data being
+ * wrong, not the chart: real tracks play figures, the figures repeat at their own track length, and
+ * it is the *phasing* of those figures against each other that makes the harmony move. Give every
+ * track the same note pool and there is nothing for polymeter to rearrange.
+ */
+const SPEC = [
+  { t: 1,  len: 16, speed: 1,   machine: "FM TONE",  preset: "SUB PLUCK",  fill: .95, acc: .25, oct: 3, pool: [2, 5, 9, 5] },
+  { t: 2,  len: 12, speed: 1,   machine: "FM DRUM",  preset: "RIM TOK",    fill: .70, acc: .35, oct: 5, pool: [2] },
+  { t: 3,  len: 64, speed: 1,   machine: "WAVETONE", preset: "GLASS LEAD", fill: .48, acc: .18, oct: 5, pool: [9, 0, 2, 4, 5, 7, 0, 9] },
+  { t: 4,  len: 24, speed: 1,   machine: "SWARMER",  preset: "WIDE PAD",   fill: .25, acc: .05, oct: 4, pool: [5, 0, 9, 7], chord: [7] },
+  { t: 5,  len: 7,  speed: 1,   machine: "FM DRUM",  preset: "TIN HAT",    fill: 1.0, acc: .40, oct: 6, pool: [6] },
+  { t: 6,  len: 64, speed: .5,  machine: "FM TONE",  preset: "DEEP BASS",  fill: .30, acc: .10, oct: 2, pool: [2, 2, 7, 10] },
+  { t: 7,  len: 16, speed: 1,   machine: "FM DRUM",  preset: "KICK 909",   fill: .88, acc: .30, oct: 2, pool: [2] },
+  { t: 8,  len: 16, speed: 2,   machine: "WAVETONE", preset: "NOISE HAT",  fill: .38, acc: .12, oct: 6, pool: [11] },
+  { t: 9,  len: 48, speed: 1,   machine: "FM TONE",  preset: "STAB CHORD", fill: .14, acc: .50, oct: 4, pool: [5, 9, 0, 4], chord: [3, 7, 10] },
+  { t: 10, len: 64, speed: 1,   machine: "MIDI",     preset: "EXT SYNTH",  fill: .17, acc: .15, oct: 4, pool: [7, 10, 2, 10] },
+];
+
+/** Build the trigs. Every metric below is derived from these, never invented separately. */
+const random = rng(20260816);
+const tracks = SPEC.map((s) => {
+  const trigs = [];
+  for (let step = 0; step < s.len; step++) {
+    if (random() > s.fill) continue;
+    const accented = random() < s.acc;
+    const percussive = s.machine === "FM DRUM";
+    // The figure advances with the step, so it repeats with the track and phases against the rest.
+    const pc = s.pool[step % s.pool.length];
+    /*
+     * **Every note on the trig, not just the first.**
+     *
+     * A note p-lock is not in the lock table at all — `plockparams.ts` lists `TRIG 1 NOTE` under
+     * NOT_LOCKABLE because the trig slot itself carries `track | step | note | velocity |
+     * noteLength | microTiming`. So the note we already read *is* the locked note; there is no
+     * second value to go and fetch, and pitch analysis has been reading p-locked notes all along
+     * without anyone saying so.
+     *
+     * What was genuinely being dropped is **chords**: `Dn2Trig` decodes a `notes` array and this
+     * mockup counted one pitch per trig. A four-note stab is four pitches and four voices, so
+     * every pitch count and the whole voice budget were under-reported.
+     */
+    const root = s.oct * 12 + pc;
+    const voicing = s.chord && random() < 0.6 ? s.chord : [];
+    // Real note numbers, not pitch classes: a stack has to be ordered low to high, and a pitch
+    // class cannot say which of two notes is the lower one.
+    const midi = [root, ...voicing.map((iv) => root + iv)];
+    const notes = midi.map((n) => n % 12);
+    trigs.push({
+      step,
+      pc,
+      notes,
+      midi,
+      note: root,
+      vel: accented ? 108 + Math.floor(random() * 20) : 62 + Math.floor(random() * 38),
+      // Gate length. Drums are short; melodic notes sustain, but not for most of a bar — the
+      // first pass allowed up to 10 steps across ten tracks and produced a pattern holding 27
+      // voices at once, which is not music, it is a stress test.
+      // A pad sustains, a lead does not, a drum barely at all. Tuned so the pattern peaks just
+      // over the 16-voice budget: a mockup that never trips the alert cannot show the alert.
+      len: 1 + Math.floor(random() * (percussive ? 2 : s.preset === "WIDE PAD" ? 7 : 5)),
+      micro: random() < 0.12 ? Math.round((random() * 2 - 1) * 23) : 0,
+      // A trig that names its own preset instead of the track's.
+      lock: random() < (s.machine === "FM DRUM" ? 0.22 : 0.04),
+    });
+  }
+  return { ...s, trigs };
+});
+const live = tracks.filter((t) => t.trigs.length > 0);
+// Attached once rather than recomputed per repaint: the pairs are a property of the track.
+for (const t of live) t.pairs = overlappingNotes(t);
+
+const LOCK_PRESETS = ["CLAP TAIL", "SNAP", "SHKR", "CONGA HI"];
+const MACHINES = ["FM TONE", "WAVETONE", "FM DRUM", "SWARMER", "MIDI"];
+const MACHINE_VAR = { "FM TONE": "--s1", "WAVETONE": "--s2", "FM DRUM": "--s3",
+                      "SWARMER": "--s4", "MIDI": "--s5" };
+
+/* =====================================================================================
+ * Derivations — the src/analysis/* candidates.
+ * ===================================================================================== */
+
+const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+const lcm = (a, b) => (a / gcd(a, b)) * b;
+const cycleSteps = (list) => list.map((t) => t.len).reduce(lcm, 1);
+const stepsToSeconds = (steps, tempo, speed = 1) => (steps / speed) * (60 / tempo / 4);
+function clock(sec) {
+  const m = Math.floor(sec / 60);
+  return `${m}:${(sec - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
+/** Voices held by a gate at each step of the master length. */
+function voicesPerStep(list, window) {
+  const held = new Array(window).fill(0);
+  for (const t of list) {
+    for (let rep = 0; rep * t.len < window; rep++) {
+      for (const g of t.trigs) {
+        const at = rep * t.len + g.step;
+        if (at >= window) continue;
+        // A chord trig spends one voice PER NOTE. Counting the trig once under-reported
+        // every chord in the pattern, which is exactly where a voice budget gets spent.
+        for (let k = 0; k < g.len && at + k < window; k++) held[at + k] += g.notes.length;
+      }
+    }
+  }
+  return held;
+}
+
+/** Pitch class -> total, and the presets that sound it. Answers "what plays this note?" */
+function pitchByPreset(list) {
+  const out = NOTE_NAMES.map((name) => ({ name, total: 0, byMachine: {}, presets: {} }));
+  for (const t of list) {
+    for (const g of t.trigs) {
+      const preset = g.lock ? LOCK_PRESETS[g.step % LOCK_PRESETS.length] : t.preset;
+      for (const pc of g.notes) {
+        const cell = out[pc];
+        cell.total++;
+        cell.byMachine[t.machine] = (cell.byMachine[t.machine] ?? 0) + 1;
+        cell.presets[preset] = (cell.presets[preset] ?? 0) + 1;
+        (cell.byTrack ??= {})[t.t] = (cell.byTrack?.[t.t] ?? 0) + 1;
+      }
+    }
+  }
+  return out;
+}
+
+function microBuckets(list) {
+  const map = new Map();
+  let onGrid = 0;
+  for (const t of list) for (const g of t.trigs) {
+    if (g.micro === 0) { onGrid++; continue; }
+    const b = Math.round(g.micro / 6) * 6;
+    map.set(b, (map.get(b) ?? 0) + 1);
+  }
+  return { onGrid, buckets: [...map].map(([at, n]) => ({ at, n })).sort((a, b) => a.at - b.at) };
+}
+
+/* =====================================================================================
+ * Chart plumbing
+ * ===================================================================================== */
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tip = (title, body) => ` data-tip-t="${esc(title)}" data-tip-b="${esc(body)}"`;
+
+/**
+ * Render a chart at its container's real pixel width, and again whenever that changes.
+ *
+ * **This is why the type scale is trustworthy.** An SVG with a fixed viewBox scaled to fit its
+ * box multiplies every font-size inside it by an arbitrary factor that moves with the window. A
+ * 10px label became 12px on a 1600px screen and something else on a 1200px one — the chart's type
+ * had no fixed relationship to the page's. Matching the viewBox to the rendered width makes the
+ * unit inside the SVG one CSS pixel, so `T.tick` means what it says.
+ */
+function mount(el, draw) {
+  const paint = () => {
+    const w = Math.max(360, Math.floor(el.clientWidth));
+    if (w === el.dataset.w) return;
+    el.dataset.w = w;
+    el.innerHTML = draw(w);
+  };
+  paint();
+  new ResizeObserver(paint).observe(el);
+}
+const svg = (w, h, label, body) =>
+  `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
+    aria-label="${esc(label)}">${body}</svg>`;
+
+/* =====================================================================================
+ * Charts
+ * ===================================================================================== */
+
+/**
+ * Phase strip: where each track restarts, and what it plays, across the pattern you can see.
+ *
+ * **This replaced a chart that failed at its own job.** The first version drew the whole cycle —
+ * 1,344 steps — as one block per repetition. T1 got 84 blocks and T5 got 192, at two pixels each:
+ * a striped mush in which the wrap points, the entire subject of the chart, were invisible.
+ *
+ * It now draws the master length, where a step is wide enough to see, and carries three things at
+ * once: the restart tick, the repetition banding, and **the trigs themselves as dots**. That last
+ * is what makes it a guide rather than a diagram — you read the polymeter against the actual
+ * rhythm rather than against an empty lane.
+ *
+ * `mode` chooses what a dot encodes. Velocity is the default because accent is the thing you
+ * cannot see anywhere else on the page.
+ */
+function phaseStrip(list, window, mode, w) {
+  const rowH = 18, gap = 3, padL = 30, padR = 74;
+  const h = list.length * (rowH + gap) + 14;
+  const plot = w - padL - padR;
+  const x = (step) => padL + (step / window) * plot;
+  const stepW = plot / window;
+  let out = "";
+
+  // Bar lines behind everything, so drift is read against the musical grid rather than in a void.
+  for (let bar = 0; bar <= window / 16; bar++) {
+    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h - 14}"
+      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+  }
+
+  list.forEach((t, i) => {
+    const y = i * (rowH + gap);
+    const fill = `var(${MACHINE_VAR[t.machine]})`;
+    const cy = y + rowH / 2;
+    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+
+    for (let start = 0; start < window; start += t.len) {
+      const x0 = x(start), x1 = x(Math.min(start + t.len, window));
+      // The repetition band is context: barely there, so the dots read as the data.
+      out += `<rect x="${x0 + 1}" y="${y + 2}" width="${Math.max(1, x1 - x0 - 2)}"
+        height="${rowH - 4}" rx="1.5" fill="${fill}" opacity=".13"/>`;
+      // The restart tick. A hairline, full height — weight comes from contrast, not thickness.
+      out += `<line x1="${x0 + .5}" y1="${y}" x2="${x0 + .5}" y2="${y + rowH}"
+        stroke="${fill}" stroke-width="${W.limit}" opacity=".9"
+        ${tip(`T${t.t} — ${t.preset}`, `restarts at step ${start + 1} · every ${t.len} steps`)}/>`;
+
+      for (const g of t.trigs) {
+        const at = start + g.step;
+        if (at >= window) continue;
+        const cxp = x(at) + stepW / 2;
+        const accented = g.vel > DEFAULT_VEL;
+        let r = 2.6, op = 1, extra = "";
+        if (mode === "velocity") {
+          // Opacity carries velocity; the accent additionally gets a ring, so the reading never
+          // depends on opacity alone — which is not a reliable channel on its own.
+          op = 0.28 + (g.vel / 127) * 0.72;
+          if (accented) { r = 3.4; extra = `<circle cx="${cxp}" cy="${cy}" r="5.4" fill="none"
+            stroke="${fill}" stroke-width="${W.limit}" opacity=".8"/>`; }
+        } else if (mode === "length") {
+          /*
+           * A bar whose width is the note's gate.
+           *
+           * **Clipped to the plot's right edge.** It was not, and a long note near the end of the
+           * window ran straight through the axis and over the "64 steps" labels beyond it — the
+           * bar was sized from the note alone, with nothing saying where the drawing area stops.
+           * A gate that would extend past the window is truncated, which is also what the
+           * sequencer does to it.
+           */
+          const x0 = cxp - stepW / 2 + .75;
+          const right = padL + plot;
+          const bw = Math.max(2.5, Math.min(g.len * stepW - 1.5, right - x0));
+          out += `<rect x="${x0}" y="${cy - 2.5}" width="${bw}" height="5"
+            rx="2.5" fill="${fill}" opacity=".85"
+            ${tip(`T${t.t} step ${g.step + 1}`, `${NOTE_NAMES[g.pc]} · length ${g.len} steps`)}/>`;
+          continue;
+        } else if (mode === "locks") {
+          op = g.lock ? 1 : .18;
+          r = g.lock ? 3.4 : 2.2;
+        } else if (mode === "overlap") {
+          // A note that runs into the next one on the same track. The pair is joined, because the
+          // relationship *is* the finding — a lone highlighted dot would say nothing.
+          const pair = (t.pairs ?? []).find((p) => p.a === g);
+          if (pair) {
+            const x2 = x(start + (pair.wrap ? t.len + pair.b.step : pair.b.step)) + stepW / 2;
+            out += `<line x1="${cxp}" y1="${cy}" x2="${Math.min(x2, padL + plot)}" y2="${cy}"
+              stroke="${fill}" stroke-width="1.75" opacity=".95"/>`;
+            r = 3.2; op = 1;
+          } else {
+            op = (t.pairs ?? []).some((p) => p.b === g) ? 1 : .16;
+            r = op === 1 ? 3.2 : 2.2;
+          }
+        }
+        const preset = g.lock ? LOCK_PRESETS[g.step % LOCK_PRESETS.length] : t.preset;
+        out += extra;
+        out += `<circle cx="${cxp}" cy="${cy}" r="${r}" fill="${fill}" opacity="${op}"
+          ${tip(`T${t.t} step ${g.step + 1}${accented ? " — accent" : ""}`,
+            `${preset} · ${NOTE_NAMES[g.pc]} · vel ${g.vel}${g.lock ? " · preset lock" : ""}`)}/>`;
+      }
+    }
+    out += `<text x="${padL - 6}" y="${cy + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${t.t}</text>`;
+    out += `<text x="${padL + plot + 8}" y="${cy + 3.5}" font-size="${T.value}"
+      fill="var(--ink3)">${t.len} steps</text>`;
+  });
+
+  for (let bar = 0; bar < window / 16; bar++) {
+    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${bar + 1}</text>`;
+  }
+  return svg(w, h, "Where each track restarts and what it plays", out);
+}
+
+/**
+ * How many times each track repeats before everything lines up again.
+ *
+ * The half of polymeter that is a number rather than a shape. Log scale, because the values span
+ * 21 to 192 and a linear axis would flatten everything that is not the culprit.
+ */
+function realignBars(list, cycle, w) {
+  const rowH = 14, gap = 5, padL = 30, padR = 128;
+  const sorted = [...list].sort((a, b) => cycle / b.len - cycle / a.len);
+  const h = sorted.length * (rowH + gap);
+  const plot = w - padL - padR;
+  const max = Math.log(Math.max(...sorted.map((t) => cycle / t.len)));
+  let out = "";
+  sorted.forEach((t, i) => {
+    const y = i * (rowH + gap);
+    const reps = cycle / t.len;
+    const bw = Math.max(2, (Math.log(reps) / max) * plot);
+    const culprit = i === 0;
+    out += `<rect x="${padL}" y="${y}" width="${bw}" height="${rowH}" rx="2"
+      fill="var(${culprit ? "--s2" : "--q4"})"
+      ${tip(`T${t.t} — ${t.preset}`, `${t.len} steps · repeats ${reps}x per cycle`)}/>`;
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${t.t}</text>`;
+    out += `<text x="${padL + bw + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
+      fill="var(${culprit ? "--s2" : "--ink2"})">${reps}&#215;
+      <tspan fill="var(--ink3)">· ${t.len} steps</tspan></text>`;
+  });
+  return svg(w, h, "Repetitions each track makes before the pattern realigns", out);
+}
+
+/**
+ * Voice pressure over the pattern, as a step area against the device's budget.
+ *
+ * A step area rather than a smooth line: voice count changes ON a step and holds. Interpolating
+ * between steps would draw values the sequencer never has.
+ */
+function voiceArea(series, budget, w) {
+  const h = 150, padL = 24, padB = 16, padT = 16;
+  const plotH = h - padB;
+  const n = series.length;
+  const top = Math.max(budget, ...series) + 1;
+  const x = (i) => padL + (i / n) * (w - padL);
+  const y = (v) => padT + (plotH - padT) - (v / top) * (plotH - padT);
+  let out = "";
+
+  for (const v of [4, 8, 12, budget]) {
+    out += `<line x1="${padL}" y1="${y(v)}" x2="${w}" y2="${y(v)}"
+      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+    out += `<text x="${padL - 5}" y="${y(v) + 3}" text-anchor="end"
+      font-size="${T.tick}" fill="var(--ink3)">${v}</text>`;
+  }
+
+  let d = `M ${x(0)} ${plotH}`;
+  series.forEach((v, i) => { d += ` L ${x(i)} ${y(v)} L ${x(i + 1)} ${y(v)}`; });
+  out += `<path d="${d} L ${x(n)} ${plotH} Z" fill="var(--q3)" opacity=".38"/>`;
+  out += `<path d="${d}" fill="none" stroke="var(--q6)" stroke-width="${W.series}"
+    stroke-linejoin="round"/>`;
+
+  // The budget is a limit, not a series: a hairline, dashed, above the fill.
+  out += `<line x1="${padL}" y1="${y(budget)}" x2="${w}" y2="${y(budget)}"
+    stroke="var(--crit)" stroke-width="${W.limit}" stroke-dasharray="4 3"/>`;
+
+  /*
+   * Overruns are marked individually but labelled **once**.
+   *
+   * The first version labelled every one. On a pattern with a single overrun that reads well; on
+   * one with thirty-one it printed thirty-one overlapping strings across the top of the plot and
+   * the chart became unreadable at exactly the moment it had the most to say. A chart has to
+   * degrade toward the busy case, not away from it.
+   *
+   * So: every over-budget step keeps its mark and its tooltip, the **worst** one is named, and
+   * the count lives in the tile above where a number belongs.
+   */
+  const worst = series.reduce((best, v, i) => (v > series[best] ? i : best), 0);
+  series.forEach((v, i) => {
+    if (v <= budget) return;
+    out += `<rect x="${x(i)}" y="${y(v)}" width="${Math.max(2.5, x(i + 1) - x(i))}"
+      height="${plotH - y(v)}" fill="var(--crit)" opacity="${i === worst ? 1 : .62}"
+      ${tip(`Step ${i + 1}`, `${v} voices — ${v - budget} over the ${budget}-voice budget`)}/>`;
+  });
+  if (series[worst] > budget) {
+    const near = x(worst) > w * 0.6;
+    out += `<text x="${x(worst) + (near ? -6 : 6)}" y="${y(series[worst]) - 5}"
+      text-anchor="${near ? "end" : "start"}" font-size="${T.flag}"
+      fill="var(--crit)">peak ${series[worst]}, step ${worst + 1}</text>`;
+  }
+
+  series.forEach((v, i) => {
+    out += `<rect x="${x(i)}" y="0" width="${x(i + 1) - x(i)}" height="${plotH}"
+      fill="transparent" ${tip(`Step ${i + 1}`, `${v} of ${budget} voices held`)}/>`;
+  });
+  for (let bar = 0; bar < n / 16; bar++) {
+    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${bar + 1}</text>`;
+  }
+  return svg(w, h, `Concurrent voices at each step against the ${budget}-voice budget`, out);
+}
+
+/**
+ * Every gate a track holds, on the same x-axis as the area above it.
+ *
+ * **The area chart says how many voices; this says whose.** A total alone cannot be acted on —
+ * "18 voices at step 42" tells you there is a problem and nothing about what to do. Reading down
+ * the highlighted column names the tracks sounding at that instant, so the decision — which trig
+ * matters least — is made from the chart rather than by going and looking.
+ *
+ * Aligned by construction: it takes the same `padL` and plot width as `voiceArea`, so the columns
+ * line up rather than approximately lining up.
+ */
+function voiceLanes(list, window, series, budget, w) {
+  const rowH = 11, gap = 3, padL = 24;
+  const h = list.length * (rowH + gap);
+  const plot = w - padL;
+  const x = (s) => padL + (s / window) * plot;
+  const stepW = plot / window;
+  let out = "";
+
+  // The over-budget columns, behind everything, spanning every lane. This is the anchor the whole
+  // chart exists to be read against.
+  series.forEach((v, i) => {
+    if (v <= budget) return;
+    out += `<rect x="${x(i)}" y="0" width="${Math.max(2.5, stepW)}" height="${h}"
+      fill="var(--crit)" opacity=".16"/>`;
+  });
+  for (let bar = 0; bar <= window / 16; bar++) {
+    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h}"
+      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+  }
+
+  list.forEach((t, i) => {
+    const y = i * (rowH + gap);
+    const fill = `var(${MACHINE_VAR[t.machine]})`;
+    for (let rep = 0; rep * t.len < window; rep++) {
+      for (const g of t.trigs) {
+        const at = rep * t.len + g.step;
+        if (at >= window) continue;
+        const end = Math.min(at + g.len, window);
+        // Held during an overrun? Then this trig is a candidate for removal, and says so.
+        let guilty = false;
+        for (let k = at; k < end; k++) if (series[k] > budget) guilty = true;
+        out += `<rect x="${x(at)}" y="${y + 1}" width="${Math.max(2, x(end) - x(at) - 1)}"
+          height="${rowH - 2}" rx="2" fill="${fill}" opacity="${guilty ? 1 : .42}"
+          ${tip(`T${t.t} — ${t.preset}`,
+            `step ${at + 1}, holds ${g.len} step${g.len === 1 ? "" : "s"}` +
+            (guilty ? " · sounding during an overrun" : ""))}/>`;
+      }
+    }
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${t.t}</text>`;
+  });
+  return svg(w, h, "Which tracks are holding a voice at each step", out);
+}
+
+/** Tracks sounding at a given step, so the peak can be attributed rather than just reported. */
+function holdersAt(list, window, step) {
+  const out = [];
+  for (const t of list) {
+    for (let rep = 0; rep * t.len < window; rep++) {
+      for (const g of t.trigs) {
+        const at = rep * t.len + g.step;
+        if (at <= step && step < at + g.len && at < window) {
+          out.push({ t, note: NOTE_NAMES[g.pc], vel: g.vel });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Notes that overlap in time on the same track.
+ *
+ * **This is the geometric half of a glide, and only the geometric half.** A glide is two notes
+ * overlapping on a *monophonic* track with *portamento* on — and neither the mono/poly setting nor
+ * the portamento setting is decoded yet. Both live in the preset's SETUP page, which no capture
+ * has covered.
+ *
+ * So the overlap is computed and reported as an overlap, with what it would take to call it a
+ * glide stated plainly. Naming these "glides" would be asserting two settings we cannot read.
+ */
+function overlappingNotes(track) {
+  const sorted = [...track.trigs].sort((a, b) => a.step - b.step);
+  const pairs = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i], b = sorted[i + 1];
+    if (a.step + a.len > b.step) pairs.push({ a, b });
+  }
+  // The wrap: the last note can run into the first of the next repetition.
+  const last = sorted.at(-1), first = sorted[0];
+  if (last && first && last !== first && last.step + last.len > track.len + first.step) {
+    pairs.push({ a: last, b: first, wrap: true });
+  }
+  return pairs;
+}
+
+/** Per-track density, stacked. The parts are components of a total, not rivals. */
+function densityBars(list, w) {
+  const rowH = 13, gap = 5, padL = 30, padR = 150;
+  const h = list.length * (rowH + gap);
+  const plot = w - padL - padR;
+  const rows = list.map((t) => ({
+    t,
+    trigs: t.trigs.length,
+    plocks: t.trigs.filter((g) => g.micro !== 0 || g.vel > DEFAULT_VEL).length,
+    locks: t.trigs.filter((g) => g.lock).length,
+  }));
+  const max = Math.max(...rows.map((r) => r.trigs + r.plocks + r.locks));
+  const parts = [["trigs", "--s3", "Trigs"], ["plocks", "--s4", "Parameter locks"],
+                 ["locks", "--s7", "Preset locks"]];
+  let out = "";
+  rows.forEach((r, i) => {
+    const y = i * (rowH + gap);
+    let cx = padL;
+    const total = r.trigs + r.plocks + r.locks;
+    for (const [key, v, name] of parts) {
+      if (!r[key]) continue;
+      const bw = (r[key] / max) * plot;
+      out += `<rect x="${cx}" y="${y}" width="${Math.max(1, bw - 2)}" height="${rowH}" rx="2"
+        fill="var(${v})" ${tip(`T${r.t.t} — ${name}`, `${r[key]}`)}/>`;
+      cx += bw;
+    }
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${r.t.t}</text>`;
+    out += `<text x="${cx + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
+      fill="var(--ink2)">${total}
+      <tspan fill="var(--ink3)">· ${r.t.preset}</tspan></text>`;
+  });
+  return svg(w, h, "Trigs, parameter locks and preset locks on each track", out);
+}
+
+/**
+ * Pitch-class histogram, stacked by machine, naming the presets on hover.
+ *
+ * **Stacked by machine rather than by track**, because sixteen tracks cannot be coloured — eight
+ * slots is the ceiling of a categorical palette. Five machines fit it exactly. The presets are
+ * the answer to *what plays this note*, and there can be dozens, so they go in the tooltip and the
+ * table where a list is the right form.
+ */
+function pitchBars(cells, w) {
+  const h = 138, padL = 24, padB = 20;
+  const plotH = h - padB;
+  const max = Math.max(...cells.map((c) => c.total));
+  const slot = (w - padL) / cells.length;
+  /*
+   * **The bar is capped, not fitted to its slot.** At full width each segment was 128px wide and
+   * a few tens tall, so a stacked bar read as a stack of separate floating bands — the segments
+   * looked like unrelated marks that happened to be near each other. A bar wants to be taller
+   * than it is wide, or the stacking stops being legible as one quantity.
+   */
+  const bw = Math.min(slot - 8, 46);
+  let out = "";
+  cells.forEach((c, i) => {
+    const x = padL + i * slot + (slot - bw) / 2;
+    const accidental = c.name.includes("#");
+    let acc = 0;
+    for (const m of MACHINES) {
+      const v = c.byMachine[m];
+      if (!v) continue;
+      const segH = (v / max) * plotH;
+      const rows = Object.entries(c.presets).sort((a, b) => b[1] - a[1])
+        .map(([p, n]) => `<span class="r"><b>${esc(p)}</b> &#215;${n}</span>`).join("<br>");
+      // Square corners inside the stack; only the top segment is rounded, so the parts read as
+      // one bar rather than as a pile of pills.
+      const top = acc + segH >= (c.total / max) * plotH - 0.5;
+      out += `<rect x="${x}" y="${plotH - acc - segH}" width="${bw}"
+        height="${Math.max(2, segH - 1)}" rx="${top ? 2.5 : 0}" fill="var(${MACHINE_VAR[m]})"
+        ${tip(`${c.name} — ${m}`, `${v} note${v === 1 ? "" : "s"}`)}/>`;
+      acc += segH;
+    }
+    if (c.total) {
+      out += `<text x="${x + bw / 2}" y="${plotH - acc - 5}" text-anchor="middle"
+        font-size="${T.value}" fill="var(--ink3)">${c.total}</text>`;
+      // One transparent target per column so the tooltip can name the presets for the whole class.
+      const rows = Object.entries(c.presets).sort((a, b) => b[1] - a[1])
+        .map(([p, n]) => `${p} &#215;${n}`).join(" · ");
+      out += `<rect x="${padL + i * slot}" y="0" width="${slot}" height="${plotH}"
+        fill="transparent" ${tip(`${c.name} — ${c.total} notes`, rows)}/>`;
+    }
+    out += `<text x="${x + bw / 2}" y="${h - 6}" text-anchor="middle" font-size="${T.tick}"
+      fill="var(${accidental ? "--ink3" : "--ink2"})">${c.name}</text>`;
+  });
+  out += `<line x1="${padL}" y1="${plotH}" x2="${w}" y2="${plotH}"
+    stroke="var(--rule)" stroke-width="${W.axis}" opacity="${GRID_OP}"/>`;
+  return svg(w, h, "How often each pitch class sounds, and which machines play it", out);
+}
+
+/**
+ * Microtiming, diverging around the grid.
+ *
+ * The one genuine polarity here: early is a different thing from late, and zero is a real midpoint
+ * rather than the smallest value. The on-grid bucket is excluded from the plot on purpose — it
+ * holds most of the trigs and flattened every deviation into a stub. It is stated in the caption
+ * instead, which is the honest way to drop a bar rather than quietly rescaling around it.
+ */
+function microDiverging(buckets, w) {
+  const h = 96;
+  const cx = w / 2;
+  const max = Math.max(...buckets.map((b) => b.n));
+  const span = Math.max(...buckets.map((b) => Math.abs(b.at))) + 5;
+  const x = (t) => cx + (t / span) * (w / 2 - 30);
+  const base = h - 22;
+  let out = `<line x1="${cx}" y1="2" x2="${cx}" y2="${base}" stroke="var(--ink3)"
+    stroke-width="${W.grid}" stroke-dasharray="2 3" opacity="${GRID_OP}"/>`;
+  for (const b of buckets) {
+    const bh = Math.max(3, (b.n / max) * (base - 16));
+    out += `<rect x="${x(b.at) - 7}" y="${base - bh}" width="14" height="${bh}" rx="2.5"
+      fill="var(${b.at < 0 ? "--dneg" : "--dpos"})"
+      ${tip(b.at < 0 ? `${-b.at} ticks early` : `${b.at} ticks late`,
+            `${b.n} trig${b.n === 1 ? "" : "s"}`)}/>`;
+    out += `<text x="${x(b.at)}" y="${base - bh - 4}" text-anchor="middle"
+      font-size="${T.value}" fill="var(--ink2)">${b.n}</text>`;
+  }
+  out += `<line x1="0" y1="${base}" x2="${w}" y2="${base}" stroke="var(--rule)"
+    stroke-width="${W.axis}" opacity="${GRID_OP}"/>`;
+  out += `<text x="2" y="${h - 6}" font-size="${T.tick}" fill="var(--ink2)">&#8592; early</text>`;
+  out += `<text x="${cx}" y="${h - 6}" text-anchor="middle" font-size="${T.tick}"
+    fill="var(--ink3)">on the grid</text>`;
+  out += `<text x="${w - 2}" y="${h - 6}" text-anchor="end" font-size="${T.tick}"
+    fill="var(--ink2)">late &#8594;</text>`;
+  return svg(w, h, "How far the microtimed trigs sit ahead of or behind the grid", out);
+}
+
+/* ---- key over time --------------------------------------------------------------------
+ *
+ * The user's point, and it is a good one: a key is not a property of a pattern, it is a property
+ * of a *moment* in one. On this instrument that is truer than usual — with per-track scale on,
+ * the tracks phase against each other, so the set of notes sounding together genuinely changes
+ * from bar to bar even though nothing was edited. A single "the key is D minor" for 84 bars
+ * averages that away and reports something no bar actually sounds like.
+ * ------------------------------------------------------------------------------------- */
+
+/** Krumhansl–Schmuckler key profiles. Named because the method should be attributable. */
+const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+function correlate(counts, profile, rot) {
+  const n = 12;
+  const a = counts, b = profile.map((_, i) => profile[(i - rot + 12 * 2) % n]);
+  const ma = a.reduce((s, v) => s + v, 0) / n, mb = b.reduce((s, v) => s + v, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) {
+    num += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) ** 2; db += (b[i] - mb) ** 2;
+  }
+  return da && db ? num / Math.sqrt(da * db) : 0;
+}
+
+/**
+ * The best-fitting key for one window, and how much better it is than the runner-up.
+ *
+ * `margin` is the honest confidence, not the raw correlation. A window whose top two candidates
+ * score 0.71 and 0.70 has found nothing, however high 0.71 looks — the relative minor of a key
+ * shares six of its seven notes, so a strong correlation with a tiny margin is the normal case
+ * rather than the exceptional one.
+ */
+function fitKey(counts) {
+  const cands = [];
+  for (let rot = 0; rot < 12; rot++) {
+    cands.push({ name: `${NOTE_NAMES[rot]} major`, root: rot, minor: false,
+                 r: correlate(counts, KS_MAJOR, rot) });
+    cands.push({ name: `${NOTE_NAMES[rot]} minor`, root: rot, minor: true,
+                 r: correlate(counts, KS_MINOR, rot) });
+  }
+  cands.sort((a, b) => b.r - a.r);
+  const total = counts.reduce((s, v) => s + v, 0);
+  return { ...cands[0], margin: cands[0].r - cands[1].r, runnerUp: cands[1].name, notes: total };
+}
+
+/**
+ * Tracks that can say anything about key: the ones playing more than one pitch class.
+ *
+ * **Found by looking at a flat timeline.** With every track included, each 16-step window held
+ * about eighty notes and the fit never moved once across 84 bars. The reason is that the densest
+ * tracks are drums — a hat on one pitch every step, a kick on another — and a single pitch class
+ * repeated eighty times is a huge, immovable spike in the histogram that no melodic line can
+ * outvote. The key analysis was measuring the drum kit.
+ *
+ * The test is **measured, not assumed**: a track with one distinct pitch class carries no
+ * harmonic information, whatever machine it runs. That catches drones and single-note bass
+ * ostinatos too, and it does not need the machine type to be trusted.
+ */
+const harmonic = (list) => list.filter((t) => new Set(t.trigs.map((g) => g.pc)).size > 1);
+
+/** Slide a window over the whole cycle, counting pitch classes in each. */
+function pitchWindows(list, total, win, hop) {
+  const out = [];
+  for (let at = 0; at + win <= total; at += hop) {
+    const counts = new Array(12).fill(0);
+    for (const t of list) {
+      for (let rep = 0; rep * t.len < total; rep++) {
+        for (const g of t.trigs) {
+          const s = rep * t.len + g.step;
+          if (s >= at && s < at + win) for (const pc of g.notes) counts[pc]++;
+        }
+      }
+    }
+    out.push({ at, counts, fit: fitKey(counts) });
+  }
+  return out;
+}
+
+/**
+ * Pitch classes over time as a heat grid, with the fitted key as a ribbon beneath it.
+ *
+ * The grid is the fact and the ribbon is the inference, and they are stacked in that order on
+ * purpose — the same rule as the histogram, applied to a timeline. The ribbon fades where the
+ * margin over the runner-up is small, so a passage the method cannot really call *looks* like one.
+ */
+function keyTimeline(windows, cycle, w) {
+  const rowH = 9, padL = 24, ribbon = 22, gap = 8;
+  const gridH = 12 * rowH;
+  const h = gridH + gap + ribbon + 16;
+  const plot = w - padL;
+  const cw = plot / windows.length;
+  const max = Math.max(...windows.flatMap((v) => v.counts));
+  let out = "";
+
+  windows.forEach((win, i) => {
+    const x = padL + i * cw;
+    for (let pc = 0; pc < 12; pc++) {
+      const v = win.counts[pc];
+      const y = (11 - pc) * rowH;
+      // Absence is a fact too: an empty cell is drawn as the ground, not skipped.
+      const step = v === 0 ? null : Math.min(5, Math.floor((v / max) * 5.99));
+      out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw - .5)}" height="${rowH - .5}"
+        fill="${step === null ? "#1a1f21" : `var(--q${step + 1})`}"
+        ${tip(`${NOTE_NAMES[pc]} · bar ${Math.floor(win.at / 16) + 1}`,
+          `${v} note${v === 1 ? "" : "s"} in this window`)}/>`;
+    }
+    // The ribbon. Hue says major or minor; opacity says how sure the fit is.
+    const f = win.fit;
+    const conf = Math.max(0.12, Math.min(1, f.margin * 6));
+    out += `<rect x="${x}" y="${gridH + gap}" width="${Math.max(1, cw - .5)}" height="${ribbon}"
+      fill="var(${f.minor ? "--s7" : "--s4"})" opacity="${conf}"
+      ${tip(`Bar ${Math.floor(win.at / 16) + 1} — ${f.name}`,
+        `margin over ${f.runnerUp}: ${f.margin.toFixed(2)} · ${f.notes} notes`)}/>`;
+  });
+
+  // Naturals are labelled and accidentals are not — the white keys, which is how anyone reading a
+  // pitch axis finds their place. Labelling every other index instead gave A#, G#, F#, D#, C#, a
+  // set with no musical meaning that happened to fall on even numbers.
+  for (let pc = 0; pc < 12; pc++) {
+    if (NOTE_NAMES[pc].includes("#")) continue;
+    out += `<text x="${padL - 5}" y="${(11 - pc) * rowH + rowH - 1.5}" text-anchor="end"
+      font-size="${T.value}" fill="var(--ink3)">${NOTE_NAMES[pc]}</text>`;
+  }
+  // Only a handful of tick labels: a bar number under every window is unreadable and useless.
+  const every = Math.max(1, Math.round(windows.length / 10));
+  windows.forEach((win, i) => {
+    if (i % every) return;
+    out += `<text x="${padL + i * cw + 2}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${Math.floor(win.at / 16) + 1}</text>`;
+  });
+  return svg(w, h, "Pitch classes and the fitted key across the full cycle", out);
+}
+
+/**
+ * The same span, one row per track: what each track is playing, bar by bar.
+ *
+ * The pitch-class view answers *what is sounding*; this answers *who is playing it*, which is the
+ * view you need to see one track pulling against the rest.
+ *
+ * **Twelve hues, and this is the one place that is allowed.** Eight is the ceiling for a
+ * categorical palette because the reader has to tell arbitrary, unordered things apart. Pitch
+ * class is neither arbitrary nor unordered -- it is *cyclic*, and a hue wheel is its conventional
+ * encoding, the one case where wrapping round to the start is the truth rather than an artefact.
+ *
+ * It still never carries identity alone: **the note letter is drawn in the cell**, so the colour
+ * is a fast index into something the text already says and colour-blind readers lose nothing.
+ */
+const pcHue = (pc) => `hsl(${pc * 30} 52% 56%)`;
+
+/*
+ * Naming a chord from a set of pitch classes.
+ *
+ * Every template is tried against every possible root and the best match wins, with a tie broken
+ * toward the root that is **diatonic to the window's fitted key** — the same set of notes can be a
+ * C6 or an Am7 and only the surrounding key has an opinion about which.
+ *
+ * It is offered as *a possible name*, in the user's own words, and it is an inference twice over:
+ * the key underneath it is a fit, and a vertical set of notes is not the same thing as a chord
+ * someone played. Both are stated in the tooltip rather than smoothed away.
+ */
+const CHORD_SHAPES = [
+  [[0, 4, 7], ""], [[0, 3, 7], "m"], [[0, 3, 6], "dim"], [[0, 4, 8], "aug"],
+  [[0, 5, 7], "sus4"], [[0, 2, 7], "sus2"],
+  [[0, 4, 7, 11], "maj7"], [[0, 3, 7, 10], "m7"], [[0, 4, 7, 10], "7"],
+  [[0, 3, 6, 10], "m7b5"], [[0, 3, 6, 9], "dim7"], [[0, 4, 7, 9], "6"], [[0, 3, 7, 9], "m6"],
+  [[0, 2, 4, 7], "add9"], [[0, 2, 5, 7], "sus4add9"],
+];
+const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+const MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10];
+const DEGREE = ["I", "II", "III", "IV", "V", "VI", "VII"];
+
+function chordName(pcs, key) {
+  const set = [...new Set(pcs)].sort((a, b) => a - b);
+  if (set.length === 0) return null;
+  if (set.length === 1) return { name: NOTE_NAMES[set[0]], kind: "single note" };
+  if (set.length === 2) {
+    const iv = (set[1] - set[0] + 12) % 12;
+    const names = { 1: "minor 2nd", 2: "major 2nd", 3: "minor 3rd", 4: "major 3rd", 5: "4th",
+                    6: "tritone", 7: "5th", 8: "minor 6th", 9: "major 6th", 10: "minor 7th",
+                    11: "major 7th" };
+    return { name: `${NOTE_NAMES[set[0]]}+${NOTE_NAMES[set[1]]}`, kind: names[iv] ?? "dyad" };
+  }
+
+  const scale = key && key.minor ? MINOR_SCALE : MAJOR_SCALE;
+  const inKey = (pc) => key ? scale.includes((pc - key.root + 12) % 12) : false;
+
+  let best = null;
+  for (let root = 0; root < 12; root++) {
+    const rel = set.map((pc) => (pc - root + 12) % 12).sort((a, b) => a - b);
+    for (const [shape, suffix] of CHORD_SHAPES) {
+      const covered = shape.filter((iv) => rel.includes(iv)).length;
+      const extra = rel.filter((iv) => !shape.includes(iv)).length;
+      // Exact matches first; then the shape that explains the most notes with the fewest strays.
+      const score = covered * 3 - extra * 2 - Math.abs(shape.length - rel.length)
+        + (inKey(root) ? 1 : 0);
+      if (covered < 3) continue;
+      if (!best || score > best.score) {
+        best = { score, root, suffix, exact: extra === 0 && covered === shape.length };
+      }
+    }
+  }
+  if (!best) return { name: set.map((pc) => NOTE_NAMES[pc]).join(" "), kind: "no common shape" };
+
+  let kind = best.exact ? "" : "approximate";
+  if (key) {
+    const deg = MAJOR_SCALE.indexOf((best.root - key.root + 12) % 12);
+    const scaleDeg = (key.minor ? MINOR_SCALE : MAJOR_SCALE)
+      .indexOf((best.root - key.root + 12) % 12);
+    if (scaleDeg >= 0) {
+      const numeral = best.suffix.startsWith("m") || best.suffix === "dim"
+        ? DEGREE[scaleDeg].toLowerCase() : DEGREE[scaleDeg];
+      kind = `${numeral}${best.suffix === "dim" ? "\u00b0" : ""} in ${key.name}` +
+             (best.exact ? "" : ", approximate");
+    }
+    void deg;
+  }
+  return { name: `${NOTE_NAMES[best.root]}${best.suffix}`, kind };
+}
+
+/**
+ * What each track has sounding in each window, as a set of real note numbers.
+ *
+ * `keyAt(i)` supplies the key a cell's chord should be read against, because the same notes are a
+ * C6 or an Am7 depending on what is around them and only the fitted key has an opinion. It is a
+ * function rather than an array so the caller decides the scale of the context: a per-bar view
+ * uses that bar's own fit, while a four-bar view uses the fit over all four — a key fitted to a
+ * single beat would be noise.
+ */
+function trackWindows(list, total, win, hop, keyAt) {
+  const rows = list.map((t) => ({ t, cells: [] }));
+  let w = 0;
+  for (let at = 0; at + win <= total; at += hop, w++) {
+    rows.forEach((row) => {
+      const counts = new Map();          // midi note -> how often it sounds in this window
+      for (let rep = 0; rep * row.t.len < total; rep++) {
+        for (const g of row.t.trigs) {
+          const st = rep * row.t.len + g.step;
+          if (st < at || st >= at + win) continue;
+          for (const n of g.midi) counts.set(n, (counts.get(n) ?? 0) + 1);
+        }
+      }
+      /*
+       * **One bar per distinct note, not per trig.** A bass repeating one note eight times in a
+       * bar is one line, because the stack answers *what is sounding here* rather than how busy
+       * the track is -- density already has its own chart and does not need saying twice.
+       */
+      const stack = [...counts.keys()].sort((a, b) => a - b);
+      row.cells.push({
+        at, stack, counts,
+        n: [...counts.values()].reduce((acc, v) => acc + v, 0),
+        chord: chordName(stack.map((n) => n % 12), keyAt?.(w)),
+      });
+    });
+  }
+  return rows;
+}
+
+/**
+ * One row per track, and inside each cell the notes sounding, as thin stacked bars.
+ *
+ * **A piano roll's readability without its vertical cost.** A real roll spends its height on tonal
+ * distance, which needs 73 rows to show a couple of octaves and leaves most of them empty. Here the
+ * bars are ordered low to high but spaced evenly, so a triad is three lines however wide the
+ * voicing is, and ten tracks fit in the height one track would otherwise take.
+ *
+ * Colour is the note. Twelve hues, and this is the one place they are allowed: pitch class is
+ * *cyclic*, not arbitrary and unordered, and a hue wheel is its conventional encoding — the one
+ * case where wrapping round to the start is the truth rather than an artefact. Identity never
+ * rests on it alone, because the stack is named on hover.
+ */
+function trackTimeline(rows, stepsPerCell, w) {
+  const rowH = 26, gap = 4, padL = 30, padR = 88, barH = 3, barGap = 1.5;
+  const h = rows.length * (rowH + gap) + 14;
+  const plot = w - padL - padR;
+  const cw = plot / rows[0].cells.length;
+  let out = "";
+
+  rows.forEach((row, i) => {
+    const y = i * (rowH + gap);
+    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+    row.cells.forEach((c, j) => {
+      if (!c.stack.length) return;
+      const x = padL + j * cw;
+      // Packed from the bottom and centred, so a one-note cell does not sit on the floor while a
+      // four-note cell fills the row — the group reads as a group.
+      const stackH = c.stack.length * barH + (c.stack.length - 1) * barGap;
+      const y0 = y + (rowH - stackH) / 2;
+      c.stack.forEach((n, k) => {
+        /*
+         * The gap between cells is 3px, not 1. At 1px, two consecutive beats holding the same
+         * notes drew as one unbroken line and the beat boundary vanished — the row read as a
+         * single long note instead of four repeats of a chord. The gap is what makes a repeated
+         * chord look repeated.
+         */
+        out += `<rect x="${x + 1.5}" y="${y0 + (c.stack.length - 1 - k) * (barH + barGap)}"
+          width="${Math.max(1.5, cw - 3)}" height="${barH}" rx="1.25"
+          fill="${pcHue(n % 12)}"/>`;
+      });
+      // One target for the whole stack: the chord is a property of the group, not of a bar in it.
+      out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw)}" height="${rowH}"
+        fill="transparent" ${tip(
+          `T${row.t.t} ${esc(row.t.preset)} \u00b7 bar ${Math.floor(c.at / 16) + 1}`,
+          `${c.stack.map((n) => NOTE_NAMES[n % 12]).join(" ")}` +
+          (c.chord ? ` &mdash; <b>${esc(c.chord.name)}</b>` +
+            (c.chord.kind ? ` <span class="r">${esc(c.chord.kind)}</span>` : "") : ""))}/>`;
+    });
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${row.t.t}</text>`;
+    out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
+      fill="var(--ink3)">${esc(row.t.preset)}</text>`;
+  });
+
+  /*
+   * At beat resolution the bar line is what you count in, so it is drawn as well as labelled;
+   * at bar resolution there is nothing coarser to draw and the labels stand alone.
+   */
+  const perBar = 16 / stepsPerCell;
+  const every = stepsPerCell === 16 ? Math.max(1, Math.round(rows[0].cells.length / 10)) : perBar;
+  rows[0].cells.forEach((c, j) => {
+    if (j % every) return;
+    if (stepsPerCell < 16) {
+      out += `<line x1="${padL + j * cw}" y1="0" x2="${padL + j * cw}" y2="${h - 14}"
+        stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+    }
+    out += `<text x="${padL + j * cw + 3}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${Math.floor(c.at / 16) + 1}</text>`;
+  });
+  return svg(w, h, "The notes each track plays, stacked low to high", out);
+}
+
+/** The chromatic wheel as a legend, so the hue mapping is stated rather than guessed. */
+const pcLegend = () => `<div class="legend">` + NOTE_NAMES.map((n, pc) =>
+  `<span class="item"><span class="sw" style="background:${pcHue(pc)};height:3px;width:14px">
+   </span><span>${n}</span></span>`).join("") + `</div>`;
+
+const legend = (items) => `<div class="legend">` + items.map(([label, v]) =>
+  `<span class="item"><span class="sw" style="background:var(${v})"></span>
+   <span>${esc(label)}</span></span>`).join("") + `</div>`;
+
+const table = (head, rows) => `<details class="tabular"><summary>Table view</summary><table>
+  <thead><tr>${head.map((x) => `<th>${esc(x)}</th>`).join("")}</tr></thead>
+  <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}
+  </tbody></table></details>`;
+
+const card = (title, body) =>
+  `<section class="panel"><h2>${esc(title)}</h2><div class="body">${body}</div></section>`;
+
+/* =====================================================================================
+ * Compose
+ * ===================================================================================== */
+
+const cycle = cycleSteps(live);
+const cycleSec = stepsToSeconds(cycle, TEMPO);
+const voices = voicesPerStep(live, MASTER_LEN);
+const peak = Math.max(...voices);
+const over = voices.filter((v) => v > VOICES).length;
+const pitch = pitchByPreset(live);
+const micro = microBuckets(live);
+const allTrigs = live.reduce((a, t) => a + t.trigs.length, 0);
+const accents = live.reduce((a, t) => a + t.trigs.filter((g) => g.vel > DEFAULT_VEL).length, 0);
+const locks = live.reduce((a, t) => a + t.trigs.filter((g) => g.lock).length, 0);
+const sorted = [...voices].sort((a, b) => a - b);
+const peakStep = voices.indexOf(peak);
+const holders = holdersAt(live, MASTER_LEN, peakStep);
+const byTrack = [...holders.reduce((m, x) => {
+  const e = m.get(x.t) ?? { t: x.t, n: 0, notes: [] };
+  e.n++; e.notes.push(x.note); m.set(x.t, e); return m;
+}, new Map()).values()].sort((a, b) => b.n - a.n);
+
+// One window per bar across the whole cycle — the span over which the harmony actually moves.
+const tonal = harmonic(live);
+const keyWindows = pitchWindows(tonal, cycle, 16, 16);
+const whole = fitKey(keyWindows.reduce((acc, v) => acc.map((x, i) => x + v.counts[i]),
+  new Array(12).fill(0)));
+const changes = keyWindows.filter((v, i) => i && v.fit.name !== keyWindows[i - 1].fit.name).length;
+const pairCount = live.reduce((a, t) => a + t.pairs.length, 0);
+const pairTracks = live.filter((t) => t.pairs.length);
+
+document.getElementById("cards").innerHTML =
+  card("Play time and cycle", `
+    <div class="tiles">
+      <div class="tile"><span class="k">Tempo</span><span class="v">${TEMPO}</span>
+        <span class="u">BPM</span></div>
+      <div class="tile"><span class="k">Master length</span><span class="v">${MASTER_LEN}</span>
+        <span class="u">steps</span>
+        <span class="note">${clock(stepsToSeconds(MASTER_LEN, TEMPO))} · 4 bars</span></div>
+      <div class="tile"><span class="k">True cycle</span>
+        <span class="v">${cycle.toLocaleString()}</span><span class="u">steps</span>
+        <span class="note">${clock(cycleSec)} · ${cycle / 16} bars</span></div>
+      <div class="tile"><span class="k">Tracks in play</span><span class="v">${live.length}</span>
+        <span class="u">of 16</span>
+        <span class="note">${new Set(live.map((t) => t.len)).size} distinct lengths</span></div>
+    </div>
+
+    <div class="ctrl" style="margin-top:.9rem">
+      <label for="mode">Dots show</label>
+      <select id="mode">
+        <option value="velocity">Velocity — accents ringed</option>
+        <option value="length">Note length</option>
+        <option value="locks">Preset locks</option>
+        <option value="overlap">Overlapping notes — glide candidates</option>
+      </select>
+    </div>
+    <figure>
+      <figcaption>Each tick is a track restarting and each dot is a trig, so the polymeter is read
+        against the actual rhythm. <b>${accents} of ${allTrigs} trigs are above the default
+        velocity of ${DEFAULT_VEL}</b> and are drawn brighter and ringed.</figcaption>
+      <div class="chart" id="c-phase"></div>
+    </figure>
+    ${legend(MACHINES.map((m) => [m, MACHINE_VAR[m]]))}
+    <div class="inferred" id="glidenote" hidden>
+      <span class="h">Overlaps are not yet glides</span>
+      <p class="why"><b>${pairCount} overlapping pair${pairCount === 1 ? "" : "s"}</b> on
+        ${pairTracks.length} track${pairTracks.length === 1 ? "" : "s"}
+        (${pairTracks.map((t) => `T${t.t}`).join(", ")}) — a note still sounding when the next one
+        starts. That is the geometry of a glide, and it is all we can read: a glide is an overlap on
+        a <b>monophonic</b> track with <b>portamento</b> on, and neither setting is decoded. Both
+        live in the preset's SETUP page, which no capture has covered. Calling these glides would
+        be asserting two values we cannot see — so they are counted as overlaps and added to the
+        capture list instead.</p>
+    </div>
+
+    <figure style="margin-top:1rem">
+      <figcaption>Nothing realigns until every track has wrapped together —
+        <b>${cycle.toLocaleString()} steps, ${clock(cycleSec)}</b>, against a master length that
+        reads as 4 bars. <b>T5's length of 7</b> is what stretches it.</figcaption>
+      <div class="chart" id="c-realign"></div>
+    </figure>
+    ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
+      live.map((t) => [`T${t.t}`, t.preset, t.len, `${t.speed}x`, t.machine,
+        t.trigs.length, cycle / t.len]))}
+  `) +
+
+  card("Voice pressure", `
+    <div class="tiles">
+      <div class="tile ${peak > VOICES ? "flag" : ""}"><span class="k">Peak voices</span>
+        <span class="v">${peak}</span><span class="u">of ${VOICES}</span>
+        <span class="note">${peak > VOICES ? `${peak - VOICES} over budget` : "within budget"}</span></div>
+      <div class="tile ${over ? "flag" : ""}"><span class="k">Steps over</span>
+        <span class="v">${over}</span><span class="u">of ${MASTER_LEN}</span></div>
+      <div class="tile"><span class="k">Median</span>
+        <span class="v">${sorted[Math.floor(sorted.length / 2)]}</span><span class="u">voices</span></div>
+      <div class="tile"><span class="k">May extend</span><span class="v">4</span>
+        <span class="u">trigs</span><span class="note">long AMP REL</span></div>
+    </div>
+    <figure style="margin-top:.9rem">
+      <figcaption>Voices held by a gate at each step, against the Digitone II's
+        <b>${VOICES}</b>.</figcaption>
+      <div class="chart" id="c-voice"></div>
+    </figure>
+
+    <figure style="margin-top:.7rem">
+      <figcaption>And <b>whose</b> they are. Same axis, so the shaded columns line up: a solid bar
+        inside one is a note sounding while the budget is exceeded, and therefore a candidate to
+        remove.</figcaption>
+      <div class="chart" id="c-lanes"></div>
+    </figure>
+
+    <div class="inferred">
+      <span class="h">At the peak — step ${peakStep + 1}, ${peak} voices${
+        peak > VOICES ? `, ${peak - VOICES} over` : ""}</span>
+      <p class="why">Grouped by track and ranked, because the question is <b>which track to
+        thin</b> and ${holders.length} separate notes do not answer it. ${peak > VOICES
+        ? `<b>T${byTrack[0].t.t} ${esc(byTrack[0].t.preset)}</b> is holding ${byTrack[0].n} of them
+           here, and only ${peak - VOICES} ${peak - VOICES === 1 ? "has" : "have"} to go — so
+           thinning that one track covers it.`
+        : `Nothing needs removing — the peak sits exactly on the budget, with no headroom for
+           another track.`}</p>
+      <p class="why" style="margin-top:.35rem">${byTrack.map((x) =>
+        `<b style="color:var(${MACHINE_VAR[x.t.machine]})">&#9679;</b> T${x.t.t}
+         ${esc(x.t.preset)} <b>&#215;${x.n}</b>
+         <span style="color:var(--ink3)">${x.notes.join(" ")}</span>`).join(" &nbsp;&nbsp; ")}</p>
+    </div>
+
+    <div class="inferred">
+      <span class="h">Exact, and not exact</span>
+      <p class="why">The count is <b>gate time</b>, which is exact — it comes from each trig's note
+        length. What a voice actually holds is longer, because the AMP envelope's release continues
+        after the gate; <code>AMP REL</code> is decoded but its 0–127 to seconds curve is not, so
+        those trigs are flagged as <b>may extend</b> rather than given an invented duration.</p>
+    </div>
+  `) +
+
+  card("What is on each track", `
+    <div class="tiles">
+      <div class="tile"><span class="k">Trigs</span><span class="v">${allTrigs}</span></div>
+      <div class="tile"><span class="k">Accented</span><span class="v">${accents}</span>
+        <span class="u">trigs</span>
+        <span class="note">above velocity ${DEFAULT_VEL}</span></div>
+      <div class="tile"><span class="k">Preset locks</span><span class="v">${locks}</span></div>
+      <div class="tile"><span class="k">Microtimed</span>
+        <span class="v">${allTrigs - micro.onGrid}</span><span class="u">trigs</span></div>
+    </div>
+    <figure style="margin-top:.9rem">
+      <figcaption>Tracks are identified by <b>lane and label</b>, never by colour — sixteen is twice
+        what a categorical palette can carry.</figcaption>
+      <div class="chart" id="c-density"></div>
+    </figure>
+    ${legend([["Trigs", "--s3"], ["Parameter locks", "--s4"], ["Preset locks", "--s7"]])}
+    <figure style="margin-top:1rem">
+      <figcaption>Microtiming, for the <b>${allTrigs - micro.onGrid} trigs off the grid</b> — the
+        other ${micro.onGrid} sit on it and are left out of the plot rather than flattening
+        it.</figcaption>
+      <div class="chart" id="c-micro"></div>
+    </figure>
+  `) +
+
+  card("Pitch content", `
+    <figure>
+      <figcaption>Every note in the pattern by pitch class, stacked by the machine that plays it.
+        <b>Hover a column to see which presets sound that note.</b> This is a fact.</figcaption>
+      <div class="chart" id="c-pitch"></div>
+    </figure>
+    ${legend(MACHINES.map((m) => [m, MACHINE_VAR[m]]))}
+
+    <div class="ctrl" style="margin-top:1.1rem">
+      <label for="keymode">Timeline</label>
+      <select id="keymode">
+        <option value="pitch">By pitch class &mdash; what is sounding</option>
+        <option value="track">By track &mdash; who is playing it</option>
+      </select>
+      <span id="spanctrl" hidden>
+        <label for="keyspan" style="margin-left:.4rem">Span</label>
+        <select id="keyspan">
+          <option value="beat">4 bars — a column per beat</option>
+          <option value="bar">Full cycle — a column per bar</option>
+        </select>
+      </span>
+    </div>
+    <figure>
+      <figcaption id="keycap"></figcaption>
+      <div class="chart" id="c-keytime"></div>
+    </figure>
+    <div id="keylegend">${legend([["Minor fit", "--s7"], ["Major fit", "--s4"],
+      ["More notes", "--q6"], ["Fewer notes", "--q2"]])}</div>
+
+    <div class="inferred">
+      <span class="h">Best fit over the whole cycle — an inference, not a reading</span>
+      <p class="fit">${whole.name} <span style="color:var(--ink2);font-size:.8rem">— margin
+        ${whole.margin.toFixed(2)} over ${whole.runnerUp}</span></p>
+      <p class="why">Krumhansl–Schmuckler correlation against the standard profiles, named so the
+        method is attributable. <b>The margin is the confidence, not the correlation</b> — a
+        relative minor shares six of seven notes with its major, so a high score with a small
+        margin is the normal case rather than the exception. The device stores no key. Three things
+        can move a pitch and none is visible here: the <b>arpeggiator</b> transposes and its
+        settings are not yet decoded, a <b>note p-lock</b> changes pitch on one trig, and percussive
+        FM material has no tonality to find.</p>
+    </div>
+    ${table(["Pitch class", "Notes", "Presets"], pitch.filter((c) => c.total).map((c) =>
+      [c.name, c.total, Object.entries(c.presets).sort((a, b) => b[1] - a[1])
+        .map(([p, n]) => `${p} x${n}`).join(", ")]))}
+  `);
+
+/*
+ * Read from the control, never assumed.
+ *
+ * A browser restores a `<select>`'s value across a reload without firing `change`, so a hard-coded
+ * `let mode = "velocity"` disagreed with the control the moment the page was refreshed in any other
+ * mode — the dropdown said one thing and the state variable another. The control is the source of
+ * truth; the variable is a cache of it.
+ */
+const modeEl = document.getElementById("mode");
+let mode = modeEl.value;
+document.getElementById("glidenote").hidden = mode !== "overlap";
+mount(document.getElementById("c-phase"), (w) => phaseStrip(live, MASTER_LEN, mode, w));
+mount(document.getElementById("c-realign"), (w) => realignBars(live, cycle, w));
+mount(document.getElementById("c-voice"), (w) => voiceArea(voices, VOICES, w));
+mount(document.getElementById("c-lanes"), (w) => voiceLanes(live, MASTER_LEN, voices, VOICES, w));
+const keymodeEl = document.getElementById("keymode");
+const keyspanEl = document.getElementById("keyspan");
+let keymode = keymodeEl.value;
+let keyspan = keyspanEl.value;
+
+/*
+ * **The track view defaults to four bars at beat resolution, and that is a correction.**
+ *
+ * It first drew the same 84 bars as the pitch view, and at seventeen pixels a column the stacks
+ * became a texture: every bar looked alike, and a chart you cannot read one column of is not
+ * showing you music. This view's unit of meaning is a chord, not a trend, so it wants few wide
+ * columns.
+ *
+ * The full cycle is still offered, because "where does this track change" is a real question. It
+ * is just a different one from "what is it playing here".
+ */
+const masterFit = fitKey(pitchWindows(tonal, MASTER_LEN, MASTER_LEN, MASTER_LEN)[0].counts);
+const trackRowsBeat = trackWindows(tonal, MASTER_LEN, 4, 4, () => masterFit);
+const trackRowsBar = trackWindows(tonal, cycle, 16, 16, (i) => keyWindows[i]?.fit);
+const KEY_LEGEND = {
+  pitch: legend([["Minor fit", "--s7"], ["Major fit", "--s4"], ["More notes", "--q6"],
+                 ["Fewer notes", "--q2"]]),
+  track: pcLegend(),
+};
+const drawKey = (w) => keymode === "track"
+  ? trackTimeline(keyspan === "beat" ? trackRowsBeat : trackRowsBar,
+                  keyspan === "beat" ? 4 : 16, w)
+  : keyTimeline(keyWindows, cycle, w);
+
+const CAPTION = {
+  pitch: `A key belongs to a <b>moment</b>, not to a pattern. With per-track scale on the tracks
+    phase against one another, so what sounds together genuinely changes bar by bar without
+    anything being edited — across the full ${cycle / 16}-bar cycle the fit moves
+    <b>${changes} times</b>. Above, the pitch classes actually sounding in each bar; below, the
+    best fit, <b>faded where it cannot really tell</b>.`,
+  "track-beat": `Every note each track has sounding, stacked low to high. Spacing is even rather
+    than tonal — a triad is three lines whatever the voicing — so six tracks fit in the
+    height a piano roll spends on one. <b>Hover a stack for a possible chord name.</b>`,
+  "track-bar": `The same stacks across the whole ${cycle / 16}-bar cycle, a column per bar, with
+    the chord read against the key fitted around it. Good for finding <b>where a track
+    changes</b>; too dense to read a single chord from — switch the span back to four bars
+    for that.`,
+};
+const capFor = () => keymode === "track" ? CAPTION[`track-${keyspan}`] : CAPTION.pitch;
+
+function repaintKey() {
+  const el = document.getElementById("c-keytime");
+  el.dataset.w = "";
+  el.innerHTML = drawKey(Math.floor(el.clientWidth));
+  el.dataset.w = Math.floor(el.clientWidth);
+  document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
+  document.getElementById("keycap").innerHTML = capFor();
+  document.getElementById("spanctrl").hidden = keymode !== "track";
+}
+
+mount(document.getElementById("c-keytime"), drawKey);
+document.getElementById("keylegend").innerHTML = KEY_LEGEND[keymode];
+document.getElementById("keycap").innerHTML = capFor();
+document.getElementById("spanctrl").hidden = keymode !== "track";
+keymodeEl.addEventListener("change", (e) => { keymode = e.target.value; repaintKey(); });
+keyspanEl.addEventListener("change", (e) => { keyspan = e.target.value; repaintKey(); });
+mount(document.getElementById("c-density"), (w) => densityBars(live, w));
+mount(document.getElementById("c-micro"), (w) => microDiverging(micro.buckets, w));
+mount(document.getElementById("c-pitch"), (w) => pitchBars(pitch, w));
+
+modeEl.addEventListener("change", (e) => {
+  mode = e.target.value;
+  const el = document.getElementById("c-phase");
+  el.dataset.w = "";                       // force a repaint at the same width
+  el.innerHTML = phaseStrip(live, MASTER_LEN, mode, Math.floor(el.clientWidth));
+  el.dataset.w = Math.floor(el.clientWidth);
+  // The caveat belongs with the mode that raises it, not permanently on the page.
+  document.getElementById("glidenote").hidden = mode !== "overlap";
+});
+
+/* ---- one tooltip for every chart ---- */
+const tipEl = document.getElementById("tip");
+document.addEventListener("pointerover", (e) => {
+  const el = e.target.closest("[data-tip-t]");
+  if (!el) return;
+  tipEl.innerHTML = `<span class="t">${el.dataset.tipT}</span>${el.dataset.tipB}`;
+  tipEl.classList.add("on");
+});
+document.addEventListener("pointermove", (e) => {
+  if (!tipEl.classList.contains("on")) return;
+  tipEl.style.left = `${Math.min(e.clientX + 14, innerWidth - tipEl.offsetWidth - 6)}px`;
+  tipEl.style.top = `${Math.max(6, e.clientY - tipEl.offsetHeight - 14)}px`;
+});
+document.addEventListener("pointerout", (e) => {
+  if (e.target.closest("[data-tip-t]")) tipEl.classList.remove("on");
+});
+</script>
+</body>
+</html>
