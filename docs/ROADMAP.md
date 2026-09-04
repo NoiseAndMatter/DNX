@@ -2158,6 +2158,24 @@ Ctrl+Alt+2 doesn't navigate, the arrows do"* — which is the designed behaviour
 `Ctrl`+`Alt` is `AltGr`, the digits are how several layouts type `@` and `|`, so they are ignored
 while an editable element has focus. The arrows need no such guard and keep working.
 
+## 11. Musical analysis — the charts are a module, 2026-09-05
+
+Reading a **pattern** as music, as opposed to §5 below, which reads an **instrument**. Raised by the
+user on 2026-08-16, mocked up over three days against synthetic data, and now a subsystem:
+`web/src/analysis/` holds the model and the charts, `web/mockups/metrics.html` is the harness that
+feeds them the busy case.
+
+**Full detail in `docs/analysis.md`.** The two things worth knowing from here:
+
+- Everything takes an `AnalysisSubject`, never a project. That is what lets a kit, a preset bank or
+  two projects side by side become a *producer* rather than a change to the charts.
+- `charts.ts` and `model.ts` name no browser API and reach no page folder, and `test/analysis.test.ts`
+  fails if that stops being true.
+
+**Next: an Insights mode in the manager** — the pattern grid stays live at the top as the selector,
+the analysis fills the width below. Then a separate Insights tool once analysis wants subjects the
+manager does not have open, which is a second caller for `analysis/` rather than a move.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
