@@ -5,6 +5,22 @@ converter.
 
 ---
 
+## Key analysis asks whether a track has one root, not whether it has one note — OPEN 2026-09-05
+
+`harmonic()` decides which tracks can say anything about key by counting **distinct pitch classes of
+each trig's root note**. That is correct for the case it was written against — a hat on one pitch
+every step carries no harmonic information and must not be allowed to outvote a melodic line — and it
+is what the mockup measured, so the extraction preserved it exactly.
+
+It is arguably wrong for one case: **a track that plays chords over a single root.** Every trig has
+the same root, so the track is excluded, even though its voicings are real harmonic content. Counting
+every note rather than only the root would include it.
+
+Not changed yet, because it is a **behaviour change** rather than an extraction, and the evidence for
+either rule is one synthetic pattern. It needs a real project with a one-root chord track in it
+before the rule is moved. `test/analysis.test.ts` pins the current behaviour so the change cannot
+happen by accident.
+
 ## Writing to a device took no copy, asked nothing and checked nothing — FIXED 2026-08-14
 
 **Write to device** in the manager did this the moment it was pressed: diff the image, send the
