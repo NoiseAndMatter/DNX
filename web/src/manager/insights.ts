@@ -120,6 +120,17 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
 
   const bars = cycle / 16;
   const lengths = new Set(live.map((track) => track.length));
+  /*
+   * **The phase strip draws the master length, except when the master is shorter than a track.**
+   *
+   * `017 PRESETS.dn2prj` declares a master length of **1** on every pattern while its tracks run
+   * 14 to 64 steps, so the strip drew a one-step window: four dots stacked on a single pixel
+   * column, a chart of nothing. Widening it to the longest track means every track shows at least
+   * one complete pass, which is the thing the chart is for. A track length is 1..128 by spec, so
+   * this cannot run away.
+   */
+  const longest = Math.max(...live.map((track) => track.length));
+  const windowSteps = Math.max(subject.masterLength, longest);
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
 
   host.innerHTML =
@@ -151,7 +162,10 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
       <figure>
         <figcaption>Each tick is a track restarting and each dot is a trig, so the polymeter is
           read against the actual rhythm. <b>${accents} of ${allTrigs} trigs are above the default
-          velocity of ${subject.defaultVelocity}</b> and are drawn brighter and ringed.</figcaption>
+          velocity of ${subject.defaultVelocity}</b> and are drawn brighter and ringed.${
+            windowSteps === subject.masterLength ? "" : ` Drawn over <b>${windowSteps} steps</b>
+            rather than the master length of ${subject.masterLength}, so every track completes at
+            least one pass.`}</figcaption>
         <div class="chart" id="i-phase"></div>
       </figure>
       ${legend(machinesUsed.map((m) => [machineLabel(m), machineVar(m)] as [string, string]))}
@@ -169,7 +183,8 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           <div class="chart" id="i-realign"></div>
         </figure>`}
       ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
-        live.map((t) => [`T${t.number}`, t.preset, t.length, `${t.speed}x`,
+        live.map((t) => [`T${t.number}`, t.preset, t.length,
+          t.speed === undefined ? "unknown" : `${t.speed}x`,
           machineLabel(t.machine), t.trigs.length, cycle / t.length]))}
     `) +
 
@@ -189,7 +204,8 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           twice what a categorical palette can carry.</figcaption>
         <div class="chart" id="i-density"></div>
       </figure>
-      ${legend([["Trigs", "--s3"], ["Parameter locks", "--s4"], ["Preset locks", "--s7"]])}
+      ${legend([["Note trigs", "--s3"], ["Microtimed or accented", "--s4"],
+                ["Preset locks", "--s7"]])}
       ${micro.buckets.length ? `
         <figure style="margin-top:1rem">
           <figcaption>Microtiming, for the <b>${allTrigs - micro.onGrid} trigs off the grid</b> —
@@ -255,8 +271,9 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         <p class="why">Three things this surface can draw are missing from the cards above:
           <b>voice pressure</b>, <b>note length</b> and <b>overlapping notes</b>. All three need to
           know how long a note sounds, and a Digitone II project does not say. The trig carries a
-          note-length byte and the track a default — <code>0x0E</code> in 1,016 of the 1,024 tracks
-          measured — but <b>nothing maps either to a duration</b>. <code>docs/dn2-pattern-format.md</code>
+          note-length byte and the track a default — <code>0x0E</code> in 1,577 of the 1,725 tracks
+          that play a note across the corpus, and <b>24 other values</b> in the rest — but
+          <b>nothing maps any of them to a duration</b>. <code>docs/dn2-pattern-format.md</code>
           marks even the name of the track default as inferred from its position in the Digitone 1
           block rather than from a capture.</p>
         <p class="why" style="margin-top:.4rem">A plausible mapping would make a voice-count chart
@@ -269,7 +286,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
     `));
 
   mount(document.getElementById("i-phase")!, (w) =>
-    phaseStrip(live, subject.masterLength, controls.phase, subject.defaultVelocity, w));
+    phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   if (lengths.size > 1) {
     mount(document.getElementById("i-realign")!, (w) => realignBars(live, cycle, w));
   }
@@ -285,7 +302,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
   modeEl.addEventListener("change", () => {
     controls.phase = modeEl.value as PhaseMode;
     repaint(document.getElementById("i-phase")!, (w) =>
-      phaseStrip(live, subject.masterLength, controls.phase, subject.defaultVelocity, w));
+      phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   });
 
   if (tonal.length) {

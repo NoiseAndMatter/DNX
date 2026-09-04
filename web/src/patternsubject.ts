@@ -19,10 +19,11 @@
  */
 
 import { auditPool } from "../../src/librarian/poolaudit.js";
+import { MACHINE } from "../../src/project/machine.js";
 import { summariseKitTracks } from "../../src/librarian/tracksummary.js";
 import type { Device } from "../../src/librarian/device.js";
 import { DN2_LAYOUT, kitRecord } from "../../src/project/dn2image.js";
-import { readDn2Pattern } from "../../src/project/dn2pattern.js";
+import { readDn2Pattern, RECORD_VERSION as DN2_RECORD_VERSION } from "../../src/project/dn2pattern.js";
 import { patternName } from "../../src/sheet/naming.js";
 import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
 
@@ -41,19 +42,25 @@ const VOICES: Record<string, number> = { dn2: 16, dn1: 8 };
  * Speed enum to the multiplier it means.
  *
  * `TRACK_SPEED` in `dn2pattern.ts` gives these as display strings — `"3/2x"` — which is right for a
- * label and useless for arithmetic. Same table, read as numbers.
+ * label and useless for arithmetic. Same seven values, read as numbers.
+ *
+ * **Anything else is left undefined rather than defaulted to 1.** Three of the 1,788 playing tracks
+ * in the corpus carry a speed byte outside this table — 19, 32 and 120, all in `PRESETS.dn2prj` —
+ * and calling those `1x` would state a speed the track is not running at.
  */
 const SPEED: Record<number, number> = {
   0: 2, 1: 1.5, 2: 1, 3: 0.75, 4: 0.5, 5: 0.25, 6: 0.125,
 };
 
 /**
- * The velocity above which a trig reads as an accent.
+ * The velocity above which a trig reads as an accent, when a pattern has no tracks to ask.
  *
- * **Measured, not assumed.** Every one of the 1,024 tracks across four corpus projects (four
- * projects x 16 patterns x 16 tracks) carries a default velocity of exactly 100, so this is the
- * device's default rather than a number somebody liked. The pattern's own tracks are still read
- * below in case a project ever disagrees; this is only the fallback for a pattern with no tracks.
+ * **Measured across the whole corpus, and it is not universal.** 1,722 of the 1,788 tracks that
+ * actually play a note carry a default velocity of 100, so 100 is the device default — but 42 of
+ * them differ from the mode of their own pattern, with 79, 89, 102, 118 and 127 all appearing in
+ * real music. A first sample of four projects showed 100 everywhere and would have justified
+ * hard-coding it; the corpus says otherwise, which is why the threshold is read per pattern below
+ * and this constant is only the fallback for a pattern with no tracks at all.
  */
 const DEVICE_DEFAULT_VELOCITY = 100;
 
@@ -83,7 +90,41 @@ export function patternSubject(
     );
   }
 
+  /*
+   * **The record's storage version is checked before anything is read out of it**, using the same
+   * rule the grid already paints as *"storage version we do not read"*.
+   *
+   * A record at another version has its interior offsets somewhere else, so reading one as if it
+   * were version 3 does not fail — it produces plausible nonsense. `PRESETS.dn2prj` is version 2 in
+   * all 128 of its records and read back as 422 trigs on a pattern of length 0, with tracks at
+   * speeds no table names. Every one of those numbers was fiction.
+   *
+   * Found by rendering the whole corpus. Before this check the zero-length tracks made
+   * `phaseStrip`'s repetition loop step by zero and exhausted a 4 GB heap — a frozen tab in a
+   * browser — which is what sent me looking for why the lengths were zero in the first place.
+   */
+  const summary = device.summarise(image, index);
+  if (!summary.supported) {
+    throw new PatternSubjectError(
+      `${patternName(index)} is a version ${summary.version} pattern record and this reads ` +
+        `version ${DN2_RECORD_VERSION}. The interior offsets move between versions, so anything ` +
+        `drawn from it would be measured from the wrong bytes.`,
+    );
+  }
+
   const pattern = readDn2Pattern(image, index, DN2_LAYOUT);
+
+  /*
+   * A supported record with no length is not observed in the corpus, and is still refused rather
+   * than drawn: every chart here divides by a length somewhere.
+   */
+  if (pattern.length < 1) {
+    throw new PatternSubjectError(
+      `${patternName(index)} declares a master length of ${pattern.length}, which is outside the ` +
+        `1..128 a Digitone II sequencer plays. There is no timeline to draw this pattern against.`,
+    );
+  }
+
   const kit = summariseKitTracks(kitRecord(image, index, DN2_LAYOUT));
 
   /*
@@ -100,13 +141,17 @@ export function patternSubject(
    * **Per-track lengths only exist when the pattern says they do.**
    *
    * Every track record carries a length whether or not the pattern is using it. With `SCALE` set
-   * per-pattern — 51 of the 64 corpus patterns measured — the sequencer plays every track at the
-   * master length and the stored per-track values are stale leftovers. Drawing those would invent
-   * a polymeter the instrument is not playing, and the realign chart exists precisely to say how
-   * long the pattern really takes.
+   * per-pattern the sequencer plays every track at the master length and the stored per-track
+   * values are stale leftovers — drawing those would invent a polymeter the instrument is not
+   * playing, and the realign chart exists precisely to say how long the pattern really takes.
+   * Corpus-wide, 69% of the patterns that play something carry real per-track lengths.
    */
   const lengthOf = (trackLength: number) =>
-    pattern.perTrackScale ? trackLength : pattern.length;
+    // A track length outside the documented 1..128 falls back to the master, which the guard above
+    // has already established is playable. Not observed with a sane master — every zero track
+    // length in the corpus sits in a pattern whose master is zero too — but a chart that divides
+    // by this must not depend on that staying true.
+    pattern.perTrackScale && trackLength >= 1 ? trackLength : pattern.length;
 
   const tracks: AnalysisTrack[] = pattern.tracks.map((track) => {
     const half = kit[track.index];
@@ -121,7 +166,7 @@ export function patternSubject(
           step: trig.step,
           notes: trig.notes,
           // Undefined means the track default sounds, so that is what the trig is actually played
-          // at — 599 of the 695 trigs measured carry no lock of their own.
+          // at — most trigs in the corpus carry no velocity lock of their own.
           velocity: trig.velocity ?? track.settings.defaultVelocity,
           // Not a duration. See `gateLengthKnown` below and `AnalysisTrig.length`.
           length: 1,
@@ -136,8 +181,18 @@ export function patternSubject(
     return {
       number: track.index + 1,
       length: lengthOf(track.length),
-      speed: SPEED[track.speed] ?? 1,
-      ...(half?.midi ? {} : { machine: half?.machineValue }),
+      ...(SPEED[track.speed] === undefined ? {} : { speed: SPEED[track.speed] }),
+      /*
+       * **A MIDI track is a MIDI track, not an unknown machine.**
+       *
+       * This special-cased `midi` to `undefined`, which `machineLabel` renders as "unknown
+       * machine" — so every MIDI track in the corpus was labelled unreadable in the legend and in
+       * every tooltip. 49 of the 51 playing MIDI tracks carry machine byte 4, which *is* MIDI;
+       * the other two read 2 (FM DRUM) while the kit mask says MIDI. The mask is documented as
+       * the only discriminator between a synth track and a MIDI one, so it wins, and all 51 read
+       * MIDI rather than 49 reading MIDI and 2 claiming to be drums.
+       */
+      machine: half?.midi ? MACHINE.midi : half?.machineValue,
       preset: half?.presetName || "—",
       trigs,
     };

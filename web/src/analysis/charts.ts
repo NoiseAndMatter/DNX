@@ -141,8 +141,15 @@ export function phaseStrip(
     const pairs = mode === "overlap" ? overlappingNotes(t) : [];
     out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
 
-    for (let start = 0; start < windowSteps; start += t.length) {
-      const x0 = x(start), x1 = x(Math.min(start + t.length, windowSteps));
+    /*
+     * **A track length of zero would step this loop by zero, forever.** The producer refuses such a
+     * pattern, but a chart that can hang on its input is a landmine for the next producer — and
+     * this one was found by rendering the corpus, where 27 patterns in the factory PRESETS project
+     * declare a length of 0 and exhausted a 4 GB heap in seconds. In a browser that is a dead tab.
+     */
+    const stride = t.length >= 1 ? t.length : windowSteps;
+    for (let start = 0; start < windowSteps; start += stride) {
+      const x0 = x(start), x1 = x(Math.min(start + stride, windowSteps));
       // The repetition band is context: barely there, so the dots read as the data.
       out += `<rect x="${x0 + 1}" y="${y + 2}" width="${Math.max(1, x1 - x0 - 2)}"
         height="${rowH - 4}" rx="1.5" fill="${fill}" opacity=".13"/>`;
@@ -370,9 +377,11 @@ export function voiceLanes(
   tracks.forEach((t, i) => {
     const y = i * (rowH + gap);
     const fill = `var(${machineVar(t.machine)})`;
-    for (let rep = 0; rep * t.length < windowSteps; rep++) {
+    // Same guard as `phaseStrip`: a zero length makes `rep * 0` never reach the window.
+    const stride = t.length >= 1 ? t.length : windowSteps;
+    for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * t.length + g.step;
+        const at = rep * stride + g.step;
         if (at >= windowSteps) continue;
         const end = Math.min(at + g.length, windowSteps);
         // Held during an overrun? Then this trig is a candidate for removal, and says so.
@@ -405,9 +414,18 @@ export function densityBars(
     locks: t.trigs.filter((g) => g.lockPreset !== undefined).length,
   }));
   const max = Math.max(...rows.map((r) => r.trigs + r.plocks + r.locks));
+  /*
+   * **The middle band is not "parameter locks", and calling it that was wrong.**
+   *
+   * It counts trigs carrying microtiming or a velocity above the track default — and on a Digitone
+   * II both of those live in the trig slot itself, which is exactly why `plockparams.ts` lists
+   * `TRIG 1 VEL` and `TRIG 1 NOTE` under `NOT_LOCKABLE`. They are per-trig *values*, not entries in
+   * the lock table. The label now says what is counted; the real lock table is a separate reading
+   * and is not in this chart.
+   */
   const parts = [
-    { key: "trigs", cssVar: "--s3", name: "Trigs" },
-    { key: "plocks", cssVar: "--s4", name: "Parameter locks" },
+    { key: "trigs", cssVar: "--s3", name: "Note trigs" },
+    { key: "plocks", cssVar: "--s4", name: "Microtimed or accented" },
     { key: "locks", cssVar: "--s7", name: "Preset locks" },
   ] as const;
   let out = "";
@@ -430,7 +448,7 @@ export function densityBars(
       fill="var(--ink2)">${total}
       <tspan fill="var(--ink3)">· ${escapeHtml(r.track.preset)}</tspan></text>`;
   });
-  return svg(w, h, "Trigs, parameter locks and preset locks on each track", out);
+  return svg(w, h, "Note trigs, microtimed or accented trigs, and preset locks per track", out);
 }
 
 /**

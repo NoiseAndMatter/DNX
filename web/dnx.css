@@ -936,6 +936,23 @@ body.app > main.split > .side {
  * in the grid would leave the charts drawing into two thirds of the window with an empty third
  * beside them. One column, full width.
  */
+/*
+ * **The page has to be allowed to grow, and by default it is not.**
+ *
+ * `body.app` is `height: 100%` and `body.app > main` is `flex: 1; min-height: 0` — a workspace
+ * sized to the window, which is right for a grid and a side column that each scroll inside
+ * themselves. The analysis is a *document*: several thousand pixels of cards that the page is
+ * meant to scroll. Left capped, `main` stayed one viewport tall and its content simply overflowed,
+ * so the status bar — an ordinary last child, not a fixed one on this page — was laid out where
+ * `main`'s box ended and ended up sitting **in the middle of the charts**.
+ *
+ * `min-height: auto` is the flex default that `min-height: 0` was overriding: it stops the item
+ * shrinking below its content, so `main` grows, the body grows with it, and the status bar goes
+ * back to the bottom. The same family as #215 — a row sized to the window rather than to what is
+ * in it, discovered by looking at the page rather than by anything failing.
+ */
+body.app.insights { height: auto; }
+body.app.insights > main { min-height: auto; }
 body.app.insights > main.split { grid-template-columns: minmax(0, 1fr); }
 body.app.insights > main.split > .side { display: none; }
 /*
