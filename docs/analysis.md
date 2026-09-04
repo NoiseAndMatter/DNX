@@ -107,19 +107,27 @@ offsets over DN1 bytes.
 - **A trigless lock trig is not a note.** Pattern A2 of `TECNO_EXP` holds 36 sequencer records: 8
   note trigs and 28 trigless lock trigs carrying parameter automation. The grid counts records and
   the charts count notes — both right, and the tile says which it means.
-- **A trig with no velocity lock sounds at its track default.** 599 of the 695 trigs measured carry
-  no lock of their own, so reading `undefined` as 0 would silence most of a project.
+- **A trig with no velocity lock sounds at its track default.** Most trigs in the corpus carry no
+  lock of their own, so reading `undefined` as 0 would silence most of a project. The accent
+  threshold is read per pattern for the same reason: 1,712 of the 1,725 playing tracks read 100,
+  and the other 13 read 127, 102, 79 and 89 — a four-project sample showed 100 everywhere and would
+  have justified hard-coding it.
 - **Per-track lengths only exist when `SCALE` says so.** Every track record carries a length whether
-  the pattern uses it or not; with per-track scale off — 51 of 64 corpus patterns — the sequencer
-  plays every track at the master length and the stored values are leftovers. Drawing those would
-  invent a polymeter the instrument is not playing.
+  the pattern uses it or not; with per-track scale off the sequencer plays every track at the master
+  length and the stored values are leftovers. Drawing those would invent a polymeter the instrument
+  is not playing. Corpus-wide **69% of the patterns that play something do carry real per-track
+  lengths**, so both cases are normal.
+- **A record at a version we do not read is refused by version, before anything is read out of it.**
+  `PRESETS.dn2prj` is version 2 in all 128 of its records. Read as version 3 it reports 422 trigs on
+  a pattern of length 0, at speeds no table names — plausible, and entirely fiction.
 
 ### What it does not draw, and why
 
 **Voice pressure, note-length marks and overlap detection are absent from the manager.** All three
 need to know how long a note sounds, and a Digitone II project does not say: the trig carries a
-note-length byte, the track a default of `0x0E` in 1,016 of the 1,024 tracks measured, and
-**nothing maps either to a duration**. `dn2-pattern-format.md` marks even the name of the track
+note-length byte, the track a default of `0x0E` in 1,577 of the 1,725 playing tracks, and
+**nothing maps either to a duration** — and the byte takes 24 other values across the corpus, which
+is what says it carries something rather than being a constant. `dn2-pattern-format.md` marks even the name of the track
 default as inferred from its position in the Digitone 1 block rather than from a capture.
 
 The subject carries `gateLengthKnown: false` and the page says so in a card of its own. The charts
@@ -138,6 +146,43 @@ real data the day the mapping exists.
 Multi-pattern selection needs no new code: `selection.ts` already does shift-range and ctrl-toggle,
 and the model takes a list. Whether analysing several patterns at once reads well is the cheapest
 useful test of whether the separate tool is worth building.
+
+## What a corpus sweep changed — 2026-09-05
+
+Everything above was built against four projects. Rendering **every chart of every pattern of all
+24 DN2 projects at three widths — 9,003 charts** — found five faults that a green suite and a
+careful reading had both missed, and corrected three claims.
+
+### Faults
+
+| | |
+|---|---|
+| **The page hung.** A version-2 record read as version 3 gave a track length of 0, `phaseStrip`'s repetition loop stepped by zero, and the sweep exhausted a 4 GB heap in seconds. In a browser: a dead tab. | Refuse on record version; guard every repetition walk against a stride below 1; `cycleSteps` ignores unplayable lengths rather than returning `0` or `NaN`. |
+| **The status bar sat in the middle of the charts.** `body.app > main` is `flex: 1; min-height: 0` — a workspace sized to the window. The analysis is a document, so it overflowed and the status bar, an ordinary last child on this page, was laid out where `main`'s box ended. | `min-height: auto` in Insights mode only, so the page grows and scrolls. |
+| **A MIDI track was labelled "unknown machine"** in every legend and tooltip — 49 of them across the corpus — because the producer special-cased `midi` to `undefined`. | A MIDI track carries `MACHINE.midi`. The kit mask stays the discriminator, so the two tracks whose machine byte disagrees with it still read MIDI. |
+| **The phase strip drew a one-step window** on `017 PRESETS.dn2prj`, whose patterns declare a master length of 1 while their tracks run 14–64 steps: four dots on one pixel column. | Draw `max(master, longest track)` and say so in the caption when they differ. |
+| **Opening a Digitone 1 while in Insights hid the editor with no way back** — the side column gone, the panel empty, the toggle disabled. | Wanting the mode and being in it are separate: the page falls back to the editor and returns by itself when a readable project is opened. |
+
+### Claims that did not survive
+
+| | four projects | the whole corpus |
+|---|---|---|
+| default velocity 100 | all 1,024 tracks | **1,712 of 1,725** playing tracks; 127, 102, 79 and 89 also occur |
+| track default note length `0x0E` | 1,016 of 1,024 | **1,577 of 1,725**, with **24 other values** — which is what says the byte means something |
+| per-track scale | "off in 51 of 64" | **69% of the patterns that play something carry real per-track lengths** |
+| undocumented speed enums | 3 tracks | **none** — all three were version-2 fiction |
+
+**The general lesson: a four-project sample agreed with every guess, and the corpus disagreed with
+four of them.** Two of the five faults were in the *producer* and three were in code the mockup had
+exercised for weeks — because synthetic data is written by someone who already knows the invariants.
+
+### The mislabel
+
+`densityBars`' middle band was captioned **"Parameter locks"** and counts trigs carrying microtiming
+or a velocity above the track default. On a Digitone II both live in the trig slot itself — which is
+exactly why `plockparams.ts` lists `TRIG 1 VEL` under `NOT_LOCKABLE`. They are per-trig values, not
+lock-table entries. It now reads **"Microtimed or accented"**, and the real lock table remains an
+unread reading.
 
 ## Traps this subsystem has already paid for
 

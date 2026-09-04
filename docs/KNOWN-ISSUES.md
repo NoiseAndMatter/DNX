@@ -10,8 +10,10 @@ converter.
 A DN2 trig carries a note-length byte and every track a default. **Nothing maps either to a
 duration.** `dn2-pattern-format.md` records the track default at `+0x02` as INFERRED — the name
 comes from its position in the Digitone 1 settings block, not from a capture — and no capture has
-walked the trig field against what the instrument displays. Measured across four corpus projects,
-the track default is `0x0E` in 1,016 of 1,024 tracks, with 64 and 30 appearing once each.
+walked the trig field against what the instrument displays. Measured across every readable pattern
+of the 24-project corpus, the track default is `0x0E` in 1,577 of the 1,725 tracks that play a note
+— and it takes **24 other values** in real music, which is what says the byte carries something
+rather than being a constant.
 
 Three built and tested charts therefore have no honest input and are **not drawn** in the manager:
 

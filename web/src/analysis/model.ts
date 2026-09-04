@@ -72,8 +72,14 @@ export interface AnalysisTrack {
   number: number;
   /** Track length in steps. */
   length: number;
-  /** Speed multiplier, 1 being the master's. */
-  speed: number;
+  /**
+   * Speed multiplier, 1 being the master's, or `undefined` for an enum value nothing has named.
+   *
+   * Three of the 1,788 playing tracks in the corpus carry a speed byte outside the seven values
+   * `TRACK_SPEED` documents. Showing those as `1x` would be a quiet lie about a track that is not
+   * running at 1x, so they say so instead.
+   */
+  speed?: number;
   /**
    * A `MACHINE` value, or `undefined` for one this project cannot name.
    *
@@ -168,7 +174,14 @@ const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b;
  * actually repeat for eleven minutes".
  */
 export function cycleSteps(tracks: readonly AnalysisTrack[]): number {
-  return tracks.map((t) => t.length).reduce(lcm, 1);
+  /*
+   * **Lengths below 1 are ignored rather than multiplied in.** `lcm(a, 0)` is 0 and `lcm(0, 0)` is
+   * `NaN`, and both propagate into every chart that divides by the cycle — a cycle of 0 makes a
+   * repetition count of `Infinity` and a cycle of `NaN` makes every bar vanish. A track that
+   * cannot be sequenced contributes nothing to when the pattern realigns.
+   */
+  const playable = tracks.map((t) => t.length).filter((n) => Number.isInteger(n) && n >= 1);
+  return playable.length ? playable.reduce(lcm, 1) : 1;
 }
 
 /** Steps to seconds at a tempo, in sixteenths. */
@@ -191,9 +204,11 @@ export function clock(seconds: number): string {
 export function voicesPerStep(tracks: readonly AnalysisTrack[], windowSteps: number): number[] {
   const held = new Array<number>(windowSteps).fill(0);
   for (const t of tracks) {
-    for (let rep = 0; rep * t.length < windowSteps; rep++) {
+    // A length below 1 would never advance `rep * length` to the window; see `cycleSteps`.
+    const stride = t.length >= 1 ? t.length : windowSteps;
+    for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * t.length + g.step;
+        const at = rep * stride + g.step;
         if (at >= windowSteps) continue;
         for (let k = 0; k < g.length && at + k < windowSteps; k++) held[at + k]! += g.notes.length;
       }
@@ -294,9 +309,11 @@ export function holdersAt(
 ): { track: AnalysisTrack; note: string; velocity: number }[] {
   const out: { track: AnalysisTrack; note: string; velocity: number }[] = [];
   for (const t of tracks) {
-    for (let rep = 0; rep * t.length < windowSteps; rep++) {
+    // A length below 1 would never advance `rep * length` to the window; see `cycleSteps`.
+    const stride = t.length >= 1 ? t.length : windowSteps;
+    for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * t.length + g.step;
+        const at = rep * stride + g.step;
         if (at <= step && step < at + g.length && at < windowSteps) {
           out.push({ track: t, note: noteName(g.notes[0] ?? 0), velocity: g.velocity });
         }
@@ -403,9 +420,10 @@ export function pitchWindows(
   for (let at = 0; at + win <= total; at += hop) {
     const counts = new Array<number>(12).fill(0);
     for (const t of tracks) {
-      for (let rep = 0; rep * t.length < total; rep++) {
+      const stride = t.length >= 1 ? t.length : total;
+      for (let rep = 0; rep * stride < total; rep++) {
         for (const g of t.trigs) {
-          const s = rep * t.length + g.step;
+          const s = rep * stride + g.step;
           if (s >= at && s < at + win) for (const note of g.notes) counts[pitchClass(note)]!++;
         }
       }
@@ -537,9 +555,10 @@ export function trackWindows(
   for (let at = 0; at + win <= total; at += hop, w++) {
     for (const row of rows) {
       const counts = new Map<number, number>();
-      for (let rep = 0; rep * row.track.length < total; rep++) {
+      const stride = row.track.length >= 1 ? row.track.length : total;
+      for (let rep = 0; rep * stride < total; rep++) {
         for (const g of row.track.trigs) {
-          const st = rep * row.track.length + g.step;
+          const st = rep * stride + g.step;
           if (st < at || st >= at + win) continue;
           for (const n of g.notes) counts.set(n, (counts.get(n) ?? 0) + 1);
         }

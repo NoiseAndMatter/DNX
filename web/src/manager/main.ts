@@ -390,11 +390,22 @@ function renderInsightsPanel(): void {
   const { device, session } = state;
   const usable = !!session && device?.kind === "dn2";
 
+  /*
+   * **Wanting the mode and being in it are different things.**
+   *
+   * `insightsOpen` is what the reader asked for and survives opening another project; `showing` is
+   * whether it can actually be honoured. Open a Digitone 1 file while Insights is up and the mode
+   * is not usable — and the first version left the class on, the panel visible and empty, and the
+   * toggle disabled: the side column with Operations, Selection and History was gone **and there
+   * was no way back to it**. The page now falls back to the editor and returns to Insights by
+   * itself when a readable project is opened again.
+   */
+  const showing = insightsOpen && usable;
   $<HTMLButtonElement>("insights").disabled = !usable;
-  $("insights").setAttribute("aria-pressed", String(insightsOpen));
-  document.body.classList.toggle("insights", insightsOpen);
-  host.hidden = !insightsOpen;
-  if (!insightsOpen || !usable || !session) {
+  $("insights").setAttribute("aria-pressed", String(showing));
+  document.body.classList.toggle("insights", showing);
+  host.hidden = !showing;
+  if (!showing || !session) {
     host.innerHTML = "";
     return;
   }

@@ -284,7 +284,8 @@ document.getElementById("cards").innerHTML =
       <div class="chart" id="c-realign"></div>
     </figure>
     ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
-      live.map((t) => [`T${t.number}`, t.preset, t.length, `${t.speed}x`, machineLabel(t.machine),
+      live.map((t) => [`T${t.number}`, t.preset, t.length,
+        t.speed === undefined ? "unknown" : `${t.speed}x`, machineLabel(t.machine),
         t.trigs.length, cycle / t.length]))}
   `) +
 
@@ -353,7 +354,8 @@ document.getElementById("cards").innerHTML =
         what a categorical palette can carry.</figcaption>
       <div class="chart" id="c-density"></div>
     </figure>
-    ${legend([["Trigs", "--s3"], ["Parameter locks", "--s4"], ["Preset locks", "--s7"]])}
+    ${legend([["Note trigs", "--s3"], ["Microtimed or accented", "--s4"],
+               ["Preset locks", "--s7"]])}
     <figure style="margin-top:1rem">
       <figcaption>Microtiming, for the <b>${allTrigs - micro.onGrid} trigs off the grid</b> — the
         other ${micro.onGrid} sit on it and are left out of the plot rather than flattening
