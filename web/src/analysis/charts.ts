@@ -226,6 +226,13 @@ export function phaseStrip(
  *
  * The half of polymeter that is a number rather than a shape. Log scale, because the values span
  * 21 to 192 and a linear axis would flatten everything that is not the culprit.
+ *
+ * **A log scale divides by the log of the largest value, and that is zero when every track is the
+ * same length.** Then every bar is `0/0` — `NaN` — and an SVG rect with a `NaN` width draws
+ * nothing while its label lands at x=0 on top of the track name. That is exactly what the first
+ * real project did: the synthetic data always had mixed lengths, so the case never arose, and
+ * *most patterns are the flat case* — 51 of the 64 corpus patterns measured run every track at the
+ * master length. Equal repetitions are drawn equal, at full width, which is what they are.
  */
 export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: number): string {
   const rowH = 14, gap = 5, padL = 30, padR = 128;
@@ -233,12 +240,15 @@ export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: 
   const h = sorted.length * (rowH + gap);
   const plot = w - padL - padR;
   const max = Math.log(Math.max(...sorted.map((t) => cycle / t.length)));
+  // Every track the same length: `max` is 0, the ratio is 0/0, and there is no culprit to point at
+  // because nothing is stretching anything.
+  const flat = max === 0;
   let out = "";
   sorted.forEach((t, i) => {
     const y = i * (rowH + gap);
     const reps = cycle / t.length;
-    const bw = Math.max(2, (Math.log(reps) / max) * plot);
-    const culprit = i === 0;
+    const bw = flat ? plot : Math.max(2, (Math.log(reps) / max) * plot);
+    const culprit = i === 0 && !flat;
     out += `<rect x="${padL}" y="${y}" width="${bw}" height="${rowH}" rx="2"
       fill="var(${culprit ? "--s2" : "--q4"})"
       ${tip(`T${t.number} — ${t.preset}`,

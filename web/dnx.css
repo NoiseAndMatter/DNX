@@ -925,3 +925,34 @@ body.app > main.split > .side {
   font-size: .7rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase;
 }
 .songcontrols .songtempo input { max-width: 5rem; }
+
+/* ---- insights mode --------------------------------------------------------------------
+ *
+ * The manager, reading rather than editing. The bank tabs and the pattern grid stay — they are the
+ * selector, and clicking between patterns to compare them on the same chart is the whole point —
+ * and everything that edits goes away.
+ *
+ * **The side column goes, so the column itself goes.** Hiding `.side` while leaving a 20rem track
+ * in the grid would leave the charts drawing into two thirds of the window with an empty third
+ * beside them. One column, full width.
+ */
+body.app.insights > main.split { grid-template-columns: minmax(0, 1fr); }
+body.app.insights > main.split > .side { display: none; }
+/*
+ * The drill-down is hidden too. It answers "what is on this pattern's tracks", which is the
+ * question the charts below answer in more detail — two answers to one question, one of them
+ * worse, competing for the same screen.
+ */
+body.app.insights #trackSection { display: none; }
+/* Operations are unreachable in this mode; the grid declines drops, and its cursor should agree. */
+body.app.insights .slot { cursor: pointer; }
+
+#insightsPanel { grid-column: 1; display: flex; flex-direction: column; gap: .7rem; }
+/*
+ * A pressed toggle has to look pressed. The tool row uses the accent for "you are here"; this is
+ * the same idea one level down, so it borrows the same colour rather than inventing a second
+ * vocabulary for the same meaning.
+ */
+.bar .btn[aria-pressed="true"] {
+  border-color: var(--teal-dim); color: var(--teal); background: #1d2726;
+}

@@ -283,6 +283,45 @@ repository.
 
 ---
 
+## 7. Note length, mono/poly and portamento — three charts wait on one session
+
+Raised 2026-09-05 while building the manager's Insights mode. Small, and each unblocks something
+already written.
+
+### 7a. What a note-length byte means in steps — the blocking one
+
+Everything about how long a note sounds is undecoded. The trig carries the byte and the track a
+default (`0x0E` in 1,016 of 1,024 tracks measured), and neither maps to a duration. Three built,
+tested charts cannot be drawn without it: **voice pressure**, the phase strip's **note length** mode
+and its **overlapping notes** mode.
+
+**The capture.** On one track of an empty pattern, place sixteen trigs and set each to a different
+`LEN` value from the bottom of the range upward, writing down the value shown on the instrument for
+each step in order. Save, and diff against the same pattern with every trig at the default.
+
+Because the reading is per-trig, one pattern covers sixteen values and a second covers the rest.
+**Use the position discipline**: record what the screen said for *step 3*, not "the third value I
+tried" — the reason `capture-by-position-not-by-name.md` exists.
+
+**Include a deliberate repeat.** Set two separated steps to the same `LEN`; when both read the same
+byte, the capture has checked itself. That check was free and accidental in the song-table work and
+is worth arranging on purpose.
+
+### 7b. Mono/poly and portamento — what separates an overlap from a glide
+
+Both live on the preset's SETUP page and no capture has covered it. Per-trig portamento is already
+readable — `PORT` is lock id 99 and `PTIM` is 100 — so these two settings are the whole difference
+between reporting *two notes overlap* and naming a **glide**.
+
+**The capture.** One kit, four tracks: mono+porta on, mono+porta off, poly+porta on, poly+porta off.
+Save and diff. Four tracks in one save settles a two-by-two.
+
+### 7c. The arpeggiator's settings
+
+It transposes, so no pitch or key analysis of a pattern is complete while its settings are unread.
+Lower priority than the two above: the charts state the caveat and remain correct about what they
+did measure.
+
 ## What to send back
 
 The `.syx` files, numbered, in a folder per experiment. Nothing else: the diff tool reads the

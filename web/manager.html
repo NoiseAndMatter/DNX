@@ -6,6 +6,7 @@
 <title>DNX Manager</title>
 <link rel="stylesheet" href="./dnx.css">
 <link rel="stylesheet" href="./toolnav.css">
+<link rel="stylesheet" href="./viz.css">
 <!-- Classic, not a module: it has to still be standing when the module is not. -->
 <script src="./boot.js"></script>
 <!-- The arriving page starts offset; this must run before the first paint. See arrival.js. -->
@@ -76,6 +77,15 @@
   <button class="btn" id="savetodrive" hidden>Save to +Drive…</button>
   <select id="drivetarget" hidden title="An empty +Drive project slot"></select>
   <button class="btn danger" id="dodrivesave" hidden disabled>Save to slot</button>
+  <span class="sep"></span>
+  <!--
+    **A view, not a command**, which is why it is its own group and why it is a toggle rather than
+    a button that does something. Insights hides the editing half of the page and puts the analysis
+    under the grid; the grid itself stays, because changing pattern is how you read the charts.
+  -->
+  <span class="lbl">View</span>
+  <button class="btn" id="insights" aria-pressed="false" disabled
+          title="Analyse the selected pattern">Insights</button>
 </div>
 
 <div class="tabs" id="tabs" hidden></div>
@@ -156,6 +166,13 @@
     </div>
   </section>
 
+  <!--
+    **Spans the full width and carries `.viz`.** Every rule in `viz.css` is scoped under that class,
+    because `charts.ts` emits a `.legend` and so does the pattern grid above it — unscoped, each
+    would inherit the other's rules on the one page that has both.
+  -->
+  <div id="insightsPanel" class="viz insights" hidden></div>
+
   <div class="side">
     <section class="panel">
       <h2>Operations</h2>
@@ -194,6 +211,10 @@
     </section>
   </div>
 </main>
+
+<!-- One tooltip for every chart. Outside `main`, because a tooltip clipped by its own chart's
+     overflow is worse than no tooltip. -->
+<div id="tip"></div>
 
 <div class="status" id="status">Open a project to begin.</div>
 

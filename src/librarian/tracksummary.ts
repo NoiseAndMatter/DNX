@@ -85,6 +85,16 @@ export interface KitTrack {
    * capture that produced the table, so an unknown value means unknown, not "probably FM TONE".
    */
   machine: string | undefined;
+  /**
+   * The raw machine byte, whether or not a name is known for it.
+   *
+   * `machine` goes to `undefined` for a value no capture has seen, which is right for a label and
+   * lossy for anything that wants to **group** by machine — an unnameable machine is still a
+   * machine, and collapsing every unknown value into one "no machine" bucket would merge
+   * categories that are not the same. Carried alongside rather than derived, because a name cannot
+   * be turned back into the value it came from.
+   */
+  machineValue: number;
   /** True when this track is a MIDI track, from the kit's mask at +10,260. */
   midi: boolean;
   /** Track level, 0..127 as the device shows it. */
@@ -106,6 +116,7 @@ export function summariseKitTracks(kit: Uint8Array): KitTrack[] {
       label: trackName(index),
       presetName: readName(kit, soundAt + SOUND_NAME_OFFSET, SOUND_NAME_SIZE),
       machine: machineName(kit[soundAt + SOUND_MACHINE_OFFSET]!),
+      machineValue: kit[soundAt + SOUND_MACHINE_OFFSET]!,
       midi: ((midiMask >> index) & 1) === 1,
       level: trackLevel(kit, index),
     });

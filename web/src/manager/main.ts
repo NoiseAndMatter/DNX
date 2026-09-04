@@ -117,6 +117,8 @@ import {
 } from "../history.js";
 import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
+import { renderInsights } from "./insights.js";
+import { patternSubject } from "../patternsubject.js";
 
 const status = statusBar();
 const progress = progressBar();
@@ -248,7 +250,10 @@ function renderTrackGrid(): void {
       onClick: (index, event) => {
         onSlotClick("track", index, event);
       },
-      drag: { controller: drag, grid: "track" },
+      // Insights mode is read-only: the side column carrying History is hidden, and a drop with
+    // no visible undo is not a thing to offer. `GridDrag` asks rather than decides, so declining
+    // is simply not handing it over.
+    ...(insightsOpen ? {} : { drag: { controller: drag, grid: "track" as const } }),
     },
   );
 
@@ -279,7 +284,10 @@ function renderGrid(): void {
     onClick: (index, event) => {
       onSlotClick("pattern", index, event);
     },
-    drag: { controller: drag, grid: "pattern" },
+    // Insights mode is read-only: the side column carrying History is hidden, and a drop with
+    // no visible undo is not a thing to offer. `GridDrag` asks rather than decides, so declining
+    // is simply not handing it over.
+    ...(insightsOpen ? {} : { drag: { controller: drag, grid: "pattern" as const } }),
   });
 
   $("bankTitle").textContent = `Bank ${BANKS[state.bank]} — patterns ${from + 1}–${to}`;
@@ -358,12 +366,63 @@ function historyElements(): HistoryElements {
   };
 }
 
+/**
+ * Which pattern the charts are about.
+ *
+ * The last one clicked, because in this mode clicking a slot *is* the way you change subject. A
+ * track selection leaves it where it was rather than blanking the page: the tracks belong to a
+ * pattern, and that pattern is still the thing on screen.
+ */
+function insightsSubjectSlot(): number | undefined {
+  if (state.level === "pattern" && state.selection.length) return state.selection.at(-1);
+  return state.trackFor ?? (state.selection.length ? state.selection.at(-1) : undefined);
+}
+
+/**
+ * Draw, or take down, the analysis under the grid.
+ *
+ * The song panel is **folded rather than hidden** while this is open. A song is a legitimate
+ * analysis subject and folding leaves its strip on screen saying which song is selected, so the
+ * scope stays reachable; hiding it would remove the only sign that there is one.
+ */
+function renderInsightsPanel(): void {
+  const host = $("insightsPanel");
+  const { device, session } = state;
+  const usable = !!session && device?.kind === "dn2";
+
+  $<HTMLButtonElement>("insights").disabled = !usable;
+  $("insights").setAttribute("aria-pressed", String(insightsOpen));
+  document.body.classList.toggle("insights", insightsOpen);
+  host.hidden = !insightsOpen;
+  if (!insightsOpen || !usable || !session) {
+    host.innerHTML = "";
+    return;
+  }
+
+  const slot = insightsSubjectSlot();
+  if (slot === undefined) {
+    host.innerHTML = `<section class="panel"><h2>Insights</h2><div class="body">
+      <p class="hint">Select a pattern above to analyse it.</p></div></section>`;
+    return;
+  }
+
+  try {
+    renderInsights(host, patternSubject(session.image, device, slot));
+  } catch (error) {
+    // A refusal names itself rather than leaving an empty panel that looks like a bug.
+    host.innerHTML = `<section class="panel"><h2>Insights</h2><div class="body">
+      <p class="hint">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>
+      </div></section>`;
+  }
+}
+
 function render(): void {
   renderTabs();
   renderGrid();
   renderSelection();
   renderHistory();
   renderSongs();
+  renderInsightsPanel();
   $("scopeHint").textContent = SCOPE_HINTS[state.scope];
 
   // Enabled only when there is something to send. An edit is what makes a write meaningful, and a
@@ -415,6 +474,14 @@ let songSlot: number | undefined;
  * another file.
  */
 let songsFolded = false;
+
+/**
+ * Whether the page is showing analysis instead of the editing controls.
+ *
+ * **Not reset when a project opens**, for the same reason the song fold is not: somebody reading
+ * charts is not asking to go back to the editor because they loaded another file.
+ */
+let insightsOpen = false;
 
 /** The songs of the open project, or undefined when there is nothing to show. */
 function currentSongs(): Song[] | undefined {
@@ -1220,6 +1287,19 @@ function wireOperations(): void {
   $("songFold").addEventListener("click", () => {
     songsFolded = !songsFolded;
     renderSongs();
+  });
+
+  /*
+   * **Entering folds the song panel; leaving does not unfold it.**
+   *
+   * Folding is what makes room for the charts. Unfolding on the way out would overrule a choice
+   * the reader may have made themselves before ever pressing this — the fold is their setting, and
+   * this mode is only allowed to borrow it, not to hand it back changed.
+   */
+  $("insights").addEventListener("click", () => {
+    insightsOpen = !insightsOpen;
+    if (insightsOpen) songsFolded = true;
+    render();
   });
 
   $("browsedrive").addEventListener("click", () => {

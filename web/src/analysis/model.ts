@@ -46,7 +46,14 @@ export interface AnalysisTrig {
    */
   notes: number[];
   velocity: number;
-  /** Gate length in steps. */
+  /**
+   * Gate length in steps.
+   *
+   * **Only meaningful when the subject says `gateLengthKnown`.** A Digitone II stores note length
+   * as a raw byte whose mapping to a duration has never been captured — `dn2-pattern-format.md`
+   * marks even the name of the field as inferred — so a producer reading a real project cannot
+   * fill this in and sets 1. Anything that reads it must ask the subject first.
+   */
   length: number;
   /** Signed microtiming; 0 is on the grid. */
   microTiming: number;
@@ -87,8 +94,20 @@ export interface AnalysisSubject {
   masterLength: number;
   /** 16 on a Digitone II, 8 on a Digitone 1. A device property, not a file field. */
   voiceBudget: number;
-  /** Above this a trig reads as an accent. The device's own default, not a measured mean. */
+  /** Above this a trig reads as an accent. */
   defaultVelocity: number;
+  /**
+   * Whether a trig's `length` is a real gate length.
+   *
+   * **False for every Digitone II project read today.** The note-length byte is stored on the trig
+   * and its mapping to a duration has never been captured, so voice pressure, the note-length marks
+   * and overlap detection have no honest input — and a caller must not draw them. Inventing a
+   * mapping would put a fabricated number under a chart that looks exactly like a measured one,
+   * which is the one failure this whole surface is arranged to avoid.
+   *
+   * True for synthetic data, which knows its own gates because it made them up on purpose.
+   */
+  gateLengthKnown: boolean;
   tracks: AnalysisTrack[];
 }
 

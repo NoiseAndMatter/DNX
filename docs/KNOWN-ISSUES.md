@@ -5,6 +5,31 @@ converter.
 
 ---
 
+## A note length is stored and never decoded, and it blocks three charts — OPEN 2026-09-05
+
+A DN2 trig carries a note-length byte and every track a default. **Nothing maps either to a
+duration.** `dn2-pattern-format.md` records the track default at `+0x02` as INFERRED — the name
+comes from its position in the Digitone 1 settings block, not from a capture — and no capture has
+walked the trig field against what the instrument displays. Measured across four corpus projects,
+the track default is `0x0E` in 1,016 of 1,024 tracks, with 64 and 30 appearing once each.
+
+Three built and tested charts therefore have no honest input and are **not drawn** in the manager:
+
+| chart | what it needs a gate for |
+|---|---|
+| voice pressure, and the per-track gate lanes | how long each note holds a voice |
+| the phase strip's *note length* mode | the width of the bar it draws |
+| the phase strip's *overlapping notes* mode | whether one note is still sounding at the next |
+
+`AnalysisSubject.gateLengthKnown` is what stops a caller drawing them: `patternSubject` sets it
+false and puts 1 in every gate, and the Insights page prints a card saying which charts are missing
+and why. **The temptation to fill this in with a plausible curve is the thing to resist** — it would
+produce a voice-count chart indistinguishable from a measured one.
+
+**The capture that settles it is small**: set one trig to each `LEN` value on the instrument, save,
+and diff. Worth doing in the same session as the SETUP-page capture that mono/poly and portamento
+need.
+
 ## Key analysis asks whether a track has one root, not whether it has one note — OPEN 2026-09-05
 
 `harmonic()` decides which tracks can say anything about key by counting **distinct pitch classes of
