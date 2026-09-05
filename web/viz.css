@@ -1,0 +1,129 @@
+/*
+ * The chart surface: tokens, tiles, figures, legends and the tooltip.
+ *
+ * ## Why this is a third stylesheet
+ *
+ * `dnx.css` is the app and `toolnav.css` is the chrome. This is the analysis surface, and it is
+ * linked by every page that draws a chart — the manager's Insights mode and the mockup harness
+ * today, an Insights tool later. It began as a `<style>` block inside the mockup; the moment a
+ * second page needed it, keeping a copy in each would have been two stylesheets drifting apart
+ * with no way to notice.
+ *
+ * ## Everything is scoped under `.viz`, and that is not tidiness
+ *
+ * `.legend` **already exists in `dnx.css`** — it is the row under the pattern grid explaining what
+ * a cell's colour means — and `charts.ts` emits `.legend` too. Unscoped, the chart legends would
+ * inherit the grid's rules and the grid's legend would inherit the charts', on whichever page
+ * loaded both. Scoping every rule under `.viz` gives the chart version the higher specificity
+ * exactly where charts are drawn, and leaves the grid's alone everywhere else.
+ *
+ * So: **charts must be rendered inside an element carrying `.viz`.** Nothing else here works.
+ *
+ * The exception is `#tip`, which is a single fixed-position element belonging to the page rather
+ * than to any chart container, and cannot sit inside one — a tooltip clipped by its own chart's
+ * overflow is worse than a tooltip.
+ */
+
+/*
+ * Chart tokens, on `.viz` rather than `:root`.
+ *
+ * `:root` is declared in `dnx.css` and no page may re-declare a shared selector — the overlap
+ * budget in `test/web.test.ts` is 0. Scoping is also simply better: these are a chart palette, not
+ * the app's, and keeping them apart is the point.
+ */
+.viz {
+  --s1: #4f86c6; --s2: #d4553f; --s3: #159e8a; --s4: #bd7f1c;
+  --s5: #c9679f; --s6: #6f9e2a; --s7: #a06fd8; --s8: #c2724a;
+
+  /* Sequential, one hue light->dark, for magnitude. Never a rainbow. */
+  --q1: #1d3550; --q2: #27506f; --q3: #2f6c92; --q4: #3a86b4; --q5: #57a3cf; --q6: #86c4e6;
+
+  /* Diverging, two poles + a neutral middle. Only for genuine polarity. */
+  --dneg: #4f86c6; --dpos: #d4553f;
+
+  /* Reserved status. Never reused as "series 9". */
+  --crit: #e05a4d;
+
+  --ink: var(--fg); --ink2: var(--muted); --ink3: var(--dim); --rule: var(--line-soft);
+}
+
+/* ---- stat tiles ---- */
+.viz .tiles { display: flex; flex-wrap: wrap; gap: .5rem; }
+.viz .tile {
+  flex: 1 1 9rem; background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: .5rem .65rem;
+}
+.viz .tile .k {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink3);
+  display: block; margin-bottom: .2rem;
+}
+/*
+ * Hero numbers, one step down from the first draft.
+ *
+ * Tabular figures so a changing value cannot shift the ones beside it — the reason every design
+ * system that ships a stat tile specifies them.
+ */
+.viz .tile .v { font-size: 1.25rem; line-height: 1.15; font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em; }
+.viz .tile .u { font-size: .7rem; color: var(--ink2); margin-left: .15rem; }
+.viz .tile .note { display: block; margin-top: .15rem; font-size: .66rem; color: var(--ink2); }
+.viz .tile.flag { border-color: var(--crit); }
+.viz .tile.flag .v { color: var(--crit); }
+
+/* ---- figure ---- */
+.viz figure { margin: 0; }
+/*
+ * The caption went UP, not down. It was .68rem against 13px body — small enough to read as a
+ * footnote, when it is the sentence that says what the chart is for.
+ */
+.viz figcaption { font-size: .78rem; line-height: 1.45; color: var(--ink2); margin-bottom: .5rem; }
+.viz figcaption b { color: var(--ink); font-weight: 600; }
+.viz .chart { width: 100%; }
+.viz svg { display: block; }
+
+/* ---- legend ---- */
+.viz .legend { display: flex; flex-wrap: wrap; gap: .1rem .85rem; margin: .5rem 0 0;
+  font-size: .72rem; color: var(--ink2); }
+.viz .legend .item { display: flex; align-items: center; gap: .35rem; }
+.viz .legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+/* ---- chart toolbar ---- */
+.viz .ctrl { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.viz .ctrl label { font-size: .66rem; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink3); }
+.viz .ctrl select { font-size: .74rem; padding: .15rem .35rem; max-width: 12rem; }
+
+/* ---- the honest-inference block ---- */
+.viz .inferred { margin-top: .6rem; padding: .5rem .6rem; border-left: 2px solid var(--line);
+  background: #1b2022; border-radius: 0 3px 3px 0; }
+.viz .inferred .h { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink3); }
+.viz .inferred .fit { font-size: .9rem; margin: .15rem 0; }
+.viz .inferred .why { font-size: .72rem; line-height: 1.5; color: var(--ink2); margin: 0; }
+
+/* ---- table view ---- */
+.viz details.tabular { margin-top: .55rem; }
+.viz details.tabular summary { cursor: pointer; font-size: .72rem; color: var(--ink2); }
+.viz details.tabular table { margin-top: .4rem; border-collapse: collapse; font-size: .74rem; }
+.viz details.tabular th, .viz details.tabular td {
+  padding: .18rem .6rem .18rem 0; text-align: left; font-variant-numeric: tabular-nums; }
+.viz details.tabular th { color: var(--ink3); font-weight: 600; font-size: .64rem;
+  text-transform: uppercase; letter-spacing: .06em; }
+
+/*
+ * ---- tooltip ----
+ *
+ * Fixed, outside any chart, and `pointer-events: none` so it can never be the thing the pointer is
+ * over — a tooltip that steals the hover flickers against the mark that summoned it.
+ */
+#tip {
+  position: fixed; pointer-events: none; z-index: 20; opacity: 0; transition: opacity .08s;
+  background: #101315; border: 1px solid var(--line); border-radius: 3px;
+  padding: .32rem .5rem; font-size: .74rem; line-height: 1.5; max-width: 22rem;
+  box-shadow: 0 4px 14px #0009;
+}
+#tip.on { opacity: 1; }
+#tip .t { color: var(--ink3); font-size: .62rem; text-transform: uppercase; letter-spacing: .08em;
+  display: block; }
+#tip .r { color: var(--ink2); }
+#tip .r b { color: var(--ink); font-weight: 500; }

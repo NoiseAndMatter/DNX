@@ -5,6 +5,105 @@ converter.
 
 ---
 
+## Track SPEED was ignored, so 60 patterns had the wrong polymeter — FIXED 2026-09-05
+
+A track's length is not its period. SPEED is a multiple of the pattern's tempo — Elektron's manual:
+*"a setting of 1/8X plays back the track at one-eighth of the set tempo"* — so a 12-step track at
+3/2x covers its twelve steps in **eight** master steps, and a 16-step track at 1/2x takes
+thirty-two. Everything about alignment, resets and where a trig falls happens on the master clock.
+
+Reading raw lengths got **60 of the 352 playing patterns** wrong. **77 have tracks at different
+speeds**, which is where it bites.
+
+`GLITCH_EXPLORE` B5 — the example used repeatedly in review — has 12@3/2x, 16@1x, 64@1x and
+24@3/2x. It was reported as a **192-step polymeter with two tracks cut** by its 64-step reset. On
+the master clock the periods are 8, 16, 64, 16: the polymeter is **64, exactly the reset, and
+nothing is cut at all**. The claim was not slightly off, it was inverted.
+
+`masterPeriod` and `masterOffset` are the fix, and grouping moved from lengths to **periods** —
+16@1x and 24@3/2x share a period of 16 and never drift apart, which grouping on length split.
+Periods are whole numbers of twenty-fourths (the speeds are 2, 3/2, 1, 3/4, 1/2, 1/4, 1/8), so the
+least common multiples are computed there and scaled back rather than asking a float for
+`lcm(10.666…, 16)`.
+
+Found because the user said the tool should check the speed multipliers.
+
+## Trig conditions are stored, unread, and lengthen the true cycle — OPEN 2026-09-05
+
+A trig can carry a condition — 2:3 plays it on the second of every three passes — and that
+**multiplies the musical cycle**: a pattern whose tracks realign every 64 steps does not sound the
+same on each of them. **1,388 of the 15,258 note trigs in the corpus are conditional, across 220 of
+the 352 playing patterns**, so this is the common case rather than an edge one.
+
+The code tables at `+0x100` and `+0x180` are listed as unread in `dn2-pattern-format.md`: the
+numbering is non-linear between the two families and no capture has exercised it. So the analysis
+can say *that* trigs are conditional and cannot say *how much* longer they make the cycle.
+
+`AnalysisTrig.conditional` is a boolean for exactly that reason, and the page reports the alignment
+figure as a **floor** wherever conditions are present. Decoding the table is a capture; it is the
+natural companion to the note-length one in `dn2-capture-plan.md` §7.
+
+## The true cycle ignored PATTERN RESET, and was up to 15x too long — FIXED 2026-09-05
+
+Insights reported the least common multiple of the track lengths as the pattern's cycle.
+`MORNING_JA 1640(2)` A2 has tracks of 16, 32, 62 and 64 steps, so it announced **1,984 steps —
+12 minutes 24** at 40 BPM. **The device repeats it every 128 steps, which is 48 seconds.**
+
+The sequencer has a **PATTERN RESET** in PER TRACK mode. Elektron's manual, PAGE SETUP: RESET
+*"controls the number of steps the pattern plays before all tracks resets and restarts from the
+first step on the first page. An INF setting makes the tracks of the pattern loop infinitely,
+without ever being restarted."* So the polymeter simply never finishes — every track is pulled back
+to step one on the way.
+
+**40 of the 352 playing patterns in the corpus were overstated**, by factors from 3x to 15x. The
+number was arithmetically correct and musically false, which is the worst kind: nothing about it
+looked wrong.
+
+Found because the user knew the instrument and said so. **No amount of reading our own files would
+have caught it** — the LCM is a property of the lengths, and the lengths were read correctly.
+
+`repeatSteps()` is the bounded figure and `cycleSteps()` remains the arithmetic; the page shows the
+first as *Repeats every* and names the second when the two differ.
+
+### Still a guess: how INF is stored — OPEN
+
+A RESET field of `1` is taken to mean INF, by analogy with CHANGE at `+0x16`, which
+`dn2-pattern-format.md` records as `1 = off`. The corpus is consistent — every per-track pattern
+reading 1 is in `017 PRESETS`, whose tracks run 14 to 64 steps and would be shredded by a one-step
+reset — but consistent is not confirmed, and it decides whether 90 patterns repeat in seconds or in
+minutes. **`Tests_To_Run.html` T41** is the three-save capture that settles it.
+
+The same field also serves two purposes: it is the pattern **length** in PER PATTERN mode and the
+**RESET** in PER TRACK mode, because per-track mode has no pattern length at all. Reading it as a
+reset in the wrong mode is what produced the overstatement.
+
+## A note length is stored and never decoded, and it blocks three charts — OPEN 2026-09-05
+
+A DN2 trig carries a note-length byte and every track a default. **Nothing maps either to a
+duration.** `dn2-pattern-format.md` records the track default at `+0x02` as INFERRED — the name
+comes from its position in the Digitone 1 settings block, not from a capture — and no capture has
+walked the trig field against what the instrument displays. Measured across every readable pattern
+of the 24-project corpus, the track default is `0x0E` in 1,577 of the 1,725 tracks that play a note
+— and it takes **24 other values** in real music, which is what says the byte carries something
+rather than being a constant.
+
+Three built and tested charts therefore have no honest input and are **not drawn** in the manager:
+
+| chart | what it needs a gate for |
+|---|---|
+| voice pressure, and the per-track gate lanes | how long each note holds a voice |
+| the phase strip's *note length* mode | the width of the bar it draws |
+| the phase strip's *overlapping notes* mode | whether one note is still sounding at the next |
+
+`AnalysisSubject.gateLengthKnown` is what stops a caller drawing them: `patternSubject` sets it
+false and puts 1 in every gate, and the Insights page prints a card saying which charts are missing
+and why. **The temptation to fill this in with a plausible curve is the thing to resist** — it would
+produce a voice-count chart indistinguishable from a measured one.
+
+**The capture that settles it is small**: set one trig to each `LEN` value on the instrument, save,
+and diff. Worth doing in the same session as the SETUP-page capture that mono/poly and portamento
+need.
+
 ## Key analysis asks whether a track has one root, not whether it has one note — OPEN 2026-09-05
 
 `harmonic()` decides which tracks can say anything about key by counting **distinct pitch classes of

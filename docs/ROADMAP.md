@@ -2172,9 +2172,18 @@ feeds them the busy case.
 - `charts.ts` and `model.ts` name no browser API and reach no page folder, and `test/analysis.test.ts`
   fails if that stops being true.
 
-**Next: an Insights mode in the manager** — the pattern grid stays live at the top as the selector,
-the analysis fills the width below. Then a separate Insights tool once analysis wants subjects the
-manager does not have open, which is a second caller for `analysis/` rather than a move.
+**Insights mode shipped 2026-09-05.** The `Insights` toggle in the manager swaps editing for
+reading: the bank tabs and pattern grid stay as the subject selector, the song panel folds to its
+strip, the side column and the drops go, and the analysis fills the width below. Selecting a pattern
+redraws without losing the reader's place. `web/src/patternsubject.ts` is the first producer.
+
+**Blocked, and drawn nowhere: voice pressure, note-length marks and overlap detection.** All three
+need a gate duration and a DN2 project does not say — see `KNOWN-ISSUES.md`. The charts exist and
+work on synthetic data; one small capture unblocks them.
+
+**Next: a separate Insights tool**, once analysis wants subjects the manager does not have open —
+two projects compared, a +Drive surveyed, a preset bank classified. A second caller for `analysis/`
+rather than a move: the manager keeps its pattern inspector.
 
 ## 5. A device analytics view — IDEA, 2026-07-31
 

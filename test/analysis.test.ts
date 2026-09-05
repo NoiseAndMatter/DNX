@@ -15,9 +15,11 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  trackWindows, voicesPerStep,
+  POLYMETER_LIMIT, alignmentOf, masterPeriod, periodGroups, polymeterIsBounded, reachableSteps,
+  repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
+import { realignBars } from "../web/src/analysis/charts.js";
 import { MACHINE } from "../src/project/machine.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -165,6 +167,7 @@ test("on-grid trigs are counted but kept out of the microtiming buckets", () => 
 test("a track with nothing on it is not a row on any chart", () => {
   const subject: AnalysisSubject = {
     label: "x", tempo: 120, masterLength: 16, voiceBudget: 16, defaultVelocity: 100,
+    gateLengthKnown: true,
     tracks: [track({ number: 1, trigs: [trig(0, [60])] }), track({ number: 2 })],
   };
   assert.deepEqual(playing(subject).map((t) => t.number), [1]);
@@ -283,6 +286,217 @@ test("pitch class wraps, including below zero", () => {
   assert.equal(pitchClass(60), 0);
   assert.equal(pitchClass(71), 11);
   assert.equal(pitchClass(-1), 11);
+});
+
+/* ---- what actually decides when a pattern repeats --------------------------------------- */
+
+test("PATTERN RESET bounds the polymeter, because the sequencer restarts every track", () => {
+  /*
+   * **The least common multiple is not when a pattern repeats.** Elektron's manual on the PAGE
+   * SETUP menu: RESET *"controls the number of steps the pattern plays before all tracks resets and
+   * restarts from the first step on the first page. An INF setting makes the tracks of the pattern
+   * loop infinitely, without ever being restarted."*
+   *
+   * So tracks of 12, 16 and 64 have a 192-step polymeter, and with RESET at 64 they never reach it.
+   * The page reported one corpus pattern as repeating every 1,984 steps — 12 minutes 24 — when the
+   * device restarts it every 128, which is 48 seconds. Arithmetically right, musically false, and
+   * 40 of the 352 playing patterns were overstated the same way.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 3, length: 64 })];
+  assert.equal(cycleSteps(tracks), 192, "the polymeter arithmetic is unchanged");
+  assert.equal(repeatSteps(tracks, 64), 64, "RESET cuts it");
+  assert.equal(repeatSteps(tracks, undefined), 192, "INF lets it run");
+});
+
+test("a RESET longer than the polymeter changes nothing", () => {
+  // The bound is a minimum, not a replacement: a pattern that comes round before it is reset is
+  // already repeating, and the reset lands on a boundary it would have hit anyway.
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 8 })];
+  assert.equal(cycleSteps(tracks), 16);
+  assert.equal(repeatSteps(tracks, 64), 16);
+});
+
+test("a track whose length divides the reset is clean, and is not reported", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 32 })];
+  assert.deepEqual(resetCuts(tracks, 64), []);
+});
+
+test("a track the reset interrupts says how far it got", () => {
+  /*
+   * **The one thing on this surface a musician can act on.** A 12-step track under a 64-step reset
+   * plays five whole passes and four steps of a sixth, then is pulled back — in the same place on
+   * every repeat. Audible as a part that goes wrong at the same moment each time round, and
+   * invisible on the instrument, which shows lengths and the reset on different rows and never
+   * their remainder. 41 of the 352 playing corpus patterns have at least one.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 4, length: 24 }),
+                  track({ number: 2, length: 16 })];
+  const cuts = resetCuts(tracks, 64);
+  assert.deepEqual(cuts.map((c) => [c.track.number, c.passes, c.cutAfter]),
+    [[1, 5, 4], [4, 2, 16]]);
+});
+
+test("no reset means nothing is cut", () => {
+  const tracks = [track({ number: 1, length: 7 }), track({ number: 2, length: 12 })];
+  assert.deepEqual(resetCuts(tracks, undefined), []);
+});
+
+test("a reset makes most of a long polymeter unreachable, not shorter", () => {
+  /*
+   * Every track returns to step one together at the reset, so the pattern is exactly periodic from
+   * there. You do not hear less of the polymeter — you hear the **same** first stretch forever, and
+   * the phasing past it never happens at all.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 3, length: 64 })];
+  assert.deepEqual(reachableSteps(tracks, 64), { reachable: 64, total: 192 });
+  assert.deepEqual(reachableSteps(tracks, undefined), { reachable: 192, total: 192 });
+});
+
+/* ---- SPEED, and the master clock ---------------------------------------------------------- */
+
+test("a track's period is its length divided by its speed", () => {
+  /*
+   * **A length is not a period.** SPEED is a multiple of the tempo — Elektron's manual: *"a setting
+   * of 1/8X plays back the track at one-eighth of the set tempo"* — so twelve steps at 3/2x take
+   * eight master steps and sixteen at 1/2x take thirty-two.
+   */
+  assert.equal(masterPeriod(track({ length: 12, speed: 1.5 })), 8);
+  assert.equal(masterPeriod(track({ length: 16, speed: 0.5 })), 32);
+  assert.equal(masterPeriod(track({ length: 16, speed: 1 })), 16);
+  assert.equal(masterPeriod(track({ length: 16 })), 16, "no speed means 1x");
+});
+
+test("the polymeter is measured on the master clock, not on track lengths", () => {
+  /*
+   * **This was wrong for 60 of the 352 playing patterns in the corpus.** `GLITCH_EXPLORE` B5 has
+   * tracks of 12@3/2x, 16@1x, 64@1x and 24@3/2x. Read as raw lengths that is a 192-step polymeter
+   * with two tracks cut by its 64-step reset. On the master clock the periods are 8, 16, 64 and 16,
+   * the polymeter is **64** — exactly the reset — and nothing is cut at all.
+   */
+  const b5 = [track({ number: 1, length: 12, speed: 1.5 }), track({ number: 2, length: 16 }),
+              track({ number: 3, length: 64 }), track({ number: 4, length: 24, speed: 1.5 })];
+  assert.equal(cycleSteps(b5), 64);
+  assert.deepEqual(resetCuts(b5, 64), [], "nothing is interrupted");
+});
+
+test("tracks of different lengths can share a period, and never drift", () => {
+  // 16 at 1x and 24 at 3/2x both take sixteen master steps. Grouping on length would have split
+  // them; grouping on period keeps them where they belong, which is together.
+  const groups = periodGroups([track({ number: 2, length: 16 }),
+                               track({ number: 4, length: 24, speed: 1.5 })]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]!.period, 16);
+  assert.deepEqual(groups[0]!.lengths, [16, 24]);
+  assert.deepEqual(groups[0]!.tracks, [2, 4]);
+});
+
+test("the same length at two speeds does not stay in phase", () => {
+  // The mirror of the case above, and the reason grouping on length was wrong.
+  const groups = periodGroups([track({ number: 1, length: 16 }),
+                               track({ number: 2, length: 16, speed: 2 })]);
+  assert.deepEqual(groups.map((g) => g.period), [8, 16]);
+  assert.equal(alignmentOf(8, 16), 16);
+});
+
+test("a fractional period still gives an exact alignment", () => {
+  // 16 steps at 3/4x is 21⅓ master steps. Asking a float for the least common multiple of that and
+  // 16 gives nonsense; the arithmetic is done in twenty-fourths.
+  const period = masterPeriod(track({ length: 16, speed: 0.75 }));
+  assert.ok(Math.abs(period - 64 / 3) < 1e-9);
+  assert.equal(alignmentOf(period, 16), 64);
+});
+
+/* ---- the reset calculator ---------------------------------------------------------------- */
+
+test("alignment is a property of periods, so tracks are grouped by those", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 12 }),
+                  track({ number: 5, length: 16 })];
+  assert.deepEqual(periodGroups(tracks).map((g) => [g.period, g.tracks]),
+    [[12, [2]], [16, [1, 5]]]);
+});
+
+test("two lengths come back into phase at their least common multiple", () => {
+  assert.equal(alignmentOf(12, 16), 48);
+  assert.equal(alignmentOf(16, 64), 64, "one dividing the other means they never drift");
+  assert.equal(alignmentOf(16, 16), 16);
+});
+
+test("the reset ladder offers only values that leave more tracks whole", () => {
+  /*
+   * The question is *what do I set so the polyrhythm runs its full length*, and the answer is a
+   * short list: the least common multiples of subsets of the distinct lengths. Anything else leaves
+   * the same tracks whole as the next value down and is strictly worse, so it is not offered.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 4, length: 24 }), track({ number: 3, length: 64 })];
+  const ladder = resetOptions(tracks);
+  assert.deepEqual(ladder.map((o) => [o.steps, o.complete.length]),
+    [[12, 1], [24, 2], [48, 3], [192, 4]]);
+  assert.ok(ladder.at(-1)!.full, "the last option is the full polymeter");
+  assert.deepEqual(ladder.at(-1)!.cut, [], "and it cuts nothing");
+});
+
+test("one length means one option, and it is already whole", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 16 })];
+  assert.deepEqual(resetOptions(tracks).map((o) => o.steps), [16]);
+});
+
+test("sixteen near-coprime lengths are legal, and must not overflow or hang", () => {
+  /*
+   * **Track lengths are not ours to choose.** A Digitone II allows 1..128 on each of sixteen
+   * tracks, so sixteen pairwise-coprime lengths are a legal pattern — and their least common
+   * multiple is of the order of 10^30, past what a double holds exactly. Nothing in the corpus
+   * looks like this; the format allows it, which is the only bar that matters.
+   *
+   * Unbounded, the count would flow into every windowing loop as a limit, which is the same class
+   * of fault as the zero-length stride that exhausted a heap.
+   */
+  const nasty = [128, 127, 125, 121, 119, 117, 113, 109, 107, 103, 101, 97, 89, 83, 79, 73];
+  const tracks = nasty.map((length, i) => track({ number: i + 1, length }));
+
+  assert.equal(cycleSteps(tracks), POLYMETER_LIMIT, "saturates rather than losing precision");
+  assert.equal(polymeterIsBounded(tracks), false, "and says that it did");
+
+  const started = Date.now();
+  const ladder = resetOptions(tracks);
+  assert.ok(Date.now() - started < 2000, "65,536 subsets must not be slow enough to notice");
+  assert.ok(ladder.every((o) => o.steps < POLYMETER_LIMIT),
+    "a saturated value is not a reset anybody can dial in");
+  assert.ok(ladder.length > 0);
+});
+
+test("a bounded polymeter says so", () => {
+  assert.equal(polymeterIsBounded([track({ number: 1, length: 12 }),
+                                   track({ number: 2, length: 16 })]), true);
+});
+
+/* ---- charts, where the geometry can go wrong without throwing --------------------------- */
+
+test("every track the same length does not produce NaN geometry", () => {
+  /*
+   * **A log scale divides by the log of the largest value, which is zero when nothing varies.**
+   * Every bar becomes `0/0`, an SVG rect with a `NaN` width draws nothing at all, and its label
+   * lands at x=0 on top of the track name — a chart that silently disappears rather than failing.
+   *
+   * The synthetic data always had mixed track lengths, so this never happened in the mockup. The
+   * very first real project hit it immediately, and it is the *common* case: 51 of the 64 corpus
+   * patterns measured run every track at the master length.
+   */
+  const same = [16, 16, 16].map((length, i) => track({ number: i + 1, length }));
+  const out = realignBars(same, cycleSteps(same), 800);
+  assert.doesNotMatch(out, /NaN/, "a NaN width draws nothing and says nothing");
+  assert.match(out, /width="800"/, "equal repetitions are equal, and are drawn full width");
+});
+
+test("mixed track lengths still scale, and the culprit is the longest cycle", () => {
+  const mixed = [track({ number: 1, length: 16 }), track({ number: 2, length: 7 })];
+  const out = realignBars(mixed, cycleSteps(mixed), 800);
+  assert.doesNotMatch(out, /NaN/);
+  // T2 repeats 16 times against T1's 7, so it is what stretches the cycle and takes the alert
+  // colour. Reading the first bar drawn is reading the sorted order the chart puts them in.
+  assert.match(out.slice(0, out.indexOf("</text>")), /--s2/);
 });
 
 /* ---- the boundary that makes all of the above possible --------------------------------- */
