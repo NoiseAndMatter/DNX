@@ -114,6 +114,7 @@ import {
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
 import { readReportRows } from "./report.js";
+import { describeWrite, unverifiedMeans, writeOutcome } from "./writeverdict.js";
 import {
   LIST_TIMEOUT_MS,
   requestListing,
@@ -1100,24 +1101,18 @@ async function writeBack(): Promise<void> {
   });
   waiting();
   log.push(...timeGoesRow(thread(), inbound()));
-  log.push(...hiddenRow(watched()));
+  // Stopped once and kept, as the other write path already did: `watched()` detaches the listener
+  // and re-measures, so calling it twice is both a double-detach and a second, later reading.
+  const hidden = watched();
+  log.push(...hiddenRow(hidden));
 
   if (!readBack) {
     log.push(["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`]);
     verdictCard("Write NOT verified — yet", [
       ...log,
-      [
-        "Means",
-        // The hidden-tab row, when there is one, sits directly above this in the log — so this
-        // names the likelier cause rather than leaving two facts side by side unconnected.
-        "unverified is not the same as failed. The write may well have landed; the reply may " +
-          "simply be slower than the wait. Still listening — if it arrives this card updates." +
-          (log.some(([what]) => what === "Tab was hidden")
-            ? " The tab was hidden during this wait, which throttles the timer that gave up — so " +
-              "this is very likely the browser rather than the instrument. Repeat it with the tab " +
-              "in view."
-            : ""),
-      ],
+      // Taken from the measurement, not from the log. This used to string-match the row
+      // `hiddenRow` produces, so renaming that row would have silently stopped the warning.
+      ["Means", unverifiedMeans(hidden.hiddenMs, true)],
     ]);
     status("Written; the read-back has not arrived yet. Still listening.", "warn");
 
@@ -1325,14 +1320,7 @@ async function writeToChosenSlot(): Promise<void> {
     verdictCard("Write NOT verified — yet", [
       ...log,
       ["Read back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
-      [
-        "Means",
-        "unverified is not failed. Read the project again and compare." +
-          (hidden.hiddenMs > 0
-            ? " The tab was hidden during this write, which throttles the timer that gave up — so " +
-              "this is very likely the browser rather than the instrument. Repeat it with the tab in view."
-            : ""),
-      ],
+      ["Means", unverifiedMeans(hidden.hiddenMs, false)],
     ]);
     status(`${to} written; no read-back yet.`, "warn");
     return;
@@ -1343,57 +1331,22 @@ async function writeToChosenSlot(): Promise<void> {
   const sent = parseMessage(message).payload;
   const verdict = verifyWrite(sent, readBack);
 
-  // **Three outcomes, not two.** A device that overwrote and a device that refused both answer the
-  // request and both stay silent about the write itself, so "did not match what we sent" is not a
-  // diagnosis. Held against what the slot contained *before*, the answer is unambiguous — and on a
-  // refusal it also says the original is intact, which is the thing the user needs to know.
-  const wasThere = existing && verifyWrite(existing.payload, readBack).ok;
-  const outcome = verdict.ok
-    ? "overwritten"
-    : wasThere
-      ? "refused"
-      : "unexpected";
+  /*
+   * **Three outcomes, not two**, and the reasoning is in `writeverdict.ts` with its tests. A device
+   * that overwrote and a device that refused both answer the read and both stay silent about the
+   * write, so "did not match what we sent" is two situations wearing one label. Held against what
+   * the slot contained *before*, the answer is unambiguous.
+   */
+  const outcome = writeOutcome(verdict.ok, !!existing && verifyWrite(existing.payload, readBack).ok);
+  const said = describeWrite(outcome, { from, to, ...(verdict.reason === undefined ? {} : { reason: verdict.reason }) });
 
-  const title =
-    outcome === "overwritten"
-      ? `Write VERIFIED — ${from} is now in ${to}`
-      : outcome === "refused"
-        ? `Device REFUSED the write — ${to} is unchanged`
-        : "Write did NOT match, and neither does the original";
-
-  verdictCard(title, [
+  verdictCard(said.title, [
     ...log,
     ["Read back", `${readBack.length.toLocaleString()} bytes`],
-    [
-      "Result",
-      outcome === "overwritten"
-        ? "the device returned exactly what was sent"
-        : outcome === "refused"
-          ? `${to} still holds exactly what it held before — the device declined the write, ` +
-            `silently, and nothing was lost`
-          : `matches neither what was sent nor what was there: ${verdict.reason ?? "differs"}`,
-    ],
-    [
-      "Next",
-      outcome === "overwritten"
-        ? "SAVE PROJECT on the device to keep this. A write lands in the active project, not the " +
-          "+Drive — it survives a power cycle but is lost the moment another project is loaded. " +
-          "Which also means: to undo it, load another project without saving."
-        : outcome === "refused"
-          ? "Nothing to undo. The device protects occupied slots, which is worth knowing before " +
-            "any bulk operation is built on writes."
-          : "Write nothing else until this is understood. Load another project without saving to " +
-            "discard whatever happened.",
-    ],
+    ["Result", said.result],
+    ["Next", said.next],
   ]);
-  status(
-    outcome === "overwritten"
-      ? `${from} written to ${to} and verified.`
-      : outcome === "refused"
-        ? `${to} was not overwritten — the device refused.`
-        : `${to} holds something unexpected.`,
-    outcome === "overwritten" ? "ok" : outcome === "refused" ? "warn" : "error",
-  );
+  status(said.message, said.level);
 }
 
 /** Ask for one patternKit and wait for it, tolerating a late reply. */
