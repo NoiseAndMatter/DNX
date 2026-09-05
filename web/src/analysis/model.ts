@@ -113,6 +113,19 @@ export interface AnalysisSubject {
    * arithmetic of the lengths alone.
    */
   resetSteps?: number;
+  /**
+   * How many steps before the pattern hands over to a cued or chained one, or `undefined` for
+   * never.
+   *
+   * **Not a second repeat length, and it must never be presented as one.** Elektron's manual:
+   * CHANGE *"controls for how long the active pattern plays before it changes to a cued or chained
+   * pattern"* — it ends the pattern rather than bringing it round. What it answers is how much of a
+   * long polymeter anybody ever hears in a chain, which is a different and equally real question.
+   *
+   * The trap it carries is the manual's own: with no CHANGE setting and RESET at INF, *"the pattern
+   * plays infinitely and the next cued pattern will never play."*
+   */
+  changeSteps?: number;
   /** 16 on a Digitone II, 8 on a Digitone 1. A device property, not a file field. */
   voiceBudget: number;
   /** Above this a trig reads as an accent. */
@@ -209,6 +222,60 @@ export function cycleSteps(tracks: readonly AnalysisTrack[]): number {
 export function repeatSteps(tracks: readonly AnalysisTrack[], resetSteps?: number): number {
   const cycle = cycleSteps(tracks);
   return resetSteps === undefined ? cycle : Math.min(cycle, resetSteps);
+}
+
+/** A track the reset interrupts, and where. */
+export interface ResetCut {
+  track: AnalysisTrack;
+  /** Complete passes before the reset lands. */
+  passes: number;
+  /** Steps into the next pass at which it is cut off. Always 1..length-1. */
+  cutAfter: number;
+}
+
+/**
+ * Tracks whose length does not divide the reset, so the sequencer interrupts them mid-figure.
+ *
+ * **The one thing on this surface a musician can act on directly.** A 12-step track under a
+ * 64-step reset plays five complete passes and then four steps of a sixth before being pulled back
+ * to the start — every time round, in the same place. It is audible as a part that goes wrong at
+ * the same moment on every repeat, and invisible on the instrument, which shows lengths and resets
+ * on different screens and never their remainder.
+ *
+ * 41 of the 352 playing patterns in the corpus have at least one, across 63 tracks.
+ *
+ * A track whose length divides the reset is clean and is not returned: it finishes its last pass
+ * exactly as everything restarts, which is what a reset is for.
+ */
+export function resetCuts(
+  tracks: readonly AnalysisTrack[], resetSteps: number | undefined,
+): ResetCut[] {
+  if (resetSteps === undefined) return [];
+  const out: ResetCut[] = [];
+  for (const track of tracks) {
+    if (track.length < 1) continue;
+    const cutAfter = resetSteps % track.length;
+    if (cutAfter === 0) continue;
+    out.push({ track, passes: Math.floor(resetSteps / track.length), cutAfter });
+  }
+  return out;
+}
+
+/**
+ * How much of the polymeter is ever heard.
+ *
+ * **A reset does not shorten the polymeter — it makes most of it unreachable.** Every track returns
+ * to step one together at the reset, so the pattern is exactly periodic from there and the phasing
+ * beyond it never happens. Not "you hear less of it": you hear the *same* first stretch, forever.
+ *
+ * `reachable` and `total` are equal when there is no reset, which is the honest way to say that
+ * nothing is being lost.
+ */
+export function reachableSteps(
+  tracks: readonly AnalysisTrack[], resetSteps?: number,
+): { reachable: number; total: number } {
+  const total = cycleSteps(tracks);
+  return { reachable: repeatSteps(tracks, resetSteps), total };
 }
 
 /** Steps to seconds at a tempo, in sixteenths. */

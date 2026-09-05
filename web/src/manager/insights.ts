@@ -25,11 +25,12 @@
 
 import {
   clock, cycleSteps, fitKey, harmonic, machineLabel, microBuckets, pitchByPreset, pitchWindows,
-  playing, repeatSteps, stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
+  playing, reachableSteps, repeatSteps, resetCuts, stepsToSeconds, trackWindows,
+  type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
   densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend, phaseStrip, pitchBars,
-  realignBars, table, trackTimeline, type PhaseMode,
+  realignBars, resetRuler, table, trackTimeline, type PhaseMode,
 } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../analysis/model.js";
@@ -141,7 +142,16 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
    * this cannot run away.
    */
   const longest = Math.max(...live.map((track) => track.length));
-  const windowSteps = Math.max(subject.masterLength, longest);
+  /*
+   * **One loop of what actually plays.** With a reset, that is the reset — everything past it is a
+   * repeat of what came before, so drawing more draws the same thing twice. Without one, the
+   * longest track is the least that shows every track completing a pass; the master length wins
+   * when it is longer still.
+   */
+  const windowSteps = subject.resetSteps ?? Math.max(subject.masterLength, longest);
+  const cuts = resetCuts(live, subject.resetSteps);
+  const reach = reachableSteps(live, subject.resetSteps);
+  const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
 
   host.innerHTML =
@@ -216,6 +226,78 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         live.map((t) => [`T${t.number}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
           machineLabel(t.machine), t.trigs.length, polymeter / t.length]))}
+    `) +
+
+    card("Polymeter and the reset", `
+      <div class="tiles">
+        <div class="tile"><span class="k">Pattern reset</span>
+          <span class="v">${subject.resetSteps ?? "INF"}</span>
+          <span class="u">${subject.resetSteps === undefined ? "" : "steps"}</span>
+          <span class="note">${subject.resetSteps === undefined
+            ? "tracks are never pulled back to step one"
+            : `every track restarts here · ${subject.resetSteps / 16} bars`}</span></div>
+        <div class="tile"><span class="k">Hands over after</span>
+          <span class="v">${subject.changeSteps ?? "—"}</span>
+          <span class="u">${subject.changeSteps === undefined ? "" : "steps"}</span>
+          <span class="note">${subject.changeSteps === undefined
+            ? "CHANGE is off; a cued pattern arrives at the end of the pattern"
+            : `a cued pattern takes over here`}</span></div>
+        <div class="tile"><span class="k">Polymeter</span>
+          <span class="v">${reach.total.toLocaleString()}</span><span class="u">steps</span>
+          <span class="note">the track lengths alone, ignoring the reset</span></div>
+        <div class="tile ${unreachable ? "flag" : ""}"><span class="k">Reachable</span>
+          <span class="v">${Math.round((reach.reachable / reach.total) * 100)}</span>
+          <span class="u">%</span>
+          <span class="note">${unreachable
+            ? `${unreachable.toLocaleString()} steps never play`
+            : "the whole polymeter is heard"}</span></div>
+      </div>
+
+      ${subject.resetSteps === undefined ? `
+        <div class="inferred" style="margin-top:.9rem">
+          <span class="h">No reset — the polymeter runs to the end</span>
+          <p class="why">Nothing pulls the tracks back, so this pattern really does take
+            <b>${reach.total.toLocaleString()} steps</b> to come round.${
+              subject.changeSteps === undefined ? `
+            <b> And CHANGE is off.</b> Elektron's manual is explicit about that combination: with no
+            CHANGE setting and RESET at INF, <em>the pattern plays infinitely and the next cued
+            pattern will never play</em>. If you chain or sequence this pattern, that is the setting
+            to look at.` : `
+            With CHANGE at <b>${subject.changeSteps} steps</b>, a cued pattern takes over long
+            before then — in a chain you hear the first
+            <b>${subject.changeSteps} steps</b> of ${reach.total.toLocaleString()} and no more.`}</p>
+        </div>` : `
+        <figure style="margin-top:.9rem">
+          <figcaption>Each track's passes before the reset.
+            ${cuts.length
+              ? `<b>${cuts.length} of ${live.length} tracks ${cuts.length === 1 ? "is" : "are"} cut
+                 mid-figure</b> — the red stub is the part the sequencer never reaches, and it is the
+                 same part every time the pattern comes round.`
+              : `Every track's length divides ${subject.resetSteps}, so each finishes its last pass
+                 exactly as the reset lands. Nothing is interrupted.`}</figcaption>
+          <div class="chart" id="i-ruler"></div>
+        </figure>
+        ${legend([["Complete pass", "--q4"], ["Cut off by the reset", "--crit"]])}`}
+
+      ${cuts.length ? `
+        <div class="inferred">
+          <span class="h">What the reset interrupts</span>
+          <p class="why">${cuts.map((c) =>
+            `<b>T${c.track.number}</b> is ${c.track.length} steps: ${c.passes} complete
+             pass${c.passes === 1 ? "" : "es"}, then <b>${c.cutAfter} of ${c.track.length}
+             steps</b> before it is pulled back`).join(". ")}.</p>
+          <p class="why" style="margin-top:.35rem">Not necessarily wrong — a clipped figure is a
+            legitimate thing to want. It is listed because the instrument shows track lengths and
+            the reset on different rows and never their remainder, so an unintended one is easy to
+            live with for months.</p>
+        </div>` : ""}
+      ${table(["Track", "Length", "Passes before reset", "Cut after"],
+        live.map((t) => {
+          const hit = cuts.find((c) => c.track === t);
+          return [`T${t.number}`, t.length,
+            subject.resetSteps === undefined ? "—" : Math.floor(subject.resetSteps / t.length),
+            hit ? `${hit.cutAfter} of ${t.length}` : "—"];
+        }))}
     `) +
 
     card("What is on each track", `
@@ -317,6 +399,10 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
 
   mount(document.getElementById("i-phase")!, (w) =>
     phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
+  if (subject.resetSteps !== undefined) {
+    mount(document.getElementById("i-ruler")!, (w) =>
+      resetRuler(live, subject.resetSteps!, w));
+  }
   if (lengths.size > 1) {
     mount(document.getElementById("i-realign")!, (w) => realignBars(live, polymeter, w));
   }

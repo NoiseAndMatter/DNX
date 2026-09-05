@@ -220,6 +220,9 @@ export function patternSubject(
      * of one step. **Unconfirmed on hardware** — see `Tests_To_Run.html` T41.
      */
     ...(pattern.perTrackScale && pattern.length > 1 ? { resetSteps: pattern.length } : {}),
+    // CHANGE, at `+0x16`, where `dn2-pattern-format.md` records `1 = off`. Read in both scale
+    // modes: a pattern hands over to a cued one whichever way its lengths are set.
+    ...(pattern.changeLength > 1 ? { changeSteps: pattern.changeLength } : {}),
     /*
      * **Always false for a real project, and that is a statement about the format.**
      *
