@@ -12,113 +12,21 @@
   The data below is SYNTHETIC and generated from a fixed seed. No project is read, no device is
   needed, and none of the user's music is in this file.
 
-  What survives review becomes `web/src/analysis/charts.ts`, so the drawing functions are written
-  as if they already were that module: data in, SVG string out, no globals.
+  The charts it used to define now live in `web/src/analysis/`, and the manager’s Insights mode
+  draws the same ones from real projects. **This page is the harness**: it is the only way to see
+  a chart in the state it is hardest to draw — thirty-one voice overruns, 1,344 steps of
+  polymeter, six notes in one cell — without a project that produces all of them at once.
 -->
 <link rel="stylesheet" href="../dnx.css">
 <link rel="stylesheet" href="../toolnav.css">
+<link rel="stylesheet" href="../viz.css">
 <style>
 /*
- * Chart tokens, scoped to `.viz` rather than `:root`.
- *
- * `:root` is declared in dnx.css and no page may re-declare a shared selector — the overlap budget
- * in test/web.test.ts is 0. Scoping is also simply better: these are a chart palette, not the app's
- * palette, and keeping them apart is the point.
+ * Only what is this page's own. **Everything that draws a chart moved to `viz.css`** when the
+ * manager became the second surface to draw one — two copies of a chart palette is two palettes
+ * waiting to disagree, and the one that drifts is the page nobody opens.
  */
-.viz {
-  --s1: #4f86c6; --s2: #d4553f; --s3: #159e8a; --s4: #bd7f1c;
-  --s5: #c9679f; --s6: #6f9e2a; --s7: #a06fd8; --s8: #c2724a;
-
-  /* Sequential, one hue light->dark, for magnitude. Never a rainbow. */
-  --q1: #1d3550; --q2: #27506f; --q3: #2f6c92; --q4: #3a86b4; --q5: #57a3cf; --q6: #86c4e6;
-
-  /* Diverging, two poles + a neutral middle. Only for genuine polarity. */
-  --dneg: #4f86c6; --dpos: #d4553f;
-
-  /* Reserved status. Never reused as "series 9". */
-  --crit: #e05a4d;
-
-  --ink: var(--fg); --ink2: var(--muted); --ink3: var(--dim); --rule: var(--line-soft);
-}
-
 .cards { display: flex; flex-direction: column; gap: .9rem; }
-
-/* ---- stat tiles ---- */
-.tiles { display: flex; flex-wrap: wrap; gap: .5rem; }
-.tile {
-  flex: 1 1 9rem; background: var(--panel-2); border: 1px solid var(--line-soft);
-  border-radius: 4px; padding: .5rem .65rem;
-}
-.tile .k {
-  font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink3);
-  display: block; margin-bottom: .2rem;
-}
-/*
- * Hero numbers, one step down from the first draft.
- *
- * Tabular figures so a changing value cannot shift the ones beside it — the reason every design
- * system that ships a stat tile specifies them.
- */
-.tile .v { font-size: 1.25rem; line-height: 1.15; font-variant-numeric: tabular-nums;
-  letter-spacing: -.01em; }
-.tile .u { font-size: .7rem; color: var(--ink2); margin-left: .15rem; }
-.tile .note { display: block; margin-top: .15rem; font-size: .66rem; color: var(--ink2); }
-.tile.flag { border-color: var(--crit); }
-.tile.flag .v { color: var(--crit); }
-
-/* ---- figure ---- */
-figure { margin: 0; }
-/*
- * The caption went UP, not down. It was .68rem against 13px body — small enough to read as a
- * footnote, when it is the sentence that says what the chart is for.
- */
-figcaption { font-size: .78rem; line-height: 1.45; color: var(--ink2); margin-bottom: .5rem; }
-figcaption b { color: var(--ink); font-weight: 600; }
-.chart { width: 100%; }
-.viz svg { display: block; }
-
-/* ---- legend ---- */
-.legend { display: flex; flex-wrap: wrap; gap: .1rem .85rem; margin: .5rem 0 0;
-  font-size: .72rem; color: var(--ink2); }
-.legend .item { display: flex; align-items: center; gap: .35rem; }
-.legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-
-/* ---- chart toolbar ---- */
-.ctrl { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
-.ctrl label { font-size: .66rem; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--ink3); }
-.ctrl select { font-size: .74rem; padding: .15rem .35rem; max-width: 12rem; }
-
-/* ---- the honest-inference block ---- */
-.inferred { margin-top: .6rem; padding: .5rem .6rem; border-left: 2px solid var(--line);
-  background: #1b2022; border-radius: 0 3px 3px 0; }
-.inferred .h { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--ink3); }
-.inferred .fit { font-size: .9rem; margin: .15rem 0; }
-.inferred .why { font-size: .72rem; line-height: 1.5; color: var(--ink2); margin: 0; }
-
-/* ---- table view ---- */
-details.tabular { margin-top: .55rem; }
-details.tabular summary { cursor: pointer; font-size: .72rem; color: var(--ink2); }
-details.tabular table { margin-top: .4rem; border-collapse: collapse; font-size: .74rem; }
-details.tabular th, details.tabular td {
-  padding: .18rem .6rem .18rem 0; text-align: left; font-variant-numeric: tabular-nums; }
-details.tabular th { color: var(--ink3); font-weight: 600; font-size: .64rem;
-  text-transform: uppercase; letter-spacing: .06em; }
-
-/* ---- tooltip ---- */
-#tip {
-  position: fixed; pointer-events: none; z-index: 20; opacity: 0; transition: opacity .08s;
-  background: #101315; border: 1px solid var(--line); border-radius: 3px;
-  padding: .32rem .5rem; font-size: .74rem; line-height: 1.5; max-width: 22rem;
-  box-shadow: 0 4px 14px #0009;
-}
-#tip.on { opacity: 1; }
-#tip .t { color: var(--ink3); font-size: .62rem; text-transform: uppercase; letter-spacing: .08em;
-  display: block; }
-#tip .r { color: var(--ink2); }
-#tip .r b { color: var(--ink); font-weight: 500; }
-
 .mockbanner { background: #2a2118; border: 1px solid var(--amber); color: var(--amber);
   border-radius: 4px; padding: .4rem .7rem; font-size: .74rem; margin-bottom: .9rem; }
 </style>
@@ -376,7 +284,8 @@ document.getElementById("cards").innerHTML =
       <div class="chart" id="c-realign"></div>
     </figure>
     ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
-      live.map((t) => [`T${t.number}`, t.preset, t.length, `${t.speed}x`, machineLabel(t.machine),
+      live.map((t) => [`T${t.number}`, t.preset, t.length,
+        t.speed === undefined ? "unknown" : `${t.speed}x`, machineLabel(t.machine),
         t.trigs.length, cycle / t.length]))}
   `) +
 
@@ -445,7 +354,8 @@ document.getElementById("cards").innerHTML =
         what a categorical palette can carry.</figcaption>
       <div class="chart" id="c-density"></div>
     </figure>
-    ${legend([["Trigs", "--s3"], ["Parameter locks", "--s4"], ["Preset locks", "--s7"]])}
+    ${legend([["Note trigs", "--s3"], ["Microtimed or accented", "--s4"],
+               ["Preset locks", "--s7"]])}
     <figure style="margin-top:1rem">
       <figcaption>Microtiming, for the <b>${allTrigs - micro.onGrid} trigs off the grid</b> — the
         other ${micro.onGrid} sit on it and are left out of the plot rather than flattening
