@@ -106,6 +106,41 @@ export function machineVar(machine: number | undefined): string {
   return at === -1 ? "--ink3" : `--s${at + 1}`;
 }
 
+/**
+ * Which step of the six-value sequential ramp a wait falls on.
+ *
+ * **Exported so the grid and the prose under it can agree.** A colour that appears in a chart and
+ * nowhere else is a colour the reader has to hold in their head; the same number written in a
+ * sentence should carry the same swatch. Logarithmic, because alignments span 2 bars to 124 in the
+ * same pattern and a linear ramp would put every one of them except the worst in the first band.
+ */
+export function rampBand(steps: number, worst: number): number {
+  if (!(worst > 1) || !(steps > 0)) return 0;
+  return Math.min(5, Math.max(0, Math.floor((Math.log(steps) / Math.log(worst)) * 5.99)));
+}
+
+/** True when `--q<band+1>` is light enough that dark ink reads better on it. */
+export function rampIsLight(band: number): boolean {
+  return band >= 3;
+}
+
+/**
+ * The ramp itself, with its two ends named.
+ *
+ * A sequential scale without a key is a decoration. This says what the colour means in the same
+ * units the cells use, and it is the thing that was missing when the grid read as "true to the data
+ * and very hard to interpret".
+ */
+export function rampLegend(soonest: number, longest: number): string {
+  const swatches = [0, 1, 2, 3, 4, 5].map((band) =>
+    `<span class="sw" style="background:var(--q${band + 1});width:22px;border-radius:0"></span>`).join("");
+  return `<div class="legend"><span class="item">
+      <span style="color:var(--ink3)">back in phase sooner</span>
+      <span style="display:inline-flex">${swatches}</span>
+      <span style="color:var(--ink3)">later</span>
+    </span><span class="item" style="color:var(--ink3)">${soonest} → ${longest} steps</span></div>`;
+}
+
 /** The hue wheel for pitch class — see `trackTimeline` for why twelve hues are allowed here. */
 export const pcHue = (pc: number) => `hsl(${pc * 30} 52% 56%)`;
 
@@ -807,6 +842,8 @@ function bars(steps: number): string {
 export function alignmentGrid(
   groups: readonly { length: number; tracks: number[] }[],
   w: number,
+  /** The step at which *every* track aligns. Outlined, because it is the answer to the question. */
+  everything?: number,
 ): string {
   if (groups.length === 0) return svg(w, 1, "No tracks to align", "");
   const padL = 92, padT = 34, gap = 3;
@@ -847,19 +884,23 @@ export function alignmentGrid(
       const self = i === j;
       // Six sequential steps. A pair that is always in phase — one length dividing the other — sits
       // at the bottom of the ramp rather than off it.
-      const band = worst <= 1 ? 0 : Math.min(5, Math.floor((Math.log(steps) / Math.log(worst)) * 5.99));
+      const band = rampBand(steps, worst);
       /*
        * **The ink follows the cell.** `--q4` and up are light enough that `--ink` on them is close
        * to invisible, and the number is the point of the cell — the colour is only a way to find
        * it. Measured against the ramp in `viz.css` rather than guessed: `--q4` is `#3a86b4`, which
        * is where light text stops working.
        */
-      const onLight = !self && band >= 3;
+      const onLight = !self && rampIsLight(band);
+      // The pair that only comes round when the whole pattern does. Outlined rather than recoloured
+      // so it reads as "this is the one", not as a seventh step of a six-step ramp.
+      const isEverything = everything !== undefined && steps === everything && !self;
       const ink = onLight ? "#0d1418" : "var(--ink)";
       const inkDim = onLight ? "#0d1418" : "var(--ink2)";
       out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
         fill="${self ? "#1a1f21" : `var(--q${band + 1})`}"
-        stroke="${self ? "var(--line-soft)" : "none"}"
+        stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
+        stroke-width="${isEverything ? 2 : 1}"
         ${tip(self ? `${row.length} steps — on its own` : `${row.length} and ${col.length} steps`,
           self
             ? `T${row.tracks.join(", T")} comes round every ${steps} steps · ${bars(steps)}`

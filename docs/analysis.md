@@ -295,6 +295,28 @@ people's music.
   side of the card at sixteen lengths, and the second line of each cell is dropped before that
   happens.
 
+### Making the grid readable, which took a second pass
+
+The first version was, in the user's words, *"true to the data but very hard to interpret."* A
+matrix of numbers with a colour ramp and no key is a decoration. Four changes:
+
+- **A ramp legend** — *back in phase sooner ▸ later*, with the actual step range at both ends. A
+  sequential scale without a key asks the reader to infer the direction.
+- **A worked example in the caption, taken from the data**: *"16 and 32 come back into phase every
+  2 bars; 62 and 64 take 124 bars."* One cell read out loud turns a table into a sentence.
+- **The cell where every track aligns is outlined** in the alert colour. It is the answer to the
+  question the grid exists for, and it was previously just another blue square.
+- **The ladder carries the same swatches**, so a value seen in the grid is recognised in the prose
+  under it. `rampBand` is exported for exactly that — a colour that appears in one place and
+  nowhere else is a colour the reader has to memorise.
+
+And the grid now says the thing outright, underneath itself: *"All 8 tracks align after 1,984 steps
+— 124 bars. It never gets there: RESET restarts every track after 128 steps."* Plus the culprit,
+where one pairing decides it: *"62 against 64 — every other pair comes round sooner."*
+
+**That sentence is the whole feature.** It was derivable from the grid before and nobody could
+derive it, which is the definition of a chart that has not done its job.
+
 ### One legibility fault worth recording
 
 The grid's ramp runs **light for a long wait** — the opposite of print convention, and right on a
