@@ -24,13 +24,13 @@
  */
 
 import {
-  clock, cycleSteps, fitKey, harmonic, machineLabel, microBuckets, pitchByPreset, pitchWindows,
-  playing, reachableSteps, repeatSteps, resetCuts, stepsToSeconds, trackWindows,
-  type AnalysisSubject, type KeyFit,
+  clock, cycleSteps, fitKey, harmonic, lengthGroups, machineLabel, microBuckets, pitchByPreset,
+  pitchWindows, playing, polymeterIsBounded, reachableSteps, repeatSteps, resetCuts, resetOptions,
+  stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
-  densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend, phaseStrip, pitchBars,
-  realignBars, resetRuler, table, trackTimeline, type PhaseMode,
+  alignmentGrid, densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend,
+  phaseStrip, pitchBars, realignBars, resetRuler, table, trackTimeline, type PhaseMode,
 } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../analysis/model.js";
@@ -150,6 +150,20 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
    */
   const windowSteps = subject.resetSteps ?? Math.max(subject.masterLength, longest);
   const cuts = resetCuts(live, subject.resetSteps);
+  const groups = lengthGroups(live);
+  const options = resetOptions(live);
+  /*
+   * The shortest reset that leaves every track whole. It is always the last option — the list is
+   * ascending and Pareto-optimal, so the most complete answer is the longest one offered.
+   */
+  const completes = options.at(-1);
+  const alreadyWhole = subject.resetSteps === undefined || cuts.length === 0;
+  /*
+   * Sixteen coprime track lengths have a least common multiple past what a double holds exactly, so
+   * the count saturates. Printing the saturation point as though it were the answer would be
+   * inventing a number, and every windowing loop downstream takes it as a bound.
+   */
+  const bounded = polymeterIsBounded(live);
   const reach = reachableSteps(live, subject.resetSteps);
   const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
@@ -243,8 +257,11 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
             ? "CHANGE is off; a cued pattern arrives at the end of the pattern"
             : `a cued pattern takes over here`}</span></div>
         <div class="tile"><span class="k">Polymeter</span>
-          <span class="v">${reach.total.toLocaleString()}</span><span class="u">steps</span>
-          <span class="note">the track lengths alone, ignoring the reset</span></div>
+          <span class="v">${bounded ? reach.total.toLocaleString() : "&gt; 1M"}</span>
+          <span class="u">steps</span>
+          <span class="note">${bounded
+            ? "the track lengths alone, ignoring the reset"
+            : "these lengths do not come round inside a million steps — counting stops there"}</span></div>
         <div class="tile ${unreachable ? "flag" : ""}"><span class="k">Reachable</span>
           <span class="v">${Math.round((reach.reachable / reach.total) * 100)}</span>
           <span class="u">%</span>
@@ -291,6 +308,49 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
             the reset on different rows and never their remainder, so an unintended one is easy to
             live with for months.</p>
         </div>` : ""}
+      ${groups.length < 2 ? "" : `
+        <figure style="margin-top:1.1rem">
+          <figcaption>When each pair of lengths comes back into phase. <b>Read the diagonal
+            first</b> — that is a part coming round on its own; a cell off it is when those two
+            parts start together again. Keyed on lengths rather than tracks, because two tracks of
+            the same length are always in phase and a grid of sixteen against sixteen would mostly
+            say so.</figcaption>
+          <div class="chart" id="i-align"></div>
+        </figure>
+
+        <div class="inferred">
+          <span class="h">Setting a reset that lets the polyrhythm finish</span>
+          <p class="why">${alreadyWhole
+            ? `Nothing is being cut here. ${subject.resetSteps === undefined
+                ? "With RESET at INF the tracks run until they realign on their own, after"
+                : `RESET at ${subject.resetSteps} divides every track length, so each finishes its
+                   last pass exactly as everything restarts. The tracks fully realign after`}
+               <b>${reach.total.toLocaleString()} steps</b>.`
+            : `<b>${completes && !completes.beyondField
+                ? `Set RESET to ${completes.steps} — ${completes.steps / 16} bars — or to INF.`
+                : `Only INF completes it:`}</b>
+               every track finishes a whole number of passes after
+               <b>${reach.total.toLocaleString()} steps</b>${completes?.beyondField
+                 ? `, which is past the 1,024 the field holds`
+                 : ""}. At the current <b>${subject.resetSteps}</b>,
+               ${cuts.length} of ${live.length} tracks ${cuts.length === 1 ? "is" : "are"} cut.`}</p>
+          ${options.length < 2 ? "" : `
+            <p class="why" style="margin-top:.45rem">The values in between, and what each leaves
+              whole:</p>
+            <p class="why" style="margin-top:.2rem">${options.map((o) => {
+              const here = o.steps === subject.resetSteps;
+              const colour = o.complete.length === live.length ? "--s3" : "--ink2";
+              return `<b style="color:var(${colour})">${o.steps}</b>` +
+                `<span style="color:var(--ink3)"> (${Number.isInteger(o.steps / 16)
+                  ? `${o.steps / 16} bars` : "part-bar"})</span> ` +
+                `${o.complete.length}/${live.length} whole` +
+                (o.beyondField ? ` <span style="color:var(--ink3)">· INF only</span>` : "") +
+                (here ? ` <span style="color:var(--crit)">· current</span>` : "");
+            }).join(" &nbsp;·&nbsp; ")}</p>`}
+          <p class="why" style="margin-top:.45rem"><b>A longer reset is not automatically better.</b>
+            Letting a polymeter run its full length is one musical choice and cutting it on a bar
+            line is another — this says what each costs, not which to pick.</p>
+        </div>`}
       ${table(["Track", "Length", "Passes before reset", "Cut after"],
         live.map((t) => {
           const hit = cuts.find((c) => c.track === t);
@@ -402,6 +462,9 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
   if (subject.resetSteps !== undefined) {
     mount(document.getElementById("i-ruler")!, (w) =>
       resetRuler(live, subject.resetSteps!, w));
+  }
+  if (groups.length >= 2) {
+    mount(document.getElementById("i-align")!, (w) => alignmentGrid(groups, w));
   }
   if (lengths.size > 1) {
     mount(document.getElementById("i-realign")!, (w) => realignBars(live, polymeter, w));

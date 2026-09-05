@@ -35,6 +35,14 @@
  */
 
 import { escapeHtml } from "../../../src/sheet/html.js";
+// The one piece of arithmetic this file does. Kept local rather than exported from `model.ts`,
+// because a chart that starts importing derivations is a chart that will start computing them.
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+/** Saturating, for the same reason `model.ts` saturates: sixteen coprime lengths overflow a double. */
+const lcm = (a: number, b: number): number => {
+  const value = (a / gcd(a, b)) * b;
+  return Number.isSafeInteger(value) ? value : Number.MAX_SAFE_INTEGER;
+};
 import {
   MACHINE_ORDER, NOTE_NAMES, machineLabel, noteName, overlappingNotes, pitchClass, presetOf,
   type AnalysisTrack, type MicroBuckets, type PitchCell, type PitchWindow, type TrackRow,
@@ -243,8 +251,8 @@ export function phaseStrip(
  * same length.** Then every bar is `0/0` — `NaN` — and an SVG rect with a `NaN` width draws
  * nothing while its label lands at x=0 on top of the track name. That is exactly what the first
  * real project did: the synthetic data always had mixed lengths, so the case never arose, and
- * *most patterns are the flat case* — 51 of the 64 corpus patterns measured run every track at the
- * master length. Equal repetitions are drawn equal, at full width, which is what they are.
+ * the flat case is common — a pattern in PER PATTERN mode has one length by definition. Equal
+ * repetitions are drawn equal, at full width, which is what they are.
  */
 export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: number): string {
   const rowH = 14, gap = 5, padL = 30, padR = 128;
@@ -761,6 +769,111 @@ export function resetRuler(
       fill="var(--ink3)">${bar + 1}</text>`;
   }
   return svg(w, h, `Each track's passes before the reset at ${resetSteps} steps`, out);
+}
+
+/**
+ * When each pair of track lengths comes back into phase.
+ *
+ * **Keyed on lengths, not on tracks, and that is the whole reason it fits.** Alignment is a
+ * property of two lengths: two 16-step tracks are always in phase, so a sixteen-by-sixteen grid of
+ * tracks would be mostly restatement of that. Sixteen tracks means at most sixteen distinct
+ * lengths, and the cells are sized to fit however many there are.
+ *
+ * The diagonal is the length itself — when a part comes round on its own — and the reader needs it,
+ * because "T2 realigns with T5 every 48 steps" only means something beside "T2 repeats every 12".
+ *
+ * Colour is the sequential ramp and it is a redundant encoding — the number is in the cell. It is
+ * there so a long pairing can be found by scanning rather than by reading every value.
+ *
+ * **The ramp runs light for a long wait, which is the opposite of print convention and right here.**
+ * On a dark ground the light end is the prominent one, and the pairs that take a long time to come
+ * back into phase are what somebody opened this to find. The cost is that the text has to change
+ * colour with the cell: light ink on the pale end of a six-step ramp is unreadable, which is what
+ * the first version of this shipped with.
+ */
+/**
+ * Steps as bars, and it says `1 bar` rather than `1 bars`.
+ *
+ * A track length need not be a multiple of sixteen — 12 and 24 are both common — so the count is
+ * often fractional and printing an em-dash for those, as the first version did, threw away the
+ * number a reader of a 24-step track most wants.
+ */
+function bars(steps: number): string {
+  const value = steps / 16;
+  if (Number.isInteger(value)) return `${value} bar${value === 1 ? "" : "s"}`;
+  return `${Number(value.toFixed(2))} bars`;
+}
+
+export function alignmentGrid(
+  groups: readonly { length: number; tracks: number[] }[],
+  w: number,
+): string {
+  if (groups.length === 0) return svg(w, 1, "No tracks to align", "");
+  const padL = 92, padT = 34, gap = 3;
+  const n = groups.length;
+  /*
+   * **Sized to fit, not to a comfortable minimum.** Sixteen distinct lengths is legal — sixteen
+   * tracks, all different — and a grid with a floor under its cell width would simply run off the
+   * side of the card, which is the one thing a chart may not do. Below about 46px the second line
+   * of each cell is dropped rather than overlapping the first.
+   */
+  const cellW = Math.max(18, Math.min(120, (w - padL - 8) / n - gap));
+  const roomy = cellW >= 46;
+  const cellH = roomy ? 34 : 22;
+  const h = padT + n * (cellH + gap) + 16;
+  const worst = Math.max(...groups.flatMap((a) => groups.map((b) => lcm(a.length, b.length))));
+  let out = "";
+
+  groups.forEach((col, j) => {
+    const x = padL + j * (cellW + gap);
+    out += `<text x="${x + cellW / 2}" y="${padT - 18}" text-anchor="middle"
+      font-size="${T.label}" fill="var(--ink2)">${col.length} steps</text>`;
+    out += `<text x="${x + cellW / 2}" y="${padT - 6}" text-anchor="middle"
+      font-size="${T.value}" fill="var(--ink3)">${col.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+  });
+
+  groups.forEach((row, i) => {
+    const y = padT + i * (cellH + gap);
+    out += `<text x="${padL - 8}" y="${y + cellH / 2 + 1}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">${row.length} steps</text>`;
+    if (roomy) {
+      out += `<text x="${padL - 8}" y="${y + cellH / 2 + 12}" text-anchor="end"
+        font-size="${T.value}" fill="var(--ink3)">${row.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+    }
+
+    groups.forEach((col, j) => {
+      const x = padL + j * (cellW + gap);
+      const steps = lcm(row.length, col.length);
+      const self = i === j;
+      // Six sequential steps. A pair that is always in phase — one length dividing the other — sits
+      // at the bottom of the ramp rather than off it.
+      const band = worst <= 1 ? 0 : Math.min(5, Math.floor((Math.log(steps) / Math.log(worst)) * 5.99));
+      /*
+       * **The ink follows the cell.** `--q4` and up are light enough that `--ink` on them is close
+       * to invisible, and the number is the point of the cell — the colour is only a way to find
+       * it. Measured against the ramp in `viz.css` rather than guessed: `--q4` is `#3a86b4`, which
+       * is where light text stops working.
+       */
+      const onLight = !self && band >= 3;
+      const ink = onLight ? "#0d1418" : "var(--ink)";
+      const inkDim = onLight ? "#0d1418" : "var(--ink2)";
+      out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
+        fill="${self ? "#1a1f21" : `var(--q${band + 1})`}"
+        stroke="${self ? "var(--line-soft)" : "none"}"
+        ${tip(self ? `${row.length} steps — on its own` : `${row.length} and ${col.length} steps`,
+          self
+            ? `T${row.tracks.join(", T")} comes round every ${steps} steps · ${bars(steps)}`
+            : `back in phase every ${steps} steps · ${bars(steps)}`)}/>`;
+      out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
+        text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
+      if (roomy) {
+        out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
+          font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"
+          >${bars(steps)}</text>`;
+      }
+    });
+  });
+  return svg(w, h, "When each pair of track lengths comes back into phase", out);
 }
 
 /* ---- legends and the table view ------------------------------------------------------- */

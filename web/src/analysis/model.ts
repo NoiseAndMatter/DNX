@@ -193,7 +193,28 @@ export function playing(subject: AnalysisSubject): AnalysisTrack[] {
 }
 
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b;
+
+/**
+ * The longest polymeter this module will report, and the point past which it stops counting.
+ *
+ * **Track lengths are not ours to choose.** A Digitone II allows 1..128 per track over sixteen
+ * tracks, and sixteen pairwise-coprime lengths in that range have a least common multiple of the
+ * order of 10^30 — past what a double can hold exactly, so the arithmetic stops being arithmetic
+ * and starts being noise. It is also nonsense musically: a million steps is about a day at any
+ * tempo anyone uses.
+ *
+ * So the count saturates here rather than overflowing, and `polymeterIsBounded` says when it did.
+ * The alternative found earlier in this file's history is worse: an unbounded value flows into
+ * every windowing loop as a bound and the page stops responding.
+ */
+export const POLYMETER_LIMIT = 1_000_000;
+
+/** Least common multiple, saturating at `POLYMETER_LIMIT` rather than losing precision. */
+const lcm = (a: number, b: number): number => {
+  if (a >= POLYMETER_LIMIT || b >= POLYMETER_LIMIT) return POLYMETER_LIMIT;
+  const value = (a / gcd(a, b)) * b;
+  return Number.isSafeInteger(value) && value < POLYMETER_LIMIT ? value : POLYMETER_LIMIT;
+};
 
 /**
  * How many steps pass before every track has wrapped together.
@@ -210,6 +231,14 @@ export function cycleSteps(tracks: readonly AnalysisTrack[]): number {
    */
   const playable = tracks.map((t) => t.length).filter((n) => Number.isInteger(n) && n >= 1);
   return playable.length ? playable.reduce(lcm, 1) : 1;
+}
+
+/**
+ * False when the polymeter is longer than this module counts, so a caller can say so rather than
+ * print `POLYMETER_LIMIT` as though it were measured.
+ */
+export function polymeterIsBounded(tracks: readonly AnalysisTrack[]): boolean {
+  return cycleSteps(tracks) < POLYMETER_LIMIT;
 }
 
 /**
@@ -276,6 +305,108 @@ export function reachableSteps(
 ): { reachable: number; total: number } {
   const total = cycleSteps(tracks);
   return { reachable: repeatSteps(tracks, resetSteps), total };
+}
+
+/**
+ * The largest value the RESET field can hold.
+ *
+ * `dn2-pattern-format.md` records the field at `+0x14` as a `u16be` with a documented range of
+ * 1..1024. **What the instrument's own control offers is not confirmed** — the largest RESET
+ * anywhere in the corpus is 128 — so a suggestion above this is reported as "INF only" rather than
+ * as a number to dial in. `Tests_To_Run.html` T41 asks for the maximum while it is settling INF.
+ */
+export const RESET_FIELD_MAX = 1024;
+
+/**
+ * Distinct track lengths, ascending, with the tracks that carry each.
+ *
+ * **Alignment is a property of lengths, not of tracks.** Two 16-step tracks are always in phase, so
+ * a grid of sixteen tracks against sixteen tracks would be mostly restatement of that. There are
+ * sixteen tracks, so there can never be more than sixteen distinct lengths — that bound, not
+ * anything about the projects to hand, is what a reader of this can rely on.
+ */
+export function lengthGroups(
+  tracks: readonly AnalysisTrack[],
+): { length: number; tracks: number[] }[] {
+  const by = new Map<number, number[]>();
+  for (const t of tracks) {
+    if (t.length < 1) continue;
+    (by.get(t.length) ?? by.set(t.length, []).get(t.length)!).push(t.number);
+  }
+  return [...by].sort((a, b) => a[0] - b[0]).map(([length, ns]) => ({ length, tracks: ns }));
+}
+
+/** When two lengths come back into phase — the first step at which both start together again. */
+export function alignmentOf(a: number, b: number): number {
+  return a >= 1 && b >= 1 ? lcm(a, b) : 0;
+}
+
+/** A reset worth considering, and what it would leave whole. */
+export interface ResetOption {
+  steps: number;
+  /** Tracks that complete every pass at this reset. */
+  complete: number[];
+  /** Tracks this reset would interrupt mid-figure. */
+  cut: number[];
+  /** True when this is the full polymeter — every track completes and they all realign. */
+  full: boolean;
+  /** True when the value is past what the field holds, so only INF achieves it. */
+  beyondField: boolean;
+}
+
+/**
+ * The resets worth offering, shortest first.
+ *
+ * **The question is "what do I set so the polyrhythm runs its full length", and the answer is a
+ * short list rather than one number.** The full polymeter always works, and is sometimes far longer
+ * than anyone wants a pattern to be; the useful middle ground is the values that keep *most* tracks
+ * whole. Those are exactly the least common multiples of subsets of the distinct lengths — a
+ * candidate that is not one of those leaves the same tracks whole as the next one down and is
+ * strictly worse.
+ *
+ * Only **Pareto-optimal** options are returned: an option is dropped when some other is no longer
+ * and leaves at least as many tracks whole. That is what keeps the list to two or three rows
+ * instead of sixteen.
+ *
+ * Enumerating subsets is exponential, so it is capped. No corpus pattern has more than four
+ * distinct lengths; the cap exists so a future producer with sixteen cannot hang the page, and it
+ * degrades by considering the shortest lengths, which are the ones that get cut.
+ */
+export function resetOptions(tracks: readonly AnalysisTrack[]): ResetOption[] {
+  const groups = lengthGroups(tracks);
+  if (groups.length === 0) return [];
+  /*
+   * **Sixteen tracks is the ceiling, so sixteen distinct lengths is, and 2^16 subsets is nothing.**
+   * The cap is not a guess about what patterns look like — it is the number of tracks the machine
+   * has. A producer handing over more than that is not describing a Digitone pattern, and taking
+   * the shortest sixteen is the safe reading because short lengths are the ones a reset cuts.
+   */
+  const MAX_GROUPS = 16;
+  const lengths = groups.slice(0, MAX_GROUPS).map((g) => g.length);
+
+  const candidates = new Set<number>();
+  for (let mask = 1; mask < 1 << lengths.length; mask++) {
+    let value = 1;
+    for (let i = 0; i < lengths.length; i++) if (mask & (1 << i)) value = lcm(value, lengths[i]!);
+    // `lcm` saturates, so a subset that runs past the limit lands on it. Offering that as a reset
+    // would be offering a number the field cannot hold and the arithmetic did not really produce.
+    if (value > 0 && value < POLYMETER_LIMIT) candidates.add(value);
+  }
+
+  const whole = cycleSteps(tracks);
+  const options: ResetOption[] = [...candidates].sort((a, b) => a - b).map((steps) => {
+    const complete: number[] = [], cut: number[] = [];
+    for (const t of tracks) (steps % t.length === 0 ? complete : cut).push(t.number);
+    return { steps, complete, cut, full: steps === whole, beyondField: steps > RESET_FIELD_MAX };
+  });
+
+  // Pareto front: drop anything a shorter option already matches or beats.
+  const kept: ResetOption[] = [];
+  let best = -1;
+  for (const option of options) {
+    if (option.complete.length > best) { kept.push(option); best = option.complete.length; }
+  }
+  return kept;
 }
 
 /** Steps to seconds at a tempo, in sixteenths. */
