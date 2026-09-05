@@ -259,6 +259,50 @@ different question: how much of a long polymeter anybody hears in a chain. `017 
 It also carries the manual's own trap, which **58 corpus patterns are in**: with RESET at INF and no
 CHANGE setting, *"the pattern plays infinitely and the next cued pattern will never play."*
 
+## The reset calculator — 2026-09-05
+
+*"What do I set so the polyrhythm runs its full length?"* The answer is a short list, not one number.
+
+**The alignment grid** gives when each pair of lengths comes back into phase. **Keyed on lengths,
+not tracks** — alignment is a property of two lengths, two 16-step tracks are always in phase, and a
+sixteen-by-sixteen grid of tracks would mostly say so. Sixteen tracks bounds it at sixteen distinct
+lengths, and the cells size to fit however many there are. The diagonal is each length on its own,
+which the reader needs: *"T2 realigns with T5 every 48 steps"* means nothing beside an unstated
+*"T2 repeats every 12"*.
+
+**The ladder** offers the least common multiples of subsets of the distinct lengths, Pareto-filtered
+so each row leaves strictly more tracks whole than the one before. For 12/16/24/64 that is four
+rows: 12 → 1 of 4 whole, 24 → 2, 48 → 3, **192 → all four, and they realign**. Any other value
+leaves the same tracks whole as the row below it and is strictly worse, so it is not shown.
+
+The card says outright that a longer reset is not automatically better: letting a polymeter finish
+is one musical choice and cutting it on a bar line is another. It reports what each costs.
+
+### Written against the format, not against the corpus
+
+A first version bounded its loops with *"no corpus pattern has more than four distinct lengths"*.
+That is a fact about twenty-four projects, not about the instrument, and the tool will see other
+people's music.
+
+- **`cycleSteps` saturates at `POLYMETER_LIMIT`.** Sixteen pairwise-coprime lengths in 1..128 are a
+  legal pattern whose least common multiple is around 10^30 — past what a double holds exactly.
+  Unbounded, that value flows into every windowing loop as a limit, which is the same class of fault
+  as the zero-length stride that exhausted a heap. `polymeterIsBounded` says when it saturated, so
+  the page prints *"> 1M steps"* rather than the limit as though it were measured.
+- **The subset enumeration is capped at sixteen**, because sixteen is how many tracks the machine
+  has — not because of what the projects to hand contain. 65,536 subsets is 8ms.
+- **The grid's cells size to fit.** A floor under the cell width would have run the chart off the
+  side of the card at sixteen lengths, and the second line of each cell is dropped before that
+  happens.
+
+### One legibility fault worth recording
+
+The grid's ramp runs **light for a long wait** — the opposite of print convention, and right on a
+dark ground, where the light end is the prominent one and long waits are what somebody opened the
+grid to find. The cost is that the ink has to change with the cell: `--ink` on `--q4` and up is
+close to invisible, which is what the first version shipped with. Dark ink from `--q4`, measured
+against the ramp in `viz.css` rather than guessed.
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one

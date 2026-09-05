@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  reachableSteps, repeatSteps, resetCuts, trackWindows, voicesPerStep,
+  POLYMETER_LIMIT, alignmentOf, lengthGroups, polymeterIsBounded, reachableSteps, repeatSteps,
+  resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { realignBars } from "../web/src/analysis/charts.js";
@@ -351,6 +352,70 @@ test("a reset makes most of a long polymeter unreachable, not shorter", () => {
                   track({ number: 3, length: 64 })];
   assert.deepEqual(reachableSteps(tracks, 64), { reachable: 64, total: 192 });
   assert.deepEqual(reachableSteps(tracks, undefined), { reachable: 192, total: 192 });
+});
+
+/* ---- the reset calculator ---------------------------------------------------------------- */
+
+test("alignment is a property of lengths, so tracks are grouped by it", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 12 }),
+                  track({ number: 5, length: 16 })];
+  assert.deepEqual(lengthGroups(tracks),
+    [{ length: 12, tracks: [2] }, { length: 16, tracks: [1, 5] }]);
+});
+
+test("two lengths come back into phase at their least common multiple", () => {
+  assert.equal(alignmentOf(12, 16), 48);
+  assert.equal(alignmentOf(16, 64), 64, "one dividing the other means they never drift");
+  assert.equal(alignmentOf(16, 16), 16);
+});
+
+test("the reset ladder offers only values that leave more tracks whole", () => {
+  /*
+   * The question is *what do I set so the polyrhythm runs its full length*, and the answer is a
+   * short list: the least common multiples of subsets of the distinct lengths. Anything else leaves
+   * the same tracks whole as the next value down and is strictly worse, so it is not offered.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 4, length: 24 }), track({ number: 3, length: 64 })];
+  const ladder = resetOptions(tracks);
+  assert.deepEqual(ladder.map((o) => [o.steps, o.complete.length]),
+    [[12, 1], [24, 2], [48, 3], [192, 4]]);
+  assert.ok(ladder.at(-1)!.full, "the last option is the full polymeter");
+  assert.deepEqual(ladder.at(-1)!.cut, [], "and it cuts nothing");
+});
+
+test("one length means one option, and it is already whole", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 16 })];
+  assert.deepEqual(resetOptions(tracks).map((o) => o.steps), [16]);
+});
+
+test("sixteen near-coprime lengths are legal, and must not overflow or hang", () => {
+  /*
+   * **Track lengths are not ours to choose.** A Digitone II allows 1..128 on each of sixteen
+   * tracks, so sixteen pairwise-coprime lengths are a legal pattern — and their least common
+   * multiple is of the order of 10^30, past what a double holds exactly. Nothing in the corpus
+   * looks like this; the format allows it, which is the only bar that matters.
+   *
+   * Unbounded, the count would flow into every windowing loop as a limit, which is the same class
+   * of fault as the zero-length stride that exhausted a heap.
+   */
+  const nasty = [128, 127, 125, 121, 119, 117, 113, 109, 107, 103, 101, 97, 89, 83, 79, 73];
+  const tracks = nasty.map((length, i) => track({ number: i + 1, length }));
+
+  assert.equal(cycleSteps(tracks), POLYMETER_LIMIT, "saturates rather than losing precision");
+  assert.equal(polymeterIsBounded(tracks), false, "and says that it did");
+
+  const started = Date.now();
+  const ladder = resetOptions(tracks);
+  assert.ok(Date.now() - started < 2000, "65,536 subsets must not be slow enough to notice");
+  assert.ok(ladder.every((o) => o.steps < POLYMETER_LIMIT),
+    "a saturated value is not a reset anybody can dial in");
+  assert.ok(ladder.length > 0);
+});
+
+test("a bounded polymeter says so", () => {
+  assert.equal(polymeterIsBounded([track({ number: 1, length: 12 }),
+                                   track({ number: 2, length: 16 })]), true);
 });
 
 /* ---- charts, where the geometry can go wrong without throwing --------------------------- */
