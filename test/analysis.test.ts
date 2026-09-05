@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  trackWindows, voicesPerStep,
+  repeatSteps, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { realignBars } from "../web/src/analysis/charts.js";
@@ -285,6 +285,35 @@ test("pitch class wraps, including below zero", () => {
   assert.equal(pitchClass(60), 0);
   assert.equal(pitchClass(71), 11);
   assert.equal(pitchClass(-1), 11);
+});
+
+/* ---- what actually decides when a pattern repeats --------------------------------------- */
+
+test("PATTERN RESET bounds the polymeter, because the sequencer restarts every track", () => {
+  /*
+   * **The least common multiple is not when a pattern repeats.** Elektron's manual on the PAGE
+   * SETUP menu: RESET *"controls the number of steps the pattern plays before all tracks resets and
+   * restarts from the first step on the first page. An INF setting makes the tracks of the pattern
+   * loop infinitely, without ever being restarted."*
+   *
+   * So tracks of 12, 16 and 64 have a 192-step polymeter, and with RESET at 64 they never reach it.
+   * The page reported one corpus pattern as repeating every 1,984 steps — 12 minutes 24 — when the
+   * device restarts it every 128, which is 48 seconds. Arithmetically right, musically false, and
+   * 40 of the 352 playing patterns were overstated the same way.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 3, length: 64 })];
+  assert.equal(cycleSteps(tracks), 192, "the polymeter arithmetic is unchanged");
+  assert.equal(repeatSteps(tracks, 64), 64, "RESET cuts it");
+  assert.equal(repeatSteps(tracks, undefined), 192, "INF lets it run");
+});
+
+test("a RESET longer than the polymeter changes nothing", () => {
+  // The bound is a minimum, not a replacement: a pattern that comes round before it is reset is
+  // already repeating, and the reset lands on a boundary it would have hit anyway.
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 8 })];
+  assert.equal(cycleSteps(tracks), 16);
+  assert.equal(repeatSteps(tracks, 64), 16);
 });
 
 /* ---- charts, where the geometry can go wrong without throwing --------------------------- */

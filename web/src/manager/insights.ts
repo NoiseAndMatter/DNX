@@ -25,7 +25,7 @@
 
 import {
   clock, cycleSteps, fitKey, harmonic, machineLabel, microBuckets, pitchByPreset, pitchWindows,
-  playing, stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
+  playing, repeatSteps, stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
   densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend, phaseStrip, pitchBars,
@@ -93,7 +93,18 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
     return;
   }
 
-  const cycle = cycleSteps(live);
+  /*
+   * **Two different numbers, and the one a musician hears is `repeat`.**
+   *
+   * `polymeter` is the least common multiple of the track lengths — when the tracks would come
+   * round if nothing interrupted them. `repeat` is that bounded by the sequencer's PATTERN RESET,
+   * which pulls every track back to step one whether or not it has finished. Reporting the first
+   * as "true cycle" was arithmetically right and musically false: a pattern this page announced as
+   * 1,984 steps and 12:24 long is restarted by the device every 128 steps, which is 48 seconds.
+   */
+  const polymeter = cycleSteps(live);
+  const cycle = repeatSteps(live, subject.resetSteps);
+  const cut = polymeter > cycle;
   const cycleSec = stepsToSeconds(cycle, subject.tempo);
   const pitch = pitchByPreset(live);
   const micro = microBuckets(live);
@@ -143,9 +154,10 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           <span class="v">${subject.masterLength}</span><span class="u">steps</span>
           <span class="note">${clock(stepsToSeconds(subject.masterLength, subject.tempo))} ·
             ${subject.masterLength / 16} bars</span></div>
-        <div class="tile"><span class="k">True cycle</span>
+        <div class="tile ${cut ? "flag" : ""}"><span class="k">Repeats every</span>
           <span class="v">${cycle.toLocaleString()}</span><span class="u">steps</span>
-          <span class="note">${clock(cycleSec)} · ${bars} bar${bars === 1 ? "" : "s"}</span></div>
+          <span class="note">${clock(cycleSec)} · ${bars} bar${bars === 1 ? "" : "s"}${cut
+            ? ` · RESET cuts a ${polymeter.toLocaleString()}-step polymeter` : ""}</span></div>
         <div class="tile"><span class="k">Tracks in play</span><span class="v">${live.length}</span>
           <span class="u">of ${subject.tracks.length}</span>
           <span class="note">${lengths.size} distinct
@@ -170,6 +182,20 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
       </figure>
       ${legend(machinesUsed.map((m) => [machineLabel(m), machineVar(m)] as [string, string]))}
 
+      ${cut ? `
+        <div class="inferred" style="margin-top:1rem">
+          <span class="h">The polymeter never finishes — PATTERN RESET restarts it</span>
+          <p class="why">These track lengths would take
+            <b>${polymeter.toLocaleString()} steps</b> to come round together, but this pattern sets
+            <b>RESET to ${subject.resetSteps}</b> — and the manual is explicit that RESET is
+            <em>the number of steps the pattern plays before all tracks reset and restart from the
+            first step</em>. So it repeats every <b>${cycle} steps</b>, and the tracks below never
+            reach the repeat counts the arithmetic alone would give them.</p>
+          <p class="why" style="margin-top:.35rem"><b>One reading here is not yet confirmed on
+            hardware</b>: a RESET field of <code>1</code> is taken to mean INF — never restart —
+            by analogy with CHANGE, where <code>1</code> is documented as off. If that is wrong,
+            the patterns affected are the ones this page reports as never being reset.</p>
+        </div>` : ""}
       ${lengths.size === 1 ? `
         <p class="hint" style="margin-top:1rem">Every playing track is
           <b>${[...lengths][0]} steps</b> long, so they all wrap together and the pattern realigns
@@ -177,15 +203,19 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           is the common case: per-track lengths were switched on in 13 of the 64 corpus patterns
           measured.</p>` : `
         <figure style="margin-top:1rem">
-          <figcaption>Nothing realigns until every track has wrapped together —
-            <b>${cycle.toLocaleString()} steps, ${clock(cycleSec)}</b>, against a master length of
-            ${subject.masterLength}.</figcaption>
+          <figcaption>${cut
+            ? `How far each track gets before <b>RESET at ${subject.resetSteps} steps</b> pulls them
+               all back. The counts are against the ${polymeter.toLocaleString()}-step polymeter, so
+               a track showing more repeats than the pattern can reach is one the reset interrupts.`
+            : `Nothing realigns until every track has wrapped together —
+               <b>${cycle.toLocaleString()} steps, ${clock(cycleSec)}</b>. This pattern sets no
+               RESET, so the polymeter runs to the end.`}</figcaption>
           <div class="chart" id="i-realign"></div>
         </figure>`}
       ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
         live.map((t) => [`T${t.number}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
-          machineLabel(t.machine), t.trigs.length, cycle / t.length]))}
+          machineLabel(t.machine), t.trigs.length, polymeter / t.length]))}
     `) +
 
     card("What is on each track", `
@@ -288,7 +318,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
   mount(document.getElementById("i-phase")!, (w) =>
     phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   if (lengths.size > 1) {
-    mount(document.getElementById("i-realign")!, (w) => realignBars(live, cycle, w));
+    mount(document.getElementById("i-realign")!, (w) => realignBars(live, polymeter, w));
   }
   mount(document.getElementById("i-density")!, (w) =>
     densityBars(live, subject.defaultVelocity, w));

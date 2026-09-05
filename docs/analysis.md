@@ -184,6 +184,35 @@ exactly why `plockparams.ts` lists `TRIG 1 VEL` under `NOT_LOCKABLE`. They are p
 lock-table entries. It now reads **"Microtimed or accented"**, and the real lock table remains an
 unread reading.
 
+## When a pattern actually repeats — corrected 2026-09-05
+
+**The least common multiple of the track lengths is not the answer**, and reporting it as one was
+wrong on 40 of the 352 playing patterns in the corpus.
+
+In PER TRACK mode the sequencer has a **PATTERN RESET**: a number of steps after which every track
+is pulled back to step one, whether or not it has finished. Elektron's manual describes it exactly,
+and the guidebook adds the detail that the PATTERN column carries LENGTH and SPEED in PER PATTERN
+mode but CHANGE and RESET in PER TRACK mode — **there is no pattern length in per-track mode at
+all**, which is why one stored field at `+0x14` means two different things.
+
+| | |
+|---|---|
+| `cycleSteps(tracks)` | the polymeter arithmetic — when the lengths would come round |
+| `repeatSteps(tracks, resetSteps)` | what a musician hears — the above, bounded by RESET |
+
+`MORNING_JA 1640(2)` A2: tracks of 16, 32, 62, 64 give a 1,984-step polymeter, announced as
+**12 minutes 24** at 40 BPM. RESET is 128, so it repeats in **48 seconds**. The page now leads with
+the bounded number and names the polymeter it cuts.
+
+**One guess remains**: a RESET field of `1` is read as INF, by analogy with CHANGE where `1` is
+documented as off. Unconfirmed on hardware — `Tests_To_Run.html` T41 is the capture.
+
+> **The lesson is not about polymeter.** Every length was read correctly, every chart was
+> self-consistent, and a 9,003-chart sweep of the whole corpus passed without complaint — because
+> the sweep only ever compared us against ourselves. It took somebody who knows the instrument
+> saying *there is a global pattern reset*. **A corpus cannot tell you that you asked the wrong
+> question.**
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one
