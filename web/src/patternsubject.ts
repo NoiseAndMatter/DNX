@@ -205,6 +205,22 @@ export function patternSubject(
     voiceBudget: VOICES[device.kind] ?? 16,
     defaultVelocity: accentThreshold(pattern.tracks.map((t) => t.settings.defaultVelocity)),
     /*
+     * **PATTERN RESET, and only in per-track mode.**
+     *
+     * The guidebook is explicit that the PATTERN column carries LENGTH and SPEED in PER PATTERN
+     * mode and CHANGE and RESET in PER TRACK mode — there is no pattern length in per-track mode,
+     * because each track has its own. So the field this reader calls `length` is the pattern length
+     * in one mode and the reset in the other, and it must not be read as a reset in the mode where
+     * it is a length.
+     *
+     * **`1` is taken to mean INF, and that is the one guess here.** `dn2-pattern-format.md` already
+     * records `1 = off` for CHANGE at `+0x16`, and RESET sits beside it with an INF setting the
+     * manual describes in the same breath. The corpus fits: the 30 per-track patterns reading 1 are
+     * all in `017 PRESETS`, whose tracks run 14 to 64 steps and would be cut to ribbons by a reset
+     * of one step. **Unconfirmed on hardware** — see `Tests_To_Run.html` T41.
+     */
+    ...(pattern.perTrackScale && pattern.length > 1 ? { resetSteps: pattern.length } : {}),
+    /*
      * **Always false for a real project, and that is a statement about the format.**
      *
      * The trig carries a note-length byte and nothing decodes it into a duration.

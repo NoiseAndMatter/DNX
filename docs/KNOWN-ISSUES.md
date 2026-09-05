@@ -5,6 +5,40 @@ converter.
 
 ---
 
+## The true cycle ignored PATTERN RESET, and was up to 15x too long — FIXED 2026-09-05
+
+Insights reported the least common multiple of the track lengths as the pattern's cycle.
+`MORNING_JA 1640(2)` A2 has tracks of 16, 32, 62 and 64 steps, so it announced **1,984 steps —
+12 minutes 24** at 40 BPM. **The device repeats it every 128 steps, which is 48 seconds.**
+
+The sequencer has a **PATTERN RESET** in PER TRACK mode. Elektron's manual, PAGE SETUP: RESET
+*"controls the number of steps the pattern plays before all tracks resets and restarts from the
+first step on the first page. An INF setting makes the tracks of the pattern loop infinitely,
+without ever being restarted."* So the polymeter simply never finishes — every track is pulled back
+to step one on the way.
+
+**40 of the 352 playing patterns in the corpus were overstated**, by factors from 3x to 15x. The
+number was arithmetically correct and musically false, which is the worst kind: nothing about it
+looked wrong.
+
+Found because the user knew the instrument and said so. **No amount of reading our own files would
+have caught it** — the LCM is a property of the lengths, and the lengths were read correctly.
+
+`repeatSteps()` is the bounded figure and `cycleSteps()` remains the arithmetic; the page shows the
+first as *Repeats every* and names the second when the two differ.
+
+### Still a guess: how INF is stored — OPEN
+
+A RESET field of `1` is taken to mean INF, by analogy with CHANGE at `+0x16`, which
+`dn2-pattern-format.md` records as `1 = off`. The corpus is consistent — every per-track pattern
+reading 1 is in `017 PRESETS`, whose tracks run 14 to 64 steps and would be shredded by a one-step
+reset — but consistent is not confirmed, and it decides whether 90 patterns repeat in seconds or in
+minutes. **`Tests_To_Run.html` T41** is the three-save capture that settles it.
+
+The same field also serves two purposes: it is the pattern **length** in PER PATTERN mode and the
+**RESET** in PER TRACK mode, because per-track mode has no pattern length at all. Reading it as a
+reset in the wrong mode is what produced the overstatement.
+
 ## A note length is stored and never decoded, and it blocks three charts — OPEN 2026-09-05
 
 A DN2 trig carries a note-length byte and every track a default. **Nothing maps either to a

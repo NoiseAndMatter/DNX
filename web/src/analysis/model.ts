@@ -98,6 +98,21 @@ export interface AnalysisSubject {
   tempo: number;
   /** The master length, in steps: the window a chart draws by default. */
   masterLength: number;
+  /**
+   * How many steps before the sequencer restarts every track together, or `undefined` for never.
+   *
+   * **This is what actually decides when a pattern repeats, and the least common multiple of the
+   * track lengths does not.** With per-track lengths the Digitone II offers a PATTERN **RESET**
+   * setting — Elektron's manual: *"controls the number of steps the pattern plays before all
+   * tracks resets and restarts from the first step on the first page. An INF setting makes the
+   * tracks of the pattern loop infinitely, without ever being restarted."*
+   *
+   * So a pattern with tracks of 12, 16 and 64 steps has a polymeter that would take 192 steps to
+   * come round — and if RESET is 64 it never gets there, because everything is pulled back to step
+   * one three times on the way. `repeatSteps` is the number a musician hears; `cycleSteps` is the
+   * arithmetic of the lengths alone.
+   */
+  resetSteps?: number;
   /** 16 on a Digitone II, 8 on a Digitone 1. A device property, not a file field. */
   voiceBudget: number;
   /** Above this a trig reads as an accent. */
@@ -182,6 +197,18 @@ export function cycleSteps(tracks: readonly AnalysisTrack[]): number {
    */
   const playable = tracks.map((t) => t.length).filter((n) => Number.isInteger(n) && n >= 1);
   return playable.length ? playable.reduce(lcm, 1) : 1;
+}
+
+/**
+ * How many steps before the pattern actually repeats.
+ *
+ * The polymeter arithmetic, **bounded by the sequencer's own RESET**. Without the bound this
+ * reported 1,984 steps — twelve and a half minutes — for a pattern the device restarts every 128,
+ * which is 48 seconds. The number was arithmetically correct and musically false.
+ */
+export function repeatSteps(tracks: readonly AnalysisTrack[], resetSteps?: number): number {
+  const cycle = cycleSteps(tracks);
+  return resetSteps === undefined ? cycle : Math.min(cycle, resetSteps);
 }
 
 /** Steps to seconds at a tempo, in sixteenths. */

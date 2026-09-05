@@ -16,7 +16,7 @@ import { readDn2Pattern } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../src/librarian/device.js";
 import { patternSubject, PatternSubjectError } from "../web/src/patternsubject.js";
 import {
-  cycleSteps, harmonic, pitchByPreset, pitchWindows, playing, trackWindows,
+  cycleSteps, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
 } from "../web/src/analysis/model.js";
 import {
   densityBars, keyTimeline, phaseStrip, pitchBars, realignBars, trackTimeline,
@@ -163,6 +163,58 @@ test("a preset lock names a preset, and an unlocked trig does not", { skip: NO_C
   assert.ok(plain > 0, "no unlocked trigs to compare against");
   assert.ok(locked > 0, `this project has no sound locks, so the resolver was never exercised`);
 });
+
+test("RESET is read only in per-track mode, and 1 is taken as INF", { skip: NO_CORPUS }, () => {
+  /*
+   * The stored field at pattern metadata `+0x14` is the **pattern length** in PER PATTERN mode and
+   * the **RESET** in PER TRACK mode — the guidebook shows the PATTERN column carrying LENGTH and
+   * SPEED in one and CHANGE and RESET in the other, with no pattern length in per-track mode at
+   * all. Reading it as a reset in the wrong mode would cut every flat pattern to its own length,
+   * which is harmless, and reading it as a length in per-track mode is what produced cycle figures
+   * up to fifteen times too long.
+   *
+   * `1` meaning INF is the one guess left in this file and is unconfirmed on hardware — see
+   * `Tests_To_Run.html` T41.
+   */
+  const img = image();
+  let perTrackFinite = 0, perTrackInf = 0, flat = 0;
+  for (let index = 0; index < DN2_DEVICE.patternCount; index++) {
+    const raw = readDn2Pattern(img, index);
+    const subject = patternSubject(img, DN2_DEVICE, index);
+    if (!raw.perTrackScale) {
+      flat++;
+      assert.equal(subject.resetSteps, undefined,
+        "per-pattern mode has no RESET; that field is the pattern length there");
+    } else if (raw.length > 1) {
+      perTrackFinite++;
+      assert.equal(subject.resetSteps, raw.length);
+    } else {
+      perTrackInf++;
+      assert.equal(subject.resetSteps, undefined, "1 is taken as INF");
+    }
+  }
+  assert.ok(flat > 0 && perTrackFinite > 0,
+    `needs both modes present; saw ${flat} flat and ${perTrackFinite} per-track`);
+  void perTrackInf;
+});
+
+test("the corpus pattern that was overstated now reports what the device plays",
+  { skip: NO_CORPUS }, () => {
+    /*
+     * `MORNING_JA 1640(2)` A2 has tracks of 16, 32, 62 and 64 steps — a 1,984-step polymeter, which
+     * this page announced as 12 minutes 24 at its 40 BPM. RESET is 128. The device restarts every
+     * track after 8 bars and the pattern repeats in 48 seconds.
+     */
+    const path = requireCorpusFile(DN2_PROJECTS, "MORNING_JA 1640(2).dn2prj");
+    const img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
+    const subject = patternSubject(img, DN2_DEVICE, 1);
+    const live = playing(subject);
+
+    assert.deepEqual([...new Set(live.map((t) => t.length))].sort((a, b) => a - b), [16, 32, 62, 64]);
+    assert.equal(cycleSteps(live), 1984, "the polymeter arithmetic");
+    assert.equal(subject.resetSteps, 128);
+    assert.equal(repeatSteps(live, subject.resetSteps), 128, "what the instrument actually plays");
+  });
 
 /* ---- the whole corpus, which is the only place these faults live ----------------------- */
 

@@ -307,6 +307,22 @@ tried" — the reason `capture-by-position-not-by-name.md` exists.
 byte, the capture has checked itself. That check was free and accidental in the song-table work and
 is worth arranging on purpose.
 
+### 7a-bis. How INF is stored in the PATTERN RESET field — one control, three saves
+
+**The only guess left in the analysis code, and it changes what 90 patterns are reported to do.**
+
+In PER TRACK mode the PATTERN column carries CHANGE and RESET. We read RESET from pattern metadata
+`+0x14` — the field that is the pattern length in PER PATTERN mode — and take a value of `1` to mean
+INF, by analogy with CHANGE at `+0x16`, recorded as `1 = off`. The corpus is consistent with it and
+does not confirm it.
+
+**The capture.** One pattern in PER TRACK mode with a couple of trigs. Save it three times into
+different slots with RESET set to **INF**, then **64**, then **16**. Record which slot got which.
+One byte moves between the three, and it settles both the encoding of INF and that `+0x14` is
+really where RESET lives.
+
+Same shape as the song-table captures: one control, several saves, a diff.
+
 ### 7b. Mono/poly and portamento — what separates an overlap from a glide
 
 Both live on the preset's SETUP page and no capture has covered it. Per-trig portamento is already
