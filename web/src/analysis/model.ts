@@ -260,6 +260,15 @@ export interface ResetCut {
   passes: number;
   /** Steps into the next pass at which it is cut off. Always 1..length-1. */
   cutAfter: number;
+  /**
+   * Trigs in the interrupted part of the pass — the notes that never sound.
+   *
+   * **A cut only matters if something was going to play in it.** 19 of the 63 interrupted tracks in
+   * the corpus lose nothing: every trig sits before the cut, so the geometry is untidy and the
+   * music is unaffected. Reporting those in the same breath as the 44 that drop 511 notes between
+   * them is crying wolf, and the first version of this chart did exactly that.
+   */
+  lost: number;
 }
 
 /**
@@ -285,7 +294,12 @@ export function resetCuts(
     if (track.length < 1) continue;
     const cutAfter = resetSteps % track.length;
     if (cutAfter === 0) continue;
-    out.push({ track, passes: Math.floor(resetSteps / track.length), cutAfter });
+    out.push({
+      track,
+      passes: Math.floor(resetSteps / track.length),
+      cutAfter,
+      lost: track.trigs.filter((trig) => trig.step >= cutAfter).length,
+    });
   }
   return out;
 }
