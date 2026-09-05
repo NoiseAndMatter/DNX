@@ -319,8 +319,12 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
                      losing any — those are outlined rather than filled` : ""}. The dots are trigs:
                  a stub with dots in it is a part being clipped, an empty one is only untidy
                  arithmetic.`
-              : `Every track's length divides ${subject.resetSteps}, so each finishes its last pass
-                 exactly as the reset lands. Nothing is interrupted.`}</figcaption>
+              : `Every track's period divides ${subject.resetSteps}, so each finishes its last pass
+                 exactly as the reset lands. Nothing is interrupted.`}
+            ${live.length === subject.tracks.length ? "" : `<b>${live.length} of
+              ${subject.tracks.length} tracks are drawn</b> — the other
+              ${subject.tracks.length - live.length} carry a preset but nothing sequenced, and a
+              track with no notes cannot be heard realigning or be cut.`}</figcaption>
           <div class="chart" id="i-ruler"></div>
         </figure>
         ${legend([["Complete pass", "--q4"], ["Cut, and notes lost", "--crit"]])}
@@ -345,14 +349,17 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         </div>` : ""}
       ${groups.length < 2 ? "" : `
         <figure style="margin-top:1.1rem">
-          <figcaption>When each pair of track lengths starts together again.
+          <figcaption>When each pair of track periods starts together again.
             ${soonest && latest ? `Read one cell and the rest follow:
               <b>${soonest.a.period} and ${soonest.b.period} master steps</b> come back into phase every
               <b>${barsOf(soonest.steps)}</b>, while
               <b>${latest.a.period} and ${latest.b.period}</b> take <b>${barsOf(latest.steps)}</b>.`
               : ""}
-            The diagonal is a length on its own. Keyed on lengths rather than tracks, because two
-            tracks of the same length are always in phase.</figcaption>
+            The diagonal is a period on its own. Keyed on periods rather than tracks, because two
+            tracks that share a period are always in phase.
+            ${live.length === subject.tracks.length ? "" : ` Only the ${live.length} tracks with
+              notes on them are counted; the other ${subject.tracks.length - live.length} are
+              silent and cannot phase against anything.`}</figcaption>
           <div class="chart" id="i-align"></div>
         </figure>
         ${rampLegend(soonest?.steps ?? 0, latest?.steps ?? 0)}
