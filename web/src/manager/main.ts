@@ -117,8 +117,9 @@ import {
 } from "../history.js";
 import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
-import { renderInsights } from "./insights.js";
+import { renderInsights, type InsightsRefusal } from "./insights.js";
 import { patternSubject } from "../patternsubject.js";
+import { type AnalysisSubject } from "../analysis/model.js";
 
 const status = statusBar();
 const progress = progressBar();
@@ -367,15 +368,21 @@ function historyElements(): HistoryElements {
 }
 
 /**
- * Which pattern the charts are about.
+ * Which patterns the charts are about, in the order they were selected.
  *
- * The last one clicked, because in this mode clicking a slot *is* the way you change subject. A
- * track selection leaves it where it was rather than blanking the page: the tracks belong to a
- * pattern, and that pattern is still the thing on screen.
+ * **The last one is the subject of the full analysis** — in this mode clicking a slot *is* the way
+ * you change what you are looking at, so the most recent click is the answer. Selecting more adds a
+ * comparison above the cards, which is what shift- and ctrl-click already produced everywhere else
+ * in the manager and this mode used to discard.
+ *
+ * A track selection leaves it where it was rather than blanking the page: the tracks belong to a
+ * pattern, and that pattern is still the thing on screen. That case is single by construction —
+ * there is one pattern open in the drill-down, however many of its tracks are selected.
  */
-function insightsSubjectSlot(): number | undefined {
-  if (state.level === "pattern" && state.selection.length) return state.selection.at(-1);
-  return state.trackFor ?? (state.selection.length ? state.selection.at(-1) : undefined);
+function insightsSubjectSlots(): number[] {
+  if (state.level === "pattern") return [...state.selection];
+  if (state.trackFor !== undefined) return [state.trackFor];
+  return state.selection.length ? [state.selection.at(-1)!] : [];
 }
 
 /**
@@ -410,21 +417,44 @@ function renderInsightsPanel(): void {
     return;
   }
 
-  const slot = insightsSubjectSlot();
-  if (slot === undefined) {
+  const slots = insightsSubjectSlots();
+  if (slots.length === 0) {
     host.innerHTML = `<section class="panel"><h2>Insights</h2><div class="body">
-      <p class="hint">Select a pattern above to analyse it.</p></div></section>`;
+      <p class="hint">Select a pattern above to analyse it. Shift-click for a range or Ctrl-click to
+      add, and the selection is compared.</p></div></section>`;
     return;
   }
 
-  try {
-    renderInsights(host, patternSubject(session.image, device, slot));
-  } catch (error) {
-    // A refusal names itself rather than leaving an empty panel that looks like a bug.
-    host.innerHTML = `<section class="panel"><h2>Insights</h2><div class="body">
-      <p class="hint">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>
-      </div></section>`;
+  /*
+   * **Read per slot, so one unreadable pattern cannot take the selection down with it.**
+   *
+   * `patternSubject` refuses a Digitone 1 pattern and a storage version this project does not read,
+   * and a range selected with shift can easily contain one — `017 PRESETS` is version 2 in all 128
+   * of its records. Catching around the whole loop would have thrown away seven readable patterns
+   * because the eighth was refused. The refusals are handed on and named in the panel rather than
+   * quietly skipped.
+   */
+  const subjects: AnalysisSubject[] = [];
+  const refusals: InsightsRefusal[] = [];
+  for (const slot of slots) {
+    try {
+      subjects.push(patternSubject(session.image, device, slot));
+    } catch (error) {
+      /*
+       * The reader's refusals lead with the pattern's own name, and the panel prints that name
+       * beside the reason already. Stripped here — where the name is known for certain — so that
+       * identical refusals group into one line instead of once per slot.
+       */
+      const message = error instanceof Error ? error.message : String(error);
+      const label = patternName(slot);
+      refusals.push({
+        label,
+        reason: message.startsWith(`${label} `) ? message.slice(label.length + 1) : message,
+      });
+    }
   }
+
+  renderInsights(host, subjects, refusals);
 }
 
 function render(): void {
