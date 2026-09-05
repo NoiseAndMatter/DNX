@@ -369,6 +369,19 @@ cuts, when it is 64, exactly its reset, with nothing cut.
 Periods are whole numbers of twenty-fourths, so the least common multiples are computed there and
 scaled back. A `16 @ 3/4x` track has a period of 21⅓ and still gives an exact answer.
 
+### Silent tracks are excluded, and the charts now say so
+
+`playing()` drops tracks with no note trigs, and every figure on this surface is built from what it
+returns. That is right — a track with a preset loaded and nothing sequenced makes no sound, so it
+cannot be heard realigning and cannot lose notes to a reset — but it produced the obvious question
+the moment somebody looked: **why is T5 not in the ruler?**
+
+`MORNING_JA 1640(2)` A2 has **16 tracks with presets and 8 with anything sequenced**, so the ruler
+draws 8 rows. The only place that was stated was the *Tracks in play 8 of 16* tile, three cards
+away. Both the ruler and the grid now say it where the rows are missing.
+
+**A chart that omits rows has to say which and why**, next to the rows it kept.
+
 ### A period is not a control, so the settings behind it are shown
 
 The axis of the alignment grid is periods, and **nobody can set a period**. The instrument has LEN
