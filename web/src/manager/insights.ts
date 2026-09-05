@@ -24,13 +24,15 @@
  */
 
 import {
-  clock, cycleSteps, fitKey, harmonic, lengthGroups, machineLabel, microBuckets, pitchByPreset,
+  alignmentOf, clock, cycleSteps, fitKey, harmonic, lengthGroups, machineLabel, microBuckets,
+  pitchByPreset,
   pitchWindows, playing, polymeterIsBounded, reachableSteps, repeatSteps, resetCuts, resetOptions,
   stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
   alignmentGrid, densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend,
-  phaseStrip, pitchBars, realignBars, resetRuler, table, trackTimeline, type PhaseMode,
+  phaseStrip, pitchBars, rampBand, rampIsLight, rampLegend, realignBars, resetRuler, table,
+  trackTimeline, type PhaseMode,
 } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../analysis/model.js";
@@ -164,6 +166,27 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
    * inventing a number, and every windowing loop downstream takes it as a bound.
    */
   const bounded = polymeterIsBounded(live);
+  /*
+   * **A worked example, taken from this pattern rather than written.** A grid of numbers with a
+   * key is still a grid of numbers until somebody has read one cell out loud; naming the soonest
+   * pair and the latest one turns the whole thing from a table into a sentence.
+   */
+  const pairs = groups.flatMap((a2, i) =>
+    groups.slice(i + 1).map((b2) => ({ a: a2, b: b2, steps: alignmentOf(a2.length, b2.length) })));
+  const soonest = pairs.length ? pairs.reduce((m, p) => (p.steps < m.steps ? p : m)) : undefined;
+  const latest = pairs.length ? pairs.reduce((m, p) => (p.steps > m.steps ? p : m)) : undefined;
+  const rampTop = pairs.length ? Math.max(...pairs.map((p) => p.steps)) : 1;
+  const barsOf = (steps: number) => {
+    const value = steps / 16;
+    return Number.isInteger(value) ? `${value} bar${value === 1 ? "" : "s"}`
+      : `${Number(value.toFixed(2))} bars`;
+  };
+  const chip = (steps: number) => {
+    const band = rampBand(steps, rampTop);
+    return `<span style="display:inline-block;width:.62rem;height:.62rem;border-radius:2px;` +
+      `background:var(--q${band + 1});vertical-align:baseline;margin-right:.25rem"></span>`;
+  };
+  void rampIsLight;
   const reach = reachableSteps(live, subject.resetSteps);
   const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
@@ -310,13 +333,35 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         </div>` : ""}
       ${groups.length < 2 ? "" : `
         <figure style="margin-top:1.1rem">
-          <figcaption>When each pair of lengths comes back into phase. <b>Read the diagonal
-            first</b> — that is a part coming round on its own; a cell off it is when those two
-            parts start together again. Keyed on lengths rather than tracks, because two tracks of
-            the same length are always in phase and a grid of sixteen against sixteen would mostly
-            say so.</figcaption>
+          <figcaption>When each pair of track lengths starts together again.
+            ${soonest && latest ? `Read one cell and the rest follow:
+              <b>${soonest.a.length} and ${soonest.b.length} steps</b> come back into phase every
+              <b>${barsOf(soonest.steps)}</b>, while
+              <b>${latest.a.length} and ${latest.b.length}</b> take <b>${barsOf(latest.steps)}</b>.`
+              : ""}
+            The diagonal is a length on its own. Keyed on lengths rather than tracks, because two
+            tracks of the same length are always in phase.</figcaption>
           <div class="chart" id="i-align"></div>
         </figure>
+        ${rampLegend(soonest?.steps ?? 0, latest?.steps ?? 0)}
+
+        <div class="inferred" style="margin-top:.7rem">
+          <span class="h">When everything lines up</span>
+          <p class="why"><b>All ${live.length} tracks align after
+            ${reach.total.toLocaleString()} steps — ${barsOf(reach.total)}</b>
+            (${clock(stepsToSeconds(reach.total, subject.tempo))} at ${subject.tempo} BPM)${
+            subject.resetSteps === undefined
+              ? `, and with RESET at INF the pattern is allowed to get there.`
+              : reach.reachable < reach.total
+                ? `. <b>It never gets there</b>: RESET restarts every track after
+                   ${subject.resetSteps} steps — ${barsOf(subject.resetSteps)} — so the pattern
+                   repeats long before the tracks come round together. That cell is outlined in the
+                   grid above.`
+                : `, which is on or before the reset, so it does happen.`}</p>
+          ${latest && latest.steps === reach.total ? `<p class="why" style="margin-top:.35rem">
+            The pairing that decides it is <b>${latest.a.length} against
+            ${latest.b.length}</b> — every other pair comes round sooner.</p>` : ""}
+        </div>
 
         <div class="inferred">
           <span class="h">Setting a reset that lets the polyrhythm finish</span>
@@ -339,10 +384,11 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
               whole:</p>
             <p class="why" style="margin-top:.2rem">${options.map((o) => {
               const here = o.steps === subject.resetSteps;
-              const colour = o.complete.length === live.length ? "--s3" : "--ink2";
-              return `<b style="color:var(${colour})">${o.steps}</b>` +
-                `<span style="color:var(--ink3)"> (${Number.isInteger(o.steps / 16)
-                  ? `${o.steps / 16} bars` : "part-bar"})</span> ` +
+              const whole = o.complete.length === live.length;
+              // Same swatch as the grid, so a value read in one place is recognised in the other.
+              return `${chip(o.steps)}<b style="color:var(${whole ? "--s3" : "--ink2"})"
+                >${o.steps}</b>` +
+                `<span style="color:var(--ink3)"> (${barsOf(o.steps)})</span> ` +
                 `${o.complete.length}/${live.length} whole` +
                 (o.beyondField ? ` <span style="color:var(--ink3)">· INF only</span>` : "") +
                 (here ? ` <span style="color:var(--crit)">· current</span>` : "");
@@ -464,7 +510,8 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
       resetRuler(live, subject.resetSteps!, w));
   }
   if (groups.length >= 2) {
-    mount(document.getElementById("i-align")!, (w) => alignmentGrid(groups, w));
+    mount(document.getElementById("i-align")!, (w) =>
+      alignmentGrid(groups, w, reach.total));
   }
   if (lengths.size > 1) {
     mount(document.getElementById("i-realign")!, (w) => realignBars(live, polymeter, w));
