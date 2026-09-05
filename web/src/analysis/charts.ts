@@ -743,11 +743,26 @@ export function trackTimeline(
  *
  * Rows are ordered with the interrupted tracks first, because on sixteen tracks the two clean ones
  * are not what anybody opened this for.
+ *
+ * ## The trigs are drawn, and they are not decoration
+ *
+ * **A cut only matters if something was going to play in it.** 19 of the 63 interrupted tracks in
+ * the corpus lose nothing — every trig sits before the cut — so an alert colour on all of them is
+ * crying wolf. With the dots on, the difference is visible rather than asserted: a red stub with
+ * notes in it is a part being clipped, and an empty one is only untidy arithmetic.
+ *
+ * ## Passes alternate shade rather than being separated by lines
+ *
+ * At one flat colour, five consecutive passes read as one long bar — the same fault the beat cells
+ * had before their gap went from 1px to 3px. Alternating two steps of the ramp separates them with
+ * no extra ink, and the gap is wider besides. **Dashed rules were the other candidate and were
+ * rejected**: there are already vertical lines behind this chart and they mean bars. Two sets of
+ * vertical lines meaning different things is worse than a boundary that is slightly softer.
  */
 export function resetRuler(
   tracks: readonly AnalysisTrack[], resetSteps: number, w: number,
 ): string {
-  const rowH = 15, gap = 5, padL = 30, padR = 96;
+  const rowH = 15, gap = 5, padL = 30, padR = 140;
   const cut = (t: AnalysisTrack) => (t.length >= 1 ? resetSteps % t.length : 0);
   const sorted = [...tracks].sort((a, b) => {
     const ca = cut(a), cb = cut(b);
@@ -757,6 +772,7 @@ export function resetRuler(
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const x = (step: number) => padL + (step / resetSteps) * plot;
+  const stepW = plot / resetSteps;
   let out = "";
 
   // The bar grid behind everything: a reset is nearly always a whole number of bars, and seeing
@@ -772,27 +788,48 @@ export function resetRuler(
     const passes = track.length >= 1 ? Math.floor(resetSteps / track.length) : 0;
     out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
 
+    // Notes that never sound: they sit in the interrupted part of the final pass.
+    const lost = remainder ? track.trigs.filter((trig) => trig.step >= remainder).length : 0;
+
     for (let pass = 0; pass < passes; pass++) {
       const from = pass * track.length;
       const to = Math.min(from + track.length, resetSteps);
-      out += `<rect x="${x(from) + 1}" y="${y + 2}" width="${Math.max(1, x(to) - x(from) - 2)}"
-        height="${rowH - 4}" rx="1.5" fill="var(--q4)" opacity=".55"
+      out += `<rect x="${x(from) + 1.5}" y="${y + 2}" width="${Math.max(1, x(to) - x(from) - 3)}"
+        height="${rowH - 4}" rx="1.5" fill="var(--q${pass % 2 ? 3 : 4})" opacity=".62"
         ${tip(`T${track.number} — pass ${pass + 1} of ${passes}`,
           `steps ${from + 1}–${to} · complete`)}/>`;
     }
     if (remainder) {
       const from = passes * track.length;
-      out += `<rect x="${x(from) + 1}" y="${y + 2}"
-        width="${Math.max(1.5, x(from + remainder) - x(from) - 2)}" height="${rowH - 4}" rx="1.5"
-        fill="var(--crit)"
+      /*
+       * Alert only when notes are actually lost. A cut that lands after every trig on the track is
+       * drawn as an unfilled outline: the geometry is still shown, without claiming a problem.
+       */
+      out += `<rect x="${x(from) + 1.5}" y="${y + 2}"
+        width="${Math.max(1.5, x(from + remainder) - x(from) - 3)}" height="${rowH - 4}" rx="1.5"
+        fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
+        stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`T${track.number} — cut`,
-          `pass ${passes + 1} gets ${remainder} of its ${track.length} steps before the reset`)}/>`;
+          `pass ${passes + 1} gets ${remainder} of its ${track.length} steps` +
+          (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
+    }
+
+    // Every trig, in every pass it appears in. Small, because the bands are the subject and these
+    // are what tells you whether the last one matters.
+    for (let pass = 0; pass <= passes; pass++) {
+      for (const trig of track.trigs) {
+        const at = pass * track.length + trig.step;
+        if (at >= resetSteps) continue;
+        const inCut = remainder > 0 && pass === passes;
+        out += `<circle cx="${x(at) + Math.max(0.5, stepW / 2)}" cy="${y + rowH / 2}" r="1.9"
+          fill="${inCut ? "var(--ink)" : "var(--ink2)"}" opacity="${inCut ? 1 : .75}"/>`;
+      }
     }
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
       font-size="${T.label}" fill="var(--ink2)">T${track.number}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
-      fill="var(${remainder ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${remainder} of ${track.length}`
+      fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
+        ? `cut after ${remainder} of ${track.length}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
         : `${passes} clean \u00d7 ${track.length}`}</text>`;
   });
 

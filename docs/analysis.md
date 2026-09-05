@@ -295,6 +295,30 @@ people's music.
   side of the card at sixteen lengths, and the second line of each cell is dropped before that
   happens.
 
+### The ruler needed the trigs, and that was not a cosmetic point
+
+The first ruler drew passes and a red stub and nothing else, and it **over-reported**. Of the 63
+interrupted tracks in the corpus, **44 lose notes — 511 trigs that never sound — and 19 lose
+nothing**: the cut lands after every trig on the track, so the geometry is untidy and the music is
+unaffected.
+
+`MORNING_JA 1640(2)` A2 makes the case on its own. T3 and T9 are both **62 steps** with the **same
+cut after 4**, and they are not the same event: T9 drops 12 trigs, T3 has a single trig at step 0
+and loses nothing. Without the trigs drawn, those two rows were identical.
+
+So `ResetCut` carries `lost`, a cut that loses notes is filled in the alert colour, and one that
+does not is a dashed outline — shown, not alarmed about.
+
+### Contrast, and why not dashed rules
+
+Five consecutive passes in one flat colour read as one long bar. Passes now **alternate between two
+steps of the ramp** and the gap is wider — the same fix the beat cells needed when their gap went
+from 1px to 3px, for the same reason.
+
+**Dashed vertical rules were the other candidate and were rejected.** There are already vertical
+lines behind this chart and they mean bars; two sets of vertical lines meaning different things is
+worse than a boundary that is slightly softer.
+
 ### Making the grid readable, which took a second pass
 
 The first version was, in the user's words, *"true to the data but very hard to interpret."* A

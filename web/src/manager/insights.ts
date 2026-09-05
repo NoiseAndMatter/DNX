@@ -310,14 +310,21 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         <figure style="margin-top:.9rem">
           <figcaption>Each track's passes before the reset.
             ${cuts.length
-              ? `<b>${cuts.length} of ${live.length} tracks ${cuts.length === 1 ? "is" : "are"} cut
-                 mid-figure</b> — the red stub is the part the sequencer never reaches, and it is the
-                 same part every time the pattern comes round.`
+              ? `<b>${cuts.filter((c) => c.lost).length} of ${live.length} tracks lose notes</b> to
+                 the reset${cuts.some((c) => !c.lost)
+                   ? `, and ${cuts.filter((c) => !c.lost).length} ${
+                       cuts.filter((c) => !c.lost).length === 1 ? "is cut" : "are cut"} without
+                     losing any — those are outlined rather than filled` : ""}. The dots are trigs:
+                 a stub with dots in it is a part being clipped, an empty one is only untidy
+                 arithmetic.`
               : `Every track's length divides ${subject.resetSteps}, so each finishes its last pass
                  exactly as the reset lands. Nothing is interrupted.`}</figcaption>
           <div class="chart" id="i-ruler"></div>
         </figure>
-        ${legend([["Complete pass", "--q4"], ["Cut off by the reset", "--crit"]])}`}
+        ${legend([["Complete pass", "--q4"], ["Cut, and notes lost", "--crit"]])}
+        <p class="hint" style="margin:.35rem 0 0;font-size:.72rem">A <b>dashed outline</b> is a cut
+          that loses nothing — every trig on that track is before it. The dots are the trigs
+          themselves.</p>`}
 
       ${cuts.length ? `
         <div class="inferred">
@@ -325,7 +332,10 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           <p class="why">${cuts.map((c) =>
             `<b>T${c.track.number}</b> is ${c.track.length} steps: ${c.passes} complete
              pass${c.passes === 1 ? "" : "es"}, then <b>${c.cutAfter} of ${c.track.length}
-             steps</b> before it is pulled back`).join(". ")}.</p>
+             steps</b> before it is pulled back` +
+            (c.lost
+              ? ` — <b>${c.lost} trig${c.lost === 1 ? "" : "s"} never sound</b>`
+              : `, and <b>nothing is lost</b>: every trig on it is before the cut`)).join(". ")}.</p>
           <p class="why" style="margin-top:.35rem">Not necessarily wrong — a clipped figure is a
             legitimate thing to want. It is listed because the instrument shows track lengths and
             the reset on different rows and never their remainder, so an unintended one is easy to
@@ -358,9 +368,15 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
                    repeats long before the tracks come round together. That cell is outlined in the
                    grid above.`
                 : `, which is on or before the reset, so it does happen.`}</p>
-          ${latest && latest.steps === reach.total ? `<p class="why" style="margin-top:.35rem">
-            The pairing that decides it is <b>${latest.a.length} against
-            ${latest.b.length}</b> — every other pair comes round sooner.</p>` : ""}
+          ${latest === undefined ? "" : latest.steps === reach.total ? `
+            <p class="why" style="margin-top:.35rem">The pairing that decides it is
+              <b>${latest.a.length} against ${latest.b.length}</b> — every other pair comes round
+              sooner, and that cell is the outlined one above.</p>` : `
+            <p class="why" style="margin-top:.35rem"><b>No pair reaches that on its own</b> — the
+              longest is ${latest.a.length} against ${latest.b.length} at
+              ${barsOf(latest.steps)}, well short of ${barsOf(reach.total)}. It takes all
+              ${groups.length} lengths together, which is why no cell in the grid is marked: the
+              answer is not in any one of them.</p>`}
         </div>
 
         <div class="inferred">
