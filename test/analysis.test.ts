@@ -19,7 +19,8 @@ import {
   repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
-import { realignBars } from "../web/src/analysis/charts.js";
+import { cycleBars, realignBars } from "../web/src/analysis/charts.js";
+import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -499,6 +500,183 @@ test("mixed track lengths still scale, and the culprit is the longest cycle", ()
   assert.match(out.slice(0, out.indexOf("</text>")), /--s2/);
 });
 
+/* ---- comparing several subjects at once ------------------------------------------------ */
+
+/** A subject with the boring fields filled in, so a test states only what it is about. */
+function subject(over: Partial<AnalysisSubject> = {}): AnalysisSubject {
+  return {
+    label: "A1", tempo: 120, masterLength: 16, voiceBudget: 16, defaultVelocity: 100,
+    gateLengthKnown: false, tracks: [track({ trigs: [trig(0, [60])] })], ...over,
+  };
+}
+
+test("a comparison keeps the order the patterns were selected in", () => {
+  /*
+   * Selection order is the reader's order — it is what the caret and the "analysed below" row
+   * depend on, and sorting by any column here would silently move the focused row somewhere else.
+   */
+  const rows = compareSubjects([subject({ label: "B3" }), subject({ label: "A1" }),
+                                subject({ label: "C7" })]);
+  assert.deepEqual(rows.map((r) => r.label), ["B3", "A1", "C7"]);
+});
+
+test("a comparison row reports the cycle the reset actually allows, not the polymeter", () => {
+  /*
+   * The correction that mattered most on this surface, asserted across subjects too: a comparison
+   * that ranked patterns by their unbounded polymeter would put a pattern the device restarts every
+   * 8 bars at the top of a chart of what runs longest.
+   */
+  const tracks = [track({ number: 1, length: 16, trigs: [trig(0, [60])] }),
+                  track({ number: 2, length: 12, trigs: [trig(0, [64])] })];
+  const [row] = compareSubjects([subject({ tracks, resetSteps: 64 })]);
+  assert.equal(row!.polymeter, 48, "16 and 12 come round together at 48");
+  assert.equal(row!.cycle, 48, "and 48 is inside the reset, so nothing is cut");
+
+  const [longer] = compareSubjects([
+    subject({
+      tracks: [track({ length: 16, trigs: [trig(0, [60])] }),
+               track({ number: 2, length: 14, trigs: [trig(0, [64])] })],
+      resetSteps: 64,
+    }),
+  ]);
+  assert.equal(longer!.polymeter, 112);
+  assert.equal(longer!.cycle, 64, "the reset lands first, so the pattern repeats there");
+});
+
+test("a comparison counts the notes a reset silences, not merely the tracks it cuts", () => {
+  /*
+   * 19 of the 63 interrupted tracks in the corpus lose nothing. A comparison that flagged every cut
+   * would put an alert on a third of them for an untidy remainder that costs no music — the same
+   * crying-wolf fault the reset ruler had.
+   */
+  const clean = track({ number: 1, length: 12, trigs: [trig(0, [60]), trig(1, [62])] });
+  const bleeding = track({ number: 2, length: 12, trigs: [trig(0, [60]), trig(9, [62])] });
+  const [row] = compareSubjects([subject({ tracks: [clean, bleeding], resetSteps: 16 })]);
+  assert.equal(row!.cutTracks, 2, "both are cut after 4 of 12 steps");
+  assert.equal(row!.lostTrigs, 1, "and only the trig at step 9 was going to sound in the lost part");
+});
+
+test("a silent pattern is flagged, because its cycle is an identity and not a measurement", () => {
+  /*
+   * **This is the bug the test found.** `cycleSteps` returns 1 for a subject with nothing to take a
+   * least common multiple of — correct, and not a length. The chart's first guard was `cycle < 1`,
+   * which never fires for it, so a pattern sequencing nothing would have drawn a bar at its 2px
+   * floor labelled "0.06 bars". `silent` is the flag that means "there is no measurement here", and
+   * the view filters on that instead.
+   */
+  const [row] = compareSubjects([subject({ tracks: [track({ trigs: [] })] })]);
+  assert.equal(row!.silent, true);
+  assert.equal(row!.playing, 0);
+  assert.equal(row!.cycle, 1, "the identity — which is exactly why `cycle` cannot be the flag");
+});
+
+test("the summary says INF last, because it is not a short reset", () => {
+  /*
+   * A list reading "INF, 16, 64" invites the eye to read the absence of a reset as the smallest
+   * one. It is the opposite: the tracks are never pulled back at all.
+   */
+  const rows = compareSubjects([
+    subject({ resetSteps: 64 }), subject({ label: "A2" }), subject({ label: "A3", resetSteps: 16 }),
+  ]);
+  assert.deepEqual(summariseComparison(rows).resets, [16, 64, undefined]);
+});
+
+test("the summary picks out the patterns a reset never lets finish", () => {
+  const cut = subject({
+    label: "cut",
+    tracks: [track({ number: 1, length: 16, trigs: [trig(0, [60])] }),
+             track({ number: 2, length: 14, trigs: [trig(0, [64])] })],
+    resetSteps: 32,
+  });
+  const whole = subject({
+    label: "whole", tracks: [track({ length: 16, trigs: [trig(0, [60])] })], resetSteps: 32,
+  });
+  const s = summariseComparison(compareSubjects([cut, whole]));
+  assert.deepEqual(s.reset.map((r) => r.label), ["cut"]);
+  assert.equal(s.shortest!.label, "whole");
+  assert.equal(s.longest!.label, "cut");
+});
+
+test("a summary of nothing but silent patterns names no shortest or longest", () => {
+  /*
+   * `reduce` on an empty array throws, and a selection of empty patterns is a completely ordinary
+   * thing to make in a project with a half-filled bank.
+   */
+  const s = summariseComparison(compareSubjects([
+    subject({ tracks: [track({ trigs: [] })] }),
+    subject({ label: "A2", tracks: [track({ trigs: [] })] }),
+  ]));
+  assert.equal(s.shortest, undefined);
+  assert.equal(s.longest, undefined);
+  assert.equal(s.silent.length, 2);
+});
+
+test("comparing one subject agrees with the single-pattern card about it", () => {
+  /*
+   * **The reason `compare.ts` derives nothing of its own.** Every figure in it is a call into
+   * `model.ts`, so a comparison and the card below it cannot drift apart — this is what says the
+   * two are still asking the same functions rather than two implementations that agree today.
+   */
+  const tracks = [track({ number: 1, length: 16, trigs: [trig(0, [60]), trig(8, [64])] }),
+                  track({ number: 2, length: 12, trigs: [trig(3, [67])] })];
+  const one = subject({ tracks, resetSteps: 64 });
+  const live = playing(one);
+  const [row] = compareSubjects([one]);
+
+  assert.equal(row!.cycle, repeatSteps(live, one.resetSteps));
+  assert.equal(row!.polymeter, cycleSteps(live));
+  assert.equal(row!.cutTracks, resetCuts(live, one.resetSteps).length);
+  assert.equal(row!.playing, live.length);
+  assert.equal(row!.seconds, stepsToSeconds(repeatSteps(live, one.resetSteps), one.tempo));
+});
+
+test("the cycle chart scales on measurable cycles and lets a saturated one run off the end", () => {
+  /*
+   * **Found by reasoning about `POLYMETER_LIMIT`, then asserted so it stays true.** Sixteen coprime
+   * lengths saturate at a million steps, and letting that set the maximum would squash every real
+   * pattern beside it to its 2px floor — a chart of one bar and seven slivers, none of which is a
+   * measurement.
+   */
+  const svg = cycleBars([
+    { label: "A1", cycle: 64, polymeter: 64, bounded: true, lostTrigs: 0, seconds: 8 },
+    { label: "A2", cycle: POLYMETER_LIMIT, polymeter: POLYMETER_LIMIT, bounded: false,
+      lostTrigs: 0, seconds: 125_000 },
+  ], 600);
+  assert.match(svg, /&gt; 1M steps/, "the unbounded row says so rather than printing the limit");
+  assert.match(svg, /4 bars/, "and the measurable one still reads at its real size");
+
+  const widths = [...svg.matchAll(/<rect x="122" [^>]*width="([\d.]+)"/g)].map((m) => Number(m[1]));
+  assert.equal(widths.length, 2);
+  assert.ok(widths[0]! > 100,
+    `the 64-step pattern must keep a readable bar, got ${widths[0]}px of ${600 - 122 - 156}`);
+});
+
+test("the cycle chart flags only the patterns that lose notes", () => {
+  const svg = cycleBars([
+    { label: "clean", cycle: 64, polymeter: 128, bounded: true, lostTrigs: 0, seconds: 8 },
+    { label: "losing", cycle: 64, polymeter: 128, bounded: true, lostTrigs: 3, seconds: 8 },
+  ], 600);
+  assert.equal((svg.match(/--crit/g) ?? []).length, 1,
+    "a cut that costs no music must not carry the alert colour");
+});
+
+test("the cycle chart draws nothing at all when handed no rows", () => {
+  // The view filters silent patterns out, so an all-silent selection reaches this with an empty
+  // list. `Math.max()` of nothing is -Infinity, and a chart is a good place for that not to be.
+  const svg = cycleBars([], 600);
+  assert.doesNotMatch(svg, /<rect|<text/);
+  assert.match(svg, /height="0"/);
+});
+
+test("a long pattern name is clipped to the gutter and kept whole in the tooltip", () => {
+  const svg = cycleBars([{
+    label: "A1 · A VERY LONG PATTERN NAME", cycle: 64, polymeter: 64, bounded: true,
+    lostTrigs: 0, seconds: 8,
+  }], 600);
+  assert.match(svg, /…</, "the drawn label is clipped rather than overrunning the bars");
+  assert.match(svg, /data-tip-t="A1 · A VERY LONG PATTERN NAME"/, "and the tooltip carries it all");
+});
+
 /* ---- the boundary that makes all of the above possible --------------------------------- */
 
 /**
@@ -532,7 +710,7 @@ function code(file: string): string {
     .replace(/^\s*\/\/.*$/gm, " ");
 }
 
-const PURE = ["charts", "model"] as const;
+const PURE = ["charts", "compare", "model"] as const;
 
 for (const name of PURE) {
   const entry = resolve(HERE, `../web/src/analysis/${name}.ts`);
