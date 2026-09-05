@@ -5,6 +5,44 @@ converter.
 
 ---
 
+## Track SPEED was ignored, so 60 patterns had the wrong polymeter — FIXED 2026-09-05
+
+A track's length is not its period. SPEED is a multiple of the pattern's tempo — Elektron's manual:
+*"a setting of 1/8X plays back the track at one-eighth of the set tempo"* — so a 12-step track at
+3/2x covers its twelve steps in **eight** master steps, and a 16-step track at 1/2x takes
+thirty-two. Everything about alignment, resets and where a trig falls happens on the master clock.
+
+Reading raw lengths got **60 of the 352 playing patterns** wrong. **77 have tracks at different
+speeds**, which is where it bites.
+
+`GLITCH_EXPLORE` B5 — the example used repeatedly in review — has 12@3/2x, 16@1x, 64@1x and
+24@3/2x. It was reported as a **192-step polymeter with two tracks cut** by its 64-step reset. On
+the master clock the periods are 8, 16, 64, 16: the polymeter is **64, exactly the reset, and
+nothing is cut at all**. The claim was not slightly off, it was inverted.
+
+`masterPeriod` and `masterOffset` are the fix, and grouping moved from lengths to **periods** —
+16@1x and 24@3/2x share a period of 16 and never drift apart, which grouping on length split.
+Periods are whole numbers of twenty-fourths (the speeds are 2, 3/2, 1, 3/4, 1/2, 1/4, 1/8), so the
+least common multiples are computed there and scaled back rather than asking a float for
+`lcm(10.666…, 16)`.
+
+Found because the user said the tool should check the speed multipliers.
+
+## Trig conditions are stored, unread, and lengthen the true cycle — OPEN 2026-09-05
+
+A trig can carry a condition — 2:3 plays it on the second of every three passes — and that
+**multiplies the musical cycle**: a pattern whose tracks realign every 64 steps does not sound the
+same on each of them. **1,388 of the 15,258 note trigs in the corpus are conditional, across 220 of
+the 352 playing patterns**, so this is the common case rather than an edge one.
+
+The code tables at `+0x100` and `+0x180` are listed as unread in `dn2-pattern-format.md`: the
+numbering is non-linear between the two families and no capture has exercised it. So the analysis
+can say *that* trigs are conditional and cannot say *how much* longer they make the cycle.
+
+`AnalysisTrig.conditional` is a boolean for exactly that reason, and the page reports the alignment
+figure as a **floor** wherever conditions are present. Decoding the table is a capture; it is the
+natural companion to the note-length one in `dn2-capture-plan.md` §7.
+
 ## The true cycle ignored PATTERN RESET, and was up to 15x too long — FIXED 2026-09-05
 
 Insights reported the least common multiple of the track lengths as the pattern's cycle.

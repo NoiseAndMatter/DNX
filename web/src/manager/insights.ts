@@ -24,7 +24,7 @@
  */
 
 import {
-  alignmentOf, clock, cycleSteps, fitKey, harmonic, lengthGroups, machineLabel, microBuckets,
+  alignmentOf, clock, cycleSteps, fitKey, harmonic, periodGroups, machineLabel, microBuckets,
   pitchByPreset,
   pitchWindows, playing, polymeterIsBounded, reachableSteps, repeatSteps, resetCuts, resetOptions,
   stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
@@ -152,7 +152,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
    */
   const windowSteps = subject.resetSteps ?? Math.max(subject.masterLength, longest);
   const cuts = resetCuts(live, subject.resetSteps);
-  const groups = lengthGroups(live);
+  const groups = periodGroups(live);
   const options = resetOptions(live);
   /*
    * The shortest reset that leaves every track whole. It is always the last option — the list is
@@ -166,13 +166,15 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
    * inventing a number, and every windowing loop downstream takes it as a bound.
    */
   const bounded = polymeterIsBounded(live);
+  // Conditional trigs make the figure above a floor rather than the answer. See `AnalysisTrig`.
+  const conditional = live.reduce((n, t2) => n + t2.trigs.filter((g) => g.conditional).length, 0);
   /*
    * **A worked example, taken from this pattern rather than written.** A grid of numbers with a
    * key is still a grid of numbers until somebody has read one cell out loud; naming the soonest
    * pair and the latest one turns the whole thing from a table into a sentence.
    */
   const pairs = groups.flatMap((a2, i) =>
-    groups.slice(i + 1).map((b2) => ({ a: a2, b: b2, steps: alignmentOf(a2.length, b2.length) })));
+    groups.slice(i + 1).map((b2) => ({ a: a2, b: b2, steps: alignmentOf(a2.period, b2.period) })));
   const soonest = pairs.length ? pairs.reduce((m, p) => (p.steps < m.steps ? p : m)) : undefined;
   const latest = pairs.length ? pairs.reduce((m, p) => (p.steps > m.steps ? p : m)) : undefined;
   const rampTop = pairs.length ? Math.max(...pairs.map((p) => p.steps)) : 1;
@@ -345,9 +347,9 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         <figure style="margin-top:1.1rem">
           <figcaption>When each pair of track lengths starts together again.
             ${soonest && latest ? `Read one cell and the rest follow:
-              <b>${soonest.a.length} and ${soonest.b.length} steps</b> come back into phase every
+              <b>${soonest.a.period} and ${soonest.b.period} master steps</b> come back into phase every
               <b>${barsOf(soonest.steps)}</b>, while
-              <b>${latest.a.length} and ${latest.b.length}</b> take <b>${barsOf(latest.steps)}</b>.`
+              <b>${latest.a.period} and ${latest.b.period}</b> take <b>${barsOf(latest.steps)}</b>.`
               : ""}
             The diagonal is a length on its own. Keyed on lengths rather than tracks, because two
             tracks of the same length are always in phase.</figcaption>
@@ -368,12 +370,19 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
                    repeats long before the tracks come round together. That cell is outlined in the
                    grid above.`
                 : `, which is on or before the reset, so it does happen.`}</p>
+          ${conditional === 0 ? "" : `<p class="why" style="margin-top:.35rem">
+            <b>${conditional} of ${allTrigs} trigs carry a trig condition</b>, so the pattern does
+            not sound the same on every pass and the figure above is a <b>floor</b>, not the answer.
+            A trig set to 2:3 plays on one pass in three, which multiplies the musical cycle by
+            three. The condition codes are stored and <b>not decoded</b> — the tables at
+            <code>+0x100</code> and <code>+0x180</code> have never been captured — so this can say
+            the conditions are there and cannot say how much longer they make it.</p>`}
           ${latest === undefined ? "" : latest.steps === reach.total ? `
             <p class="why" style="margin-top:.35rem">The pairing that decides it is
-              <b>${latest.a.length} against ${latest.b.length}</b> — every other pair comes round
+              <b>${latest.a.period} against ${latest.b.period}</b> — every other pair comes round
               sooner, and that cell is the outlined one above.</p>` : `
             <p class="why" style="margin-top:.35rem"><b>No pair reaches that on its own</b> — the
-              longest is ${latest.a.length} against ${latest.b.length} at
+              longest is ${latest.a.period} against ${latest.b.period} at
               ${barsOf(latest.steps)}, well short of ${barsOf(reach.total)}. It takes all
               ${groups.length} lengths together, which is why no cell in the grid is marked: the
               answer is not in any one of them.</p>`}
