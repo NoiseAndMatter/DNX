@@ -24,10 +24,10 @@
  */
 
 import {
-  alignmentOf, clock, cycleSteps, fitKey, harmonic, periodGroups, machineLabel, microBuckets,
-  pitchByPreset,
-  pitchWindows, playing, polymeterIsBounded, reachableSteps, repeatSteps, resetCuts, resetOptions,
-  stepsToSeconds, trackWindows, type AnalysisSubject, type KeyFit,
+  alignmentOf, clock, cycleSteps, fitKey, harmonic, machineLabel, masterPeriod, microBuckets,
+  periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
+  repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds, trackWindows,
+  type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
   alignmentGrid, densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend,
@@ -422,12 +422,16 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
             Letting a polymeter run its full length is one musical choice and cutting it on a bar
             line is another — this says what each costs, not which to pick.</p>
         </div>`}
-      ${table(["Track", "Length", "Passes before reset", "Cut after"],
+      ${table(["Track", "Length", "Speed", "Period", "Passes before reset", "Cut after", "Notes lost"],
         live.map((t) => {
           const hit = cuts.find((c) => c.track === t);
-          return [`T${t.number}`, t.length,
-            subject.resetSteps === undefined ? "—" : Math.floor(subject.resetSteps / t.length),
-            hit ? `${hit.cutAfter} of ${t.length}` : "—"];
+          const period = masterPeriod(t);
+          return [`T${t.number}`, t.length, speedLabel(t.speed ?? 1), period,
+            // Divides by the period, not the length: the reset counts master steps. This column
+            // was still using the raw length after the rest of the file moved to the master clock.
+            subject.resetSteps === undefined ? "—" : Math.floor(subject.resetSteps / period),
+            hit ? `${hit.cutAfter} of ${period}` : "—",
+            hit ? (hit.lost || "none") : "—"];
         }))}
     `) +
 
