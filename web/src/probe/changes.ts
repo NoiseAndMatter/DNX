@@ -32,9 +32,10 @@
  */
 
 import { type Entry } from "../../../src/device/storage.js";
-
-/** Two hex digits, as the probe prints every byte. */
-const hex2 = (byte: number): string => byte.toString(16).padStart(2, "0");
+// Imported rather than declared. This module had its own copy of `hex2` while `cards.ts` exported
+// another — two implementations of "print a byte", which is how two rows of one page come to
+// disagree about the same value.
+import { hex2 } from "./format.js";
 
 const trailerOf = (entry: Entry): string =>
   entry.trailer ? [...entry.trailer].map(hex2).join(" ") : "—";

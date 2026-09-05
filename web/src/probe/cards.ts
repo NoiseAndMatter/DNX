@@ -109,16 +109,6 @@ export function verdictCard(into: HTMLElement, title: string, rows: [string, str
   into.scrollIntoView({ block: "start" });
 }
 
-/** Eight hex digits, for a 32-bit field. */
-export function hex8(v: number): string {
-  return v.toString(16).padStart(8, "0");
-}
-
-/** Two hex digits, for a byte. */
-export function hex2(b: number): string {
-  return b.toString(16).padStart(2, "0");
-}
-
 /**
  * The capture, drawn as cards.
  *
