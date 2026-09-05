@@ -89,7 +89,7 @@ import {
   hexBody,
   informationRequest,
 } from "../../../src/device/apiprobe.js";
-import { type ApiTransport, type StoredFile, readStoredFile } from "../../../src/device/storagesession.js";
+import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { CONTAINER_SLOT_OFFSET, safeWriteFile } from "../../../src/device/safewrite.js";
 import { STAGE_LABEL, confirmFileWrite } from "../safewriteui.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
@@ -99,13 +99,18 @@ import { describeBytes, progressBar } from "../progress.js";
 import { askConfirm } from "../dialog.js";
 import {
   card,
-  hex2,
-  hex8,
   listing,
   messageCard as drawMessages,
   renderCapture as drawCapture,
   verdictCard as drawVerdict,
 } from "./cards.js";
+import {
+  KNOWN_RECORD_SIZES,
+  describeChunkChecksums,
+  hex2,
+  hex8,
+  looksLikeZip,
+} from "./format.js";
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
 import {
@@ -1791,47 +1796,6 @@ async function readFile(): Promise<void> {
   }
 }
 
-/**
- * Hold every chunk's reported checksum against `driveChecksum` computed over the same slice.
- *
- * Read-only, and it decides the write question: `writeStoredFile` currently sends the whole file's
- * checksum on every `0x58`, which was a guess from the one single-chunk upload ever captured. The
- * read path has always collected one checksum *per chunk*. If our own algorithm reproduces those,
- * a writer can compute the value for any chunking it likes — and a project stops being special.
- *
- * Reported as a count of agreements rather than a verdict. A partial match is the interesting
- * outcome and the one a summary would hide: it would mean the boundaries are not where we think.
- */
-function describeChunkChecksums(file: StoredFile): [string, string][] {
-  const sums = file.chunkChecksums;
-  if (sums.length === 0) return [];
-
-  // **Walked with the recorded lengths, never re-derived.** Dividing the total by the chunk count
-  // gave 1,800-byte slices for a file the device sent as 2,048s, and every comparison failed for
-  // that reason alone — a wrong answer that looked exactly like a wrong algorithm.
-  const mismatches: string[] = [];
-  let at = 0;
-  for (const [i, reported] of sums.entries()) {
-    const length = file.chunkLengths[i] ?? 0;
-    const computed = driveChecksum(file.bytes.subarray(at, at + length));
-    at += length;
-    if (computed !== reported) mismatches.push(`#${i} device ${hex8(reported)} vs ours ${hex8(computed)}`);
-  }
-
-  return [
-    ["Chunk sizes", file.chunkLengths.join(", ")],
-    ["Chunk checksums", `${sums.length}, ${sums.slice(0, 4).map(hex8).join(" ")}${sums.length > 4 ? " …" : ""}`],
-    [
-      "driveChecksum agrees",
-      mismatches.length === 0
-        ? `all ${sums.length} — the algorithm is right at chunk granularity. Note this says nothing ` +
-          `about writing: a write declaring these same per-chunk values was refused, and so was one ` +
-          `declaring the whole file's. Reads and writes do not use this field the same way.`
-        : `${sums.length - mismatches.length} of ${sums.length}. ${mismatches.slice(0, 3).join("; ")}`,
-    ],
-  ];
-}
-
 /** True while a read owns a device handle. See the guard in `readFile`. */
 let readingFile = false;
 
@@ -2054,10 +2018,6 @@ async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]
 
 
 /** A `.dnprj` and a `.dn2prj` are both ZIPs, so this says whether we got a project file at all. */
-function looksLikeZip(data: Uint8Array): boolean {
-  return data.length > 4 && data[0] === 0x50 && data[1] === 0x4b;
-}
-
 /**
  * Web MIDI as an `ApiTransport`.
  *
@@ -2196,25 +2156,6 @@ async function tryUnknownCode(): Promise<void> {
     "ok",
   );
 }
-
-/** Longer than a normal request: an unknown object could be large, and silence must mean silence. */
-/**
- * Record sizes we can name, so an unfamiliar payload is measured rather than guessed at.
- *
- * Every record identified so far was recognised by its size first — 99,840 as pattern + kit, 359 as
- * a DN2 sound, 512 as DN2 settings. A payload matching none of these is the interesting case.
- */
-const KNOWN_RECORD_SIZES: Readonly<Record<string, number>> = {
-  "a DN2 patternKit": 99_840,
-  "a DN1 patternKit": 20_992,
-  "a DN2 kit": 10_752,
-  "a DN1 kit": 2_560,
-  "a DN2 sound": 359,
-  "a DN1 sound": 302,
-  "DN2 project settings": 512,
-  "DN1 project settings": 11_776,
-};
-
 
 /** The write verdict, into the element this page reserves for it. */
 function verdictCard(title: string, rows: [string, string][]): void {
