@@ -171,6 +171,8 @@ export function patternSubject(
           // Not a duration. See `gateLengthKnown` below and `AnalysisTrig.length`.
           length: 1,
           microTiming: trig.microTiming,
+          // The code is read; what it means is not. See `AnalysisTrig.conditional`.
+          ...(trig.trigCondition === undefined ? {} : { conditional: true }),
           // An empty name is what the device leaves in an unnamed slot; the track's own preset is
           // a better answer than a blank, and a lock to a slot the pool cannot name is not a lock
           // anybody can act on.

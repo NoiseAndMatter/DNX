@@ -43,9 +43,18 @@ const lcm = (a: number, b: number): number => {
   const value = (a / gcd(a, b)) * b;
   return Number.isSafeInteger(value) ? value : Number.MAX_SAFE_INTEGER;
 };
+/**
+ * When two **periods** realign. Periods are whole numbers of twenty-fourths — the speeds are 2,
+ * 3/2, 1, 3/4, 1/2, 1/4 and 1/8 — so the arithmetic is done there and scaled back rather than
+ * asking a float for the least common multiple of 10⅔ and 16.
+ */
+const align = (a: number, b: number): number =>
+  a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 import {
-  MACHINE_ORDER, NOTE_NAMES, machineLabel, noteName, overlappingNotes, pitchClass, presetOf,
-  type AnalysisTrack, type MicroBuckets, type PitchCell, type PitchWindow, type TrackRow,
+  MACHINE_ORDER, NOTE_NAMES, machineLabel, masterOffset, masterPeriod, noteName, overlappingNotes,
+  pitchClass, presetOf,
+  type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
+  type TrackRow,
 } from "./model.js";
 
 /** Chart type sizes, in real pixels. */
@@ -195,7 +204,8 @@ export function phaseStrip(
      * this one was found by rendering the corpus, where 27 patterns in the factory PRESETS project
      * declare a length of 0 and exhausted a 4 GB heap in seconds. In a browser that is a dead tab.
      */
-    const stride = t.length >= 1 ? t.length : windowSteps;
+    // The master clock, not the track's own: a 12-step track at 3/2x restarts every 8 of these.
+    const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
     for (let start = 0; start < windowSteps; start += stride) {
       const x0 = x(start), x1 = x(Math.min(start + stride, windowSteps));
       // The repetition band is context: barely there, so the dots read as the data.
@@ -205,10 +215,11 @@ export function phaseStrip(
       out += `<line x1="${x0 + .5}" y1="${y}" x2="${x0 + .5}" y2="${y + rowH}"
         stroke="${fill}" stroke-width="${W.limit}" opacity=".9"
         ${tip(`T${t.number} — ${t.preset}`,
-          `restarts at step ${start + 1} · every ${t.length} steps`)}/>`;
+          `restarts at step ${Math.round(start) + 1} · every ${stride} master steps` +
+          (t.speed !== undefined && t.speed !== 1 ? ` · ${t.length} steps at ${t.speed}x` : ""))}/>`;
 
       for (const g of t.trigs) {
-        const at = start + g.step;
+        const at = start + masterOffset(t, g.step);
         if (at >= windowSteps) continue;
         const cxp = x(at) + stepW / 2;
         const rootPc = pitchClass(g.notes[0] ?? 0);
@@ -247,7 +258,8 @@ export function phaseStrip(
           // relationship *is* the finding — a lone highlighted dot would say nothing.
           const pair = pairs.find((p) => p.a === g);
           if (pair) {
-            const x2 = x(start + (pair.wrap ? t.length + pair.b.step : pair.b.step)) + stepW / 2;
+            const x2 = x(start + masterOffset(t, pair.wrap ? t.length + pair.b.step : pair.b.step))
+              + stepW / 2;
             out += `<line x1="${cxp}" y1="${cy}" x2="${Math.min(x2, padL + plot)}" y2="${cy}"
               stroke="${fill}" stroke-width="1.75" opacity=".95"/>`;
             r = 3.2; op = 1;
@@ -266,7 +278,8 @@ export function phaseStrip(
     out += `<text x="${padL - 6}" y="${cy + 3.5}" text-anchor="end"
       font-size="${T.label}" fill="var(--ink2)">T${t.number}</text>`;
     out += `<text x="${padL + plot + 8}" y="${cy + 3.5}" font-size="${T.value}"
-      fill="var(--ink3)">${t.length} steps</text>`;
+      fill="var(--ink3)">${t.length} steps${
+        t.speed !== undefined && t.speed !== 1 ? ` @${t.speed}x` : ""}</text>`;
   });
 
   for (let bar = 0; bar < windowSteps / 16; bar++) {
@@ -291,28 +304,30 @@ export function phaseStrip(
  */
 export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: number): string {
   const rowH = 14, gap = 5, padL = 30, padR = 128;
-  const sorted = [...tracks].sort((a, b) => cycle / b.length - cycle / a.length);
+  const sorted = [...tracks].sort((a, b) => cycle / masterPeriod(b) - cycle / masterPeriod(a));
   const h = sorted.length * (rowH + gap);
   const plot = w - padL - padR;
-  const max = Math.log(Math.max(...sorted.map((t) => cycle / t.length)));
+  const max = Math.log(Math.max(...sorted.map((t) => cycle / masterPeriod(t))));
   // Every track the same length: `max` is 0, the ratio is 0/0, and there is no culprit to point at
   // because nothing is stretching anything.
   const flat = max === 0;
   let out = "";
   sorted.forEach((t, i) => {
     const y = i * (rowH + gap);
-    const reps = cycle / t.length;
+    const reps = Number((cycle / masterPeriod(t)).toFixed(2));
     const bw = flat ? plot : Math.max(2, (Math.log(reps) / max) * plot);
     const culprit = i === 0 && !flat;
     out += `<rect x="${padL}" y="${y}" width="${bw}" height="${rowH}" rx="2"
       fill="var(${culprit ? "--s2" : "--q4"})"
       ${tip(`T${t.number} — ${t.preset}`,
-        `${t.length} steps · repeats ${reps}x per cycle`)}/>`;
+        `${t.length} steps${t.speed !== undefined && t.speed !== 1 ? ` at ${t.speed}x` : ""} · ` +
+        `repeats ${reps}x per cycle`)}/>`;
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
       font-size="${T.label}" fill="var(--ink2)">T${t.number}</text>`;
     out += `<text x="${padL + bw + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${culprit ? "--s2" : "--ink2"})">${reps}&#215;
-      <tspan fill="var(--ink3)">· ${t.length} steps</tspan></text>`;
+      <tspan fill="var(--ink3)">· ${t.length} steps${
+        t.speed !== undefined && t.speed !== 1 ? ` @${t.speed}x` : ""}</tspan></text>`;
   });
   return svg(w, h, "Repetitions each track makes before the pattern realigns", out);
 }
@@ -425,11 +440,11 @@ export function voiceLanes(
   tracks.forEach((t, i) => {
     const y = i * (rowH + gap);
     const fill = `var(${machineVar(t.machine)})`;
-    // Same guard as `phaseStrip`: a zero length makes `rep * 0` never reach the window.
-    const stride = t.length >= 1 ? t.length : windowSteps;
+    // Same guard as `phaseStrip`, and the same clock: a zero length never reaches the window.
+    const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
     for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * stride + g.step;
+        const at = rep * stride + masterOffset(t, g.step);
         if (at >= windowSteps) continue;
         const end = Math.min(at + g.length, windowSteps);
         // Held during an overrun? Then this trig is a candidate for removal, and says so.
@@ -763,7 +778,10 @@ export function resetRuler(
   tracks: readonly AnalysisTrack[], resetSteps: number, w: number,
 ): string {
   const rowH = 15, gap = 5, padL = 30, padR = 140;
-  const cut = (t: AnalysisTrack) => (t.length >= 1 ? resetSteps % t.length : 0);
+  // Remainder on the master clock, rounded to shake off the floating point in a period like 32/3.
+  const cut = (t: AnalysisTrack) => t.length >= 1
+    ? Number((resetSteps - Math.floor(resetSteps / masterPeriod(t)) * masterPeriod(t)).toFixed(6))
+    : 0;
   const sorted = [...tracks].sort((a, b) => {
     const ca = cut(a), cb = cut(b);
     if ((ca === 0) !== (cb === 0)) return ca === 0 ? 1 : -1;
@@ -785,22 +803,24 @@ export function resetRuler(
   sorted.forEach((track, i) => {
     const y = i * (rowH + gap);
     const remainder = cut(track);
-    const passes = track.length >= 1 ? Math.floor(resetSteps / track.length) : 0;
+    const period = track.length >= 1 ? masterPeriod(track) : resetSteps;
+    const passes = track.length >= 1 ? Math.floor(resetSteps / period) : 0;
     out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
 
     // Notes that never sound: they sit in the interrupted part of the final pass.
-    const lost = remainder ? track.trigs.filter((trig) => trig.step >= remainder).length : 0;
+    const lost = remainder
+      ? track.trigs.filter((trig) => masterOffset(track, trig.step) >= remainder).length : 0;
 
     for (let pass = 0; pass < passes; pass++) {
-      const from = pass * track.length;
-      const to = Math.min(from + track.length, resetSteps);
+      const from = pass * period;
+      const to = Math.min(from + period, resetSteps);
       out += `<rect x="${x(from) + 1.5}" y="${y + 2}" width="${Math.max(1, x(to) - x(from) - 3)}"
         height="${rowH - 4}" rx="1.5" fill="var(--q${pass % 2 ? 3 : 4})" opacity=".62"
         ${tip(`T${track.number} — pass ${pass + 1} of ${passes}`,
-          `steps ${from + 1}–${to} · complete`)}/>`;
+          `master steps ${Math.round(from) + 1}–${Math.round(to)} · complete`)}/>`;
     }
     if (remainder) {
-      const from = passes * track.length;
+      const from = passes * period;
       /*
        * Alert only when notes are actually lost. A cut that lands after every trig on the track is
        * drawn as an unfilled outline: the geometry is still shown, without claiming a problem.
@@ -810,7 +830,7 @@ export function resetRuler(
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`T${track.number} — cut`,
-          `pass ${passes + 1} gets ${remainder} of its ${track.length} steps` +
+          `pass ${passes + 1} gets ${remainder} of its ${period} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
 
@@ -818,7 +838,7 @@ export function resetRuler(
     // are what tells you whether the last one matters.
     for (let pass = 0; pass <= passes; pass++) {
       for (const trig of track.trigs) {
-        const at = pass * track.length + trig.step;
+        const at = pass * period + masterOffset(track, trig.step);
         if (at >= resetSteps) continue;
         const inCut = remainder > 0 && pass === passes;
         out += `<circle cx="${x(at) + Math.max(0.5, stepW / 2)}" cy="${y + rowH / 2}" r="1.9"
@@ -829,8 +849,8 @@ export function resetRuler(
       font-size="${T.label}" fill="var(--ink2)">T${track.number}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${remainder} of ${track.length}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
-        : `${passes} clean \u00d7 ${track.length}`}</text>`;
+        ? `cut after ${remainder} of ${period}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
+        : `${passes} clean \u00d7 ${period}`}</text>`;
   });
 
   // The reset itself, over everything, in the colour that means "a limit" everywhere else here.
@@ -877,7 +897,7 @@ function bars(steps: number): string {
 }
 
 export function alignmentGrid(
-  groups: readonly { length: number; tracks: number[] }[],
+  groups: readonly PeriodGroup[],
   w: number,
   /** The step at which *every* track aligns. Outlined, because it is the answer to the question. */
   everything?: number,
@@ -895,13 +915,13 @@ export function alignmentGrid(
   const roomy = cellW >= 46;
   const cellH = roomy ? 34 : 22;
   const h = padT + n * (cellH + gap) + 16;
-  const worst = Math.max(...groups.flatMap((a) => groups.map((b) => lcm(a.length, b.length))));
+  const worst = Math.max(...groups.flatMap((a) => groups.map((b) => align(a.period, b.period))));
   let out = "";
 
   groups.forEach((col, j) => {
     const x = padL + j * (cellW + gap);
     out += `<text x="${x + cellW / 2}" y="${padT - 18}" text-anchor="middle"
-      font-size="${T.label}" fill="var(--ink2)">${col.length} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${col.period} steps</text>`;
     out += `<text x="${x + cellW / 2}" y="${padT - 6}" text-anchor="middle"
       font-size="${T.value}" fill="var(--ink3)">${col.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
   });
@@ -909,7 +929,7 @@ export function alignmentGrid(
   groups.forEach((row, i) => {
     const y = padT + i * (cellH + gap);
     out += `<text x="${padL - 8}" y="${y + cellH / 2 + 1}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${row.length} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${row.period} steps</text>`;
     if (roomy) {
       out += `<text x="${padL - 8}" y="${y + cellH / 2 + 12}" text-anchor="end"
         font-size="${T.value}" fill="var(--ink3)">${row.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
@@ -917,7 +937,7 @@ export function alignmentGrid(
 
     groups.forEach((col, j) => {
       const x = padL + j * (cellW + gap);
-      const steps = lcm(row.length, col.length);
+      const steps = align(row.period, col.period);
       const self = i === j;
       // Six sequential steps. A pair that is always in phase — one length dividing the other — sits
       // at the bottom of the ramp rather than off it.
@@ -938,7 +958,8 @@ export function alignmentGrid(
         fill="${self ? "#1a1f21" : `var(--q${band + 1})`}"
         stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
         stroke-width="${isEverything ? 2 : 1}"
-        ${tip(self ? `${row.length} steps — on its own` : `${row.length} and ${col.length} steps`,
+        ${tip(self ? `${row.period} master steps — on its own`
+              : `${row.period} and ${col.period} master steps`,
           self
             ? `T${row.tracks.join(", T")} comes round every ${steps} steps · ${bars(steps)}`
             : `back in phase every ${steps} steps · ${bars(steps)}`)}/>`;

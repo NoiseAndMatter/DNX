@@ -349,6 +349,39 @@ grid to find. The cost is that the ink has to change with the cell: `--ink` on `
 close to invisible, which is what the first version shipped with. Dark ink from `--q4`, measured
 against the ramp in `viz.css` rather than guessed.
 
+## The master clock — corrected 2026-09-05
+
+**A track's length is not its period.** SPEED is a multiple of the pattern's tempo, so 12 steps at
+3/2x is a period of 8 master steps and 16 at 1/2x is 32. Alignment, resets and trig positions are
+all on that clock.
+
+| | |
+|---|---|
+| `masterPeriod(track)` | `length / speed` — master steps per pass |
+| `masterOffset(track, step)` | where a step of that track falls, in master steps |
+| `periodGroups(tracks)` | groups by **period**, replacing the old grouping by length |
+
+16@1x and 24@3/2x share a period of 16 and stay locked forever; 16@1x and 16@2x do not, and the old
+grouping had those the wrong way round both times. Reading raw lengths got **60 of 352 patterns**
+wrong, and `GLITCH_EXPLORE` B5 was inverted outright — reported as a 192-step polymeter with two
+cuts, when it is 64, exactly its reset, with nothing cut.
+
+Periods are whole numbers of twenty-fourths, so the least common multiples are computed there and
+scaled back. A `16 @ 3/4x` track has a period of 21⅓ and still gives an exact answer.
+
+### The Digitone 1 is half the length
+
+64 steps over 4 pages against the DN2's 128 over 8. Nothing here hard-codes either — every bar count
+is derived — but a DN1 producer must not inherit a DN2 ceiling, and the voice budget already differs
+(8 against 16).
+
+### Conditional trigs make every alignment figure a floor
+
+A trig set to 2:3 plays on one pass in three, which multiplies the musical cycle. **1,388 of the
+15,258 note trigs in the corpus are conditional, across 220 of the 352 playing patterns.** The code
+tables are unread, so `AnalysisTrig.conditional` is a boolean and the page says the cycle is a floor
+rather than pretending the conditions are absent or pretending to compute them.
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one

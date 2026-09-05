@@ -58,6 +58,21 @@ export interface AnalysisTrig {
   /** Signed microtiming; 0 is on the grid. */
   microTiming: number;
   /**
+   * Whether this trig only plays on some passes.
+   *
+   * **A boolean, because the condition itself is not decoded.** A Digitone II trig can carry a
+   * condition like 2:3 — play on the second of every three passes — and `dn2-pattern-format.md`
+   * lists the code tables at `+0x100` and `+0x180` as unread: the numbering is non-linear between
+   * the two families and no capture has exercised it.
+   *
+   * It matters here because a conditional trig **lengthens the musical cycle**: a pattern whose
+   * tracks realign after 64 steps does not sound the same on every one of them if a trig plays on
+   * one pass in three. 1,388 of the 15,258 note trigs in the corpus are conditional, across 220 of
+   * the 352 playing patterns — so this is the common case, not an edge one, and the honest thing is
+   * to say the cycle shown is a floor rather than to pretend the conditions are not there.
+   */
+  conditional?: boolean;
+  /**
    * The preset a sound lock puts on this trig, or `undefined` when the track's own preset sounds.
    *
    * A name rather than a pool slot, because every reader here wants to print it and none of them
@@ -192,6 +207,39 @@ export function playing(subject: AnalysisSubject): AnalysisTrack[] {
   return subject.tracks.filter((t) => t.trigs.length > 0);
 }
 
+/**
+ * How many **master steps** one pass of a track takes.
+ *
+ * **A track's length is not its period.** SPEED is a multiple of the pattern's tempo — Elektron's
+ * manual: *"a setting of 1/8X plays back the track at one-eighth of the set tempo"* — so a 12-step
+ * track at 3/2x covers its twelve steps in eight master steps, and a 16-step track at 1/2x takes
+ * thirty-two. Everything about when tracks realign, when a reset interrupts one, and where a trig
+ * falls, happens on the master clock.
+ *
+ * Ignoring this got 60 of the 352 playing patterns in the corpus wrong. `GLITCH_EXPLORE` B5 was
+ * reported as a 192-step polymeter with two tracks cut; on the master clock it is **64 steps, which
+ * is exactly its reset, and nothing is cut at all**. The error was not small and it was not rare.
+ */
+export function masterPeriod(track: AnalysisTrack): number {
+  const speed = track.speed ?? 1;
+  return speed > 0 ? track.length / speed : track.length;
+}
+
+/** Where a step of a track falls on the master clock, relative to the start of its pass. */
+export function masterOffset(track: AnalysisTrack, step: number): number {
+  const speed = track.speed ?? 1;
+  return speed > 0 ? step / speed : step;
+}
+
+/**
+ * The denominator every speed divides into.
+ *
+ * The seven speeds are 2, 3/2, 1, 3/4, 1/2, 1/4 and 1/8, so a period of `length / speed` is always
+ * a whole number of twenty-fourths. Scaling by this keeps the least common multiple in integers
+ * instead of asking a float for `lcm(10.666…, 16)`.
+ */
+const SPEED_SCALE = 24;
+
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 
 /**
@@ -229,8 +277,13 @@ export function cycleSteps(tracks: readonly AnalysisTrack[]): number {
    * repetition count of `Infinity` and a cycle of `NaN` makes every bar vanish. A track that
    * cannot be sequenced contributes nothing to when the pattern realigns.
    */
-  const playable = tracks.map((t) => t.length).filter((n) => Number.isInteger(n) && n >= 1);
-  return playable.length ? playable.reduce(lcm, 1) : 1;
+  const scaled = tracks
+    .filter((t) => t.length >= 1)
+    .map((t) => Math.round(masterPeriod(t) * SPEED_SCALE))
+    .filter((n) => Number.isInteger(n) && n >= 1);
+  if (!scaled.length) return 1;
+  const together = scaled.reduce(lcm, SPEED_SCALE);
+  return together >= POLYMETER_LIMIT ? POLYMETER_LIMIT : together / SPEED_SCALE;
 }
 
 /**
@@ -292,13 +345,21 @@ export function resetCuts(
   const out: ResetCut[] = [];
   for (const track of tracks) {
     if (track.length < 1) continue;
-    const cutAfter = resetSteps % track.length;
-    if (cutAfter === 0) continue;
+    /*
+     * On the master clock, because that is the clock the reset counts. A 12-step track at 3/2x
+     * takes eight master steps per pass, so a reset of 64 gives it eight whole passes and cuts
+     * nothing — where the same track read at its raw length looked cut after four.
+     */
+    const period = masterPeriod(track);
+    const passes = Math.floor(resetSteps / period);
+    const cutAfter = Number((resetSteps - passes * period).toFixed(6));
+    if (cutAfter <= 0) continue;
     out.push({
       track,
-      passes: Math.floor(resetSteps / track.length),
+      passes,
       cutAfter,
-      lost: track.trigs.filter((trig) => trig.step >= cutAfter).length,
+      // A trig is lost when its own position within the pass falls past the cut.
+      lost: track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length,
     });
   }
   return out;
@@ -331,28 +392,49 @@ export function reachableSteps(
  */
 export const RESET_FIELD_MAX = 1024;
 
-/**
- * Distinct track lengths, ascending, with the tracks that carry each.
- *
- * **Alignment is a property of lengths, not of tracks.** Two 16-step tracks are always in phase, so
- * a grid of sixteen tracks against sixteen tracks would be mostly restatement of that. There are
- * sixteen tracks, so there can never be more than sixteen distinct lengths — that bound, not
- * anything about the projects to hand, is what a reader of this can rely on.
- */
-export function lengthGroups(
-  tracks: readonly AnalysisTrack[],
-): { length: number; tracks: number[] }[] {
-  const by = new Map<number, number[]>();
-  for (const t of tracks) {
-    if (t.length < 1) continue;
-    (by.get(t.length) ?? by.set(t.length, []).get(t.length)!).push(t.number);
-  }
-  return [...by].sort((a, b) => a[0] - b[0]).map(([length, ns]) => ({ length, tracks: ns }));
+/** A group of tracks that share a period, and therefore stay in phase with each other forever. */
+export interface PeriodGroup {
+  /** Master steps per pass — what actually decides alignment. */
+  period: number;
+  /** The track lengths in this group, for a label. Usually one; two only when speeds differ. */
+  lengths: number[];
+  tracks: number[];
 }
 
-/** When two lengths come back into phase — the first step at which both start together again. */
+/**
+ * Distinct **periods**, ascending, with the tracks that share each.
+ *
+ * **Alignment is a property of periods, not of lengths and not of tracks.** Two tracks of sixteen
+ * steps are in phase only if they also run at the same speed: one at 1x and one at 2x drift apart
+ * exactly as a 16 and an 8 would. Grouping on length was wrong for the 77 corpus patterns whose
+ * tracks do not share a speed.
+ *
+ * Sixteen tracks bounds this at sixteen groups — that, not anything about the projects to hand, is
+ * what a reader can rely on.
+ */
+export function periodGroups(tracks: readonly AnalysisTrack[]): PeriodGroup[] {
+  const by = new Map<number, PeriodGroup>();
+  for (const t of tracks) {
+    if (t.length < 1) continue;
+    const period = masterPeriod(t);
+    const group = by.get(period) ?? { period, lengths: [], tracks: [] };
+    if (!group.lengths.includes(t.length)) group.lengths.push(t.length);
+    group.tracks.push(t.number);
+    by.set(period, group);
+  }
+  return [...by.values()].sort((a, b) => a.period - b.period);
+}
+
+/**
+ * When two periods come back into phase, in master steps.
+ *
+ * Takes **periods**, not lengths — a period may be fractional (a 16-step track at 3/4x runs
+ * 21⅓ master steps), so the arithmetic is done in twenty-fourths and scaled back.
+ */
 export function alignmentOf(a: number, b: number): number {
-  return a >= 1 && b >= 1 ? lcm(a, b) : 0;
+  if (!(a > 0) || !(b > 0)) return 0;
+  const scaled = lcm(Math.round(a * SPEED_SCALE), Math.round(b * SPEED_SCALE));
+  return scaled >= POLYMETER_LIMIT ? POLYMETER_LIMIT : scaled / SPEED_SCALE;
 }
 
 /** A reset worth considering, and what it would leave whole. */
@@ -387,7 +469,7 @@ export interface ResetOption {
  * degrades by considering the shortest lengths, which are the ones that get cut.
  */
 export function resetOptions(tracks: readonly AnalysisTrack[]): ResetOption[] {
-  const groups = lengthGroups(tracks);
+  const groups = periodGroups(tracks);
   if (groups.length === 0) return [];
   /*
    * **Sixteen tracks is the ceiling, so sixteen distinct lengths is, and 2^16 subsets is nothing.**
@@ -396,21 +478,27 @@ export function resetOptions(tracks: readonly AnalysisTrack[]): ResetOption[] {
    * the shortest sixteen is the safe reading because short lengths are the ones a reset cuts.
    */
   const MAX_GROUPS = 16;
-  const lengths = groups.slice(0, MAX_GROUPS).map((g) => g.length);
+  // Scaled to twenty-fourths so a fractional period does not turn the subset arithmetic into floats.
+  const periods = groups.slice(0, MAX_GROUPS).map((g) => Math.round(g.period * SPEED_SCALE));
 
   const candidates = new Set<number>();
-  for (let mask = 1; mask < 1 << lengths.length; mask++) {
-    let value = 1;
-    for (let i = 0; i < lengths.length; i++) if (mask & (1 << i)) value = lcm(value, lengths[i]!);
+  for (let mask = 1; mask < 1 << periods.length; mask++) {
+    let value = SPEED_SCALE;
+    for (let i = 0; i < periods.length; i++) if (mask & (1 << i)) value = lcm(value, periods[i]!);
     // `lcm` saturates, so a subset that runs past the limit lands on it. Offering that as a reset
     // would be offering a number the field cannot hold and the arithmetic did not really produce.
-    if (value > 0 && value < POLYMETER_LIMIT) candidates.add(value);
+    const steps = value / SPEED_SCALE;
+    // A reset is set in whole steps on the instrument, so a fractional candidate is not settable.
+    if (steps > 0 && steps < POLYMETER_LIMIT && Number.isInteger(steps)) candidates.add(steps);
   }
 
   const whole = cycleSteps(tracks);
   const options: ResetOption[] = [...candidates].sort((a, b) => a - b).map((steps) => {
     const complete: number[] = [], cut: number[] = [];
-    for (const t of tracks) (steps % t.length === 0 ? complete : cut).push(t.number);
+    for (const t of tracks) {
+      const passes = steps / masterPeriod(t);
+      (Number.isInteger(Number(passes.toFixed(6))) ? complete : cut).push(t.number);
+    }
     return { steps, complete, cut, full: steps === whole, beyondField: steps > RESET_FIELD_MAX };
   });
 
@@ -443,11 +531,12 @@ export function clock(seconds: number): string {
 export function voicesPerStep(tracks: readonly AnalysisTrack[], windowSteps: number): number[] {
   const held = new Array<number>(windowSteps).fill(0);
   for (const t of tracks) {
-    // A length below 1 would never advance `rep * length` to the window; see `cycleSteps`.
-    const stride = t.length >= 1 ? t.length : windowSteps;
+    // On the master clock: a track at 3/2x fits its pass into two thirds of the steps. A length
+    // below 1 would never advance `rep * stride` to the window; see `cycleSteps`.
+    const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
     for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * stride + g.step;
+        const at = Math.round(rep * stride + masterOffset(t, g.step));
         if (at >= windowSteps) continue;
         for (let k = 0; k < g.length && at + k < windowSteps; k++) held[at + k]! += g.notes.length;
       }
@@ -548,11 +637,12 @@ export function holdersAt(
 ): { track: AnalysisTrack; note: string; velocity: number }[] {
   const out: { track: AnalysisTrack; note: string; velocity: number }[] = [];
   for (const t of tracks) {
-    // A length below 1 would never advance `rep * length` to the window; see `cycleSteps`.
-    const stride = t.length >= 1 ? t.length : windowSteps;
+    // On the master clock: a track at 3/2x fits its pass into two thirds of the steps. A length
+    // below 1 would never advance `rep * stride` to the window; see `cycleSteps`.
+    const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
     for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
-        const at = rep * stride + g.step;
+        const at = Math.round(rep * stride + masterOffset(t, g.step));
         if (at <= step && step < at + g.length && at < windowSteps) {
           out.push({ track: t, note: noteName(g.notes[0] ?? 0), velocity: g.velocity });
         }
@@ -659,10 +749,10 @@ export function pitchWindows(
   for (let at = 0; at + win <= total; at += hop) {
     const counts = new Array<number>(12).fill(0);
     for (const t of tracks) {
-      const stride = t.length >= 1 ? t.length : total;
+      const stride = t.length >= 1 ? masterPeriod(t) : total;
       for (let rep = 0; rep * stride < total; rep++) {
         for (const g of t.trigs) {
-          const s = rep * stride + g.step;
+          const s = Math.round(rep * stride + masterOffset(t, g.step));
           if (s >= at && s < at + win) for (const note of g.notes) counts[pitchClass(note)]!++;
         }
       }
@@ -794,10 +884,10 @@ export function trackWindows(
   for (let at = 0; at + win <= total; at += hop, w++) {
     for (const row of rows) {
       const counts = new Map<number, number>();
-      const stride = row.track.length >= 1 ? row.track.length : total;
+      const stride = row.track.length >= 1 ? masterPeriod(row.track) : total;
       for (let rep = 0; rep * stride < total; rep++) {
         for (const g of row.track.trigs) {
-          const st = rep * stride + g.step;
+          const st = Math.round(rep * stride + masterOffset(row.track, g.step));
           if (st < at || st >= at + win) continue;
           for (const n of g.notes) counts.set(n, (counts.get(n) ?? 0) + 1);
         }

@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  POLYMETER_LIMIT, alignmentOf, lengthGroups, polymeterIsBounded, reachableSteps, repeatSteps,
-  resetCuts, resetOptions, trackWindows, voicesPerStep,
+  POLYMETER_LIMIT, alignmentOf, masterPeriod, periodGroups, polymeterIsBounded, reachableSteps,
+  repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { realignBars } from "../web/src/analysis/charts.js";
@@ -354,13 +354,67 @@ test("a reset makes most of a long polymeter unreachable, not shorter", () => {
   assert.deepEqual(reachableSteps(tracks, undefined), { reachable: 192, total: 192 });
 });
 
+/* ---- SPEED, and the master clock ---------------------------------------------------------- */
+
+test("a track's period is its length divided by its speed", () => {
+  /*
+   * **A length is not a period.** SPEED is a multiple of the tempo — Elektron's manual: *"a setting
+   * of 1/8X plays back the track at one-eighth of the set tempo"* — so twelve steps at 3/2x take
+   * eight master steps and sixteen at 1/2x take thirty-two.
+   */
+  assert.equal(masterPeriod(track({ length: 12, speed: 1.5 })), 8);
+  assert.equal(masterPeriod(track({ length: 16, speed: 0.5 })), 32);
+  assert.equal(masterPeriod(track({ length: 16, speed: 1 })), 16);
+  assert.equal(masterPeriod(track({ length: 16 })), 16, "no speed means 1x");
+});
+
+test("the polymeter is measured on the master clock, not on track lengths", () => {
+  /*
+   * **This was wrong for 60 of the 352 playing patterns in the corpus.** `GLITCH_EXPLORE` B5 has
+   * tracks of 12@3/2x, 16@1x, 64@1x and 24@3/2x. Read as raw lengths that is a 192-step polymeter
+   * with two tracks cut by its 64-step reset. On the master clock the periods are 8, 16, 64 and 16,
+   * the polymeter is **64** — exactly the reset — and nothing is cut at all.
+   */
+  const b5 = [track({ number: 1, length: 12, speed: 1.5 }), track({ number: 2, length: 16 }),
+              track({ number: 3, length: 64 }), track({ number: 4, length: 24, speed: 1.5 })];
+  assert.equal(cycleSteps(b5), 64);
+  assert.deepEqual(resetCuts(b5, 64), [], "nothing is interrupted");
+});
+
+test("tracks of different lengths can share a period, and never drift", () => {
+  // 16 at 1x and 24 at 3/2x both take sixteen master steps. Grouping on length would have split
+  // them; grouping on period keeps them where they belong, which is together.
+  const groups = periodGroups([track({ number: 2, length: 16 }),
+                               track({ number: 4, length: 24, speed: 1.5 })]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]!.period, 16);
+  assert.deepEqual(groups[0]!.lengths, [16, 24]);
+  assert.deepEqual(groups[0]!.tracks, [2, 4]);
+});
+
+test("the same length at two speeds does not stay in phase", () => {
+  // The mirror of the case above, and the reason grouping on length was wrong.
+  const groups = periodGroups([track({ number: 1, length: 16 }),
+                               track({ number: 2, length: 16, speed: 2 })]);
+  assert.deepEqual(groups.map((g) => g.period), [8, 16]);
+  assert.equal(alignmentOf(8, 16), 16);
+});
+
+test("a fractional period still gives an exact alignment", () => {
+  // 16 steps at 3/4x is 21⅓ master steps. Asking a float for the least common multiple of that and
+  // 16 gives nonsense; the arithmetic is done in twenty-fourths.
+  const period = masterPeriod(track({ length: 16, speed: 0.75 }));
+  assert.ok(Math.abs(period - 64 / 3) < 1e-9);
+  assert.equal(alignmentOf(period, 16), 64);
+});
+
 /* ---- the reset calculator ---------------------------------------------------------------- */
 
-test("alignment is a property of lengths, so tracks are grouped by it", () => {
+test("alignment is a property of periods, so tracks are grouped by those", () => {
   const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 12 }),
                   track({ number: 5, length: 16 })];
-  assert.deepEqual(lengthGroups(tracks),
-    [{ length: 12, tracks: [2] }, { length: 16, tracks: [1, 5] }]);
+  assert.deepEqual(periodGroups(tracks).map((g) => [g.period, g.tracks]),
+    [[12, [2]], [16, [1, 5]]]);
 });
 
 test("two lengths come back into phase at their least common multiple", () => {
