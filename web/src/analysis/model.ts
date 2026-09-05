@@ -426,6 +426,31 @@ export function periodGroups(tracks: readonly AnalysisTrack[]): PeriodGroup[] {
 }
 
 /**
+ * The lengths in a group, each with the speed that turns it into the group's period.
+ *
+ * **A period is not a control anybody can set.** The instrument has LEN and SPEED; a period of 8 is
+ * what a 12-step track at 3/2x produces. Every place a period is shown has to be able to say which
+ * pair of settings it came from, or the reader cannot match the chart to the screen in front of
+ * them — a track they set to 12 appearing as an 8 with no explanation is worse than not showing it.
+ *
+ * The speed is derived rather than stored: it is exactly `length / period` by construction.
+ */
+export function periodSources(group: PeriodGroup): { length: number; speed: number }[] {
+  return group.lengths
+    .map((length) => ({ length, speed: Number((length / group.period).toFixed(4)) }))
+    .sort((x, y) => x.length - y.length);
+}
+
+/** Renders a speed the way the instrument writes it: `3/2x`, `1/2x`, `2x`. */
+export function speedLabel(speed: number): string {
+  const known: Record<string, string> = {
+    "2": "2x", "1.5": "3/2x", "1": "1x", "0.75": "3/4x",
+    "0.5": "1/2x", "0.25": "1/4x", "0.125": "1/8x",
+  };
+  return known[String(Number(speed.toFixed(4)))] ?? `${Number(speed.toFixed(3))}x`;
+}
+
+/**
  * When two periods come back into phase, in master steps.
  *
  * Takes **periods**, not lengths — a period may be fractional (a 16-step track at 3/4x runs

@@ -52,7 +52,7 @@ const align = (a: number, b: number): number =>
   a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 import {
   MACHINE_ORDER, NOTE_NAMES, machineLabel, masterOffset, masterPeriod, noteName, overlappingNotes,
-  pitchClass, presetOf,
+  periodSources, pitchClass, presetOf, speedLabel,
   type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
   type TrackRow,
 } from "./model.js";
@@ -777,7 +777,9 @@ export function trackTimeline(
 export function resetRuler(
   tracks: readonly AnalysisTrack[], resetSteps: number, w: number,
 ): string {
-  const rowH = 15, gap = 5, padL = 30, padR = 140;
+  // Rows are taller when a speed has to be spelled out under the pass count.
+  const anySpeed = tracks.some((t) => t.speed !== undefined && t.speed !== 1);
+  const rowH = 15, gap = anySpeed ? 13 : 5, padL = 30, padR = 150;
   // Remainder on the master clock, rounded to shake off the floating point in a period like 32/3.
   const cut = (t: AnalysisTrack) => t.length >= 1
     ? Number((resetSteps - Math.floor(resetSteps / masterPeriod(t)) * masterPeriod(t)).toFixed(6))
@@ -851,6 +853,11 @@ export function resetRuler(
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
         ? `cut after ${remainder} of ${period}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
         : `${passes} clean \u00d7 ${period}`}</text>`;
+    // What the reader set on the instrument, when it is not the same as the period drawn.
+    if (track.speed !== undefined && track.speed !== 1) {
+      out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 13}" font-size="${T.tick}"
+        fill="var(--ink)">${track.length} steps @${speedLabel(track.speed)}</text>`;
+    }
   });
 
   // The reset itself, over everything, in the colour that means "a limit" everywhere else here.
@@ -903,8 +910,21 @@ export function alignmentGrid(
   everything?: number,
 ): string {
   if (groups.length === 0) return svg(w, 1, "No tracks to align", "");
-  const padL = 92, padT = 34, gap = 3;
+  const padL = 92, gap = 3;
   const n = groups.length;
+  /*
+   * **A third header line, only when a speed is doing something.** The axis is periods, and a
+   * period is not a control: a reader who set LEN 12 and SPEED 3/2x needs to see those two numbers
+   * next to the 8 they produce, or the chart cannot be matched to the instrument.
+   *
+   * Drawn in full-strength ink rather than a colour. It wants to stand out, and the obvious choice
+   * was the warm series hue — but `--crit` already means "notes lost" in the card this chart sits
+   * in, and a second near-red meaning something else is the same fault as two sets of vertical
+   * lines. Weight carries it instead.
+   */
+  const sources = groups.map((g) => periodSources(g).filter((s) => s.speed !== 1));
+  const anySpeed = sources.some((s) => s.length > 0);
+  const padT = anySpeed ? 46 : 34;
   /*
    * **Sized to fit, not to a comfortable minimum.** Sixteen distinct lengths is legal — sixteen
    * tracks, all different — and a grid with a floor under its cell width would simply run off the
@@ -920,19 +940,28 @@ export function alignmentGrid(
 
   groups.forEach((col, j) => {
     const x = padL + j * (cellW + gap);
-    out += `<text x="${x + cellW / 2}" y="${padT - 18}" text-anchor="middle"
+    out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 30 : 18)}" text-anchor="middle"
       font-size="${T.label}" fill="var(--ink2)">${col.period} steps</text>`;
-    out += `<text x="${x + cellW / 2}" y="${padT - 6}" text-anchor="middle"
+    out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 18 : 6)}" text-anchor="middle"
       font-size="${T.value}" fill="var(--ink3)">${col.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+    if (anySpeed && sources[j]!.length) {
+      out += `<text x="${x + cellW / 2}" y="${padT - 6}" text-anchor="middle"
+        font-size="${T.value}" fill="var(--ink)">${sources[j]!
+          .map((s) => `${s.length} @${speedLabel(s.speed)}`).join(" ")}</text>`;
+    }
   });
 
   groups.forEach((row, i) => {
     const y = padT + i * (cellH + gap);
-    out += `<text x="${padL - 8}" y="${y + cellH / 2 + 1}" text-anchor="end"
+    out += `<text x="${padL - 8}" y="${y + cellH / 2 + (roomy ? 1 : 3)}" text-anchor="end"
       font-size="${T.label}" fill="var(--ink2)">${row.period} steps</text>`;
     if (roomy) {
+      const from = sources[i]!.length
+        ? sources[i]!.map((s) => `${s.length}@${speedLabel(s.speed)}`).join(" ")
+        : "";
       out += `<text x="${padL - 8}" y="${y + cellH / 2 + 12}" text-anchor="end"
-        font-size="${T.value}" fill="var(--ink3)">${row.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+        font-size="${T.value}" fill="var(${from ? "--ink" : "--ink3"})">${
+          from || row.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
     }
 
     groups.forEach((col, j) => {

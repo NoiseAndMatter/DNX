@@ -369,6 +369,27 @@ cuts, when it is 64, exactly its reset, with nothing cut.
 Periods are whole numbers of twenty-fourths, so the least common multiples are computed there and
 scaled back. A `16 @ 3/4x` track has a period of 21⅓ and still gives an exact answer.
 
+### A period is not a control, so the settings behind it are shown
+
+The axis of the alignment grid is periods, and **nobody can set a period**. The instrument has LEN
+and SPEED; a period of 8 is what 12 steps at 3/2x produces. A track somebody set to 12 appearing as
+an 8 with no explanation is worse than not showing it, so wherever a period is drawn the settings
+behind it are written beside it — the grid gains a third header line, the ruler a line under the
+pass count, and the table gains **Speed** and **Period** columns.
+
+Only when a speed is doing something: at 1x the period *is* the length and repeating it is noise.
+
+**In full-strength ink, not a colour.** The obvious choice was the warm series hue, and it was
+wrong: `--crit` already means *notes lost* in the same card, and a second near-red meaning something
+else is the same fault as two sets of vertical lines. Weight carries it.
+
+`periodSources` derives the speed rather than storing it — it is exactly `length / period` by
+construction — and `speedLabel` prints it the way the instrument does, `3/2x` rather than `1.5x`.
+
+**It also caught a live bug.** The polymeter table was still dividing the reset by the raw length
+after everything else had moved to the master clock, so its "passes before reset" column was wrong
+for exactly the tracks the master-clock fix was about.
+
 ### The Digitone 1 is half the length
 
 64 steps over 4 pages against the DN2's 128 over 8. Nothing here hard-codes either — every bar count
