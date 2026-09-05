@@ -24,7 +24,7 @@
  */
 
 import {
-  alignmentOf, clock, cycleSteps, fitKey, harmonic, machineLabel, masterPeriod, microBuckets,
+  alignmentOf, barsOf, clock, cycleSteps, fitKey, harmonic, machineLabel, masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
   repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds, trackWindows,
   type AnalysisSubject, type KeyFit,
@@ -34,6 +34,10 @@ import {
   phaseStrip, pitchBars, rampBand, rampIsLight, rampLegend, realignBars, resetRuler, table,
   trackTimeline, type PhaseMode,
 } from "../analysis/charts.js";
+import {
+  compareSubjects, summariseComparison, type ComparisonRow,
+} from "../analysis/compare.js";
+import { cycleBars } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../analysis/model.js";
 import { escapeHtml } from "../dom.js";
@@ -66,13 +70,243 @@ let tooltipAttached = false;
 const card = (title: string, body: string) =>
   `<section class="panel"><h2>${escapeHtml(title)}</h2><div class="body">${body}</div></section>`;
 
+/** A pattern the reader selected that could not be read, and the reason it gave. */
+export interface InsightsRefusal {
+  label: string;
+  /**
+   * Why, as a predicate — *"is a version 2 pattern record…"*, not *"A1 is a version 2…"*.
+   *
+   * The reader's own messages lead with the pattern's name, and the caller strips it. Two reasons:
+   * the label is printed right beside it anyway, and **identical refusals cannot group while each
+   * one names a different pattern**. Shift-selecting a bank of `PRESETS.dn2prj` printed the same
+   * 190-character sentence sixteen times, and telling them apart meant reading all sixteen.
+   */
+  reason: string;
+}
+
 /**
- * Draw the analysis for one subject into `host`.
+ * What could not be read, said in the panel rather than dropped.
+ *
+ * A selection of eight that quietly analyses six is the same fault as a chart that filters silent
+ * tracks without saying so — three separate readings went wrong that way before this surface
+ * started naming its own omissions.
+ */
+function refusalNote(refusals: readonly InsightsRefusal[]): string {
+  if (refusals.length === 0) return "";
+  /*
+   * **Grouped by reason, because a range selection refuses in bulk.** Every record in
+   * `PRESETS.dn2prj` is version 2, so shift-selecting a bank printed the same 190-character
+   * sentence sixteen times and the reader has to compare paragraphs to see they are identical.
+   * There is one reason and sixteen patterns, and that is what it should say.
+   */
+  const byReason = new Map<string, string[]>();
+  for (const r of refusals) byReason.set(r.reason, [...(byReason.get(r.reason) ?? []), r.label]);
+  return `<div class="inferred" style="margin-top:.7rem">
+    <span class="h">${refusals.length} selected pattern${refusals.length === 1 ? "" : "s"} could
+      not be read</span>
+    ${[...byReason].map(([reason, labels]) =>
+      `<p class="why"><b>${labels.map(escapeHtml).join(", ")}</b>${
+        // One reads as the sentence the reader wrote; several read as one sentence about a set.
+        labels.length > 1 ? " — each " : " "}${escapeHtml(reason)}</p>`).join("")}
+  </div>`;
+}
+
+/**
+ * Rows sharing an identical set of figures, so one sentence can speak for all of them.
+ *
+ * **Patterns in a bank are often near-copies of each other**, and three of them refused, cut or
+ * phased in exactly the same way produce three identical sentences with only the name changed. The
+ * reader then has to compare them word by word to discover they are the same, which is worse than
+ * not printing them at all.
+ */
+function groupBy<T>(rows: readonly T[], key: (row: T) => string): T[][] {
+  const out = new Map<string, T[]>();
+  for (const row of rows) out.set(key(row), [...(out.get(key(row)) ?? []), row]);
+  return [...out.values()];
+}
+
+/** `A1`, `A1 and A2`, `A1, A2 and A9` — an English list, not a comma-joined array. */
+function listOf(labels: readonly string[]): string {
+  const escaped = labels.map(escapeHtml);
+  if (escaped.length < 3) return escaped.join(" and ");
+  return `${escaped.slice(0, -1).join(", ")} and ${escaped.at(-1)}`;
+}
+
+/**
+ * The overview drawn above the cards when more than one pattern is selected.
+ *
+ * ## Why a comparison and not eight full analyses
+ *
+ * Stacking the five cards once per selected pattern is the obvious build and it is not usable: the
+ * page becomes a scroll of near-identical sections, and comparing anything means holding a number
+ * in your head while you travel past four charts to find its neighbour. **A comparison has to put
+ * the compared values next to each other or it is not one.** So this draws the structural figures
+ * across all of them, and the full analysis stays where it was — on the pattern clicked last, which
+ * is the one the caret in the chart points at.
+ *
+ * ## The bars are steps, and the clock times are not comparable
+ *
+ * Bar length is master steps, because that is the structure. Every pattern carries its own tempo,
+ * so the time printed beside each bar is at *that* pattern's BPM — two equal bars can be different
+ * durations. That is worth a sentence rather than a footnote, so when the tempos differ this says
+ * so in the prose instead of hoping the reader checks the column.
+ */
+function comparisonCard(rows: readonly ComparisonRow[], refusals: readonly InsightsRefusal[]): string {
+  const s = summariseComparison(rows);
+  const tempoTile = s.tempos.length === 1
+    ? `<span class="v">${s.tempos[0]!.toFixed(s.tempos[0]! % 1 ? 1 : 0)}</span>
+       <span class="u">BPM</span><span class="note">all ${rows.length} agree</span>`
+    : `<span class="v">${s.tempos.length}</span><span class="u">tempos</span>
+       <span class="note">${s.tempos.map((t) => t.toFixed(t % 1 ? 1 : 0)).join(", ")} BPM</span>`;
+
+  const bars = rows.map((row, i) => ({
+    label: row.label,
+    cycle: row.cycle,
+    polymeter: row.polymeter,
+    bounded: row.bounded,
+    lostTrigs: row.lostTrigs,
+    seconds: row.seconds,
+    // The last selected is the one whose full analysis follows, and the caret is what ties the
+    // two halves of the page together.
+    ...(i === rows.length - 1 ? { focused: true } : {}),
+  }));
+
+  return card(`Comparing ${rows.length} patterns`, `
+    <div class="tiles">
+      <div class="tile"><span class="k">Selected</span>
+        <span class="v">${rows.length}</span><span class="u">patterns</span>
+        <span class="note">in the order you clicked them${s.silent.length
+          ? ` · ${s.silent.length} sequence nothing` : ""}</span></div>
+      <div class="tile"><span class="k">Tempo</span>${tempoTile}</div>
+      <div class="tile"><span class="k">Shortest cycle</span>
+        <span class="v">${s.shortest ? barsOf(s.shortest.cycle).replace(/ bars?$/, "") : "—"}</span>
+        <span class="u">bars</span>
+        <span class="note">${s.shortest ? escapeHtml(s.shortest.label) : "nothing plays"}</span></div>
+      <div class="tile ${s.losing.length ? "flag" : ""}"><span class="k">Losing notes</span>
+        <span class="v">${s.losing.length}</span><span class="u">of ${rows.length}</span>
+        <span class="note">${s.losing.length
+          ? `${s.losing.reduce((n, r) => n + r.lostTrigs, 0)} trigs never sound`
+          : "no reset clips a figure"}</span></div>
+    </div>
+
+    ${rows.every((r) => r.silent) ? "" : `
+    <figure style="margin-top:.9rem">
+      <figcaption>How long each runs before it repeats, on <b>one linear scale</b>${
+        /*
+         * The sentence justifying the scale is only earned when the spread is wide enough to look
+         * like a mistake. Printed against five patterns within a factor of two it reads as a
+         * warning about something that is not happening — and a caption that describes a different
+         * chart than the one under it is how a reader learns to stop reading them.
+         */
+        s.longest && s.shortest && s.longest.cycle >= s.shortest.cycle * 8
+          ? ` — so a four-bar loop beside a hundred-bar one really does draw as a sliver` : ""}.
+        ${s.longest && s.shortest && s.longest !== s.shortest
+          ? `<b>${escapeHtml(s.longest.label)}</b> runs ${barsOf(s.longest.cycle)} against
+             <b>${escapeHtml(s.shortest.label)}</b> at ${barsOf(s.shortest.cycle)}.`
+          : ""}${
+          /*
+           * The caret is only promised when it is drawn. A silent pattern clicked last is filtered
+           * off the chart, so the sentence pointed at a mark that was not there — read on the page,
+           * with the caption naming a caret and the chart carrying none.
+           */
+          rows.at(-1)!.silent ? "" : " The caret marks the pattern analysed in full below."
+        }</figcaption>
+      <div class="chart" id="i-cycles"></div>
+    </figure>
+    ${legend([["Repeats cleanly", "--q4"], ["Analysed below", "--s3"],
+              ["Loses notes to the reset", "--crit"]])}`}
+
+    ${s.tempos.length > 1 ? `
+      <p class="hint" style="margin-top:.6rem">These patterns <b>do not share a tempo</b>. The bars
+        are master steps, so they compare structure honestly; the clock times beside them are each
+        at that pattern's own BPM, and two bars of equal length are not equal durations.</p>` : ""}
+
+    ${s.reset.length ? `
+      <div class="inferred" style="margin-top:.9rem">
+        <span class="h">${s.reset.length} of ${rows.length} never finish their polymeter</span>
+        <p class="why">${groupBy(s.reset, (r) => `${r.polymeter}/${r.cycle}`).map((group) => {
+          const many = group.length > 1;
+          return `<b>${listOf(group.map((r) => r.label))}</b> would ${many ? "each " : ""}take
+            ${barsOf(group[0]!.polymeter)} for ${many ? "their" : "its"} tracks to come round
+            together and ${many ? "are" : "is"} restarted after ${barsOf(group[0]!.cycle)}`;
+        }).join("; ")}. Everything past
+          the reset is the same stretch again, so the phasing beyond it is never heard.</p>
+        ${s.losing.length ? `<p class="why" style="margin-top:.35rem"><b>Of those,
+          ${s.losing.length} lose notes</b>: ${
+            groupBy(s.losing, (r) => `${r.lostTrigs}/${r.cutTracks}`).map((group) => {
+              const [r] = group;
+              return `${listOf(group.map((g) => g.label))} ${group.length > 1 ? "each drop" : "drops"}
+                ${r!.lostTrigs} trig${r!.lostTrigs === 1 ? "" : "s"} across
+                ${r!.cutTracks} track${r!.cutTracks === 1 ? "" : "s"}`;
+            }).join(", ")}.${
+            // Only when there IS a rest. With every reset pattern losing notes this printed "the
+            // rest are cut on a boundary that costs nothing" about an empty set — read on the page,
+            // where it says the opposite of what the sentence before it just established.
+            s.reset.length > s.losing.length
+              ? ` The other ${s.reset.length - s.losing.length} are cut on a boundary that costs
+                 nothing.` : ""}</p>` : `<p class="why" style="margin-top:.35rem">None of
+          them lose a note to it — every cut lands where nothing was going to play.</p>`}
+      </div>` : ""}
+
+    ${s.conditional.length ? `
+      <p class="hint" style="margin-top:.6rem"><b>${s.conditional.length} of these
+        ${s.conditional.length === 1 ? "carries" : "carry"} conditional trigs</b>
+        (${s.conditional.reduce((n, r) => n + r.conditional, 0)} in all), so
+        ${s.conditional.length === 1 ? "its cycle figure is" : "their cycle figures are"} a
+        <b>floor</b>. A trig set to 2:3 plays on one pass in three and the condition
+        codes are stored but not decoded, so this can say the conditions are there and not how much
+        longer they make it.</p>` : ""}
+
+    ${s.silent.length ? `
+      <p class="hint" style="margin-top:.6rem">${s.silent.map((r) =>
+        `<b>${escapeHtml(r.label)}</b>`).join(", ")} sequence${s.silent.length === 1 ? "s" : ""}
+        nothing, so ${s.silent.length === 1 ? "it has" : "they have"} no cycle to draw and
+        ${s.silent.length === 1 ? "is" : "are"} left off the chart rather than drawn as zero.</p>`
+      : ""}
+
+    ${refusalNote(refusals)}
+
+    ${table(
+      ["Pattern", "Tempo", "Tracks", "Master", "RESET", "Repeats every", "Polymeter", "Heard",
+       "Cut", "Notes lost"],
+      rows.map((r) => [
+        r.label,
+        r.tempo.toFixed(r.tempo % 1 ? 1 : 0),
+        r.silent ? "—" : `${r.playing} of ${r.tracks}`,
+        r.masterLength,
+        r.resetSteps ?? "INF",
+        r.silent ? "—" : `${r.cycle.toLocaleString()} (${barsOf(r.cycle)})`,
+        r.silent ? "—" : r.bounded ? r.polymeter.toLocaleString() : "> 1M",
+        r.silent || !r.bounded ? "—" : `${Math.round((r.cycle / r.polymeter) * 100)}%`,
+        r.cutTracks || "—",
+        r.lostTrigs || "—",
+      ]))}
+  `);
+}
+
+/**
+ * Draw the analysis for the selected subjects into `host`.
  *
  * `host` must carry `.viz`; every rule in `viz.css` is scoped under it, because `charts.ts` emits
  * a `.legend` and so does the pattern grid.
+ *
+ * ## One subject or several
+ *
+ * **The last subject is the one analysed in full**, because in this mode clicking a slot is how you
+ * change what you are looking at, and the most recent click is the answer to "what am I looking
+ * at". Selecting more adds a comparison above the cards; it does not replace them, and with one
+ * subject the page is exactly what it always was.
+ *
+ * `refusals` are patterns the reader selected that could not be read — a Digitone 1 pattern, or a
+ * storage version this project refuses. They are **named in the panel** rather than dropped: a
+ * selection of eight that silently analyses six is the same fault as a chart that filters tracks
+ * without saying so.
  */
-export function renderInsights(host: HTMLElement, subject: AnalysisSubject): void {
+export function renderInsights(
+  host: HTMLElement,
+  subjects: readonly AnalysisSubject[],
+  refusals: readonly InsightsRefusal[] = [],
+): void {
   /*
    * **Scroll position is restored, not merely left alone.**
    *
@@ -88,11 +322,55 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
     tooltipAttached = true;
   }
 
+  const subject = subjects.at(-1);
+  if (subject === undefined) {
+    /*
+     * **"Select a pattern above" is wrong when patterns were selected and all of them were
+     * refused.** The reader did exactly what it asks; telling them to do it again reads as the page
+     * not having noticed. The refusals are the answer in that case, on their own.
+     */
+    host.innerHTML = refusals.length
+      ? card("Nothing here can be read", refusalNote(refusals))
+      : card("Insights", `<p class="hint">Select a pattern above to analyse it.</p>`);
+    return;
+  }
+
+  /*
+   * Built before anything else so it survives every early return below. A silent pattern clicked
+   * last must not take the comparison down with it — the comparison is about the other seven too,
+   * and losing it on a click would make the mode feel broken rather than empty.
+   */
+  const rows = subjects.length > 1 ? compareSubjects(subjects) : [];
+  const overview = rows.length
+    ? comparisonCard(rows, refusals)
+    : refusals.length ? card("Not read", refusalNote(refusals)) : "";
+  /*
+   * **Tagged focused first, filtered second.** A pattern with nothing sequenced has no cycle —
+   * `cycleSteps` returns 1 for it, the identity — so a bar for it would be a 2px stub reading
+   * "0.06 bars": a measurement of nothing that looks like one. Those are named in the card's prose
+   * instead. Tagging before filtering keeps the caret on the last *selected* pattern rather than on
+   * the last one that happens to play.
+   */
+  const cycleRows = rows
+    .map((row, i) => ({
+      label: row.label, cycle: row.cycle, polymeter: row.polymeter, bounded: row.bounded,
+      lostTrigs: row.lostTrigs, seconds: row.seconds, silent: row.silent,
+      ...(i === rows.length - 1 ? { focused: true } : {}),
+    }))
+    .filter((row) => !row.silent);
+  const drawOverview = () => {
+    if (cycleRows.length) {
+      mount(document.getElementById("i-cycles")!, (w) => cycleBars(cycleRows, w));
+    }
+  };
+
   const live = playing(subject);
   if (live.length === 0) {
-    host.innerHTML = card("Insights", `<p class="hint">
+    host.innerHTML = overview + card("Insights", `<p class="hint">
       <strong>${escapeHtml(subject.label)}</strong> has no trigs on any track, so there is nothing
       to measure. Select a pattern that plays something.</p>`);
+    drawOverview();
+    window.scrollTo({ top: scroll });
     return;
   }
 
@@ -178,11 +456,6 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
   const soonest = pairs.length ? pairs.reduce((m, p) => (p.steps < m.steps ? p : m)) : undefined;
   const latest = pairs.length ? pairs.reduce((m, p) => (p.steps > m.steps ? p : m)) : undefined;
   const rampTop = pairs.length ? Math.max(...pairs.map((p) => p.steps)) : 1;
-  const barsOf = (steps: number) => {
-    const value = steps / 16;
-    return Number.isInteger(value) ? `${value} bar${value === 1 ? "" : "s"}`
-      : `${Number(value.toFixed(2))} bars`;
-  };
   const chip = (steps: number) => {
     const band = rampBand(steps, rampTop);
     return `<span style="display:inline-block;width:.62rem;height:.62rem;border-radius:2px;` +
@@ -193,7 +466,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
   const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
 
-  host.innerHTML =
+  host.innerHTML = overview +
     card(`Play time and cycle — ${subject.label}`, `
       <div class="tiles">
         <div class="tile"><span class="k">Tempo</span>
@@ -202,7 +475,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
         <div class="tile"><span class="k">Master length</span>
           <span class="v">${subject.masterLength}</span><span class="u">steps</span>
           <span class="note">${clock(stepsToSeconds(subject.masterLength, subject.tempo))} ·
-            ${subject.masterLength / 16} bars</span></div>
+            ${barsOf(subject.masterLength)}</span></div>
         <div class="tile ${cut ? "flag" : ""}"><span class="k">Repeats every</span>
           <span class="v">${cycle.toLocaleString()}</span><span class="u">steps</span>
           <span class="note">${clock(cycleSec)} · ${bars} bar${bars === 1 ? "" : "s"}${cut
@@ -274,7 +547,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           <span class="u">${subject.resetSteps === undefined ? "" : "steps"}</span>
           <span class="note">${subject.resetSteps === undefined
             ? "tracks are never pulled back to step one"
-            : `every track restarts here · ${subject.resetSteps / 16} bars`}</span></div>
+            : `every track restarts here · ${barsOf(subject.resetSteps)}`}</span></div>
         <div class="tile"><span class="k">Hands over after</span>
           <span class="v">${subject.changeSteps ?? "—"}</span>
           <span class="u">${subject.changeSteps === undefined ? "" : "steps"}</span>
@@ -404,7 +677,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
                    last pass exactly as everything restarts. The tracks fully realign after`}
                <b>${reach.total.toLocaleString()} steps</b>.`
             : `<b>${completes && !completes.beyondField
-                ? `Set RESET to ${completes.steps} — ${completes.steps / 16} bars — or to INF.`
+                ? `Set RESET to ${completes.steps} — ${barsOf(completes.steps)} — or to INF.`
                 : `Only INF completes it:`}</b>
                every track finishes a whole number of passes after
                <b>${reach.total.toLocaleString()} steps</b>${completes?.beyondField
@@ -491,7 +764,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
           <span id="i-spanctrl" hidden>
             <label for="i-keyspan" style="margin-left:.4rem">Span</label>
             <select id="i-keyspan">
-              <option value="beat">${subject.masterLength / 16} bars — a column per beat</option>
+              <option value="beat">${barsOf(subject.masterLength)} — a column per beat</option>
               <option value="bar">Full cycle — a column per bar</option>
             </select>
           </span>
@@ -539,6 +812,7 @@ export function renderInsights(host: HTMLElement, subject: AnalysisSubject): voi
       </div>
     `));
 
+  drawOverview();
   mount(document.getElementById("i-phase")!, (w) =>
     phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   if (subject.resetSteps !== undefined) {

@@ -548,6 +548,21 @@ export function clock(seconds: number): string {
 }
 
 /**
+ * Steps as bars, the unit this surface is finally read in.
+ *
+ * **Here rather than in either caller, because both need it and they must agree.** The charts print
+ * a bar count beside a mark and the cards print one in a sentence about the same pattern; two
+ * implementations of this is how a chart comes to say "1 bars" while the prose beside it says
+ * "1 bar", which is exactly what the first version did.
+ */
+export function barsOf(steps: number): string {
+  const value = steps / 16;
+  return Number.isInteger(value)
+    ? `${value} bar${value === 1 ? "" : "s"}`
+    : `${Number(value.toFixed(2))} bars`;
+}
+
+/**
  * Voices held by a gate at each step of a window.
  *
  * A chord trig spends one voice **per note**. Tracks repeat into the window at their own length,
