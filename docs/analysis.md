@@ -213,6 +213,52 @@ documented as off. Unconfirmed on hardware — `Tests_To_Run.html` T41 is the ca
 > saying *there is a global pattern reset*. **A corpus cannot tell you that you asked the wrong
 > question.**
 
+## The polymeter card — 2026-09-05
+
+Three questions the instrument cannot answer on one screen, because it keeps track lengths and the
+pattern reset on different rows and never their remainder.
+
+| tile | |
+|---|---|
+| **Pattern reset** | where every track is pulled back to step one, or INF |
+| **Hands over after** | CHANGE — when a cued pattern takes over. *Not a repeat length* |
+| **Polymeter** | the track lengths alone, ignoring the reset |
+| **Reachable** | how much of that polymeter is ever heard |
+
+**Reachable is the one worth explaining.** A reset does not shorten a polymeter — it makes most of
+it unreachable. Every track returns to step one together, so the pattern is exactly periodic from
+there and the phasing past it never happens. You do not hear less of it; you hear the *same* first
+stretch, forever. `GLITCH_EXPLORE` B5 reaches 33% of its 192 steps: 128 of them never play.
+
+### The reset ruler
+
+One row per track, its passes laid across the reset, ordered with the interrupted tracks first. A
+track whose length divides the reset draws whole blocks up to the line; one that does not draws a
+stub in the alert colour, and **that stub is the part of the figure the sequencer cuts off — in the
+same place, every time the pattern comes round.** 41 of the 352 playing corpus patterns have at
+least one, across 63 tracks.
+
+The card says plainly that a clipped figure may be exactly what somebody wanted. It is listed
+because it is otherwise invisible, not because it is wrong.
+
+### A marker that was built and removed
+
+The phase strip briefly drew a dashed rule at the reset. Measured, the callers draw that chart over
+exactly one loop of what plays, so the reset **is** the right-hand edge: in 261 of the 262 corpus
+patterns that have a reset, the line would have sat on the frame saying nothing. Removed. The ruler
+carries the cutting story and the phase strip stays about rhythm.
+
+### CHANGE is on the page but is never a cycle
+
+Elektron's manual: CHANGE *"controls for how long the active pattern plays before it changes to a
+cued or chained pattern."* It ends the pattern rather than bringing it round, so it can never stand
+in for the repeat length — that would be the same mistake as reporting the LCM. It answers a
+different question: how much of a long polymeter anybody hears in a chain. `017 PRESETS` B8 runs
+4,928 steps and hands over after 16.
+
+It also carries the manual's own trap, which **58 corpus patterns are in**: with RESET at INF and no
+CHANGE setting, *"the pattern plays infinitely and the next cued pattern will never play."*
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one

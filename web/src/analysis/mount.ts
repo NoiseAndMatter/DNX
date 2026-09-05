@@ -65,19 +65,28 @@ export function repaint(el: HTMLElement, draw: Draw): void {
  * Returns a function that removes the listeners, for a page that tears its charts down.
  */
 export function attachTooltip(tipEl: HTMLElement): () => void {
+  /*
+   * Placed on entry as well as on movement. Bound only to `pointermove`, the tooltip appeared at
+   * the top-left corner of the window for the first frame — its position is only ever written by
+   * the move handler, and entering a mark without moving inside it never ran one.
+   */
+  const place = (e: PointerEvent) => {
+    tipEl.style.left =
+      `${Math.min(e.clientX + 14, window.innerWidth - tipEl.offsetWidth - 6)}px`;
+    tipEl.style.top = `${Math.max(6, e.clientY - tipEl.offsetHeight - 14)}px`;
+  };
   const over = (e: PointerEvent) => {
     const el = (e.target as Element | null)?.closest?.(TIP_SELECTOR) as HTMLElement | null;
     if (!el) return;
     tipEl.innerHTML = `<span class="t">${el.dataset["tipT"] ?? ""}</span>${el.dataset["tipB"] ?? ""}`;
     tipEl.classList.add("on");
+    place(e);
   };
   const move = (e: PointerEvent) => {
     if (!tipEl.classList.contains("on")) return;
     // Kept inside the viewport on the right and never allowed above the top edge: a tooltip that
     // is off-screen is the same as no tooltip, and the marks near an edge are ordinary marks.
-    tipEl.style.left =
-      `${Math.min(e.clientX + 14, window.innerWidth - tipEl.offsetWidth - 6)}px`;
-    tipEl.style.top = `${Math.max(6, e.clientY - tipEl.offsetHeight - 14)}px`;
+    place(e);
   };
   const out = (e: PointerEvent) => {
     if ((e.target as Element | null)?.closest?.(TIP_SELECTOR)) tipEl.classList.remove("on");

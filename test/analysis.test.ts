@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  repeatSteps, trackWindows, voicesPerStep,
+  reachableSteps, repeatSteps, resetCuts, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { realignBars } from "../web/src/analysis/charts.js";
@@ -314,6 +314,43 @@ test("a RESET longer than the polymeter changes nothing", () => {
   const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 8 })];
   assert.equal(cycleSteps(tracks), 16);
   assert.equal(repeatSteps(tracks, 64), 16);
+});
+
+test("a track whose length divides the reset is clean, and is not reported", () => {
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 32 })];
+  assert.deepEqual(resetCuts(tracks, 64), []);
+});
+
+test("a track the reset interrupts says how far it got", () => {
+  /*
+   * **The one thing on this surface a musician can act on.** A 12-step track under a 64-step reset
+   * plays five whole passes and four steps of a sixth, then is pulled back — in the same place on
+   * every repeat. Audible as a part that goes wrong at the same moment each time round, and
+   * invisible on the instrument, which shows lengths and the reset on different rows and never
+   * their remainder. 41 of the 352 playing corpus patterns have at least one.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 4, length: 24 }),
+                  track({ number: 2, length: 16 })];
+  const cuts = resetCuts(tracks, 64);
+  assert.deepEqual(cuts.map((c) => [c.track.number, c.passes, c.cutAfter]),
+    [[1, 5, 4], [4, 2, 16]]);
+});
+
+test("no reset means nothing is cut", () => {
+  const tracks = [track({ number: 1, length: 7 }), track({ number: 2, length: 12 })];
+  assert.deepEqual(resetCuts(tracks, undefined), []);
+});
+
+test("a reset makes most of a long polymeter unreachable, not shorter", () => {
+  /*
+   * Every track returns to step one together at the reset, so the pattern is exactly periodic from
+   * there. You do not hear less of the polymeter — you hear the **same** first stretch forever, and
+   * the phasing past it never happens at all.
+   */
+  const tracks = [track({ number: 1, length: 12 }), track({ number: 2, length: 16 }),
+                  track({ number: 3, length: 64 })];
+  assert.deepEqual(reachableSteps(tracks, 64), { reachable: 64, total: 192 });
+  assert.deepEqual(reachableSteps(tracks, undefined), { reachable: 192, total: 192 });
 });
 
 /* ---- charts, where the geometry can go wrong without throwing --------------------------- */

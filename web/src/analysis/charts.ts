@@ -112,6 +112,11 @@ export const pcHue = (pc: number) => `hsl(${pc * 30} 52% 56%)`;
  * once: the restart tick, the repetition banding, and **the trigs themselves as dots**. That last
  * is what makes it a guide rather than a diagram — the polymeter is read against the actual rhythm
  * rather than against an empty lane.
+ *
+ * **There is deliberately no marker for the pattern reset.** One was built and taken out: callers
+ * draw this over exactly one loop of what plays, so the reset is the right-hand edge — in 261 of
+ * the 262 corpus patterns that have one, the line would have sat on the frame saying nothing.
+ * Where the reset cuts a track mid-figure, `resetRuler` shows it and this chart stays about rhythm.
  */
 export function phaseStrip(
   tracks: readonly AnalysisTrack[],
@@ -681,6 +686,81 @@ export function trackTimeline(
       fill="var(--ink3)">${Math.floor(c.at / 16) + 1}</text>`;
   });
   return svg(w, h, "The notes each track plays, stacked low to high", out);
+}
+
+/**
+ * Every track's passes laid against the reset, so an interrupted one can be seen rather than
+ * deduced.
+ *
+ * **The chart exists for its last segment.** A track whose length divides the reset draws whole
+ * blocks up to the line and stops; a track whose length does not draws a stub in the alert colour,
+ * and that stub is the part of the figure the sequencer cuts off — in the same place, every time
+ * the pattern comes round. Nothing on the instrument shows it: lengths and the reset live on
+ * different rows of one screen and their remainder is never spelled out.
+ *
+ * Rows are ordered with the interrupted tracks first, because on sixteen tracks the two clean ones
+ * are not what anybody opened this for.
+ */
+export function resetRuler(
+  tracks: readonly AnalysisTrack[], resetSteps: number, w: number,
+): string {
+  const rowH = 15, gap = 5, padL = 30, padR = 96;
+  const cut = (t: AnalysisTrack) => (t.length >= 1 ? resetSteps % t.length : 0);
+  const sorted = [...tracks].sort((a, b) => {
+    const ca = cut(a), cb = cut(b);
+    if ((ca === 0) !== (cb === 0)) return ca === 0 ? 1 : -1;
+    return a.length - b.length;
+  });
+  const h = sorted.length * (rowH + gap) + 14;
+  const plot = w - padL - padR;
+  const x = (step: number) => padL + (step / resetSteps) * plot;
+  let out = "";
+
+  // The bar grid behind everything: a reset is nearly always a whole number of bars, and seeing
+  // that a track is not is half the point.
+  for (let bar = 0; bar <= resetSteps / 16; bar++) {
+    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h - 14}"
+      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
+  }
+
+  sorted.forEach((track, i) => {
+    const y = i * (rowH + gap);
+    const remainder = cut(track);
+    const passes = track.length >= 1 ? Math.floor(resetSteps / track.length) : 0;
+    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+
+    for (let pass = 0; pass < passes; pass++) {
+      const from = pass * track.length;
+      const to = Math.min(from + track.length, resetSteps);
+      out += `<rect x="${x(from) + 1}" y="${y + 2}" width="${Math.max(1, x(to) - x(from) - 2)}"
+        height="${rowH - 4}" rx="1.5" fill="var(--q4)" opacity=".55"
+        ${tip(`T${track.number} — pass ${pass + 1} of ${passes}`,
+          `steps ${from + 1}–${to} · complete`)}/>`;
+    }
+    if (remainder) {
+      const from = passes * track.length;
+      out += `<rect x="${x(from) + 1}" y="${y + 2}"
+        width="${Math.max(1.5, x(from + remainder) - x(from) - 2)}" height="${rowH - 4}" rx="1.5"
+        fill="var(--crit)"
+        ${tip(`T${track.number} — cut`,
+          `pass ${passes + 1} gets ${remainder} of its ${track.length} steps before the reset`)}/>`;
+    }
+    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
+      font-size="${T.label}" fill="var(--ink2)">T${track.number}</text>`;
+    out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
+      fill="var(${remainder ? "--crit" : "--ink3"})">${remainder
+        ? `cut after ${remainder} of ${track.length}`
+        : `${passes} clean \u00d7 ${track.length}`}</text>`;
+  });
+
+  // The reset itself, over everything, in the colour that means "a limit" everywhere else here.
+  out += `<line x1="${padL + plot}" y1="0" x2="${padL + plot}" y2="${h - 14}"
+    stroke="var(--crit)" stroke-width="${W.limit}" stroke-dasharray="4 3"/>`;
+  for (let bar = 0; bar < resetSteps / 16; bar++) {
+    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
+      fill="var(--ink3)">${bar + 1}</text>`;
+  }
+  return svg(w, h, `Each track's passes before the reset at ${resetSteps} steps`, out);
 }
 
 /* ---- legends and the table view ------------------------------------------------------- */
