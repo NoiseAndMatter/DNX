@@ -113,6 +113,7 @@ import {
 } from "./format.js";
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 import { PortPicker } from "./ports.js";
+import { readReportRows } from "./report.js";
 import {
   LIST_TIMEOUT_MS,
   requestListing,
@@ -953,82 +954,7 @@ async function readProject(): Promise<void> {
  * run of this is the experiment that answers two of them.
  */
 function reportCard(into: HTMLElement, report: ReadReport, elapsedMs: number): void {
-  const rows: [string, string][] = [
-    ["Answered", `${report.ok} of ${report.results.length}`],
-    ["Bytes", report.bytes.toLocaleString()],
-    [
-      "Took",
-      `${(elapsedMs / 1000).toFixed(1)}s` +
-        (report.bytesPerSecond > 0
-          ? ` — ${(report.bytesPerSecond / 1000).toFixed(0)} kB/s`
-          : ""),
-    ],
-  ];
-
-  if (report.stopped) rows.push(["Stopped", "by you, before the plan finished"]);
-
-  // Said as an answer, not as a failure. A Digitone 1 asked for 128 sounds gives four; without
-  // this line that reads as 124 things going wrong rather than as a device with four sounds.
-  if (report.skipped > 0) {
-    rows.push([
-      "Not asked for",
-      `${report.skipped} — the device went quiet on ${report.gaveUpOn
-        .map((g) => hex(g.code))
-        .join(", ")} after ${report.gaveUpOn[0]?.after ?? 0} in a row, so the rest was skipped. ` +
-        `On a Digitone 1 that is expected for sounds: it answers 0x63 for its four kit tracks ` +
-        `only, and its sound pool has to be sent from SETTINGS > SYSEX DUMP instead.`,
-    ]);
-  }
-
-  if (report.silent > 0) {
-    const first = report.results.find((r) => r.status === "silent");
-    rows.push([
-      "No answer",
-      `${report.silent} object(s), first at ${first?.step.label ?? "?"} — either the device sends ` +
-        `nothing for that slot, or the transport is too slow for the wait`,
-    ]);
-  }
-  if (report.late > 0) {
-    rows.push([
-      "Answered late",
-      `${report.late} — the wait is too short for this transport. If SYSEX DUMP is set to ` +
-        `USB+MIDI, switch it to USB: DIN throttles this to about 3 kB/s (manual §13.4.2).`,
-    ]);
-  }
-  if (report.objNrMismatches > 0) {
-    rows.push([
-      "Object number differed",
-      `${report.objNrMismatches} — the device does not echo the requested index, so a rebuild ` +
-        `must go by send order rather than by the number in the message`,
-    ]);
-  }
-  if (report.sizeMismatches > 0) {
-    const odd = report.results.find(
-      (r) => r.status === "ok" && r.payloadBytes !== r.step.payloadBytes,
-    );
-    rows.push([
-      "Unexpected size",
-      `${report.sizeMismatches} — e.g. ${odd?.step.label}: ${odd?.payloadBytes} bytes, expected ` +
-        `${odd?.step.payloadBytes}`,
-    ]);
-  }
-  // Given its own line and its own instruction, because this is the failure the hardware found:
-  // one Digitone II pattern arrived with a bad checksum and 6,433 wrong bytes, and came back
-  // perfectly on the next read. Rare, silent, and fixed by asking again.
-  if (report.badChecksums > 0) {
-    const retry = stepsToRetry(report);
-    rows.push([
-      "Bad checksums",
-      `${report.badChecksums} — corrupt in transit, not a format problem. Read again and these ` +
-        `will almost certainly be clean: ${retry
-          .slice(0, 6)
-          .map((s) => s.label)
-          .join(", ")}${retry.length > 6 ? `, +${retry.length - 6} more` : ""}`,
-    ]);
-  }
-  if (report.foreign > 0) rows.push(["Other traffic", `${report.foreign} message(s), ignored`]);
-
-  card(into, "Read report", rows);
+  card(into, "Read report", readReportRows(report, elapsedMs));
 }
 
 
