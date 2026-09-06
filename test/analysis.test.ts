@@ -23,6 +23,7 @@ import {
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
 import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
+import { noteLengthSteps } from "../src/project/dn2pattern.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -828,4 +829,47 @@ test("the mockup draws its charts from the shared module, not from a copy of it"
     "the mockup must import the shared charts");
   assert.doesNotMatch(page, /^function (phaseStrip|voiceArea|keyTimeline|trackTimeline)\b/m,
     "a chart re-implemented in the mockup is a second copy that will drift");
+});
+
+/* ---- the note-length table, against the instrument ------------------------------------- */
+
+test("every value dialled on the instrument decodes to what the screen showed", () => {
+  /*
+   * **The capture that proved the table.** Sixteen trigs of `DNX_CAP_01` A15 were dialled to round
+   * values whose byte the model predicts — the eight band boundaries, six mid-band values, INF, and
+   * one left alone. All sixteen landed, with nothing written down: the bytes come back in the file.
+   *
+   * Byte 0 gives 0.125, the minimum the manual documents and a value in no sample set. That is what
+   * makes this a reading rather than a curve fit, so it is asserted first.
+   */
+  assert.equal(noteLengthSteps(0), 0.125, "the manual's documented minimum, predicted not fitted");
+  const dialled: [number, number][] = [
+    [0, 0.125], [30, 2], [46, 4], [62, 8], [78, 16], [94, 32], [110, 64], [126, 128],
+    [38, 3], [54, 6], [70, 12], [86, 24], [102, 48], [118, 96],
+  ];
+  for (const [byte, steps] of dialled) {
+    assert.equal(noteLengthSteps(byte), steps, `byte ${byte} should read ${steps} steps`);
+  }
+});
+
+test("the step between values doubles every time the value doubles", () => {
+  // Which is why the values available on the encoder change as you turn it — the thing that made
+  // this look irregular before the bands were found.
+  for (const [lo, expected] of [[0, 0.0625], [30, 0.125], [46, 0.25], [62, 0.5],
+                                [78, 1], [94, 2], [110, 4]] as [number, number][]) {
+    const step = noteLengthSteps(lo + 1)! - noteLengthSteps(lo)!;
+    assert.equal(Number(step.toFixed(6)), expected, `band at byte ${lo}`);
+  }
+});
+
+test("a gate is monotonic across the whole range, with no gaps or reversals", () => {
+  // A lookup table that went backwards anywhere would make a note-length chart draw a gate ending
+  // before it starts, and nothing else would notice.
+  let previous = 0;
+  for (let b = 0; b <= 126; b++) {
+    const v = noteLengthSteps(b)!;
+    assert.ok(v > previous, `byte ${b} gives ${v}, which is not above ${previous}`);
+    previous = v;
+  }
+  assert.equal(noteLengthSteps(127), Infinity);
 });
