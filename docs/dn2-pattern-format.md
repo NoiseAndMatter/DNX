@@ -439,9 +439,9 @@ the corpus**, and is never once different. Two `u16be` fields at 127, sitting at
 has touched. Version 2 already carries the same shape up to `0x1E`, so version 3 appended two more
 fields of the same kind.
 
-The likely feature is the one the manual describes under KEYBOARD SETUP: **MODE, ROOT and SCALE can
-be set per track rather than per pattern**, and per-track storage is exactly what a version bump
-would need room for. The manual is explicit that *"SCALE sets the **track's** scale"*.
+**That hypothesis was tested on hardware and is wrong** (T50, 2026-09-06). The per-track KEYBOARD
+SETUP values live at `settings+0x12..0x15`, which **version 2 also has**. See §3.6. So
+`+0x1F..0x22` is still unexplained, and it is still the whole of the version difference.
 
 **Four bytes is the constraint, and it rules things out.** The instrument's chord features are
 bigger than that:
@@ -468,6 +468,43 @@ in a region §9 still lists as unidentified.
 
 `asVersion3` fills these with the device's own default rather than zeros, so a normalised record is
 indistinguishable from a real one.
+
+---
+
+## 3.6 Per-track KEYBOARD SETUP — LOCATED on hardware, 2026-09-06
+
+KEYBOARD SETUP holds MODE, ROOT, SCALE, TYPE/SHAPE and BASS OCT. A CONFIG menu switches MODE, ROOT
+and SCALE between per pattern and per track.
+
+**The switch is one byte at pattern metadata `+0x21`.** Setting all three to per track wrote `0x07`;
+setting them back to per pattern wrote `0x01`. Three bits for three parameters fits `0x07`, and
+`0x01` for the per-pattern state does not, so the encoding needs one more capture.
+
+**The values sit at `settings+0x12..0x15`**, four bytes per track. Captured in `DNX_CAP_01` B1:
+
+| track | screen | `+0x12` | `+0x13` | `+0x14` | `+0x15` |
+|---|---|---|---|---|---|
+| T1 | NORMAL, C#5, PHRY | 2 | 0 | 1 | 64 |
+| T2 | CHORD CENTER, E5, MIXO, shape 1-3-5, bass oct 0 | 4 | 3 | 4 | 68 |
+| T3 | untouched | **255** | 0 | 0 | 64 |
+
+`255` at `+0x12` marks a track that inherits from the pattern.
+
+### What is not decoded
+
+Which byte holds which parameter, and the enum values. The observed numbers do not match the
+manual's own list order: the scale list runs `CHROMATIC, IONIAN, DORIAN, PHRYGIAN, LYDIAN,
+MIXOLYDIAN`, so PHRYGIAN is 3 and MIXOLYDIAN is 5, where the capture reads 1 and 4. The gap between
+them is wrong too, so it is not a constant offset.
+
+Five parameters in four bytes also means something is packed or something lives elsewhere.
+
+**The next capture varies one parameter at a time.** Four tracks sharing a MODE and a ROOT with four
+different SCALEs isolates the scale byte and its enum in one save. Repeat for ROOT, then MODE.
+
+> **This is not the version difference.** `settings+0x12..0x15` is inside the 31 bytes version 2
+> also carries, and version-2 records hold `255,0,0,0` there. Whatever version 3 added at
+> `+0x1F..0x22` remains unknown.
 
 ---
 
