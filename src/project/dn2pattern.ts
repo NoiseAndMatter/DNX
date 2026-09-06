@@ -24,8 +24,9 @@
  *     0x00004  16 x 1,187      track records            -> ends exactly at 0x4A34
  *     0x04A34  8,192 x 6       trigger slots            -> ends exactly at 0x10A34
  *     0x10A34  80 x 258        parameter-lock records   -> ends exactly at 0x15AD4
- *     0x15AD4  44              pattern metadata (name, tempo, length, speed, slot)
- *     0x15B00  256             0xFF padding to the end of the record
+ *     0x15AD4  35              pattern metadata (name, tempo, length, speed, slot)
+ *     0x15AF7  16 x 16         CHORD MEMORY: 16 chord slots, 16 note bytes each (0xFF = no note)
+ *     0x15BF7  9               zero, except the last two bytes
  *
  * `4 + 16*1187 = 18,996 = 0x4A34`, `0x4A34 + 8192*6 = 0x10A34`, `0x10A34 + 80*258 = 0x15AD4`.
  * The chain closing three times in a row on independently discovered bases is the main
@@ -115,6 +116,22 @@ export const PATTERN = {
   speedOffset: 0x15aee,
   /** meta+0x1C, u8, the slot index the record believes it occupies. */
   slotIndexOffset: 0x15af0,
+  /**
+   * meta+0x21, u8. Whether MODE, ROOT and SCALE are set per track or for the whole pattern.
+   * `0x07` per track, `0x01` per pattern — `dn2-pattern-format.md` §3.6.
+   */
+  keyboardScopeOffset: 0x15af5,
+
+  /**
+   * CHORD MEMORY, decoded 2026-09-06. **Sixteen chords per pattern**, exactly as the manual says.
+   *
+   * The block runs from the end of the 35-byte metadata to nine bytes short of the record end, and
+   * `35 + 16*16 + 9 = 300` closes the record at `0x15AD4 + 300 = 0x15C00`. It was documented as
+   * "0xFF padding" because every project held at the time had an empty table.
+   */
+  chordOffset: 0x15af7,
+  chordSize: 16,
+  chordCount: 16,
 } as const;
 
 /** Track record internals, relative to the start of the track record. */
@@ -484,6 +501,13 @@ export interface Dn2Pattern {
   speed: number;
   /** The slot index the record believes it occupies. Mirrors the DN1's own slot index. */
   slotIndex: number;
+  /**
+   * CHORD MEMORY: the pattern's sixteen chord slots, each a list of MIDI note numbers.
+   *
+   * An empty list is an unused slot, so the array is always sixteen long and the index is the
+   * chord number the instrument shows. See `readChordMemory`.
+   */
+  chords: number[][];
   tracks: Dn2Track[];
 }
 
@@ -741,8 +765,45 @@ export function readDn2PatternRecord(pattern: Uint8Array, index = 0, midiMask?: 
     perTrackScale: pattern[PATTERN.scaleModeOffset] === 1,
     speed: pattern[PATTERN.speedOffset]!,
     slotIndex: pattern[PATTERN.slotIndexOffset]!,
+    chords: readChordMemory(pattern),
     tracks,
   };
+}
+
+/**
+ * CHORD MEMORY, decoded 2026-09-06 against `004 SKETCHPAD` D6.
+ *
+ * **Sixteen chords per pattern, sixteen bytes each, `0xFF` for an empty note.** The manual promises
+ * *"up to 16 previously configured chords per pattern"* and this is where they are: a flat table at
+ * `0x15AF7`, immediately after the 35-byte metadata block, running to nine bytes short of the
+ * record end. `35 + 16*16 + 9 = 300` closes the record exactly.
+ *
+ * **The region was documented as "0xFF padding"** because every project in the corpus at the time
+ * had an empty table, and an empty table is indistinguishable from padding. The user read eight
+ * chords off the instrument's own screen, and six of the eight were then found as contiguous byte
+ * runs on a 16-byte stride. That is what turned 256 bytes of "padding" into a field.
+ *
+ * **Notes are in entry order, not pitch order.** Two of the eight are stored unsorted — chord 2 is
+ * `45 57 61 52` for a screen reading A3, E4, A4, C#5 — which is why a search for the sorted run
+ * missed them. The order is preserved rather than sorted, because it is the order the instrument
+ * shows and, on the same reasoning as `readTrigSlots`, the chord's voice order.
+ *
+ * Notes fill the slot from the front: no `0xFF` appears before a note in any of the 6,753 version 3
+ * records held.
+ */
+export function readChordMemory(pattern: Uint8Array): number[][] {
+  const chords: number[][] = [];
+  for (let slot = 0; slot < PATTERN.chordCount; slot++) {
+    const at = PATTERN.chordOffset + slot * PATTERN.chordSize;
+    const notes: number[] = [];
+    for (let n = 0; n < PATTERN.chordSize; n++) {
+      const byte = pattern[at + n]!;
+      if (byte === NO_U8) break;
+      notes.push(byte);
+    }
+    chords.push(notes);
+  }
+  return chords;
 }
 
 /** Decode pattern `index` of a decompressed DN2 project image. */

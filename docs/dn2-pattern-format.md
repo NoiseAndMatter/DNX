@@ -39,8 +39,9 @@ so an offset established in one corpus is the same offset in the other. Totals b
 | `0x00004` | 18,992 | 16 | **1,187** | track records |
 | `0x04A34` | 49,152 | 8,192 | **6** | trigger slots |
 | `0x10A34` | 20,640 | 80 | **258** | parameter-lock records |
-| `0x15AD4` | 44 | 1 | — | pattern metadata |
-| `0x15B00` | 256 | — | — | `0xFF` padding to the end of the record |
+| `0x15AD4` | 35 | 1 | — | pattern metadata |
+| **`0x15AF7`** | **16** | **16** | — | **CHORD MEMORY** — §6b |
+| `0x15BF7` | 9 | — | — | zero, except the last two bytes |
 
 The three array bases were found independently — the track base and stride from the
 `40 40 40` marker recurring 16 times at 1,187-byte spacing, the trigger base from the
@@ -475,9 +476,10 @@ Change the chord, save again. Diff two records that differ in one chord. If `+0x
 version 3 addition is named; if it does not, D6 T9 is carrying something else and the field is still
 open.
 
-**Where CHORD MEMORY's 16 chords per pattern live is still unknown.** Four bytes per track cannot
-hold sixteen chords, and the manual is explicit that the memory is per *pattern*. Whatever
-`+0x1F..0x22` turns out to be, the chords themselves are somewhere §9 still lists as unidentified.
+**CHORD MEMORY's 16 chords per pattern were then found**, and they are not here: they are a
+16 × 16 table at `0x15AF7`, in the region this document called padding. See §6b. That does not
+explain `+0x1F..0x22` — `004 SKETCHPAD` C2 to C12 have populated chord tables and leave those four
+bytes at the default, so whatever they hold is narrower than "this pattern has chord memory".
 
 `asVersion3` fills these with the device's own default rather than zeros, so a normalised record is
 indistinguishable from a real one.
@@ -713,7 +715,7 @@ on DN1 and DN2:
 
 ---
 
-## 6. Pattern metadata, 44 bytes at `0x15AD4`
+## 6. Pattern metadata, 35 bytes at `0x15AD4`
 
 | Offset | Size | Field | Status |
 |---|---|---|---|
@@ -777,6 +779,81 @@ which toggle PER-PTN ↔ PER-TRK and move only this byte.
 **Slot index — VERIFIED**: equals `readPattern(...).slotIndex` on all 1,152 pattern pairs,
 including `ODD XS`, whose DN1 slot indices are scrambled (48, 1, 96, 96, 80, 1, 1, …) and
 whose DN2 records reproduce the same scrambling.
+
+---
+
+## 6b. CHORD MEMORY — DECODED on hardware, 2026-09-06
+
+**Sixteen chord slots of sixteen note bytes each, at `0x15AF7`.** `0xFF` marks an empty note, and
+notes fill a slot from the front.
+
+```
+0x15AD4  35        pattern metadata
+0x15AF7  16 x 16   CHORD MEMORY
+0x15BF7  9         zero, except the last two bytes
+                   35 + 256 + 9 = 300, and 0x15AD4 + 300 = 0x15C00
+```
+
+Elektron's manual: CHORD MEMORY stores *"up to 16 previously configured chords per pattern"*. The
+table is per pattern, exactly as that says, and it sits at the end of the pattern record.
+
+### How it was found
+
+**This region was documented as `0xFF` padding.** Every project in the corpus had an empty table,
+and an empty table is byte-for-byte the same as `0xFF` padding, so 256 bytes read as filler for
+months.
+
+`004 SKETCHPAD` D6 was the one pattern that used the feature. Its eight chords were read off the
+instrument's own screen and converted at C5 = 60, and **six of the eight then appeared as
+contiguous byte runs on a 16-byte stride**:
+
+| slot | screen | stored |
+|---|---|---|
+| 1 | D3 D4 F#4 A4 | `26 32 36 39` |
+| 2 | A3 E4 A4 C#5 | `2d 39 3d 34` |
+| 3 | G4 D5 | `3e 37` |
+| 4 | F#3 G#4 A#4 C#5 | `2a 38 3a 3d` |
+| 5 | G#3 A#4 C5 D#5 | `2c 3a 3c 3f` |
+| 6 | D#3 F4 G4 A#4 | `27 35 37 3a` |
+| 7 | G3 B4 D5 E5 | `2b 3b 3e 40` |
+| 8 | G3 B4 D5 F#5 | `2b 3b 3e 42` |
+
+**Slots 2 and 3 are stored out of pitch order**, which is why two of the eight did not match a
+sorted search. `45 57 61 52` is A3, A4, C#5, E4 for a screen reading A3, E4, A4, C#5. The reader
+preserves the stored order rather than sorting it.
+
+> **An empty table looks exactly like padding.** The only way this was ever going to be found was
+> somebody using the feature and saying what they had set. No sweep over files that do not use a
+> feature can find the feature.
+
+### Verified against the corpus
+
+Across all **6,753 version 3 records** held:
+
+- **8 carry a chord**, all in `004 SKETCHPAD`
+- **0** have a `0xFF` before a note within a slot, so notes are always a prefix
+- **0** have a note byte above 127
+- the other 6,745 have all sixteen slots empty
+
+### Sixteen is the geometry and the manual, not a measurement
+
+The corpus never fills more than eight slots. `35 + 16 × 16 + 9 = 300` closes the record exactly and
+the manual says "up to 16", which is what the count rests on. **A capture with a full table would
+confirm the last eight are addressable** — store sixteen chords in one pattern and save.
+
+### Version 2 stores nothing here
+
+The same 256 bytes in a version 2 record — at `0x15AB7`, shifted 64 earlier with everything else —
+are **zero rather than `0xFF`-filled**, and no version 2 record in the corpus holds a chord. Held
+against `settings+0x15` reading `0` on every version 2 track and `64` on version 3, this is the
+third independent sign that **chords are what version 3 added**. See §3.5.
+
+### What this does not settle
+
+`settings+0x1F..0x22` is still unexplained. The chords are here, not there, and the one track that
+writes into that field (`004 SKETCHPAD` D6 T9) is in a project whose chord table is populated —
+but so are C2 to C12, whose tracks leave `+0x1F..0x22` at the default. Whatever it holds is
+narrower than "this pattern has chord memory".
 
 ---
 
