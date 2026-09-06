@@ -24,7 +24,45 @@ in capture order. `diff --chain` sorts numerically, so `2_x.syx` correctly prece
 > changes at once and a single diff maps them all. One variable per file is the fallback for
 > toggles, enums, and anything whose value the device transforms on the way in.
 
+## Two capture shapes, and picking the right one
+
+Everything below was written for **SysEx dumps of one pattern**, where a file is the unit of
+capture. A great deal is now captured as a **whole project** instead — saved on the instrument and
+exported — and that unit is different. Confusing the two produces a session nobody can finish.
+
+| | dump capture | **project capture** |
+|---|---|---|
+| unit of one variable | one **file** | one **pattern** |
+| a run of 9 values | 9 files | **1 file, patterns A1..A9** |
+| what a diff compares | consecutive files | pattern records at a known stride, in one image |
+
+### For a project capture: one variable per PATTERN, one project
+
+**A1 holds the first value, A2 the second, A3 the third. Build once, save once, export once, send
+one file.**
+
+- **It minimises the operations a person has to get right**, which is where capture sessions
+  actually fail. Nine saved projects is nine names to keep straight, nine free slots to find, nine
+  chances to lose track of which is which, and a +Drive left full of near-identical projects to
+  clean up afterwards. `Tests_To_Run.html` asked for exactly that once, and it was the wrong ask.
+- **It diffs better.** Patterns differing in one control inside one project share every other byte
+  *by construction*. The comparison is between records at a known stride, not between whole files
+  that also differ in name, slot and save time.
+- **It archives as a library of findings** — one file holding every answer from a sitting, which is
+  worth more later than nine files whose names have stopped meaning anything.
+- **Copy the pattern, then change the one control** — `[FUNC]+[REC]` to copy, `[FUNC]+[STOP]` to
+  paste — so the two records really are identical apart from the field under test.
+- **Record by position**: *"A11 step 3 showed 1/8"*, never *"the third one I tried"*.
+
+Name them `DNX_CAP_01`, `DNX_CAP_02`, … so the next session's name needs no invention.
+
+> **This rule was lost once.** It had been worked out, used, and never written down, so a later set
+> of hardware tests was drafted asking for nine separate project files. If a capture shape works,
+> it belongs here the same day.
+
 ## The rules that make this work
+
+These govern a **dump** capture. For a project capture, read "file" as "pattern".
 
 - **One variable per file.** If you change two things, the diff cannot tell you which bytes
   belong to which.

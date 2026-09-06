@@ -455,6 +455,12 @@ and `INF` → 1), CHNG → `+0x16` (2, 3, 4, 12, 16, 17, 1024, and `OFF` → 1).
 carry its own reset or change length; only LEN (`settings+0x0D`) and speed
 (`settings+0x0F`) are per track.
 
+**Corroborated on the instrument, 2026-09-05.** `017 PRESETS` B8 stores `1` at `+0x14` and the
+device's PAGE SETUP reads **RESET INF**; `012 TECNO_EXP` A1 stores `64` and reads **RESET 64**. So
+the field holds the literal step count and reserves `1` for INF, exactly as the capture above had
+it. Recorded because a later reader went looking for this and did not find it — see the note in
+`web/src/patternsubject.ts`.
+
 **Track length is written the same way on all 16 tracks — VERIFIED.**
 `Per_Track_Field_Mapping_T01_T16/L_MSB_MAP_T{01..16}_LEN128` sets a length on each track in
 turn, and every one moves exactly `settings+0x0D` of that track, including tracks 9-16 that
