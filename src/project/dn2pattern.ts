@@ -190,6 +190,130 @@ export const STEP_FLAG = {
 } as const;
 
 /**
+ * The track record's size, by the storage version that declares it.
+ *
+ * **Version 2 is version 3 with a 31-byte settings block instead of 35** — decoded on hardware
+ * 2026-09-06, `dn2-pattern-format.md` §3.5. Nothing else moves: every per-step array, both
+ * condition families, the sound locks and the settings fields themselves sit at identical offsets.
+ * Only the block's unused tail is shorter, so the record is four bytes smaller per track and
+ * everything after the sixteen tracks lands 64 bytes earlier.
+ *
+ * **This is not a corpus curiosity.** `PRESETS.dn2prj` — the factory presets project on every
+ * Digitone II — is version 2, and so is every project on a device whose firmware has not been
+ * updated. Refusing the version means refusing the first file a new owner opens.
+ */
+/**
+ * What version 3 puts in the four bytes version 2 does not have — `settings+0x1F..0x22`.
+ *
+ * Two `u16be` fields reading 127, identical on all 49,152 tracks of the 3,072 version-3 patterns in
+ * the corpus. **Never once different**, which is what a setting looks like when no project has
+ * touched it.
+ *
+ * The likely feature: the manual's KEYBOARD SETUP CONFIG menu lets **MODE, ROOT and SCALE** be set
+ * *per track* rather than per pattern, and per-track storage is precisely what a version bump would
+ * need room for. INFERRED — the corpus cannot show it, because nothing in the corpus uses it. A
+ * capture that switches one track to per-track scale would settle it in a single save.
+ */
+export const SETTINGS_TAIL_DEFAULT = Uint8Array.of(0x00, 0x7f, 0x00, 0x7f);
+
+export const TRACK_SIZE_BY_VERSION: Readonly<Record<number, number>> = { 2: 1_183, 3: 1_187 };
+
+/** The storage version a record declares, straight from its first four bytes. */
+export function recordVersion(pattern: Uint8Array): number {
+  return new DataView(pattern.buffer, pattern.byteOffset, pattern.byteLength)
+    .getUint32(PATTERN.versionOffset, false);
+}
+
+/**
+ * A pattern record laid out as version 3, whatever version it arrived as.
+ *
+ * **Normalising on read beats threading a version through the codebase.** The geometry appears at
+ * thirty-one call sites across ten files; the difference between the versions is one number. So a
+ * version-2 record is re-packed once, here, and every reader downstream is unchanged and untested
+ * against a second layout it never sees.
+ *
+ * The copy is deliberate and so is its direction. **This is a read path only.** A record normalised
+ * to version 3 must never be written back into a version-2 project — the tracks would be four bytes
+ * too wide each and everything after them 64 bytes too late, which is a corrupted pattern that
+ * still loads. `summarise` reports `writable: false` for version 2 for exactly this reason, and
+ * every mutating operation already refuses on it.
+ *
+ * Returns the record untouched when it is already version 3, so the common path allocates nothing.
+ */
+export function asVersion3(pattern: Uint8Array): Uint8Array {
+  const version = recordVersion(pattern);
+  if (version === RECORD_VERSION) return pattern;
+  const stride = TRACK_SIZE_BY_VERSION[version];
+  if (stride === undefined) {
+    throw new RangeError(
+      `pattern record declares storage version ${version}; this reads ${Object.keys(TRACK_SIZE_BY_VERSION).join(" and ")}`,
+    );
+  }
+
+  const out = new Uint8Array(pattern.length);
+  out.set(pattern.subarray(0, PATTERN.trackOffset));
+  for (let t = 0; t < TRACK_COUNT; t++) {
+    const from = PATTERN.trackOffset + t * stride;
+    const to = PATTERN.trackOffset + t * PATTERN.trackSize;
+    out.set(pattern.subarray(from, from + stride), to);
+    /*
+     * **The four bytes version 3 adds are given the device's own default, not zeros.**
+     * `00 7F 00 7F` on every one of 49,152 tracks across 3,072 version-3 patterns in the corpus —
+     * two `u16be` fields at 127, never once varying. A feature nobody here has used.
+     *
+     * Nothing reads them, so zeros would do for a read. They are filled anyway because a normalised
+     * record should be indistinguishable from a real version-3 one: the day something *does* read
+     * them, a zero would be a value the instrument never writes, and the bug would look like a
+     * format mystery rather than a fill.
+     */
+    // `to + stride` is where the shorter block ended, which is exactly `settings + 0x1F`.
+    out.set(SETTINGS_TAIL_DEFAULT, to + stride);
+  }
+  // Everything past the tracks — trigs, locks, metadata — moves up by the accumulated difference.
+  const tail = PATTERN.trackOffset + TRACK_COUNT * stride;
+  const to = PATTERN.trackOffset + TRACK_COUNT * PATTERN.trackSize;
+  out.set(pattern.subarray(tail, tail + Math.min(pattern.length - tail, pattern.length - to)), to);
+  // A version-3 reader will check this, and it is now telling the truth about the layout.
+  new DataView(out.buffer).setUint32(PATTERN.versionOffset, RECORD_VERSION, false);
+  return out;
+}
+
+/** A note-length byte of `0x7F` is INF — the gate never closes. */
+export const NOTE_LENGTH_INF = 0x7f;
+
+/** `0xFF` is no per-trig lock: the trig inherits the track's default length. */
+export const NOTE_LENGTH_NONE = 0xff;
+
+/**
+ * A note-length byte as a number of sequencer steps — SOLVED on hardware, 2026-09-06.
+ *
+ * `undefined` means the byte carries no length of its own (`0xFF`) and the caller should fall back
+ * to the track default. `Infinity` is INF, which is a real setting and not an error.
+ *
+ * **A banded table.** The value is `n/16` steps where `n` starts at 2 and climbs in seven bands of
+ * sixteen bytes, the increment doubling each band — so the step between selectable values doubles
+ * every time the value doubles, at 2, 4, 8, 16, 32 and 64 steps. That is why the values offered on
+ * the encoder change as you turn it.
+ *
+ * Captured by dialling sixteen trigs to round values whose byte the model predicts — the eight band
+ * boundaries, six mid-band values, INF, and one trig left alone — and reading the bytes back. All
+ * sixteen landed. **Byte 0 gives 0.125, which the manual documents as the minimum and which was in
+ * no sample**: the independent check that makes this a reading rather than a fit.
+ *
+ * See `dn2-pattern-format.md` §3.3.
+ */
+export function noteLengthSteps(byte: number): number | undefined {
+  if (byte === NOTE_LENGTH_NONE) return undefined;
+  if (byte === NOTE_LENGTH_INF) return Infinity;
+  if (byte < 0 || byte > NOTE_LENGTH_INF) return undefined;
+  // The fine band: one byte is one sixteenth of a step, starting at 2/16.
+  if (byte < 30) return (byte + 2) / 16;
+  const band = Math.floor((byte - 30) / 16);
+  const lo = 30 + 16 * band;
+  return (32 * 2 ** band + 2 * 2 ** band * (byte - lo)) / 16;
+}
+
+/**
  * Per-track and per-pattern speed enum.
  *
  * VERIFIED by the `Per_Track_Speed_T01` and `Pattern_Speed_Field` capture sets, which walk
@@ -622,7 +746,26 @@ export function readDn2Pattern(
   index: number,
   layout: ImageLayout = DN2_LAYOUT,
 ): Dn2Pattern {
-  return readDn2PatternRecord(patternRecord(image, index, layout), index, readMidiTrackMask(image, index, layout));
+  return readDn2PatternRecord(
+    readableRecord(image, index, layout), index, readMidiTrackMask(image, index, layout));
+}
+
+/**
+ * A pattern record ready to read, whichever storage version it is stored as.
+ *
+ * **Separate from `patternRecord`, which must keep returning the bytes as they are.** The librarian
+ * moves, copies and swaps whole records, and those operations are version-blind by design: they
+ * shift 89,088 bytes and never look inside. Handing them a normalised record would write a
+ * version-3 layout into a version-2 project.
+ *
+ * So reading normalises and moving does not. See `asVersion3`.
+ */
+export function readableRecord(
+  image: Uint8Array,
+  index: number,
+  layout: ImageLayout = DN2_LAYOUT,
+): Uint8Array {
+  return asVersion3(patternRecord(image, index, layout));
 }
 
 // --- whole-record checks --------------------------------------------------

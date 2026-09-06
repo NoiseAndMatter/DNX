@@ -611,7 +611,7 @@ function renderSongs(): void {
       const device = state.device;
       if (!image || !device) return undefined;
       const summary = device.summarise(image, slot);
-      return summary.supported ? summary.name : undefined;
+      return summary.readable ? summary.name : undefined;
     },
     onField: (row, field, value) => {
       editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));

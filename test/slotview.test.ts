@@ -21,6 +21,9 @@ function fakeDevice(summaries: Record<number, Partial<ReturnType<Device["summari
       name: "",
       occupied: false,
       supported: true,
+      // Readable and writable are the same thing for a fake with one version; the distinction
+      // exists for a Digitone II version-2 record, which reads and must not be rewritten.
+      readable: true,
       version: 1,
       trigCount: 0,
       soundLockCount: 0,
@@ -56,7 +59,9 @@ test("a record we cannot read never looks like an empty one", () => {
   // The distinction this whole view-model exists to protect: "there is something here I cannot
   // read" and "there is nothing here" must never render alike, because one of them is somebody's
   // work and the tool is about not destroying it.
-  const device = fakeDevice({ 9: { supported: false, version: 7, occupied: true, trigCount: 40 } });
+  const device = fakeDevice({
+    9: { supported: false, readable: false, version: 7, occupied: true, trigCount: 40 },
+  });
   const view = patternSlotView(device, image, 9);
   assert.equal(view.detail, "unreadable version");
   assert.equal(view.name, "v7", "the version is the one useful thing we can still say");

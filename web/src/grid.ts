@@ -207,6 +207,9 @@ export function renderGrid(
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "slot";
+    // `unsupported` is the "we cannot read this" paint. A version-2 record reads fine and is
+    // simply not rewritable, so it paints like any other pattern; the operations that would write
+    // to it refuse on their own.
     if (!slot.supported) cell.classList.add("unsupported");
     else if (slot.occupied) cell.classList.add("occupied");
     if (slot.index === options.opened) cell.classList.add("opened");
