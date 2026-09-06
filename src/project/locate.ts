@@ -186,7 +186,7 @@ export function locateInPatternPayload(offset: number): Location {
     return { region: `lock record ${record}`, field, within: byte, unknown: false };
   }
 
-  if (offset < PATTERN.metaOffset + 44) {
+  if (offset < PATTERN.chordOffset) {
     const within = offset - PATTERN.metaOffset;
     const named = META_FIELDS.find((f) => within >= f.at && within < f.at + f.size);
     return {
@@ -197,7 +197,24 @@ export function locateInPatternPayload(offset: number): Location {
     };
   }
 
-  return { region: "pattern record trailer", field: "0xFF padding", within: offset - PATTERN.metaOffset - 44, unknown: false };
+  /*
+   * **CHORD MEMORY, not padding.** This called the whole tail `0xFF padding` until the table was
+   * decoded on 2026-09-06 (`dn2-pattern-format.md` §6b). A diff landing in a chord slot was
+   * reported as a change to filler, which is the least useful thing a locator can say about a byte
+   * that just changed.
+   */
+  const chordEnd = PATTERN.chordOffset + PATTERN.chordCount * PATTERN.chordSize;
+  if (offset < chordEnd) {
+    const within = offset - PATTERN.chordOffset;
+    return {
+      region: "CHORD MEMORY",
+      field: `chord ${Math.floor(within / PATTERN.chordSize) + 1}, note ${within % PATTERN.chordSize + 1}`,
+      within,
+      unknown: false,
+    };
+  }
+
+  return { region: "pattern record trailer", field: "zero", within: offset - chordEnd, unknown: true };
 }
 
 /** One line, for a diff report. */
