@@ -60,10 +60,15 @@ export interface AnalysisTrig {
   /**
    * Whether this trig only plays on some passes.
    *
-   * **A boolean, because the condition itself is not decoded.** A Digitone II trig can carry a
-   * condition like 2:3 — play on the second of every three passes — and `dn2-pattern-format.md`
-   * lists the code tables at `+0x100` and `+0x180` as unread: the numbering is non-linear between
-   * the two families and no capture has exercised it.
+   * **A boolean, and that is now a limitation of this module rather than of the format.** The
+   * codes *are* decoded: `dn2-pattern-format.md` §2.3 solved `+0x100` on hardware in 2026-07, and
+   * `B` = 4, 5 and 6 were measured in 2026-09; `+0x180` is the FILL family and `+0x200` is a
+   * literal percentage. So a producer could put the actual condition here.
+   *
+   * It stays a boolean until something uses it. Extending the cycle correctly means knowing how
+   * `A:B`, FILL, PRE, NEI and a percentage each multiply it, and a percentage has no exact answer
+   * at all — so the honest reading is still a floor, and a richer type with nothing consuming it
+   * would only look like progress.
    *
    * It matters here because a conditional trig **lengthens the musical cycle**: a pattern whose
    * tracks realign after 64 steps does not sound the same on every one of them if a trig plays on
@@ -545,6 +550,32 @@ export function stepsToSeconds(steps: number, tempo: number, speed = 1): number 
 export function clock(seconds: number): string {
   const m = Math.floor(seconds / 60);
   return `${m}:${(seconds - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
+/**
+ * The largest microtiming the sequencer offers, in ticks, either side of the grid.
+ *
+ * `24/384` is `1/16` — one whole step, which lands exactly on the next trig — so the range stops
+ * one tick short of it. See `dn2-pattern-format.md` §3.4.
+ */
+export const MICRO_MAX = 23;
+
+/**
+ * A microtiming offset the way the instrument prints it: `+23/384`, `-1/32`.
+ *
+ * **One tick is 1/384 of a whole note** — 24 to a step, 96 to a quarter — and the device shows the
+ * offset as that fraction, reduced. Solved on hardware 2026-09-06.
+ *
+ * Here rather than in the chart because a chart that invents its own unit is a chart the reader has
+ * to translate. Printing "24 ticks late" for a trig the screen calls `+23/384` is worse than
+ * unhelpful: 24 ticks is a position the parameter cannot reach.
+ */
+export function microFraction(ticks: number): string {
+  if (ticks === 0) return "on the grid";
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const n = Math.abs(ticks);
+  const g = gcd(n, 384);
+  return `${ticks < 0 ? "-" : "+"}${n / g}/${384 / g}`;
 }
 
 /**
