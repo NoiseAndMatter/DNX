@@ -169,7 +169,8 @@ test("on-grid trigs are counted but kept out of the microtiming buckets", () => 
 
 test("a track with nothing on it is not a row on any chart", () => {
   const subject: AnalysisSubject = {
-    label: "x", tempo: 120, masterLength: 16, voiceBudget: 16, defaultVelocity: 100,
+    label: "x", tempo: 120, masterLength: 16, perTrackLengths: false, voiceBudget: 16,
+    defaultVelocity: 100,
     gateLengthKnown: true,
     tracks: [track({ number: 1, trigs: [trig(0, [60])] }), track({ number: 2 })],
   };
@@ -531,7 +532,8 @@ test("mixed track lengths still scale, and the culprit is the longest cycle", ()
 /** A subject with the boring fields filled in, so a test states only what it is about. */
 function subject(over: Partial<AnalysisSubject> = {}): AnalysisSubject {
   return {
-    label: "A1", tempo: 120, masterLength: 16, voiceBudget: 16, defaultVelocity: 100,
+    label: "A1", tempo: 120, masterLength: 16, perTrackLengths: false, voiceBudget: 16,
+  defaultVelocity: 100,
     gateLengthKnown: false, tracks: [track({ trigs: [trig(0, [60])] })], ...over,
   };
 }
