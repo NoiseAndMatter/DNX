@@ -359,3 +359,73 @@ function readDn2LockTable(pattern: Uint8Array): Array<{ track: number; parameter
   }
   return out;
 }
+
+/* ---- CHORD MEMORY ---------------------------------------------------------------------- */
+
+const SKETCHPAD = `${DN2_DIR}004 SKETCHPAD.dn2prj`;
+const noSketchpad = existsSync(SKETCHPAD) ? false : "004 SKETCHPAD.dn2prj is not in the corpus";
+
+test("CHORD MEMORY holds the chords the instrument shows", { skip: noSketchpad }, () => {
+  /*
+   * **Read off the device's own screen, 2026-09-06.** `004 SKETCHPAD` D6 stores eight chords. The
+   * expected notes below are the screen's names converted at C5 = 60, which is what
+   * `settings+0x00`'s default of `0x3C` documents.
+   *
+   * This is the whole evidence for the field. 256 bytes at `0x15AF7` were documented as "0xFF
+   * padding" because every project held had an empty table, and an empty table and padding are the
+   * same bytes. Six of these eight then turned up as contiguous runs on a 16-byte stride.
+   */
+  const D6 = 3 * 16 + 5;
+  const pattern = readDn2Pattern(image(SKETCHPAD), D6);
+
+  assert.deepEqual(pattern.chords.slice(0, 8), [
+    [38, 50, 54, 57],   // D3  D4  F#4 A4
+    [45, 57, 61, 52],   // A3  A4  C#5 E4   <- stored unsorted; the screen reads A3 E4 A4 C#5
+    [62, 55],           // D5  G4           <- and this one, for G4 D5
+    [42, 56, 58, 61],   // F#3 G#4 A#4 C#5
+    [44, 58, 60, 63],   // G#3 A#4 C5  D#5
+    [39, 53, 55, 58],   // D#3 F4  G4  A#4
+    [43, 59, 62, 64],   // G3  B4  D5  E5
+    [43, 59, 62, 66],   // G3  B4  D5  F#5
+  ]);
+});
+
+test("notes are kept in entry order, not sorted", { skip: noSketchpad }, () => {
+  /*
+   * Two of the eight are stored out of pitch order, which is why searching for the sorted run found
+   * six and not eight. Sorting them here would throw away the order the instrument shows, and would
+   * make this test pass against a reader that had lost it.
+   */
+  const pattern = readDn2Pattern(image(SKETCHPAD), 3 * 16 + 5);
+  const second = pattern.chords[1]!;
+  assert.deepEqual(second, [45, 57, 61, 52]);
+  assert.notDeepEqual(second, [...second].sort((a, b) => a - b));
+});
+
+test("the table is sixteen slots, and the unused ones are empty", { skip: noSketchpad }, () => {
+  /*
+   * **Sixteen is the geometry and the manual, not a measurement.** `35 + 16*16 + 9 = 300` closes
+   * the record at `0x15AD4 + 300 = 0x15C00`, and Elektron's manual says *"up to 16 previously
+   * configured chords per pattern"*. The corpus only ever fills eight, so slots 9 to 16 are
+   * asserted **empty** rather than asserted to hold anything. A capture with a full table would
+   * confirm the last eight are addressable.
+   */
+  const pattern = readDn2Pattern(image(SKETCHPAD), 3 * 16 + 5);
+  assert.equal(pattern.chords.length, 16);
+  assert.equal(PATTERN.chordCount * PATTERN.chordSize, 256);
+  assert.equal(PATTERN.chordOffset + 256 + 9, PATTERN.size, "the table must close the record");
+  for (const empty of pattern.chords.slice(8)) assert.deepEqual(empty, []);
+});
+
+test("a pattern with no stored chords reports sixteen empty slots", { skip }, () => {
+  // The common case by far: 6,745 of the 6,753 version 3 records in the corpus have an empty table.
+  for (const pair of available) {
+    for (let index = 0; index < 128; index++) {
+      const pattern = readDn2Pattern(image(DN2_DIR + pair.dn2), index);
+      assert.equal(pattern.chords.length, 16);
+      for (const chord of pattern.chords) {
+        assert.ok(chord.every((n) => n <= 127), `${pair.label} ${index} has a note byte above 127`);
+      }
+    }
+  }
+});
