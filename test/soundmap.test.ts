@@ -188,7 +188,8 @@ test("held-out projects: nothing is dropped and no selector goes unmapped", { sk
   assert.deepEqual([...interpolated].sort((a, b) => a - b), [28, 35, 38, 47, 56]);
 });
 
-test("converted sounds carry the DN2 object framing and the DN1 name", () => {
+test("converted sounds carry the DN2 object framing and the DN1 name",
+  { skip: NO_CORPUS && SKIP_REASON }, () => {
   const decoder = new TextDecoder("latin1");
   const readName = (data: Uint8Array) => {
     const raw = data.subarray(SOUND_NAME_OFFSET, SOUND_NAME_OFFSET + SOUND_NAME_SIZE);
