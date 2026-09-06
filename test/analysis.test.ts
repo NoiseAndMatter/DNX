@@ -16,7 +16,7 @@ import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
   POLYMETER_LIMIT, MICRO_MAX, alignmentOf, masterPeriod, microFraction, periodGroups,
-  polymeterIsBounded, reachableSteps,
+  polymeterIsBounded, reachableSteps, dormantTrigs,
   repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
@@ -343,6 +343,30 @@ test("a track the reset interrupts says how far it got", () => {
 test("no reset means nothing is cut", () => {
   const tracks = [track({ number: 1, length: 7 }), track({ number: 2, length: 12 })];
   assert.deepEqual(resetCuts(tracks, undefined), []);
+});
+
+test("a track reports the trigs stored past its own end, and where they start playing", () => {
+  /*
+   * Shortening a track on a Digitone II keeps whatever was written on the pages it drops.
+   * `MORNING_JAM` A4 T1 is the case this was measured against: 16 steps, holding notes on 33, 37,
+   * 41 and 45. `reachAt` is the LEN that brings the last of them back.
+   */
+  const t = track({
+    length: 16,
+    trigs: [trig(0, [60]), trig(4, [62])],
+    dormant: [trig(32, [64]), trig(40, [67]), trig(36, [65]), trig(44, [69])],
+  });
+  const [found] = dormantTrigs([t]);
+  assert.ok(found);
+  assert.deepEqual(found.steps, [33, 37, 41, 45], "reported 1-based and ascending, as the grid is");
+  assert.equal(found.reachAt, 45);
+});
+
+test("a track with nothing stored past its end is not reported", () => {
+  // The finding has to stay rare enough to be worth reading. Most tracks have no dormant trigs at
+  // all, and a card listing every track would be a card nobody opens.
+  assert.deepEqual(dormantTrigs([track({ trigs: [trig(0, [60])] })]), []);
+  assert.deepEqual(dormantTrigs([track({ dormant: [] })]), []);
 });
 
 test("a reset makes most of a long polymeter unreachable, not shorter", () => {

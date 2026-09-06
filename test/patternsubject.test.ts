@@ -72,11 +72,15 @@ test("a trig with no velocity lock is read at its track default", { skip: NO_COR
   let checked = 0;
   for (const track of raw.tracks) {
     const out = subject.tracks[track.index]!;
-    const notes = track.trigs.filter((g) => g.hasNote && g.notes.length > 0);
-    notes.forEach((g, i) => {
-      assert.equal(out.trigs[i]!.velocity, g.velocity ?? track.settings.defaultVelocity);
+    // Matched on step rather than position: the subject drops the trigs stored past the end of
+    // the track, so the two lists are the same order and not the same length.
+    const notes = track.trigs.filter((g) => g.hasNote && g.notes.length > 0 && g.step < out.length);
+    for (const g of notes) {
+      const read = out.trigs.find((t) => t.step === g.step);
+      assert.ok(read, `T${out.number} step ${g.step + 1} is within its length and was not read`);
+      assert.equal(read.velocity, g.velocity ?? track.settings.defaultVelocity);
       if (g.velocity === undefined) checked++;
-    });
+    }
   }
   assert.ok(checked > 0, "no trig in this pattern inherits its velocity, so this proved nothing");
 });
@@ -334,4 +338,63 @@ test("every readable pattern in the corpus draws every chart without NaN", { ski
    * version neither table names.
    */
   assert.equal(refusals, 0, "every DN2 record in the corpus is a version we read");
+});
+
+test("trigs past the end of a track are held apart, not counted", { skip: NO_CORPUS }, () => {
+  /*
+   * **The device keeps the trigs when you shorten a track, and never plays them.** Confirmed at
+   * the instrument on 2026-09-06: `MORNING_JAM` A4 T1 is 16 steps and expanding its LEN reveals
+   * notes on 33, 37, 41 and 45, which are in the file and silent until it is expanded.
+   *
+   * A reader that counts those counts music nobody hears. 7,543 of them sit across 521 tracks of
+   * the corpus, so this is the normal condition of a project rather than a curiosity.
+   */
+  const path = requireCorpusFile(DN2_PROJECTS, "MORNING_JAM.dn2prj");
+  const img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
+  const subject = patternSubject(img, DN2_DEVICE, 3);
+  const t1 = subject.tracks[0]!;
+
+  assert.equal(t1.length, 16, "the corpus pattern this asserts against has changed");
+  assert.deepEqual((t1.dormant ?? []).map((g) => g.step + 1), [33, 37, 41, 45]);
+  assert.ok(t1.trigs.every((g) => g.step < 16), "a trig the sequencer never reaches is not playing");
+
+  // The raw record holds both sets, which is what makes the split a decision rather than a filter
+  // applied by the format.
+  const raw = readDn2Pattern(img, 3);
+  const notes = raw.tracks[0]!.trigs.filter((g) => g.hasNote && g.notes.length > 0);
+  assert.equal(notes.length, t1.trigs.length + 4);
+});
+
+test("every subject holds its trigs inside the track length", { skip: NO_CORPUS }, () => {
+  // A dormant trig reaching `trigs` would inflate the note count, the voice pressure and the pitch
+  // histogram of the pattern holding it, and nothing downstream re-checks the step against the
+  // length. Swept over a whole project rather than one pattern.
+  const img = image();
+  for (let index = 0; index < 128; index++) {
+    const subject = patternSubject(img, DN2_DEVICE, index);
+    for (const track of subject.tracks) {
+      for (const trig of track.trigs) {
+        assert.ok(trig.step < track.length,
+          `${subject.label} T${track.number} is ${track.length} steps and plays step ${trig.step + 1}`);
+      }
+    }
+  }
+});
+
+test("the first step past the end is dormant, not the last one that plays", { skip: NO_CORPUS }, () => {
+  /*
+   * **The boundary, on real music.** A track of LEN 16 walks step 1 to step 16, which are trig
+   * indices 0 to 15. A trig at index 16 is step 17: the first one the sequencer never reaches.
+   * Off by one here moves a note from silent to sounding and nothing downstream would notice.
+   *
+   * `006 GLITCH_EXPLORE` B1 T2 is 16 steps and carries one there.
+   */
+  const path = requireCorpusFile(DN2_PROJECTS, "006 GLITCH_EXPLORE.dn2prj");
+  const img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
+  const t2 = patternSubject(img, DN2_DEVICE, 16).tracks[1]!;
+
+  assert.equal(t2.length, 16, "the corpus pattern this asserts against has changed");
+  assert.ok((t2.dormant ?? []).some((g) => g.step === 16), "step 17 is past the end of 16 steps");
+  assert.ok(t2.trigs.some((g) => g.step === 15), "step 16 is the last one that plays");
+  assert.ok(!t2.trigs.some((g) => g.step === 16));
 });
