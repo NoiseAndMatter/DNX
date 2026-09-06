@@ -15,10 +15,7 @@ import {
   verifyRearrange,
 } from "../src/librarian/rearrange.js";
 import {
-  NULL_SHUFFLE,
   asImport,
-  asShuffle,
-  assertWithin,
   clear,
   copyMany,
   copyOnto,
@@ -26,101 +23,22 @@ import {
   mergeShuffles,
   move,
   moveMany,
-  movedSlots,
   outOfRange,
-  rereference,
-  ShuffleError,
-  sourceOf,
   swap,
-  touchedSlots,
 } from "../src/librarian/shuffle.js";
 
-// --- the shuffle primitive, no corpus needed -------------------------------
-
-test("an untouched slot keeps its own contents", () => {
-  const s = swap(3, 9);
-  assert.equal(sourceOf(s, 5), 5, "slot 5 is not involved and should keep what it has");
-  assert.equal(rereference(s, 5), 5);
-});
-
-test("a swap moves both ways and empties nothing", () => {
-  const s = swap(3, 9);
-  assert.equal(sourceOf(s, 3), 9);
-  assert.equal(sourceOf(s, 9), 3);
-  assert.deepEqual(touchedSlots(s), [3, 9]);
-  for (const slot of touchedSlots(s)) {
-    assert.notEqual(sourceOf(s, slot), undefined, `slot ${slot} should not be emptied`);
-  }
-});
-
-test("a bare intra-bank move empties its source", () => {
-  const s = asShuffle([{ from: 3, to: 7 }]);
-  assert.equal(sourceOf(s, 7), 3);
-  assert.equal(sourceOf(s, 3), undefined, "moving out of 3 leaves it empty");
-});
-
-test("an import leaves the source bank alone", () => {
-  const s = asImport([{ from: 3, to: 7 }]);
-  assert.equal(sourceOf(s, 7), 3);
-  assert.equal(sourceOf(s, 3), 3, "the source bank is untouched by an import");
-});
-
-test("rereference reports where a moved slot went, for repairing references", () => {
-  const s = asShuffle([{ from: 3, to: 7 }]);
-  assert.equal(rereference(s, 3), 7);
-  assert.deepEqual(movedSlots(s), [3]);
-});
-
-test("a move onto itself is a no-op", () => {
-  assert.equal(swap(4, 4).isEmpty, true);
-  assert.equal(copyOnto(4, 4).isEmpty, true);
-  assert.equal(NULL_SHUFFLE.isEmpty, true);
-});
-
-test("later moves win when shuffles are merged", () => {
-  const merged = mergeShuffles(copyOnto(1, 2), copyOnto(3, 2));
-  assert.equal(sourceOf(merged, 2), 3);
-});
-
-test("out-of-range slots can be reported or thrown, as the caller prefers", () => {
-  assert.deepEqual(outOfRange(swap(0, 128), 128), [128]);
-  assert.deepEqual(outOfRange(swap(0, 127), 128), []);
-  assert.throws(() => assertWithin(swap(0, 128), 128), ShuffleError);
-  assert.doesNotThrow(() => assertWithin(swap(0, 127), 128));
-});
-
-test("two sources landing on one slot is refused, not silently resolved", () => {
-  assert.throws(() => asImport([{ from: 1, to: 5 }, { from: 2, to: 5 }]), ShuffleError);
-});
-
-test("a batch lands sources at consecutive slots in the order given", () => {
-  const s = moveMany([10, 20, 30], 4);
-  assert.equal(sourceOf(s, 4), 10);
-  assert.equal(sourceOf(s, 5), 20);
-  assert.equal(sourceOf(s, 6), 30);
-  assert.equal(sourceOf(s, 10), undefined, "a move empties its sources");
-});
-
-test("a batch copy empties nothing", () => {
-  const s = copyMany([10, 20], 4);
-  assert.equal(sourceOf(s, 10), 10);
-  assert.equal(sourceOf(s, 20), 20);
-});
-
-test("overlapping batch sources and destinations are a permutation, not a double read", () => {
-  const s = moveMany([4, 3], 3);
-  assert.equal(sourceOf(s, 3), 4);
-  assert.equal(sourceOf(s, 4), 3);
-  assert.equal(touchedSlots(s).length, 2, "nothing else is disturbed");
-});
-
-test("keepOnly does not clear a slot that is already where it belongs", () => {
-  const s = keepOnly([0, 7], 16);
-  assert.equal(sourceOf(s, 0), 0, "slot 0 is kept in place and must not be blanked");
-  assert.equal(sourceOf(s, 1), 7);
-  assert.equal(sourceOf(s, 2), undefined);
-  assert.equal(sourceOf(s, 7), undefined, "the moved source is vacated");
-});
+/*
+ * **The shuffle primitive is tested in `shuffle.test.ts`, not here.**
+ *
+ * Thirteen tests of `swap`, `move`, `asImport`, `mergeShuffles`, `outOfRange`, `moveMany`,
+ * `copyMany` and `keepOnly` used to sit at the top of this file. They predate `shuffle.test.ts` by
+ * a week, and that file exists to be their home — its own header says the primitives "were covered
+ * only indirectly". Every claim they made is covered there, so they were left behind rather than
+ * kept for a reason: `shuffle.ts` reads **100% line and 100% branch coverage without them**, and
+ * removing them moved neither number.
+ *
+ * What belongs here is what a shuffle does to a real project's bytes.
+ */
 
 // --- against real projects -------------------------------------------------
 
