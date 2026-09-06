@@ -137,7 +137,37 @@ the chunk numbering, or the stored-versus-raw form question that `storagewrite.t
 **Licence unchecked.** Treat it as all-rights-reserved until confirmed and keep its text out of this
 repository; the table above is protocol fact, which is not anyone's to license.
 
-## elk-herd — the closest prior art
+## Digitone 2 Pattern Manager — the same problem, over the wire
+
+<https://www.elektronauts.com/t/digitone-2-pattern-manager/253425>, by moru. The app runs at
+<https://digitone2.morukutsu.fr/>. Found 2026-09-06; everything below is from the announcement
+thread, not from using it.
+
+**The closest thing to DNX that exists.** A browser app over the Web MIDI API that moves patterns
+between Digitone II projects, offline once loaded, Chrome and Edge only. Same instrument, same
+operation, same delivery. It credits `emnyeca/digitone-syx-toolkit` and elk-herd, which are the two
+corpora and the one prior art already in this file.
+
+**It moves patterns as raw SysEx and reads only the name out of them.** That is the whole
+difference. It transfers the bytes a device hands over and puts them back, so it needs none of
+`docs/dn2-pattern-format.md` — and its author states the consequence: **sound locks are expected to
+break across projects**, because a lock is an index into the destination's sound pool and nothing
+remaps it.
+
+`src/librarian/copy.ts` remaps those indices, which is only possible because the pool audit knows
+what a lock points at. So the two projects have taken opposite routes at the same fork: transfer
+the bytes and accept what breaks, or decode enough to carry the references. Worth watching for what
+their route turns out to cost, and worth being honest that theirs ships against a device today.
+
+**Alpha, no source yet.** The author says the source will follow once it is stable, so there is no
+licence to check and nothing to read. Track the thread.
+
+**Two things the announcement says that we have already paid for.** It asks the user to back up
+before using it, and it warns against running another transfer app at the same time — the same
+port-contention trap the notebook records under "Three traps worth carrying", which cost an
+afternoon of wrong diagnoses here. Testing is stated as firmware 1.10 on Chrome under macOS only.
+
+## elk-herd — the prior art for the architecture
 
 <https://github.com/mzero/elk-herd>, by Mark Lentczner. A patch and pattern manager for Elektron
 hardware, written in Elm. Cloned into the private corpus at `00_References/elk-herd/`.

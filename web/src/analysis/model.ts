@@ -108,7 +108,25 @@ export interface AnalysisTrack {
    */
   machine?: number;
   preset: string;
+  /**
+   * The trigs the sequencer reaches: every one on a step within `length`.
+   *
+   * **Not every trig the file stores.** See `dormant`.
+   */
   trigs: AnalysisTrig[];
+  /**
+   * Trigs stored on steps past the end of the track, which the sequencer never reaches.
+   *
+   * Shortening a track on a Digitone II keeps whatever was written on the pages it drops. Lengthen
+   * it again and the trigs are still there, playing as they did. So a 16-step track can hold notes
+   * on steps 33 to 45 that are in the file, visible on the instrument once the length goes back up,
+   * and silent until it does. Confirmed at the device on 2026-09-06.
+   *
+   * They are held apart rather than dropped because their count is the finding: 7,543 of them sit
+   * across 521 tracks of the corpus, and counting them among the trigs that play overstated the
+   * note count, the voice pressure and the pitch content of every one of those patterns.
+   */
+  dormant?: readonly AnalysisTrig[];
 }
 
 /** Whatever is being analysed: today a pattern, tomorrow whatever produces the same shape. */
@@ -398,6 +416,41 @@ export function resetCuts(
       // A trig is lost when its own position within the pass falls past the cut.
       lost: track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length,
     });
+  }
+  return out;
+}
+
+/** A track carrying trigs on steps past its own end. */
+export interface DormantTrack {
+  track: AnalysisTrack;
+  /** The steps holding them, 1-based, ascending, as the instrument numbers them. */
+  steps: number[];
+  /** Distinct pages the track would have to grow to before any of them sounds. */
+  reachAt: number;
+}
+
+/**
+ * Tracks holding trigs the sequencer never reaches, with the steps they sit on.
+ *
+ * **Shortening a track hides its notes instead of deleting them.** Set a 64-step track to 16 and
+ * the instrument keeps every trig on steps 17 to 64; the sequencer walks 1 to 16 and none of them
+ * sounds. The file still carries them, so a reader that counts trigs counts music nobody hears.
+ *
+ * The instrument cannot show this. Its LEN control lives on one screen and the trig pages on
+ * another, and stepping past the last page shows an unlit grid whether the steps are empty or only
+ * out of reach. So a musician looking for a part they wrote and cannot hear has nowhere to look,
+ * which is what makes it worth naming here.
+ *
+ * `reachAt` is the length that would bring the last of them back: raise LEN to it and every dormant
+ * trig on that track plays again.
+ */
+export function dormantTrigs(tracks: readonly AnalysisTrack[]): DormantTrack[] {
+  const out: DormantTrack[] = [];
+  for (const track of tracks) {
+    const held = track.dormant ?? [];
+    if (held.length === 0) continue;
+    const steps = held.map((trig) => trig.step + 1).sort((a, b) => a - b);
+    out.push({ track, steps, reachAt: steps[steps.length - 1]! });
   }
   return out;
 }
