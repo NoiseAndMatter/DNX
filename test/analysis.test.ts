@@ -15,11 +15,12 @@ import { fileURLToPath } from "node:url";
 import {
   chordName, clock, cycleSteps, fitKey, harmonic, holdersAt, machineLabel, microBuckets,
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
-  POLYMETER_LIMIT, alignmentOf, masterPeriod, periodGroups, polymeterIsBounded, reachableSteps,
+  POLYMETER_LIMIT, MICRO_MAX, alignmentOf, masterPeriod, microFraction, periodGroups,
+  polymeterIsBounded, reachableSteps,
   repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
-import { cycleBars, realignBars } from "../web/src/analysis/charts.js";
+import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
 import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
 
@@ -675,6 +676,42 @@ test("a long pattern name is clipped to the gutter and kept whole in the tooltip
   }], 600);
   assert.match(svg, /…</, "the drawn label is clipped rather than overrunning the bars");
   assert.match(svg, /data-tip-t="A1 · A VERY LONG PATTERN NAME"/, "and the tooltip carries it all");
+});
+
+
+/* ---- microtiming, in the device's own units ------------------------------------------- */
+
+test("a microtiming offset prints the fraction the instrument shows", () => {
+  /*
+   * **One tick is 1/384 of a whole note** — 24 to a step, 96 to a quarter — and the device shows
+   * the offset as that fraction, reduced. Confirmed on hardware 2026-09-06: a trig storing -12
+   * reads `-1/32` on screen and one storing +23 reads `+23/384`.
+   */
+  assert.equal(microFraction(-12), "-1/32");
+  assert.equal(microFraction(23), "+23/384");
+  assert.equal(microFraction(-6), "-1/64");
+  assert.equal(microFraction(12), "+1/32");
+  assert.equal(microFraction(0), "on the grid");
+});
+
+test("the microtiming range stops one tick short of the next trig", () => {
+  // 24/384 is 1/16 — one whole step, landing exactly on the following trig. That is why the
+  // parameter offers 23 and not 24, and why nothing should ever be drawn past it.
+  assert.equal(MICRO_MAX, 23);
+  assert.equal(microFraction(24), "+1/16", "which is precisely why 24 is not offered");
+});
+
+test("the microtiming chart draws nothing past what the sequencer can do", () => {
+  /*
+   * **Found by capturing a trig at the maximum.** Buckets are six ticks wide and centred on a
+   * multiple of six, so a trig at +23 lands in a bucket labelled 24 — a position meaning "on the
+   * next trig", which the parameter cannot reach. The bucket is real; the label was not.
+   */
+  const svg = microDiverging([{ at: 24, n: 1 }, { at: -12, n: 1 }], 600);
+  assert.doesNotMatch(svg, /ticks/, "no bucket is named by a tick count");
+  assert.match(svg, /\+23\/384/, "the out-of-range bucket is clamped to the maximum the device offers");
+  assert.doesNotMatch(svg, /1\/16/, "1/16 would be one whole step — the next trig");
+  assert.match(svg, /-1\/32/, "an in-range bucket keeps its own readable value");
 });
 
 /* ---- the boundary that makes all of the above possible --------------------------------- */
