@@ -163,7 +163,8 @@ export function patternSubject(
 
   const tracks: AnalysisTrack[] = pattern.tracks.map((track) => {
     const half = kit[track.index];
-    const trigs: AnalysisTrig[] = track.trigs
+    const length = lengthOf(track.length);
+    const notes: AnalysisTrig[] = track.trigs
       // A lock trig carries parameter locks and sounds nothing. It is not a note.
       .filter((trig) => trig.hasNote && trig.notes.length > 0)
       .map((trig) => {
@@ -196,9 +197,23 @@ export function patternSubject(
         };
       });
 
+    /*
+     * **A track record holds 128 steps whatever its LEN says, and the sequencer walks only the
+     * first LEN of them.** Shortening a track keeps the trigs on the pages it drops, so the file
+     * carries notes that do not play until somebody lengthens the track again. Confirmed at the
+     * device on 2026-09-06.
+     *
+     * They are split out rather than filtered away so `dormantTrigs` can name them. Counting them
+     * among the trigs that play overstated the note count, the voice pressure and the pitch
+     * content of 521 tracks in the corpus, `PRESETS` and `JAGGED` worst: `017 PRESETS` A16 T2 is
+     * five steps long and stores 22 notes past the end of it.
+     */
+    const trigs = notes.filter((trig) => trig.step < length);
+    const dormant = notes.filter((trig) => trig.step >= length);
+
     return {
       number: track.index + 1,
-      length: lengthOf(track.length),
+      length,
       ...(SPEED[track.speed] === undefined ? {} : { speed: SPEED[track.speed] }),
       /*
        * **A MIDI track is a MIDI track, not an unknown machine.**
@@ -213,6 +228,7 @@ export function patternSubject(
       machine: half?.midi ? MACHINE.midi : half?.machineValue,
       preset: half?.presetName || "—",
       trigs,
+      ...(dormant.length ? { dormant } : {}),
     };
   });
 

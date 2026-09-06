@@ -416,6 +416,36 @@ A trig set to 2:3 plays on one pass in three, which multiplies the musical cycle
 tables are unread, so `AnalysisTrig.conditional` is a boolean and the page says the cycle is a floor
 rather than pretending the conditions are absent or pretending to compute them.
 
+## Trigs the sequencer never reaches — 2026-09-06
+
+A track record holds 128 steps whatever its LEN says, and the sequencer walks only the first LEN of
+them. Shortening a track keeps the trigs on the pages it drops: raise its LEN again and they are
+still there, playing as they did. Confirmed at the instrument on 2026-09-06.
+
+**7,543 of them sit across 521 tracks of the corpus**, so this is the ordinary condition of a
+project rather than a curiosity. `MORNING_JAM` A4 T1 is sixteen steps and holds notes on 33, 37, 41
+and 45. `017 PRESETS` A16 T2 is five steps and holds 22 past the end. `PRESETS` A5 T2 is sixteen
+steps, plays nothing at all, and stores six.
+
+Counting those as notes overstated the trig count, the voice pressure and the pitch content of every
+pattern holding one, and the key fit read them alongside the notes that sound. So `patternSubject`
+splits them off: `AnalysisTrack.trigs` is what plays, `AnalysisTrack.dormant` is what is stored and
+unreachable, and `dormantTrigs` turns the second into a finding with the LEN that would bring each
+track's back.
+
+**They are held rather than dropped, because the count is the point.** A musician cannot see this on
+the instrument: LEN is on one screen and the trig pages on another, and a page past the last one
+looks unlit whether it is empty or out of reach. A part written and then lost to a shortened track
+has nowhere to be found, which is exactly the kind of thing this page exists to say.
+
+The boundary is off-by-one bait. A track of LEN 16 plays trig indices 0 to 15; index 16 is step 17
+and is the first unreachable one. `006 GLITCH_EXPLORE` B1 T2 carries a trig exactly there, and it is
+what the test asserts against — the corpus pattern this was first written against had a gap at the
+boundary and passed either way.
+
+The grid still counts sequencer *records* per slot, which is a different and correct number: it is
+what the file holds, including lock trigs and dormant ones. Insights counts what sounds.
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one
