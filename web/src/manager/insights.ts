@@ -513,10 +513,7 @@ export function renderInsights(
             <em>the number of steps the pattern plays before all tracks reset and restart from the
             first step</em>. So it repeats every <b>${cycle} steps</b>, and the tracks below never
             reach the repeat counts the arithmetic alone would give them.</p>
-          <p class="why" style="margin-top:.35rem"><b>One reading here is not yet confirmed on
-            hardware</b>: a RESET field of <code>1</code> is taken to mean INF — never restart —
-            by analogy with CHANGE, where <code>1</code> is documented as off. If that is wrong,
-            the patterns affected are the ones this page reports as never being reset.</p>
+
         </div>` : ""}
       ${lengths.size === 1 ? `
         <p class="hint" style="margin-top:1rem">Every playing track is
