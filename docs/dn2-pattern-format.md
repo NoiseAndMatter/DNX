@@ -441,8 +441,30 @@ fields of the same kind.
 
 The likely feature is the one the manual describes under KEYBOARD SETUP: **MODE, ROOT and SCALE can
 be set per track rather than per pattern**, and per-track storage is exactly what a version bump
-would need room for. The corpus cannot confirm it, because nothing in the corpus uses it — **a
-capture that switches one track to a per-track scale would settle it in one save.**
+would need room for. The manual is explicit that *"SCALE sets the **track's** scale"*.
+
+**Four bytes is the constraint, and it rules things out.** The instrument's chord features are
+bigger than that:
+
+| feature | where the manual puts it | size |
+|---|---|---|
+| CHORD MEMORY | *"up to 16 previously configured chords **per pattern**"* | far more than 4 bytes, and per pattern |
+| TYPE/SHAPE quick access | *"use [TRIG 1–8] to select shape"* — eight shapes | a selection from a fixed list, not eight stored chords |
+| MODE, ROOT, SCALE | per pattern **or per track**, chosen in the CONFIG menu | small, and per track |
+
+So the four bytes are **not** the chords themselves. They are the right size for the per-track
+half of MODE/ROOT/SCALE — and `00 7F 00 7F` reads naturally as two fields holding a `0x7F`
+"inherit from the pattern" sentinel, which is what every track in a corpus that never uses the
+feature would carry.
+
+> **Still INFERRED, and the corpus cannot take it further** — nothing here has touched the setting,
+> so every track shows the default. `Tests_To_Run.html` **T50** is the capture: switch one track to
+> a per-track SCALE, change it, save, and diff. One save settles both what the fields are and how
+> "inherit" is encoded.
+
+**Where CHORD MEMORY's 16 chords per pattern are stored is unknown**, and nothing in this document
+accounts for them. They are pattern-level data, so they are not the four bytes above; they may sit
+in a region §9 still lists as unidentified.
 
 `asVersion3` fills these with the device's own default rather than zeros, so a normalised record is
 indistinguishable from a real one.
