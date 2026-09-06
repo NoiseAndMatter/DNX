@@ -350,10 +350,26 @@ export async function readStoredFile(
       // as an unidentified "metadata" message for half a day; it is simply the answer to sequence
       // zero, and asking for zero is how you get it.
       const sequence = chunks === 0 ? 0 : parts.length + 1;
-      const chunk = parseRead(expect(
-        await requestChunk(opened.handle, sequence),
-        StorageCode.Read,
-      ).body);
+      const frame = expect(await requestChunk(opened.handle, sequence), StorageCode.Read);
+      /*
+       * **An unterminated frame is a fragment, and it must not be read as a short chunk.**
+       *
+       * A SysEx cut short still decodes — the 7-bit unpacking cannot tell it is missing an ending —
+       * so the failure surfaced downstream as `chunk claims 2048 bytes and carries 863`, which
+       * blames the device for a payload that was cut on the way here. Two different replies coming
+       * back capped at the same 885 bytes is what a transport limit looks like, not an instrument.
+       *
+       * Named here because this is where the retry lives: the same chunk asked for again is exactly
+       * the right response to a lost tail, and `requestChunk` already does it for silence.
+       */
+      if (!frame.terminated) {
+        throw new ListingError(
+          `chunk ${sequence} arrived unterminated — ${frame.body.length} bytes with no SysEx end ` +
+            `marker, so the message was cut in transit rather than sent short. ${total} bytes read ` +
+            `so far over ${chunks} chunk(s).`,
+        );
+      }
+      const chunk = parseRead(frame.body);
 
       check(chunk, opened.handle, parts.length + 1);
       chunks++;

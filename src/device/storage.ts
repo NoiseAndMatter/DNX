@@ -741,11 +741,34 @@ export interface Listing {
   entries: Entry[];
   /** Index of the first entry in this page. */
   first: number;
-  /** Where a following request resumes. Equal to `first + entries.length` in every sample. */
+  /**
+   * Where a following request resumes, as the device reports it.
+   *
+   * **Not `first + entries.length` when the reply is capped.** `/projects` on a Digitone II answers
+   * `first=0, next=129, count=128` in 885 bytes — room for 45 entries, not 128. So `next` is the
+   * end of the *directory*, not the end of this page, and a caller resuming must use
+   * `first + entries.length` instead.
+   */
   next: number;
-  /** True when `next` is past the end — i.e. this is the last page. */
+  /** Entries the device says the directory holds. May exceed `entries.length`; see `next`. */
+  declared: number;
+  /** True when this page carried everything the device declared. */
   complete: boolean;
 }
+
+/**
+ * A page that did not carry everything the device declared.
+ *
+ * **Named rather than tolerated.** A short page has two very different causes and the same shape: a
+ * directory genuinely bigger than one reply, or a reply that is not the answer to our request at
+ * all. The second is not hypothetical — two message-id allocators once collided and a directory
+ * request got a file-open reply, and another application on the same port (Overbridge, Transfer)
+ * puts traffic there constantly.
+ *
+ * So the parser reports the shortfall and the caller decides. What no caller may do is show 45 of
+ * 128 projects as though that were the +Drive.
+ */
+export class ShortListingError extends ListingError {}
 
 /**
  * Decode a listing response body.
@@ -771,9 +794,31 @@ export function parseListing(body: Uint8Array): Listing {
 
   const entries: Entry[] = [];
   let at = HEADER;
-  for (let i = 0; i < count; i++) {
+  /*
+   * **Every failure below names what was already read.** `entry "" is truncated` was the whole of
+   * one report from hardware, and it says almost nothing: not how many entries arrived, not how
+   * many the device declared, not how many bytes were left over. Those three numbers separate the
+   * two causes — a reply cut short in transit, versus `count` meaning something other than "entries
+   * in this page" — and without them the next step is a guess.
+   *
+   * An empty name is the specific shape of running off the end into padding: `indexOf(0, at)` finds
+   * a NUL immediately, so the name is "" and the fields after it are missing.
+   */
+  const so_far = () =>
+    `read ${entries.length} of the ${count} entries the device declared, ` +
+    `${body.length - at} of ${body.length} bytes left, first=${first} next=${next}`;
+  /*
+   * **Bounded by the body, not by `count`.** The device declares how many entries the directory
+   * holds and then sends as many as fit in one reply — 45 of a declared 128 for `/projects`, in 885
+   * bytes. Looping to `count` walked off the end into padding and threw `entry "" is truncated`,
+   * which reported a corrupt listing when the listing was fine and merely partial.
+   *
+   * A short page is now a fact the caller is handed, not an error. Anything *malformed* still
+   * throws: an unterminated name mid-entry, or a layout byte that is neither shape.
+   */
+  for (let i = 0; i < count && at < body.length; i++) {
     const end = body.indexOf(0, at);
-    if (end === -1) throw new ListingError(`entry ${i} has no terminated name`);
+    if (end === -1) throw new ListingError(`entry ${i} has no terminated name — ${so_far()}`);
     const name = new TextDecoder("windows-1252").decode(body.subarray(at, end));
     at = end + 1;
 
@@ -784,20 +829,30 @@ export function parseListing(body: Uint8Array): Listing {
     // `/soundbanks` is what showed it: its entries are directories carrying `01 02`, so a parser
     // that knew only `0101` and `0002` refused a perfectly good listing. It refused *loudly* and
     // handed over the bytes, which is the one part of this that went right.
-    if (at + 2 > body.length) throw new ListingError(`entry "${name}" is truncated`);
+    if (at + 2 > body.length) {
+      if (entries.length > 0) break;
+      throw new ListingError(
+        `entry "${name}" is truncated before its kind and layout bytes — ${so_far()}`);
+    }
     const isDirectory = body[at] === 1;
     const layout = body[at + 1]!;
     at += 2;
 
     if (layout === SHORT) {
       // Only a child count. Seen on the two roots, `projects` and `soundbanks`.
-      if (at + 4 > body.length) throw new ListingError(`entry "${name}" is truncated`);
+      if (at + 4 > body.length) {
+        if (entries.length > 0) break;
+      throw new ListingError(`entry "${name}" is truncated in its child count — ${so_far()}`);
+      }
       entries.push({ name, kind: "directory", index: i + first, children: u32(body, at) });
       at += 4;
     } else if (layout === LONG) {
       // Index, size and two unidentified bytes. Used by files **and** by bank directories, whose
       // "size" is a fixed 262,144 — an allocation, the way each project's is a fixed 4 MiB.
-      if (at + 12 > body.length) throw new ListingError(`entry "${name}" is truncated`);
+      if (at + 12 > body.length) {
+        if (entries.length > 0) break;
+      throw new ListingError(`entry "${name}" is truncated in its index/size — ${so_far()}`);
+      }
       const permissions = (body[at + 8]! << 8) | body[at + 9]!;
       entries.push({
         name,
@@ -821,7 +876,15 @@ export function parseListing(body: Uint8Array): Listing {
     }
   }
 
-  return { entries, first, next, complete: next <= first + entries.length && entries.length < 256 };
+  return {
+    entries,
+    first,
+    next,
+    declared: count,
+    // What the caller actually needs to know: is there more to ask for? A page that carried
+    // everything declared is done; a short one is not, whatever `next` says.
+    complete: entries.length >= count,
+  };
 }
 
 /**
