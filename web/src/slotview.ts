@@ -44,10 +44,14 @@ export interface SlotView {
   classes?: readonly string[];
   occupied: boolean;
   /**
-   * False when the record's storage version is one we cannot read.
+   * False when the record's storage version is one we cannot **read**.
    *
    * Kept distinct from `occupied` because *"there is something here I cannot read"* and *"there is
    * nothing here"* must never look the same — one of them is somebody's work.
+   *
+   * **Not the same as the device summary's `supported`**, which means *rewritable*. A Digitone II
+   * version-2 record reads perfectly and cannot be written back, so it belongs on screen looking
+   * like any other pattern. The operations that would write to it refuse on their own.
    */
   supported: boolean;
 }
@@ -74,14 +78,14 @@ export function patternSlotView(
 
   return {
     id: patternName(index),
-    name: summary.supported ? summary.name || "—" : `v${summary.version}`,
-    detail: !summary.supported
+    name: summary.readable ? summary.name || "—" : `v${summary.version}`,
+    detail: !summary.readable
       ? "unreadable version"
       : occupied
         ? `${summary.trigCount ?? 0} trigs${summary.soundLockCount ? ` · ${summary.soundLockCount} locks` : ""}`
         : "empty",
     occupied,
-    supported: summary.supported,
+    supported: summary.readable,
   };
 }
 

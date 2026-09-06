@@ -26,6 +26,7 @@ import {
   TRACK_COUNT as DN2_TRACK_COUNT,
   TRIG_TABLE,
   liveRecords,
+  readableRecord,
 } from "../project/dn2pattern.js";
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 
@@ -33,7 +34,7 @@ const latin1 = new TextDecoder("latin1");
 
 /** Live trigs per track, for reporting what an operation would destroy. */
 export function trigCounts(image: Uint8Array, pattern: number): number[] {
-  const record = patternRecord(image, pattern, DN2_LAYOUT);
+  const record = readableRecord(image, pattern, DN2_LAYOUT);
   const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
   for (const { track } of liveRecords(record, TRIG_TABLE)) {
     if (track < DN2_TRACK_COUNT) counts[track]!++;
@@ -43,7 +44,7 @@ export function trigCounts(image: Uint8Array, pattern: number): number[] {
 
 /** Live parameter-lock records per track, which a copy can exhaust. */
 export function lockCounts(image: Uint8Array, pattern: number): number[] {
-  const record = patternRecord(image, pattern, DN2_LAYOUT);
+  const record = readableRecord(image, pattern, DN2_LAYOUT);
   const counts = new Array<number>(DN2_TRACK_COUNT).fill(0);
   for (const { track } of liveRecords(record, LOCK_TABLE)) {
     if (track < DN2_TRACK_COUNT) counts[track]!++;

@@ -107,11 +107,16 @@ export function patternSubject(
    * browser — which is what sent me looking for why the lengths were zero in the first place.
    */
   const summary = device.summarise(image, index);
-  if (!summary.supported) {
+  /*
+   * **Readable, not writable.** Version 2 was decoded on 2026-09-06 and normalises to version 3 on
+   * read, so it is drawn like anything else. Gating this on `supported` — which means *rewritable*
+   * — would keep refusing the factory presets project that ships on every Digitone II.
+   */
+  if (!summary.readable) {
     throw new PatternSubjectError(
-      `${patternName(index)} is a version ${summary.version} pattern record and this reads ` +
-        `version ${DN2_RECORD_VERSION}. The interior offsets move between versions, so anything ` +
-        `drawn from it would be measured from the wrong bytes.`,
+      `${patternName(index)} is a version ${summary.version} pattern record, and this reads ` +
+        `versions 2 and 3. The interior offsets move between versions, so anything drawn from it ` +
+        `would be measured from the wrong bytes.`,
     );
   }
 
