@@ -76,14 +76,6 @@ test("every control the capture set has now been placed", () => {
   assert.equal(soundParameterAt(230)?.name, "BR");
 });
 
-test("HARM decodes across three measured points", () => {
-  const harm = soundParameterAt(102)!;
-  // 0 -> 63 (untouched baseline), +23 -> 86, +26 -> 89 at maximum. Slope 1 throughout.
-  assert.equal(decodeSoundValue(harm, 63), 0);
-  assert.equal(decodeSoundValue(harm, 86), 23);
-  assert.equal(decodeSoundValue(harm, 89), 26);
-});
-
 test("the per-sound FX sends are separate from the kit FX block", () => {
   // These three say how much of this sound is sent; kitfx.ts configures the effects themselves.
   for (const [offset, name] of [[212, "CHR"], [214, "DEL"], [216, "REV"]] as const) {
@@ -102,16 +94,17 @@ test("SYN 1 runs in knob order across consecutive even offsets", () => {
   });
 });
 
-test("HARM centres on 63, not 64", () => {
+test("HARM centres on 63, not 64, and decodes with slope 1 across it", () => {
   const harm = soundParameterAt(102)!;
   assert.equal(harm.name, "HARM");
   assert.equal(harm.centre, 63);
-  // The untouched baseline read 63 for a value of 0, and +23 stored 86. Two points, slope 1.
+  // Three measured points: the untouched baseline read 63 for a value of 0, +23 stored 86, and
+  // +26 stored 89 at the maximum. Slope 1 throughout.
   assert.equal(decodeSoundValue(harm, 63), 0);
   assert.equal(decodeSoundValue(harm, 86), 23);
-  // Its -26..+26 range then occupies 37..89.
-  assert.equal(decodeSoundValue(harm, 37), -26);
   assert.equal(decodeSoundValue(harm, 89), 26);
+  // Its -26..+26 range therefore occupies 37..89.
+  assert.equal(decodeSoundValue(harm, 37), -26);
 });
 
 test("HARM is the only control that does not centre on 64", () => {
