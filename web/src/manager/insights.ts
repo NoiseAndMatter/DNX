@@ -26,12 +26,14 @@
 import {
   alignmentOf, barsOf, clock, cycleSteps, fitKey, harmonic, machineLabel, masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
-  repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds, trackWindows,
+  overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds,
+  trackWindows, voicesPerStep,
   type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
   alignmentGrid, densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend,
   phaseStrip, pitchBars, rampBand, rampIsLight, rampLegend, realignBars, resetRuler, table,
+  voiceArea,
   trackTimeline, type PhaseMode,
 } from "../analysis/charts.js";
 import {
@@ -465,6 +467,16 @@ export function renderInsights(
   const reach = reachableSteps(live, subject.resetSteps);
   const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
+  /*
+   * **Drawn since 2026-09-06**, when the note-length byte was captured. Everything here reads a
+   * gate; all of it was written long before and deliberately left undrawn, because a plausible
+   * mapping would have produced a voice chart indistinguishable from a measured one.
+   */
+  const voices = voicesPerStep(live, windowSteps);
+  const peak = Math.max(...voices, 0);
+  const over = voices.filter((v) => v > subject.voiceBudget).length;
+  const overlaps = live.reduce((n, t) => n + overlappingNotes(t).length, 0);
+  const longestGate = Math.max(...live.flatMap((t) => t.trigs.map((g) => g.length)), 0);
 
   host.innerHTML = overview +
     card(`Play time and cycle — ${subject.label}`, `
@@ -490,6 +502,8 @@ export function renderInsights(
         <label for="i-mode">Dots show</label>
         <select id="i-mode">
           <option value="velocity">Velocity — accents ringed</option>
+          <option value="length">Note length — how long each gate holds</option>
+          <option value="overlap">Overlapping notes</option>
           <option value="locks">Preset locks</option>
         </select>
       </div>
@@ -791,27 +805,55 @@ export function renderInsights(
           .map(([p, n]) => `${p} x${n}`).join(", ")]))}
     `) +
 
-    (subject.gateLengthKnown ? "" : card("Not drawn, and why", `
-      <div class="inferred">
-        <span class="h">Voice pressure needs a gate length, and a gate length is not decoded</span>
-        <p class="why">Three things this surface can draw are missing from the cards above:
-          <b>voice pressure</b>, <b>note length</b> and <b>overlapping notes</b>. All three need to
-          know how long a note sounds, and a Digitone II project does not say. The trig carries a
-          note-length byte and the track a default — <code>0x0E</code> in 1,577 of the 1,725 tracks
-          that play a note across the corpus, and <b>24 other values</b> in the rest — but
-          <b>nothing maps any of them to a duration</b>. <code>docs/dn2-pattern-format.md</code>
-          marks even the name of the track default as inferred from its position in the Digitone 1
-          block rather than from a capture.</p>
-        <p class="why" style="margin-top:.4rem">A plausible mapping would make a voice-count chart
-          that looks exactly like a measured one and is not, which is the single failure this whole
-          surface is arranged to avoid. <b>It is on the capture list</b>: set one trig to each
-          <code>LEN</code> value on the instrument, save, and diff. The charts are already written
-          and will draw the moment the mapping exists — the synthetic harness at
-          <code>/mockups/metrics.html</code> shows them working.</p>
+    card("Voice pressure", `
+      <div class="tiles">
+        <div class="tile ${peak > subject.voiceBudget ? "flag" : ""}">
+          <span class="k">Peak voices</span><span class="v">${peak}</span>
+          <span class="u">of ${subject.voiceBudget}</span>
+          <span class="note">${over
+            ? `over budget on ${over} step${over === 1 ? "" : "s"}`
+            : "never over budget"}</span></div>
+        <div class="tile"><span class="k">Overlapping notes</span>
+          <span class="v">${overlaps}</span><span class="u">pairs</span>
+          <span class="note">two notes sounding at once on one track</span></div>
+        <div class="tile"><span class="k">Longest gate</span>
+          <span class="v">${longestGate === Infinity ? "INF" : longestGate}</span>
+          <span class="u">${longestGate === Infinity ? "" : "steps"}</span>
+          <span class="note">${longestGate === Infinity
+            ? "a gate that never closes"
+            : "the note that holds longest"}</span></div>
       </div>
-    `));
+      <figure style="margin-top:.9rem">
+        <figcaption>Voices held at each step against the
+          <b>${subject.voiceBudget}</b> this device has.${over
+            ? ` <b>The budget is passed on ${over} of ${windowSteps} steps</b> — past it the
+               sequencer steals a voice, and the note you lose is not the one you would choose.`
+            : " Nothing here asks for more than the device can give."}
+          A chord spends one voice per note.</figcaption>
+        <div class="chart" id="i-voices"></div>
+      </figure>
+      ${overlaps === 0 ? "" : `
+        <div class="inferred" style="margin-top:.8rem">
+          <span class="h">Overlaps are the geometric half of a glide, and only that half</span>
+          <p class="why"><b>${overlaps} pair${overlaps === 1 ? "" : "s"}</b> of notes overlap on one
+            track. A glide is an overlap on a <em>monophonic</em> track with <em>portamento</em> on
+            — and while per-trig <code>PORT</code> is readable, the track's mono/poly setting and
+            its portamento default live on the preset's SETUP page, which no capture has covered.
+            So this says the notes overlap and stops there. Set <b>Dots show</b> to
+            <b>Overlapping notes</b> to see which.</p>
+        </div>`}
+      ${table(["Track", "Preset", "Trigs", "Longest gate", "Overlapping pairs"],
+        live.map((t) => {
+          const longest = Math.max(...t.trigs.map((g) => g.length), 0);
+          return [`T${t.number}`, t.preset, t.trigs.length,
+            longest === Infinity ? "INF" : Number(longest.toFixed(3)),
+            overlappingNotes(t).length || "—"];
+        }))}
+    `)
 
   drawOverview();
+  mount(document.getElementById("i-voices")!, (w) =>
+    voiceArea(voices, subject.voiceBudget, w));
   mount(document.getElementById("i-phase")!, (w) =>
     phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   if (subject.resetSteps !== undefined) {

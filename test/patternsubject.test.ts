@@ -14,6 +14,7 @@ import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { readDn2Pattern } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../src/librarian/device.js";
+import { noteLengthSteps } from "../src/project/dn2pattern.js";
 import { patternSubject, PatternSubjectError } from "../web/src/patternsubject.js";
 import {
   cycleSteps, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
@@ -119,18 +120,36 @@ test("a flat pattern has a cycle equal to its master length", { skip: NO_CORPUS 
   }
 });
 
-test("gate length is declared unknown, because it is", { skip: NO_CORPUS }, () => {
+test("gate length is known, and every gate is a real duration", { skip: NO_CORPUS }, () => {
   /*
-   * The trig carries a note-length byte and nothing maps it to a duration —
-   * `docs/dn2-pattern-format.md` marks even the name of the track default as inferred. Until a
-   * capture settles it, voice pressure and overlap detection have no honest input, and the flag is
-   * what stops a caller drawing them anyway.
+   * **This test asserted the opposite until 2026-09-06**, and it was right to: nothing mapped the
+   * note-length byte to a duration, so voice pressure and overlap detection had no honest input and
+   * the flag is what stopped a caller drawing them anyway.
+   *
+   * The byte was then captured against the instrument — `dn2-pattern-format.md` §3.3 — so the flag
+   * flips and the charts draw. Every gate must now be a positive number of steps or `Infinity`,
+   * which is the INF setting and a real one.
    */
   const subject = patternSubject(image(), DN2_DEVICE, 0);
-  assert.equal(subject.gateLengthKnown, false);
+  assert.equal(subject.gateLengthKnown, true);
   for (const track of subject.tracks) {
-    for (const trig of track.trigs) assert.equal(trig.length, 1);
+    for (const trig of track.trigs) {
+      assert.ok(trig.length > 0, `T${track.number} step ${trig.step} has a gate of ${trig.length}`);
+      assert.ok(!Number.isNaN(trig.length), "a NaN gate would silently empty every voice chart");
+    }
   }
+});
+
+test("a trig with no length of its own inherits the track default", { skip: NO_CORPUS }, () => {
+  /*
+   * `0xFF` is the most common value in the whole corpus — 10,424 of the note trigs — so this is the
+   * ordinary case, not the edge one. The default byte `0x0E` decodes to exactly **1 step**, which
+   * is the quiet corroboration that the table is right: a wrong table would not put the value the
+   * device uses everywhere on a round number.
+   */
+  assert.equal(noteLengthSteps(0x0e), 1);
+  assert.equal(noteLengthSteps(0xff), undefined, "no lock — the caller must fall back");
+  assert.equal(noteLengthSteps(0x7f), Infinity, "INF is a setting, not an error");
 });
 
 test("the accent threshold is read from the pattern", { skip: NO_CORPUS }, () => {

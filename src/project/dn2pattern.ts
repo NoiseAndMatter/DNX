@@ -189,6 +189,41 @@ export const STEP_FLAG = {
   untouched: 0x2000,
 } as const;
 
+/** A note-length byte of `0x7F` is INF — the gate never closes. */
+export const NOTE_LENGTH_INF = 0x7f;
+
+/** `0xFF` is no per-trig lock: the trig inherits the track's default length. */
+export const NOTE_LENGTH_NONE = 0xff;
+
+/**
+ * A note-length byte as a number of sequencer steps — SOLVED on hardware, 2026-09-06.
+ *
+ * `undefined` means the byte carries no length of its own (`0xFF`) and the caller should fall back
+ * to the track default. `Infinity` is INF, which is a real setting and not an error.
+ *
+ * **A banded table.** The value is `n/16` steps where `n` starts at 2 and climbs in seven bands of
+ * sixteen bytes, the increment doubling each band — so the step between selectable values doubles
+ * every time the value doubles, at 2, 4, 8, 16, 32 and 64 steps. That is why the values offered on
+ * the encoder change as you turn it.
+ *
+ * Captured by dialling sixteen trigs to round values whose byte the model predicts — the eight band
+ * boundaries, six mid-band values, INF, and one trig left alone — and reading the bytes back. All
+ * sixteen landed. **Byte 0 gives 0.125, which the manual documents as the minimum and which was in
+ * no sample**: the independent check that makes this a reading rather than a fit.
+ *
+ * See `dn2-pattern-format.md` §3.3.
+ */
+export function noteLengthSteps(byte: number): number | undefined {
+  if (byte === NOTE_LENGTH_NONE) return undefined;
+  if (byte === NOTE_LENGTH_INF) return Infinity;
+  if (byte < 0 || byte > NOTE_LENGTH_INF) return undefined;
+  // The fine band: one byte is one sixteenth of a step, starting at 2/16.
+  if (byte < 30) return (byte + 2) / 16;
+  const band = Math.floor((byte - 30) / 16);
+  const lo = 30 + 16 * band;
+  return (32 * 2 ** band + 2 * 2 ** band * (byte - lo)) / 16;
+}
+
 /**
  * Per-track and per-pattern speed enum.
  *
