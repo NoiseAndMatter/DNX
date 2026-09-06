@@ -14,9 +14,11 @@ import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { readDn2Pattern } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../src/librarian/device.js";
+import { noteLengthSteps } from "../src/project/dn2pattern.js";
 import { patternSubject, PatternSubjectError } from "../web/src/patternsubject.js";
 import {
-  cycleSteps, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
+  cycleSteps,
+  drawableWindow, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
 } from "../web/src/analysis/model.js";
 import {
   densityBars, keyTimeline, phaseStrip, pitchBars, realignBars, trackTimeline,
@@ -119,18 +121,36 @@ test("a flat pattern has a cycle equal to its master length", { skip: NO_CORPUS 
   }
 });
 
-test("gate length is declared unknown, because it is", { skip: NO_CORPUS }, () => {
+test("gate length is known, and every gate is a real duration", { skip: NO_CORPUS }, () => {
   /*
-   * The trig carries a note-length byte and nothing maps it to a duration —
-   * `docs/dn2-pattern-format.md` marks even the name of the track default as inferred. Until a
-   * capture settles it, voice pressure and overlap detection have no honest input, and the flag is
-   * what stops a caller drawing them anyway.
+   * **This test asserted the opposite until 2026-09-06**, and it was right to: nothing mapped the
+   * note-length byte to a duration, so voice pressure and overlap detection had no honest input and
+   * the flag is what stopped a caller drawing them anyway.
+   *
+   * The byte was then captured against the instrument — `dn2-pattern-format.md` §3.3 — so the flag
+   * flips and the charts draw. Every gate must now be a positive number of steps or `Infinity`,
+   * which is the INF setting and a real one.
    */
   const subject = patternSubject(image(), DN2_DEVICE, 0);
-  assert.equal(subject.gateLengthKnown, false);
+  assert.equal(subject.gateLengthKnown, true);
   for (const track of subject.tracks) {
-    for (const trig of track.trigs) assert.equal(trig.length, 1);
+    for (const trig of track.trigs) {
+      assert.ok(trig.length > 0, `T${track.number} step ${trig.step} has a gate of ${trig.length}`);
+      assert.ok(!Number.isNaN(trig.length), "a NaN gate would silently empty every voice chart");
+    }
   }
+});
+
+test("a trig with no length of its own inherits the track default", { skip: NO_CORPUS }, () => {
+  /*
+   * `0xFF` is the most common value in the whole corpus — 10,424 of the note trigs — so this is the
+   * ordinary case, not the edge one. The default byte `0x0E` decodes to exactly **1 step**, which
+   * is the quiet corroboration that the table is right: a wrong table would not put the value the
+   * device uses everywhere on a round number.
+   */
+  assert.equal(noteLengthSteps(0x0e), 1);
+  assert.equal(noteLengthSteps(0xff), undefined, "no lock — the caller must fall back");
+  assert.equal(noteLengthSteps(0x7f), Infinity, "INF is a setting, not an error");
 });
 
 test("the accent threshold is read from the pattern", { skip: NO_CORPUS }, () => {
@@ -218,27 +238,42 @@ test("the corpus pattern that was overstated now reports what the device plays",
 
 /* ---- the whole corpus, which is the only place these faults live ----------------------- */
 
-test("a version we do not read is refused by version, not misread", { skip: NO_CORPUS }, () => {
+test("a version-2 project reads, and reads correctly", { skip: NO_CORPUS }, () => {
   /*
-   * **`PRESETS.dn2prj` is version 2 in all 128 of its pattern records** and every other DN2 project
-   * we hold is version 3 — `device.ts` says so, and the grid already paints it as "storage version
-   * we do not read".
+   * **This test asserted the opposite until 2026-09-06.** `PRESETS.dn2prj` is version 2 in all 128
+   * of its records, and reading one as version 3 does not fail — it produced 422 trigs on a pattern
+   * whose master length read 0, at speeds no table names. Refusing was right while that was all we
+   * knew.
    *
-   * Reading one as version 3 does not fail. It produced 422 trigs on a pattern whose master length
-   * read 0, tracks at speeds no table names, and default velocities of 3 and 255. Every one of
-   * those numbers was fiction, and they polluted a corpus survey until this check existed.
+   * Version 2 is now decoded: a version-3 record with a 31-byte track settings block, normalised on
+   * read (`dn2-pattern-format.md` §3.5). It is the **factory presets project on every Digitone II**,
+   * so refusing it was refusing the first file a new owner opens.
+   *
+   * The assertions are the ones an off-by-64 could not satisfy: real names, sane lengths, and trigs
+   * whose steps fall inside the pattern.
    */
   const path = requireCorpusFile(DN2_PROJECTS, "PRESETS.dn2prj");
   const img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
-  let refused = 0;
+  let playing = 0;
   for (let index = 0; index < 128; index++) {
-    assert.throws(
-      () => patternSubject(img, DN2_DEVICE, index),
-      (e: unknown) => e instanceof PatternSubjectError && /version 2/.test((e as Error).message),
-    );
-    refused++;
+    const subject = patternSubject(img, DN2_DEVICE, index);
+    /*
+     * **1..1024, not 1..128.** `+0x14` is the pattern length in PER PATTERN mode and the RESET in
+     * PER TRACK, and `masterLength` carries the raw field either way — see §8i. A PER TRACK pattern
+     * reading 256 is a 256-step reset, not a 256-step pattern.
+     */
+    assert.ok(subject.masterLength >= 1 && subject.masterLength <= 1024,
+      `${subject.label} has a master length of ${subject.masterLength}`);
+    assert.ok(subject.tempo > 0 && subject.tempo < 1000, `${subject.label} tempo ${subject.tempo}`);
+    for (const track of subject.tracks) {
+      assert.ok(track.length >= 1 && track.length <= 128, `${subject.label} T${track.number} len`);
+      for (const trig of track.trigs) {
+        assert.ok(trig.step >= 0 && trig.step < 128, `${subject.label} step ${trig.step}`);
+      }
+    }
+    if (subject.tracks.some((t) => t.trigs.length)) playing++;
   }
-  assert.equal(refused, 128, "every record in this project is an unreadable version");
+  assert.equal(playing, 33, "the factory project ships 33 demo patterns");
 });
 
 test("every readable pattern in the corpus draws every chart without NaN", { skip: NO_CORPUS }, () => {
@@ -267,8 +302,12 @@ test("every readable pattern in the corpus draws every chart without NaN", { ski
       patterns++;
       const cycle = cycleSteps(live);
       const tonal = harmonic(live);
-      const keyWin = tonal.length ? pitchWindows(tonal, cycle, 16, 16) : [];
-      const rows = tonal.length ? trackWindows(tonal, cycle, 16, 16, (i) => keyWin[i]?.fit) : [];
+      // Bounded exactly as the page bounds it. A pattern whose tracks never come round saturates
+      // the cycle, and windowing a million steps per bar is what turned this sweep into eight
+      // minutes the moment version-2 projects became readable.
+      const drawn = drawableWindow(cycle).steps;
+      const keyWin = tonal.length ? pitchWindows(tonal, drawn, 16, 16) : [];
+      const rows = tonal.length ? trackWindows(tonal, drawn, 16, 16, (i) => keyWin[i]?.fit) : [];
       const drawings = [
         phaseStrip(live, subject.masterLength, "velocity", subject.defaultVelocity, 900),
         phaseStrip(live, subject.masterLength, "locks", subject.defaultVelocity, 900),
@@ -288,5 +327,11 @@ test("every readable pattern in the corpus draws every chart without NaN", { ski
   }
   assert.ok(patterns > 300, `only ${patterns} patterns rendered — the corpus is not being read`);
   assert.ok(charts > 2000, `only ${charts} charts drawn`);
-  assert.ok(refusals > 0, "no pattern was refused, so the refusal path was never exercised");
+  /*
+   * **The refusal path moved rather than vanished.** Every DN2 record in the corpus is version 2 or
+   * 3 and both now read, so this sweep no longer refuses anything — which is the point of the
+   * change. The refusal is still exercised, by the Digitone 1 test above and by a record at a
+   * version neither table names.
+   */
+  assert.equal(refusals, 0, "every DN2 record in the corpus is a version we read");
 });

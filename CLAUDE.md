@@ -109,6 +109,27 @@ wrong knob to a device.
 `tracks` budgets, `rules` and `ranking` decide policy, `allocate` assigns, `route` maps trigs
 to destinations, `convert` writes. Keep it that way.
 
+## Writing
+
+Every piece of prose here follows the `stop-slop` rules: documentation, code comments, UI strings,
+commit messages, PR bodies. The skill lives at `~/.claude/skills/stop-slop/`.
+
+The rules that catch this codebase most:
+
+- **No em dashes.**
+- **No binary contrasts.** "not X, it's Y", "isn't the problem, Y is", "stops being X and starts
+  being Y". State Y.
+- **No justification nobody asked for.** Two strings from the Insights key-fit card were the
+  examples: "named so the method is attributable" and "is the normal case rather than the
+  exception". The first defends a choice no reader questioned. The second is a contrast wearing the
+  clothes of a fact.
+- **No adverbs, no throat-clearing, no emphasis crutches** ("This matters because").
+- **Active voice, human subject.** A complaint does not become a fix. Somebody fixes it.
+- **Cut quotables.** A line that reads like a pull-quote gets rewritten.
+
+This applies to new text. Existing prose gets corrected when it is touched for another reason,
+rather than in a sweep.
+
 ## Naming a test file
 
 **A test is named after the module it tests**, with a folder prefix only where the bare name would

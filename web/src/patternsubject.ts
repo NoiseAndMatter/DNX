@@ -23,7 +23,10 @@ import { MACHINE } from "../../src/project/machine.js";
 import { summariseKitTracks } from "../../src/librarian/tracksummary.js";
 import type { Device } from "../../src/librarian/device.js";
 import { DN2_LAYOUT, kitRecord } from "../../src/project/dn2image.js";
-import { readDn2Pattern, RECORD_VERSION as DN2_RECORD_VERSION } from "../../src/project/dn2pattern.js";
+import {
+  NOTE_LENGTH_NONE, noteLengthSteps, readDn2Pattern,
+  RECORD_VERSION as DN2_RECORD_VERSION,
+} from "../../src/project/dn2pattern.js";
 import { patternName } from "../../src/sheet/naming.js";
 import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
 
@@ -104,11 +107,16 @@ export function patternSubject(
    * browser — which is what sent me looking for why the lengths were zero in the first place.
    */
   const summary = device.summarise(image, index);
-  if (!summary.supported) {
+  /*
+   * **Readable, not writable.** Version 2 was decoded on 2026-09-06 and normalises to version 3 on
+   * read, so it is drawn like anything else. Gating this on `supported` — which means *rewritable*
+   * — would keep refusing the factory presets project that ships on every Digitone II.
+   */
+  if (!summary.readable) {
     throw new PatternSubjectError(
-      `${patternName(index)} is a version ${summary.version} pattern record and this reads ` +
-        `version ${DN2_RECORD_VERSION}. The interior offsets move between versions, so anything ` +
-        `drawn from it would be measured from the wrong bytes.`,
+      `${patternName(index)} is a version ${summary.version} pattern record, and this reads ` +
+        `versions 2 and 3. The interior offsets move between versions, so anything drawn from it ` +
+        `would be measured from the wrong bytes.`,
     );
   }
 
@@ -168,8 +176,16 @@ export function patternSubject(
           // Undefined means the track default sounds, so that is what the trig is actually played
           // at — most trigs in the corpus carry no velocity lock of their own.
           velocity: trig.velocity ?? track.settings.defaultVelocity,
-          // Not a duration. See `gateLengthKnown` below and `AnalysisTrig.length`.
-          length: 1,
+          /*
+           * **The gate, in steps, now that the byte is decoded.** A trig with no length of its own
+           * inherits the track's default — the same fallback velocity uses, and the common case:
+           * `0xFF` is the most frequent value in the whole corpus.
+           *
+           * `Infinity` is INF and is a real setting, not a failure. Every consumer bounds its loop
+           * on the window rather than on the gate, so it flows through without special-casing.
+           */
+          length: noteLengthSteps(trig.noteLength ?? NOTE_LENGTH_NONE)
+            ?? noteLengthSteps(track.settings.defaultNoteLength) ?? 1,
           microTiming: trig.microTiming,
           // The code is read; what it means is not. See `AnalysisTrig.conditional`.
           ...(trig.trigCondition === undefined ? {} : { conditional: true }),
@@ -239,7 +255,13 @@ export function patternSubject(
      * field's values against what the instrument shows. Until one does, every gate here is 1 step
      * because it has to be something, and every chart that reads a gate has to be left undrawn.
      */
-    gateLengthKnown: false,
+    /*
+     * **True since 2026-09-06**, when the note-length byte was captured against the instrument.
+     * `dn2-pattern-format.md` §3.3 has the table. Voice pressure, the note-length marks and overlap
+     * detection all read a gate, and all three were written and left undrawn until this could be
+     * answered honestly.
+     */
+    gateLengthKnown: true,
     tracks,
   };
 }

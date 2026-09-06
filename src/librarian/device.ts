@@ -46,7 +46,10 @@ import {
 import {
   PATTERN as DN2_PATTERN,
   RECORD_VERSION as DN2_PATTERN_VERSION,
-  readDn2Pattern,
+  TRACK_SIZE_BY_VERSION,
+  asVersion3,
+  readDn2PatternRecord,
+  readMidiTrackMask,
 } from "../project/dn2pattern.js";
 import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
 import { isSongTableEmpty } from "../project/dn1tail.js";
@@ -76,8 +79,27 @@ export interface PatternSummary {
   index: number;
   /** Storage version carried by the record itself. */
   version: number;
-  /** True when the version is one we understand well enough to read and rewrite. */
+  /**
+   * True when the version is one we understand well enough to **rewrite**.
+   *
+   * Every mutating operation gates on this — move, copy, swap, rename — because a rewrite puts
+   * bytes back at offsets that differ between versions. `readable` is the weaker claim and the one
+   * a display or an analysis wants.
+   */
   supported: boolean;
+  /**
+   * True when the record can be **read**, which is a larger set than `supported`.
+   *
+   * A Digitone II version-2 record reads fine: it is a version-3 record with a 31-byte track
+   * settings block, so `asVersion3` normalises it and every reader downstream is unchanged. It is
+   * deliberately **not** writable — putting a normalised record back would widen every track by
+   * four bytes and move everything after them, producing a corrupt pattern that still loads.
+   *
+   * This matters because `PRESETS.dn2prj` is the factory presets project on every Digitone II, and
+   * an un-updated device holds a whole +Drive of version 2. Refusing to *show* them was refusing
+   * the first file a new owner opens.
+   */
+  readable: boolean;
   /** Omitted for an unsupported version, where the offset is not known to be right. */
   name?: string;
   /** Omitted for an unsupported version. */
@@ -169,7 +191,9 @@ const DN1: Device = {
   summarise(image, index) {
     const record = patternRecord(image, index, DN1_LAYOUT);
     const version = versionOf(record, DN1_PATTERN.versionOffset);
-    if (version !== DN1_PATTERN_VERSION) return { index, version, supported: false };
+    if (version !== DN1_PATTERN_VERSION) {
+      return { index, version, supported: false, readable: false };
+    }
 
     const pattern = readDn1Pattern(image, index);
     const trigCount = pattern.tracks.reduce((n, t) => n + t.trigs.length, 0);
@@ -177,6 +201,7 @@ const DN1: Device = {
       index,
       version,
       supported: true,
+      readable: true,
       name: pattern.name,
       trigCount,
       soundLockCount: countSoundLocks(pattern.tracks),
@@ -206,17 +231,26 @@ const DN2: Device = {
   summarise(image, index) {
     const record = patternRecord(image, index, DN2_LAYOUT);
     const version = versionOf(record, DN2_PATTERN.versionOffset);
-    // Read the name straight from the record rather than through readDn2Pattern: a full
-    // parse walks 8,192 trig slots, and a summary of 128 patterns should not pay that.
-    if (version !== DN2_PATTERN_VERSION) return { index, version, supported: false };
+    const readable = TRACK_SIZE_BY_VERSION[version] !== undefined;
+    if (!readable) return { index, version, supported: false, readable: false };
 
-    const name = readName(record, DN2_PATTERN.nameOffset, DN2_PATTERN.nameSize);
-    const pattern = readDn2Pattern(image, index, DN2_LAYOUT);
+    /*
+     * **Normalised once, then read twice from the same buffer.** On a version-2 record the name
+     * sits 64 bytes earlier, and reading it at the version-3 offset is how a project full of
+     * readable patterns comes to look like a blank bank. Doing it once matters: `asVersion3` copies
+     * the whole 89,088-byte record, and going through `readDn2Pattern` here would copy it again.
+     */
+    const normalised = asVersion3(record);
+    const name = readName(normalised, DN2_PATTERN.nameOffset, DN2_PATTERN.nameSize);
+    const pattern = readDn2PatternRecord(
+      normalised, index, readMidiTrackMask(image, index, DN2_LAYOUT));
     const trigCount = pattern.tracks.reduce((n, t) => n + t.trigs.length, 0);
     return {
       index,
       version,
-      supported: true,
+      // Writing stays refused for anything but the version we author. See `readable`.
+      supported: version === DN2_PATTERN_VERSION,
+      readable: true,
       name,
       trigCount,
       soundLockCount: countSoundLocks(pattern.tracks),

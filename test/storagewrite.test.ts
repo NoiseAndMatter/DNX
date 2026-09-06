@@ -45,7 +45,7 @@ function accepting(): ApiTransport & { sent: { code: number; body: Uint8Array }[
         code === StorageCode.WriteOpen ? Uint8Array.of(1, 0, 0, 0, 7)
         : code === StorageCode.Write ? Uint8Array.of(1, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 1, 0)
         : Uint8Array.of(1, 0, 0, 0, 7, 0, 0, 1, 0);
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true, terminated: true });
     },
   };
 }
@@ -344,7 +344,7 @@ test("the device's own refusal is what the caller is told", async () => {
       const text = new TextEncoder().encode("Slot 29 already taken\0");
       const body = new Uint8Array(1 + text.length);
       body.set(text, 1);
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true, terminated: true });
     },
   };
 
@@ -364,7 +364,7 @@ test("a failed chunk never reaches the commit", async () => {
       const { code } = decodeMessage(request);
       io.sent.push(code);
       if (++calls === 2) return Promise.reject(new Error("device went silent"));
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.of(1, 0, 0, 0, 7), isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.of(1, 0, 0, 0, 7), isResponse: true, terminated: true });
     },
   };
 

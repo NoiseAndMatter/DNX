@@ -404,16 +404,44 @@ test("DN2: a project with no song is checked, not merely warned about", { skip: 
 
 // --- the version guard, which is the case a manager meets first -------------
 
-test("DN2: PRESETS is storage version 2, and every pattern of it", { skip: skipV2 }, () => {
+test("DN2: PRESETS is storage version 2, readable but not writable", { skip: skipV2 }, () => {
+  /*
+   * **This test asserted the opposite until 2026-09-06**, and it was right to: version 2 was not
+   * decoded, so a name read at the version-3 offset would have been a claim about the wrong bytes.
+   *
+   * It is decoded now — a version-3 record with a 31-byte track settings block, so the track record
+   * is 1,183 bytes and everything after the sixteen tracks sits 64 bytes earlier
+   * (`dn2-pattern-format.md` §3.5). `asVersion3` normalises it and every reader works unchanged.
+   *
+   * **`supported` stays false and that is the point of the split.** Reading is safe; writing is
+   * not, because putting a normalised record back would widen every track by four bytes. The test
+   * below this one holds that line.
+   */
   const img = image(DN2_PROJECTS, DN2_V2_FILE);
   const device = deviceFor(img);
 
+  let named = 0;
+  let occupied = 0;
+  let namedButEmpty = 0;
   for (let i = 0; i < device.patternCount; i++) {
     const summary = device.summarise(img, i);
     assert.equal(summary.version, 2, `pattern ${i} was version ${summary.version}`);
-    assert.equal(summary.supported, false);
-    assert.equal(summary.name, undefined, "an unsupported record must not claim a name");
+    assert.equal(summary.readable, true, `pattern ${i} should be readable`);
+    assert.equal(summary.supported, false, `pattern ${i} must not be writable`);
+    if (summary.name) named++;
+    if (summary.occupied) occupied++;
+    if (summary.name && !summary.occupied) namedButEmpty++;
   }
+
+  /*
+   * **The agreement is the real check, not the count.** A normalisation that quietly produced
+   * empty records would still satisfy every assertion above; two independent readings landing on
+   * the same 33 patterns — the name at one offset, the trigs at another 47 KB away — could not.
+   */
+  assert.equal(named, 33, "the factory project ships 33 demo patterns");
+  assert.equal(occupied, 33, "and the trigs agree with the names, read from a different offset");
+  assert.equal(namedButEmpty, 0, "a named pattern with no trigs would mean one of the two is wrong");
+  assert.equal(device.summarise(img, 0).name, "LIGHTHOUSE");
 });
 
 test("DN2: a version we do not parse is refused, not guessed at", { skip: skipV2 }, () => {

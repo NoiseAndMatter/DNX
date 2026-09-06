@@ -354,6 +354,123 @@ halfway towards the next trig"* is `12/24`; *"a value of -6 moves the note a qua
 > six-tick buckets prints a bucket at `24` for a trig at `+23` — a position the parameter cannot
 > reach, and which means *"on the next trig"*.
 
+## 3.5 Storage version 2 — DECODED on hardware, 2026-09-06
+
+**Version 2 is version 3 with a 1,183-byte track record.** Everything after the sixteen tracks sits
+**64 bytes earlier** — `16 × (1187 − 1183)`.
+
+| | version 3 | version 2 |
+|---|---|---|
+| track record | 1,187 | **1,183** |
+| trigger slots | `0x4A34` = 18,996 | **18,932** |
+| … end | 68,148 | **68,084** |
+| parameter locks | `0x10A34` | **68,084** |
+| pattern metadata | `0x15AD4` | **`0x15A94`** |
+
+### Why this matters more than a corpus curiosity
+
+`PRESETS.dn2prj` is **the factory presets project, present on every Digitone II**, and it is version
+2. So is every project on a device whose firmware has not been updated. Refusing version 2 means
+refusing the first file a new user opens, and a whole +Drive for anyone who has not updated — which
+is not an edge case but a category of user.
+
+### How it was verified
+
+The 64-byte shift was **computed from the track stride and then confirmed independently**, which is
+the order that matters:
+
+- **Metadata.** Real names at `0x15A94` — `LIGHTHOUSE`, `INSECT`, `RØDBEDE` — and A1 reading LENGTH
+  128, CHANGE off, scale mode PER PATTERN, matching what `Tests_To_Run.html` **T39** read off the
+  instrument. A wrong offset does not produce a correctly terminated Danish word.
+- **Both ends of the trig table**, each exactly 64 earlier, with the pool's last slot landing on the
+  last real trig and the lock table beginning immediately after.
+- **Trig contents against the instrument**, track by track: T15's two trigs at steps 27 and 73
+  (page 2 trig 11, page 5 trig 9), T2 and T7 on every odd step in a C pentatonic minor, T5 at steps
+  3 and 13 on G and A#, T16's two note trigs at 21 and 35 plus **nine trigless trigs at 71–79**.
+
+> **A run of consecutive trigs is automation, not corruption.** Steps 71–79 were twice dismissed as
+> phantom records on the reasoning that real playing does not look like that. It is not playing: it
+> is a pan sweep, nine trigless lock trigs one step apart. The same instinct earlier wrote off four
+> whole tracks. **Consecutive steps are the signature of a parameter being moved**, and the only
+> thing that settled it was somebody reading the pattern off the instrument.
+
+Those trigless trigs carry `note=0x3C, velocity=0xFF, length=0xFF` — the note byte present and
+unused, exactly the device-authored shape §2.1 records. A factory file does the same thing the
+instrument does.
+
+### The four bytes are at the end of the settings block
+
+**Nothing inside a track moved.** The settings block is at `0x480` in both versions; it is simply
+**31 bytes in version 2 and 35 in version 3**:
+
+```
+v3:  0x480 + 35 = 1187
+v2:  0x480 + 31 = 1183
+```
+
+So every per-step array, every flag word, both condition families, the probability array and the
+sound locks are at identical offsets, and so are the settings fields themselves — defaults, LEN and
+SPEED. Confirmed by reading all sixteen v2 tracks at the version-3 offsets: **LEN 128, SPEED 1x**
+on every one, which is what the instrument shows for this pattern, with defaults note 60, velocity
+100 and length `0x0E` — one step.
+
+The four extra bytes version 3 appends are `settings+0x1F..0x22`. §5 already lists the tail of that
+block as unknown and zero-valued, so nothing reads them and nothing needs to.
+
+> **A version-2 record can therefore be read with the version-3 code**, given one number: the track
+> stride. Everything else follows from `4 + 16 × stride`, exactly as the version-3 offsets already
+> do. `asVersion3` normalises on read; nothing writes version 2.
+
+**Confirmed against the instrument, track by track.** `PRESETS` pattern 4 (`FUCHSIA`) reads
+`128, 128, 124, 74, 74, 88, 74, 103@1/2x` for T1–T8, with CHANGE 128 and RESET INF — and the
+device's PAGE SETUP shows exactly that, including the half-speed track. The device displays the
+length over its page-rounded capacity (`74/80`, `88/96`, `103/112`), which is a second confirmation
+from a different direction.
+
+> **Those lengths are real, and they matter.** Held against a RESET of INF they give a polymeter
+> past a million steps — Elektron shipped a demo pattern that never exactly repeats. It is also the
+> first record in the corpus to reach `POLYMETER_LIMIT`, which exposed a windowing bug the code had
+> predicted and never met: see `MAX_WINDOW_STEPS`.
+
+### What the four extra bytes are — INFERRED
+
+`settings+0x1F..0x22` reads **`00 7F 00 7F` on all 49,152 tracks of the 3,072 version-3 patterns in
+the corpus**, and is never once different. Two `u16be` fields at 127, sitting at a default nothing
+has touched. Version 2 already carries the same shape up to `0x1E`, so version 3 appended two more
+fields of the same kind.
+
+The likely feature is the one the manual describes under KEYBOARD SETUP: **MODE, ROOT and SCALE can
+be set per track rather than per pattern**, and per-track storage is exactly what a version bump
+would need room for. The manual is explicit that *"SCALE sets the **track's** scale"*.
+
+**Four bytes is the constraint, and it rules things out.** The instrument's chord features are
+bigger than that:
+
+| feature | where the manual puts it | size |
+|---|---|---|
+| CHORD MEMORY | *"up to 16 previously configured chords **per pattern**"* | far more than 4 bytes, and per pattern |
+| TYPE/SHAPE quick access | *"use [TRIG 1–8] to select shape"* — eight shapes | a selection from a fixed list, not eight stored chords |
+| MODE, ROOT, SCALE | per pattern **or per track**, chosen in the CONFIG menu | small, and per track |
+
+So the four bytes are **not** the chords themselves. They are the right size for the per-track
+half of MODE/ROOT/SCALE — and `00 7F 00 7F` reads naturally as two fields holding a `0x7F`
+"inherit from the pattern" sentinel, which is what every track in a corpus that never uses the
+feature would carry.
+
+> **Still INFERRED, and the corpus cannot take it further** — nothing here has touched the setting,
+> so every track shows the default. `Tests_To_Run.html` **T50** is the capture: switch one track to
+> a per-track SCALE, change it, save, and diff. One save settles both what the fields are and how
+> "inherit" is encoded.
+
+**Where CHORD MEMORY's 16 chords per pattern are stored is unknown**, and nothing in this document
+accounts for them. They are pattern-level data, so they are not the four bytes above; they may sit
+in a region §9 still lists as unidentified.
+
+`asVersion3` fills these with the device's own default rather than zeros, so a normalised record is
+indistinguishable from a real one.
+
+---
+
 ## 4. Parameter locks — VERIFIED
 
 80 records of 258 bytes at `0x10A34`.

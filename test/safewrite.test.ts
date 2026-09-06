@@ -566,7 +566,7 @@ function slot(
       state.log.push(code);
       if (code === StorageCode.Open) state.opens.push(body);
       const reply = (b: number[]): ApiFrame => ({
-        msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.from(b), isResponse: true,
+        msgId, respId: msgId, code: code | RESPONSE_BIT, body: Uint8Array.from(b), isResponse: true, terminated: true,
       });
       switch (code) {
         case StorageCode.Open: return Promise.resolve(reply([1, 0, 0, 0, 1, 0, 0, 8, 0, 1]));

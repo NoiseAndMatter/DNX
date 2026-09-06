@@ -262,6 +262,38 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
  */
 export const POLYMETER_LIMIT = 1_000_000;
 
+/**
+ * The longest span the windowed charts will actually walk. 4,096 steps is 256 bars.
+ *
+ * **`POLYMETER_LIMIT` bounds the arithmetic; this bounds the work.** `cycleSteps` saturates so a
+ * count never runs away, and `polymeterIsBounded` reports that it did — but a caller that then
+ * asked `pitchWindows` for the saturated span requested 62,500 windows and got eight minutes of
+ * work in Node, or a frozen tab in a browser.
+ *
+ * That was written down as a risk long before it happened: *"every windowing loop downstream takes
+ * it as a bound"*. It stayed theoretical only because no readable project reached the limit —
+ * until version 2 opened up `PRESETS`, whose `FUCHSIA` has tracks of 128, 124, 74, 88 and a
+ * 103-step track at half speed, with RESET at INF. That pattern genuinely never repeats, which is
+ * a fine thing for a demo to do and an impossible thing to draw in full.
+ *
+ * A capped window is honest as long as it is **stated**, which is why callers report it rather than
+ * quietly analysing less than they were asked for.
+ */
+export const MAX_WINDOW_STEPS = 4_096;
+
+/**
+ * The span a windowed chart should walk for a given cycle, and whether it had to be shortened.
+ *
+ * Returns the cycle untouched when it is drawable. Anything longer is cut to `MAX_WINDOW_STEPS` and
+ * flagged, so the caption can say the chart shows the first N bars of something longer instead of
+ * implying it shows the whole thing.
+ */
+export function drawableWindow(cycle: number): { steps: number; capped: boolean } {
+  return cycle > MAX_WINDOW_STEPS
+    ? { steps: MAX_WINDOW_STEPS, capped: true }
+    : { steps: cycle, capped: false };
+}
+
 /** Least common multiple, saturating at `POLYMETER_LIMIT` rather than losing precision. */
 const lcm = (a: number, b: number): number => {
   if (a >= POLYMETER_LIMIT || b >= POLYMETER_LIMIT) return POLYMETER_LIMIT;
@@ -576,6 +608,24 @@ export function microFraction(ticks: number): string {
   const n = Math.abs(ticks);
   const g = gcd(n, 384);
   return `${ticks < 0 ? "-" : "+"}${n / g}/${384 / g}`;
+}
+
+/**
+ * A gate length as text: `4 steps`, `0.125 steps`, `INF`.
+ *
+ * **`Infinity` is a real setting and must never reach a chart as the word "Infinity".** A note
+ * length of INF holds until something stops it, and the arithmetic wants a number that behaves
+ * — every consumer bounds its loop on the window, so `Infinity` flows through correctly. What it
+ * must not do is get interpolated into a tooltip, where the reader sees a JavaScript value instead
+ * of the setting their instrument shows.
+ *
+ * The corpus sweep in `test/patternsubject.test.ts` greps rendered SVG for `NaN|Infinity|undefined`
+ * precisely because none of them throws: they reach an attribute, the browser drops the mark, and
+ * the chart quietly draws less than it should. It caught this one.
+ */
+export function gateLabel(steps: number): string {
+  if (steps === Infinity) return "INF";
+  return `${Number(steps.toFixed(4))} step${steps === 1 ? "" : "s"}`;
 }
 
 /**
