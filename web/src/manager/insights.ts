@@ -24,7 +24,8 @@
  */
 
 import {
-  alignmentOf, barsOf, clock, cycleSteps, drawableWindow, fitKey, harmonic, machineLabel,
+  alignmentOf, barsOf, clock, cycleSteps, dormantTrigs, drawableWindow, fitKey, harmonic,
+  machineLabel,
   masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
   overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds,
@@ -486,7 +487,31 @@ export function renderInsights(
   const overlaps = live.reduce((n, t) => n + overlappingNotes(t).length, 0);
   const longestGate = Math.max(...live.flatMap((t) => t.trigs.map((g) => g.length)), 0);
 
+  /*
+   * **Read from every track, not from `live`.** A track whose only trigs are past its end has none
+   * that play, so `playing` drops it — and that is the case most worth reporting, because on the
+   * instrument the track looks empty and the notes are still in the file.
+   */
+  const dormant = dormantTrigs(subject.tracks);
+  const dormantTotal = dormant.reduce((n, d) => n + d.steps.length, 0);
+
   host.innerHTML = overview +
+    (dormant.length ? card("Trigs the sequencer never reaches", `
+      <p class="why"><b>${dormantTotal} note${dormantTotal === 1 ? "" : "s"} on
+        ${dormant.length} track${dormant.length === 1 ? "" : "s"}</b> sit past the end of the track
+        holding them, so ${dormantTotal === 1 ? "it does" : "they do"} not play. Shortening a track
+        keeps whatever was written on the pages it drops; raise its LEN again and
+        ${dormantTotal === 1 ? "it comes" : "they come"} back.</p>
+      <p class="why" style="margin-top:.35rem">${dormant.map((d) =>
+        `<b>T${d.track.number}</b> is ${d.track.length} steps and holds
+         ${d.steps.length} on step${d.steps.length === 1 ? "" : "s"}
+         ${listOf(d.steps.slice(0, 8).map(String))}${d.steps.length > 8 ? " and more" : ""} —
+         <b>LEN ${d.reachAt}</b> reaches ${d.steps.length === 1 ? "it" : "the last of them"}` +
+        (d.track.trigs.length ? "" : ", and nothing on it plays today")).join(". ")}.</p>
+      <p class="why" style="margin-top:.35rem">Everything else on this page counts only the trigs
+        that sound. The instrument cannot show you this: LEN lives on one screen and the trig pages
+        on another, and a page past the last one looks unlit whether it is empty or out of
+        reach.</p>`) : "") +
     card(`Play time and cycle — ${subject.label}`, `
       <div class="tiles">
         <div class="tile"><span class="k">Tempo</span>
