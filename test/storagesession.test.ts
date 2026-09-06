@@ -70,7 +70,7 @@ function scripted(replies: (Uint8Array | Error)[]): ApiTransport & { sent: numbe
         respId: msgId,
         code: code | RESPONSE_BIT,
         body: reply,
-        isResponse: true,
+        isResponse: true, terminated: true,
       });
     },
   };
@@ -237,7 +237,7 @@ test("a device that never says stop is refused rather than read forever", async 
       const body = code === StorageCode.Open ? OPEN_OK
         : code === StorageCode.Close ? CLOSE_OK
         : chunk(io.sent.filter((c) => c === StorageCode.Read).length, [0], false);
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true, terminated: true });
     },
   };
 
@@ -254,7 +254,7 @@ test("a reply with the wrong code is refused rather than misparsed", async () =>
     request(request: Uint8Array, msgId: number): Promise<ApiFrame> {
       io.sent.push(decodeMessage(request).code);
       // A listing reply to an open request: right message id, wrong message.
-      return Promise.resolve({ msgId, respId: msgId, code: 0xd3, body: OPEN_OK, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: 0xd3, body: OPEN_OK, isResponse: true, terminated: true });
     },
   };
 
@@ -288,7 +288,7 @@ function watched(replies: (Uint8Array | Error)[]): ApiTransport & { reads: { seq
       const reply = replies[at++];
       if (reply === undefined) return Promise.reject(new Error("script exhausted"));
       if (reply instanceof Error) return Promise.reject(reply);
-      return Promise.resolve({ msgId, respId: msgId, code: frame.code | RESPONSE_BIT, body: reply, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: frame.code | RESPONSE_BIT, body: reply, isResponse: true, terminated: true });
     },
   };
 }

@@ -217,7 +217,7 @@ function replies(bodies: Uint8Array[]): ApiTransport {
       const code = decodeMessage(request).code;
       const body = bodies[at++];
       if (!body) return Promise.reject(new Error(`no scripted reply for 0x${code.toString(16)}`));
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true, terminated: true });
     },
   };
 }
@@ -238,7 +238,7 @@ function openThenChunks(files: Uint8Array[]): ApiTransport {
         sequence++;
         body = chunkReply(sequence, slice, start + slice.length >= data.length);
       }
-      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true });
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body, isResponse: true, terminated: true });
     },
   };
 }

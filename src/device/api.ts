@@ -90,6 +90,19 @@ export interface ApiFrame {
   body: Uint8Array;
   /** True when `code` has the response bit set. */
   isResponse: boolean;
+  /**
+   * True when the message ended with `0xF7`, as a complete SysEx message must.
+   *
+   * **False means this is a fragment, not a message.** A SysEx cut short still decodes — the 7-bit
+   * unpacking has no idea it is missing an ending — so an interrupted transfer arrives looking like
+   * a short but valid reply. That is how a `0x53` read answered `chunk claims 2048 bytes and
+   * carries 863`: the length field and the payload disagreed because the payload had been cut, and
+   * nothing upstream could say so.
+   *
+   * Reported rather than thrown, because the honest handling differs by caller: a reader can retry,
+   * a capture wants the bytes regardless. What none of them should do is treat it as complete.
+   */
+  terminated: boolean;
 }
 
 /**
@@ -137,7 +150,8 @@ export function decodeMessage(sysex: Uint8Array): ApiFrame {
       `not an Elektron API message: ${[...sysex.slice(0, 6)].map(hex).join(" ")}…`,
     );
   }
-  const end = sysex[sysex.length - 1] === SYSEX_END ? sysex.length - 1 : sysex.length;
+  const terminated = sysex[sysex.length - 1] === SYSEX_END;
+  const end = terminated ? sysex.length - 1 : sysex.length;
   const payload = decode87(sysex.subarray(MANUFACTURER.length + 2, end));
   if (payload.length < 5) {
     throw new ApiError(`API message too short: ${payload.length} bytes, need at least 5`);
@@ -154,6 +168,7 @@ export function decodeMessage(sysex: Uint8Array): ApiFrame {
     code,
     body: payload.subarray(5),
     isResponse: (code & RESPONSE_BIT) !== 0,
+    terminated,
   };
 }
 

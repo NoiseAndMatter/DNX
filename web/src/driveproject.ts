@@ -62,7 +62,9 @@ import { type ConnectedDevice, apiTransport } from "./devicesource.js";
 import { firstDifference, projectPath } from "./driveslot.js";
 
 export { firstDifference, projectPath };
-import { type Entry, listRequest, parseListing } from "../../src/device/storage.js";
+import {
+  type Entry, type Listing, ShortListingError, listRequest, parseListing,
+} from "../../src/device/storage.js";
 import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
 import { type BackupHook, safeWriteFile } from "../../src/device/safewrite.js";
@@ -83,7 +85,7 @@ export async function entryForSlot(device: ConnectedDevice, slot: number): Promi
   const transport = apiTransport(device);
   const id = reserveMessageIds(IDS_FOR.oneMessage);
   const reply = await transport.request(listRequest(id, "/projects"), id, 10_000);
-  const entry = parseListing(reply.body).entries.find((e) => e.index === slot);
+  const entry = wholeListing(reply.body, "/projects").entries.find((e) => e.index === slot);
   if (!entry) {
     throw new DriveWriteError(
       `slot ${slot} is not in the +Drive's project listing, so there is nothing to check before ` +
@@ -261,11 +263,35 @@ async function readStoredForm(
  * allocation but not occupancy — `listProjects` reports every slot, named or not. Occupancy is a
  * property of the directory entry, and the only place it is stated.
  */
+/**
+ * A listing, refused unless it is whole.
+ *
+ * **A partial +Drive listing must never be presented as the +Drive.** Slot numbers come from these
+ * entries, and a project opened from the wrong slot is the mistake this whole subsystem is arranged
+ * to prevent — so a page that carried 45 of a declared 128 is an error here, not a shorter list.
+ *
+ * The two causes look identical and both matter: a directory larger than one reply needs paging,
+ * which this does not yet do; a reply crossed with another application's traffic needs that
+ * application closed. The message names both, because the reader is the one who can tell.
+ */
+function wholeListing(body: Uint8Array, path: string): Listing {
+  const listing = parseListing(body);
+  if (!listing.complete) {
+    throw new ShortListingError(
+      `${path} answered with ${listing.entries.length} of the ${listing.declared} entries it ` +
+        `declared. Either the directory needs more than one request — which this does not do yet — ` +
+        `or the reply was not the answer to this request. Close any Elektron Transfer or ` +
+        `Overbridge running on the same port and try again.`,
+    );
+  }
+  return listing;
+}
+
 export async function emptyProjectSlots(device: ConnectedDevice): Promise<number[]> {
   const transport = apiTransport(device);
   const id = reserveMessageIds(IDS_FOR.oneMessage);
   const reply = await transport.request(listRequest(id, "/projects"), id, 10_000);
-  return parseListing(reply.body)
+  return wholeListing(reply.body, "/projects")
     .entries.filter((e) => e.occupied === false)
     .map((e) => e.index);
 }
