@@ -414,8 +414,14 @@ SPEED. Confirmed by reading all sixteen v2 tracks at the version-3 offsets: **LE
 on every one, which is what the instrument shows for this pattern, with defaults note 60, velocity
 100 and length `0x0E` — one step.
 
-The four extra bytes version 3 appends are `settings+0x1F..0x22`. §5 already lists the tail of that
-block as unknown and zero-valued, so nothing reads them and nothing needs to.
+The four extra bytes version 3 appends are `settings+0x1F..0x22`, which read `00 7F 00 7F` on every
+version-3 track but one. Nothing decodes them and nothing needs to.
+
+**One more byte differs by value rather than by position.** `settings+0x15` reads `0` in all 4,096
+version-2 tracks and `64` in 108,042 of the 108,048 version-3 ones. It is the packed
+TYPE/SHAPE and BASS OCT field of §3.6, so a version-2 track carries the byte position with nothing
+in it. That is a content difference, not a layout one: it does not affect the stride, and
+`asVersion3` leaves it alone.
 
 > **A version-2 record can therefore be read with the version-3 code**, given one number: the track
 > stride. Everything else follows from `4 + 16 × stride`, exactly as the version-3 offsets already
@@ -432,46 +438,53 @@ from a different direction.
 > first record in the corpus to reach `POLYMETER_LIMIT`, which exposed a windowing bug the code had
 > predicted and never met: see `MAX_WINDOW_STEPS`.
 
-### What the four extra bytes are — INFERRED
+### What the four extra bytes are — a chord lead, 2026-09-06
 
-`settings+0x1F..0x22` reads **`00 7F 00 7F` on all 49,152 tracks of the 3,072 version-3 patterns in
-the corpus**, and is never once different. Two `u16be` fields at 127, sitting at a default nothing
-has touched. Version 2 already carries the same shape up to `0x1E`, so version 3 appended two more
-fields of the same kind.
+`settings+0x1F..0x22` reads **`00 7F 00 7F` on 108,047 of the 108,048 version-3 tracks** in the
+corpus. Version 2 carries the same block up to `0x1E` and stops, so version 3 appended two more
+`u16be` fields sitting at a default.
 
-**That hypothesis was tested on hardware and is wrong** (T50, 2026-09-06). The per-track KEYBOARD
-SETUP values live at `settings+0x12..0x15`, which **version 2 also has**. See §3.6. So
-`+0x1F..0x22` is still unexplained, and it is still the whole of the version difference.
+**The per-track KEYBOARD SETUP hypothesis is dead** (T50/T51, 2026-09-06). MODE, ROOT and SCALE live
+at `settings+0x12..0x15`, which version 2 also has — §3.6.
 
-**Four bytes is the constraint, and it rules things out.** The instrument's chord features are
-bigger than that:
+**One track writes into the region, and it is in a chord mode.** Sweeping `+0x16..0x22` across all
+108,048 version-3 tracks finds **13 that are not at the default, all of them in `004 SKETCHPAD`, and
+every one with `+0x13` (MODE) set to a chord mode.** None of the 107,968 tracks at MODE `0` writes a
+byte there.
 
-| feature | where the manual puts it | size |
+| tracks | MODE | `+0x16..0x22` |
 |---|---|---|
-| CHORD MEMORY | *"up to 16 previously configured chords **per pattern**"* | far more than 4 bytes, and per pattern |
-| TYPE/SHAPE quick access | *"use [TRIG 1–8] to select shape"* — eight shapes | a selection from a fixed list, not eight stored chords |
-| MODE, ROOT, SCALE | per pattern **or per track**, chosen in the CONFIG menu | small, and per track |
+| 12 | 2, 3 or 4 — CHORD ROOT, CENTER, SPREAD | `+0x16` and `+0x17` only; `+0x18..0x22` stays default |
+| **1** | **5 — CHORD MEMORY** | `ff 04 00 00 13 00 13 00 81 00 85 00 86` |
 
-So the four bytes are **not** the chords themselves. They are the right size for the per-track
-half of MODE/ROOT/SCALE — and `00 7F 00 7F` reads naturally as two fields holding a `0x7F`
-"inherit from the pattern" sentinel, which is what every track in a corpus that never uses the
-feature would carry.
+That one track is `004 SKETCHPAD` **D6 T9**. It is the only track in the corpus with anything in
+`+0x1F..0x22`, and it reads `00 85 00 86` where every other track reads `00 7F 00 7F` — two `u16be`
+fields moving from 127 to **133** and **134**, with `+0x1E` moving from 127 to **129** alongside
+them. Its full settings block:
 
-> **Still INFERRED, and the corpus cannot take it further** — nothing here has touched the setting,
-> so every track shows the default. `Tests_To_Run.html` **T50** is the capture: switch one track to
-> a per-track SCALE, change it, save, and diff. One save settles both what the fields are and how
-> "inherit" is encoded.
+```
+3c 64 29 07 80 00 40 40 40 0e 0c 40 00 80 00 02 64 04 ff 05 00 36 ff 04 00 00 13 00 13 00 81 00 85 00 86
+```
 
-**Where CHORD MEMORY's 16 chords per pattern are stored is unknown**, and nothing in this document
-accounts for them. They are pattern-level data, so they are not the four bytes above; they may sit
-in a region §9 still lists as unidentified.
+**So the version 3 addition is chord data**, on the evidence of a single track that happens to use
+the feature. `+0x15` says the same thing from the other side: it is `0` in all 4,096 version 2
+tracks and `64` in 108,042 of the 108,048 version 3 ones, and it packs TYPE/SHAPE with BASS OCT.
+
+**The next capture is cheap and settles it.** Set one track to CHORD MEMORY, store a chord, save.
+Change the chord, save again. Diff two records that differ in one chord. If `+0x1F..0x22` moves, the
+version 3 addition is named; if it does not, D6 T9 is carrying something else and the field is still
+open.
+
+**Where CHORD MEMORY's 16 chords per pattern live is still unknown.** Four bytes per track cannot
+hold sixteen chords, and the manual is explicit that the memory is per *pattern*. Whatever
+`+0x1F..0x22` turns out to be, the chords themselves are somewhere §9 still lists as unidentified.
 
 `asVersion3` fills these with the device's own default rather than zeros, so a normalised record is
 indistinguishable from a real one.
 
 ---
 
-## 3.6 Per-track KEYBOARD SETUP — LOCATED on hardware, 2026-09-06
+## 3.6 Per-track KEYBOARD SETUP — DECODED on hardware, 2026-09-06
 
 KEYBOARD SETUP holds MODE, ROOT, SCALE, TYPE/SHAPE and BASS OCT. A CONFIG menu switches MODE, ROOT
 and SCALE between per pattern and per track.
@@ -480,31 +493,82 @@ and SCALE between per pattern and per track.
 setting them back to per pattern wrote `0x01`. Three bits for three parameters fits `0x07`, and
 `0x01` for the per-pattern state does not, so the encoding needs one more capture.
 
-**The values sit at `settings+0x12..0x15`**, four bytes per track. Captured in `DNX_CAP_01` B1:
+**The values sit at `settings+0x12..0x15`**, four bytes per track.
 
-| track | screen | `+0x12` | `+0x13` | `+0x14` | `+0x15` |
-|---|---|---|---|---|---|
-| T1 | NORMAL, C#5, PHRY | 2 | 0 | 1 | 64 |
-| T2 | CHORD CENTER, E5, MIXO, shape 1-3-5, bass oct 0 | 4 | 3 | 4 | 68 |
-| T3 | untouched | **255** | 0 | 0 | 64 |
+| Offset | Field | Status | Encoding |
+|---|---|---|---|
+| **`+0x12`** | **SCALE** | **VERIFIED** | `255` = CHROMATIC, then the manual's list minus one: IONIAN 0, DORIAN 1, PHRYGIAN 2, LYDIAN 3, MIXOLYDIAN 4 |
+| **`+0x13`** | **MODE** | **VERIFIED** | NORMAL 0, FOLDED 1, CHORD ROOT 2, CHORD CENTER 3, CHORD SPREAD 4, CHORD MEMORY 5 |
+| **`+0x14`** | **ROOT** | **VERIFIED** | semitones from C, 0..11 |
+| `+0x15` | TYPE/SHAPE and BASS OCT, packed | UNDECODED | `64` untouched, `68` with shape 1-3-5. **Version 3 only** — see below |
 
-`255` at `+0x12` marks a track that inherits from the pattern.
+An untouched version 3 track reads `255, 0, 0, 64`.
 
-### What is not decoded
+### How it was captured
 
-Which byte holds which parameter, and the enum values. The observed numbers do not match the
-manual's own list order: the scale list runs `CHROMATIC, IONIAN, DORIAN, PHRYGIAN, LYDIAN,
-MIXOLYDIAN`, so PHRYGIAN is 3 and MIXOLYDIAN is 5, where the capture reads 1 and 4. The gap between
-them is wrong too, so it is not a constant offset.
+`DNX_CAP_01` bank B, **one variable per pattern, four tracks apiece** — the protocol in
+`docs/capture-protocol.md`.
 
-Five parameters in four bytes also means something is packed or something lives elsewhere.
+| Pattern | Varies | Screen | Stored |
+|---|---|---|---|
+| B1 | everything at once | T1 NORMAL, C#5, PHRY · T2 CHORD CENTER, E5, MIXO, shape 1-3-5, bass oct 0 | `2 0 1 64` · `4 3 4 68` |
+| B3 | SCALE | first three scales after chromatic, in list order | `+0x12` = 0, 1, 2 |
+| B4 | ROOT | **C#, D, E — skipping D#** | `+0x14` = 1, 2, **4** |
+| B5 | MODE | first three modes after normal, in list order | `+0x13` = 1, 2, 3 |
 
-**The next capture varies one parameter at a time.** Four tracks sharing a MODE and a ROOT with four
-different SCALEs isolates the scale byte and its enum in one save. Repeat for ROOT, then MODE.
+**The gap in B4 is what makes ROOT provable.** C, C#, D, D# would store 0,1,2,3, which fits
+*semitones from C* and equally fits *the order I set them in*. Jumping to E predicts **4**, which
+only the semitone reading gives. It read 4.
 
-> **This is not the version difference.** `settings+0x12..0x15` is inside the 31 bytes version 2
-> also carries, and version-2 records hold `255,0,0,0` there. Whatever version 3 added at
-> `+0x1F..0x22` remains unknown.
+> **Design the capture so the wrong answer looks different.** A run of consecutive values proves
+> less than a run with a hole in it, and the hole costs nothing.
+
+B3 and B5 walk the manual's list in order, so index and ordinal give the same answer and neither is
+self-proving on its own. They are pinned instead by B1, which was set out of sequence: PHRYGIAN read
+2 and MIXOLYDIAN read 4, which no ordinal reading of a two-item selection gives.
+
+### What the corpus adds
+
+Swept over **112,144 tracks** in 55 projects, none of them written for this question:
+
+- **`+0x12` varies in 39 tracks.** PHRYGIAN (`2`) is 28 of them, so a per-track scale is something
+  people actually set.
+- **`+0x13` reaches 5 nine times** and 4 four times, which is CHORD MEMORY and CHORD SPREAD in real
+  music. The mode enum runs the full documented range.
+- **`+0x14` holds `128` in eighteen tracks**, all of them `PRESETS` A12. A root note has twelve
+  values, so `128` is outside the field as read. UNEXPLAINED, and the only reading that contradicts
+  the table above.
+
+### `+0x15` is a version 3 field
+
+| | tracks | `+0x15` |
+|---|---|---|
+| version 2 | 4,096 | `0` in every one |
+| version 3 | 108,048 | `64` in 108,042; `68`, `65` and `54` in the other six |
+
+Read from the raw record at each version's own track stride, so the normalisation in `asVersion3`
+is not what produces it.
+
+**INFERRED: the chord shapes are what version 3 added.** `+0x15` packs TYPE/SHAPE with BASS OCT,
+both of them chord controls, and version 2 carries the byte position with nothing in it. That is
+consistent with the four bytes at `+0x1F..0x22` being the rest of the same feature, and it is the
+first evidence for any story about the version bump. It is not proof: a byte reading zero on old
+files is also what an unused field looks like.
+
+### What is still open
+
+- **`+0x15`'s packing.** `64` and `68` differ by 4, with shape 1-3-5 selected. One capture walking
+  TYPE/SHAPE with BASS OCT held, then the reverse, splits the byte.
+- **`+0x14` = 128** in `PRESETS` A12.
+- **Whether `255` at `+0x12` means CHROMATIC or "inherit from the pattern".** Both store the same
+  byte, so a pattern with a non-chromatic pattern-level scale and a track reading `255` would settle
+  it. Nothing captured yet does.
+- **MODE past 3.** B5 walked 1, 2, 3. The corpus shows 4 and 5 exist; nothing sets them against a
+  known screen. Three tracks at NORMAL, CHORD ROOT and CHORD MEMORY should read 0, 2, 5.
+
+> **This is not the whole version difference.** `settings+0x12..0x15` sits inside the 31 bytes
+> version 2 also carries. Whatever version 3 added at `+0x1F..0x22` still reads `00 7F 00 7F` on
+> every track held.
 
 ---
 
@@ -606,6 +670,9 @@ they behave like steps 0..63.
 
 ## 5. Track settings, 35 bytes at `+0x480`
 
+**`+0x12..0x15` is KEYBOARD SETUP and is decoded in §3.6.** This table lists it by offset so the
+block is complete; the encodings and the evidence are there, not here.
+
 Native default (all 16 tracks of every capture):
 
 ```
@@ -630,9 +697,12 @@ Native default (all 16 tracks of every capture):
 | **`+0x0F`** | **track speed enum** | **VERIFIED** | `Per_Track_Speed_T01` walks all seven and moves only this byte; matches the DN1 speed on all 9,216 |
 | `+0x10` | `0x64` (100) | SPECULATIVE: track level | 25,107/25,136 are `0x64` |
 | `+0x11` | `5` native, `4` converted, rises to `6`/`7` | UNKNOWN | rose 5→6 when a chord reached 5 notes and fell back at 3 (`Track08_Chord…/06` and `/08`), so plausibly a voice count |
-| `+0x12` | `0xFF` | UNKNOWN | |
-| `+0x13`, `+0x14` | `0` | UNKNOWN | |
-| `+0x15..0x22` | constants `40 00 00 00 00 00 00 00 00 00 7f 00 7f 00 7f` | UNKNOWN | never varies in 25,136 samples |
+| **`+0x12`** | **KEYBOARD SETUP: SCALE** | **VERIFIED** | §3.6. `255` in 112,105 of 112,144 tracks, which is CHROMATIC or inherit; the other 39 carry a real scale |
+| **`+0x13`** | **KEYBOARD SETUP: MODE** | **VERIFIED** | §3.6. `0` in 112,056; the rest reach 5, which is CHORD MEMORY |
+| **`+0x14`** | **KEYBOARD SETUP: ROOT** | **VERIFIED** | §3.6, semitones from C. `128` in eighteen `PRESETS` A12 tracks is unexplained |
+| `+0x15` | KEYBOARD SETUP: TYPE/SHAPE and BASS OCT, packed | UNDECODED | §3.6. `0` in all 4,096 version 2 tracks, `64` in 108,042 of 108,048 version 3 ones |
+| `+0x16..0x1E` | constants `00 00 00 00 00 00 00 00 7f` | UNKNOWN | `+0x1E` is `127` in 112,143 of 112,144; one track of `004 SKETCHPAD` D6 reads `129` |
+| `+0x1F..0x22` | constants `00 7f 00 7f` | UNKNOWN | **the four bytes version 3 adds** — §3.5. Never varies except in the same `004 SKETCHPAD` track |
 
 Speed enum (`+0x0F`, and the pattern-level speed at meta `+0x1A`) — VERIFIED, same codes
 on DN1 and DN2:

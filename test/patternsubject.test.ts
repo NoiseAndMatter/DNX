@@ -8,6 +8,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { test } from "node:test";
 import { DN2_PROJECTS, NO_CORPUS, requireCorpusFile, requireCorpusFiles } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
@@ -262,11 +263,13 @@ test("a version-2 project reads, and reads correctly", { skip: NO_CORPUS }, () =
   for (let index = 0; index < 128; index++) {
     const subject = patternSubject(img, DN2_DEVICE, index);
     /*
-     * **1..1024, not 1..128.** `+0x14` is the pattern length in PER PATTERN mode and the RESET in
-     * PER TRACK, and `masterLength` carries the raw field either way — see §8i. A PER TRACK pattern
-     * reading 256 is a 256-step reset, not a 256-step pattern.
+     * **1..128 in both modes, since 2026-09-06.** `+0x14` is the pattern length in PER PATTERN mode
+     * and the RESET in PER TRACK, and `masterLength` used to carry the raw field either way — so
+     * PER TRACK patterns reported a 1-step "master length" when RESET was INF, and values above
+     * 128 otherwise. It is now the pattern length or the longest track pass, and both are
+     * sequencer steps.
      */
-    assert.ok(subject.masterLength >= 1 && subject.masterLength <= 1024,
+    assert.ok(subject.masterLength >= 1 && subject.masterLength <= 128,
       `${subject.label} has a master length of ${subject.masterLength}`);
     assert.ok(subject.tempo > 0 && subject.tempo < 1000, `${subject.label} tempo ${subject.tempo}`);
     for (const track of subject.tracks) {
@@ -397,4 +400,62 @@ test("the first step past the end is dormant, not the last one that plays", { sk
   assert.ok((t2.dormant ?? []).some((g) => g.step === 16), "step 17 is past the end of 16 steps");
   assert.ok(t2.trigs.some((g) => g.step === 15), "step 16 is the last one that plays");
   assert.ok(!t2.trigs.some((g) => g.step === 16));
+});
+
+test("a per-track pattern has no master length, and does not report the reset as one",
+  { skip: NO_CORPUS }, () => {
+  /*
+   * **`+0x14` is the pattern LENGTH in PER PATTERN mode and the RESET in PER TRACK mode**, and this
+   * reader used to hand over the raw field in both. The consequences were on the page: 49 of the
+   * 829 playing patterns in the corpus reported a **master length of 1 step**, because RESET at INF
+   * stores `1`, and 22 more reported a value above the 128 a pattern length can hold. `PRESETS` A5
+   * printed "MASTER LENGTH 512 steps" beside "PATTERN RESET 512 steps" — one field, twice.
+   *
+   * A one-step window is not only a wrong label. It is what `pitchWindows` was given to fit a key
+   * in.
+   */
+  const path = requireCorpusFile(DN2_PROJECTS, "PRESETS.dn2prj");
+  const img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
+
+  let perTrack = 0, flat = 0;
+  for (let index = 0; index < 128; index++) {
+    const raw = readDn2Pattern(img, index);
+    const subject = patternSubject(img, DN2_DEVICE, index);
+    assert.equal(subject.perTrackLengths, raw.perTrackScale);
+
+    if (raw.perTrackScale) {
+      perTrack++;
+      // The longest track pass: the shortest window in which every track completes at least once.
+      const longest = Math.max(...subject.tracks.map((t) => t.length));
+      assert.equal(subject.masterLength, longest,
+        `${subject.label} should draw over its longest track, not over the RESET field`);
+      // Not asserted as *different* from the raw field: a per-track pattern may have a longest
+      // track of 128 under a RESET of 128, and the two coinciding is not the bug.
+      assert.ok(subject.masterLength <= 128, `${subject.label} draws over ${subject.masterLength}`);
+    } else {
+      flat++;
+      assert.equal(subject.masterLength, raw.length, "PER PATTERN keeps the pattern's own length");
+    }
+  }
+  assert.ok(perTrack > 0 && flat > 0,
+    `this project has ${flat} flat and ${perTrack} per-track patterns; the test needs both`);
+});
+
+test("no pattern in the corpus draws over a window of one step", { skip: NO_CORPUS }, () => {
+  // The failure this guards is silent: a one-step window produces a key fit over one note and a
+  // beat view with a single column, both of which render without complaining.
+  for (const path of requireCorpusFiles(DN2_PROJECTS, ".dn2prj")) {
+    let img: Uint8Array;
+    try {
+      img = decodeProjectImage(parseProject(new Uint8Array(readFileSync(path))).payload.raw).image;
+      if (deviceFor(img).kind !== "dn2") continue;
+    } catch { continue; }
+    for (let index = 0; index < 128; index++) {
+      let subject;
+      try { subject = patternSubject(img, DN2_DEVICE, index); } catch { continue; }
+      if (playing(subject).length === 0) continue;
+      assert.ok(subject.masterLength > 1,
+        `${basename(path)} ${subject.label} draws over ${subject.masterLength} step`);
+    }
+  }
 });

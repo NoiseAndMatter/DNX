@@ -134,8 +134,27 @@ export interface AnalysisSubject {
   /** How the subject names itself on screen — "A1 · TECNO_EXP", say. */
   label: string;
   tempo: number;
-  /** The master length, in steps: the window a chart draws by default. */
+  /**
+   * The window a chart draws by default, in steps.
+   *
+   * **In PER PATTERN mode this is the pattern's own LENGTH.** In PER TRACK mode there is no pattern
+   * length — each track carries its own — so it is the longest track pass instead, which is the
+   * shortest window that shows every track completing once.
+   *
+   * It was the raw `+0x14` field in both modes, and that field is the pattern LENGTH in one mode
+   * and the RESET in the other. 49 of the 829 playing patterns in the corpus reported a **master
+   * length of 1 step**, because RESET at INF stores `1`; another 22 reported values above 128,
+   * which no pattern length can hold. The tile printed those, and `pitchWindows` was handed a
+   * one-step window to fit a key in.
+   */
   masterLength: number;
+  /**
+   * True when the pattern gives every track its own LENGTH, so there is no master length to show.
+   *
+   * `resetSteps` cannot answer this: it is undefined both for a PER PATTERN pattern and for a PER
+   * TRACK one whose RESET is INF.
+   */
+  perTrackLengths: boolean;
   /**
    * How many steps before the sequencer restarts every track together, or `undefined` for never.
    *

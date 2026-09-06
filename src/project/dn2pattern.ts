@@ -195,8 +195,13 @@ export const STEP_FLAG = {
  * **Version 2 is version 3 with a 31-byte settings block instead of 35** — decoded on hardware
  * 2026-09-06, `dn2-pattern-format.md` §3.5. Nothing else moves: every per-step array, both
  * condition families, the sound locks and the settings fields themselves sit at identical offsets.
- * Only the block's unused tail is shorter, so the record is four bytes smaller per track and
- * everything after the sixteen tracks lands 64 bytes earlier.
+ * Only the block's tail is shorter, so the record is four bytes smaller per track and everything
+ * after the sixteen tracks lands 64 bytes earlier.
+ *
+ * **That tail is not certainly unused.** It reads `00 7F 00 7F` on every version-3 track in the
+ * corpus but one, and the exception is a track in CHORD MEMORY mode. It is filled on read with the
+ * device's own default rather than zeros, so a normalised record is indistinguishable from a real
+ * one — and a version-2 project has nothing there to lose, because nothing writes version 2.
  *
  * **This is not a corpus curiosity.** `PRESETS.dn2prj` — the factory presets project on every
  * Digitone II — is version 2, and so is every project on a device whose firmware has not been
