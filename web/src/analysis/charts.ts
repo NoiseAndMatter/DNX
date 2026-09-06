@@ -51,7 +51,8 @@ const lcm = (a: number, b: number): number => {
 const align = (a: number, b: number): number =>
   a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 import {
-  MACHINE_ORDER, NOTE_NAMES, barsOf, clock, machineLabel, masterOffset, masterPeriod, noteName,
+  MACHINE_ORDER, MICRO_MAX, NOTE_NAMES, barsOf, clock, machineLabel, masterOffset, masterPeriod,
+  microFraction, noteName,
   overlappingNotes, periodSources, pitchClass, presetOf, speedLabel,
   type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
   type TrackRow,
@@ -683,22 +684,37 @@ export function pitchBars(cells: readonly PitchCell[], w: number): string {
  * holds most of the trigs and flattened every deviation into a stub. It is stated in the caption
  * instead, which is the honest way to drop a bar rather than quietly rescaling around it.
  */
+/** Keep a bucket edge inside what the sequencer offers. See `MICRO_MAX`. */
+const clampMicro = (t: number) => Math.max(-MICRO_MAX, Math.min(MICRO_MAX, t));
+
 export function microDiverging(buckets: MicroBuckets["buckets"], w: number): string {
   const h = 96;
   const cx = w / 2;
   const max = Math.max(...buckets.map((b) => b.n));
-  const span = Math.max(...buckets.map((b) => Math.abs(b.at))) + 5;
+  /*
+   * **The axis is the parameter's range, not the data's.** Buckets are six ticks wide and centred
+   * on a multiple of six, so a trig at the maximum `+23` sits in a bucket labelled 24 — a position
+   * the sequencer cannot reach, and which would mean "on the next trig". Bounding the axis at
+   * `MICRO_MAX` keeps every mark inside what the instrument can actually do.
+   */
+  const span = Math.min(MICRO_MAX, Math.max(...buckets.map((b) => Math.abs(b.at)))) + 5;
   const x = (t: number) => cx + (t / span) * (w / 2 - 30);
   const base = h - 22;
   let out = `<line x1="${cx}" y1="2" x2="${cx}" y2="${base}" stroke="var(--ink3)"
     stroke-width="${W.grid}" stroke-dasharray="2 3" opacity="${GRID_OP}"/>`;
   for (const b of buckets) {
     const bh = Math.max(3, (b.n / max) * (base - 16));
-    out += `<rect x="${x(b.at) - 7}" y="${base - bh}" width="14" height="${bh}" rx="2.5"
+    const at = clampMicro(b.at);
+    out += `<rect x="${x(at) - 7}" y="${base - bh}" width="14" height="${bh}" rx="2.5"
       fill="var(${b.at < 0 ? "--dneg" : "--dpos"})"
-      ${tip(b.at < 0 ? `${-b.at} ticks early` : `${b.at} ticks late`,
+      ${tip(
+        // The device's own fraction, and the centre is clamped into the parameter's range: a trig
+        // at the maximum +23 falls in a bucket centred on 24, which would read as 1/16 — one whole
+        // step, the next trig. Naming the span instead was tried and was worse: it turned a trig
+        // sitting exactly on -1/32 into "-7/192 to -3/128".
+        `${at < 0 ? "early" : "late"} — ${microFraction(at)}`,
         `${b.n} trig${b.n === 1 ? "" : "s"}`)}/>`;
-    out += `<text x="${x(b.at)}" y="${base - bh - 4}" text-anchor="middle"
+    out += `<text x="${x(at)}" y="${base - bh - 4}" text-anchor="middle"
       font-size="${T.value}" fill="var(--ink2)">${b.n}</text>`;
   }
   out += `<line x1="0" y1="${base}" x2="${w}" y2="${base}" stroke="var(--rule)"
