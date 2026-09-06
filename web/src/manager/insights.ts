@@ -271,7 +271,7 @@ function comparisonCard(rows: readonly ComparisonRow[], refusals: readonly Insig
     ${refusalNote(refusals)}
 
     ${table(
-      ["Pattern", "Tempo", "Tracks", "Master", "RESET", "Repeats every", "Polymeter", "Heard",
+      ["Pattern", "Tempo", "Tracks", "Window", "RESET", "Repeats every", "Polymeter", "Heard",
        "Cut", "Notes lost"],
       rows.map((r) => [
         r.label,
@@ -517,10 +517,12 @@ export function renderInsights(
         <div class="tile"><span class="k">Tempo</span>
           <span class="v">${subject.tempo.toFixed(subject.tempo % 1 ? 1 : 0)}</span>
           <span class="u">BPM</span></div>
-        <div class="tile"><span class="k">Master length</span>
+        <div class="tile"><span class="k">${subject.perTrackLengths
+            ? "Longest track" : "Master length"}</span>
           <span class="v">${subject.masterLength}</span><span class="u">steps</span>
           <span class="note">${clock(stepsToSeconds(subject.masterLength, subject.tempo))} ·
-            ${barsOf(subject.masterLength)}</span></div>
+            ${barsOf(subject.masterLength)}${subject.perTrackLengths
+              ? " · no master length in PER TRACK" : ""}</span></div>
         <div class="tile ${cut ? "flag" : ""}"><span class="k">Repeats every</span>
           <span class="v">${cycle.toLocaleString()}</span><span class="u">steps</span>
           <span class="note">${clock(cycleSec)} · ${bars} bar${bars === 1 ? "" : "s"}${cut
@@ -545,8 +547,8 @@ export function renderInsights(
           read against the actual rhythm. <b>${accents} of ${allTrigs} trigs are above the default
           velocity of ${subject.defaultVelocity}</b> and are drawn brighter and ringed.${
             windowSteps === subject.masterLength ? "" : ` Drawn over <b>${windowSteps} steps</b>
-            rather than the master length of ${subject.masterLength}, so every track completes at
-            least one pass.`}</figcaption>
+            rather than the ${subject.perTrackLengths ? "longest track pass" : "master length"} of
+            ${subject.masterLength}, so every track completes at least one pass.`}</figcaption>
         <div class="chart" id="i-phase"></div>
       </figure>
       ${legend(machinesUsed.map((m) => [machineLabel(m), machineVar(m)] as [string, string]))}

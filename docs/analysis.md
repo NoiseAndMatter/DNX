@@ -446,6 +446,30 @@ boundary and passed either way.
 The grid still counts sequencer *records* per slot, which is a different and correct number: it is
 what the file holds, including lock trigs and dormant ones. Insights counts what sounds.
 
+## There is no master length in PER TRACK mode — corrected 2026-09-06
+
+`+0x14` is the pattern LENGTH in PER PATTERN mode and the **RESET** in PER TRACK mode, and
+`patternSubject` handed over the raw field in both. So `AnalysisSubject.masterLength` was the reset
+for 705 of the 829 playing patterns in the corpus, under a tile that said "Master length".
+
+**49 of them reported a master length of one step**, because RESET at INF stores `1`. Another 22
+reported values above 128, which no pattern length can hold. `PRESETS` A5 printed **"MASTER LENGTH
+512 steps"** beside **"PATTERN RESET 512 steps"**: one field, shown twice, under two names.
+
+A one-step window is worse than a wrong label. `masterFit` fits a key over
+`pitchWindows(tonal, masterLength, masterLength, masterLength)`, and the beat view windows the same
+number, so those 49 patterns had their key read from a single step.
+
+`masterLength` is now the pattern's own length in PER PATTERN mode and the **longest track pass** in
+PER TRACK mode — the shortest window in which every track completes once, which is what a default
+drawing window is for. `AnalysisSubject.perTrackLengths` says which, because `resetSteps` cannot:
+it is undefined both for a PER PATTERN pattern and for a PER TRACK one whose RESET is INF.
+
+**The field was documented correctly and read wrongly.** `dn2-pattern-format.md` has said `+0x14`
+carries two meanings since the `Per_Track_Reset_T01` capture, the comment beside `resetSteps` in
+`patternsubject.ts` says it in full, and the assertion in `patternsubject.test.ts` was widened to
+1..1024 *because* of it. Three places named the trap and the line above them walked into it.
+
 ## Traps this subsystem has already paid for
 
 - **A chart must degrade toward the busy case.** Labelling every voice overrun read well with one
