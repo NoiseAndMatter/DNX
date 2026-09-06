@@ -235,7 +235,23 @@ export function patternSubject(
   return {
     label: `${patternName(index)} · ${pattern.name || "unnamed"}`,
     tempo: pattern.tempo,
-    masterLength: pattern.length,
+    /*
+     * **In PER TRACK mode there is no pattern length, so this is the longest track pass.**
+     *
+     * `+0x14` is the pattern LENGTH in PER PATTERN mode and the RESET in PER TRACK mode, and this
+     * read the raw field either way. 49 of the 829 playing patterns in the corpus came out with a
+     * master length of **1 step** — RESET at INF stores `1` — and another 22 with values above the
+     * 128 a pattern length can hold. Insights printed those in a tile labelled "Master length", and
+     * handed the same 1 to `pitchWindows` as the window to fit a key in.
+     *
+     * The longest track pass is the honest substitute: the shortest window in which every track
+     * completes at least once, which is what a default drawing window is for. `resetSteps` below
+     * still carries the reset, so nothing is lost.
+     */
+    masterLength: pattern.perTrackScale
+      ? Math.max(...pattern.tracks.map((t) => lengthOf(t.length)))
+      : pattern.length,
+    perTrackLengths: pattern.perTrackScale,
     voiceBudget: VOICES[device.kind] ?? 16,
     defaultVelocity: accentThreshold(pattern.tracks.map((t) => t.settings.defaultVelocity)),
     /*
