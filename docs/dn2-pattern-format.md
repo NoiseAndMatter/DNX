@@ -109,6 +109,14 @@ note trig ever produced this bit. 1,514 of the 1,517 also have `0xFF` in the not
 their trigger slot; the other three carry a stale note that their DN1 originals carry too
 (see §8).
 
+> **The `0xFF` note byte is an importer habit, not a rule — hardware, 2026-09-06.** Every figure
+> above is from Elektron's own DN1 conversions. A lock trig made **on the instrument**
+> (`DNX_CAP_01` A6, steps 5–7 via [FUNC]+[TRIG]) carries the flag *and* an ordinary note byte of
+> 60. So the three "stale note" records in §8 are not an importer quirk at all — they are simply
+> what a lock trig looks like when the note byte was never cleared, and the device does the same
+> thing routinely. **Derive `hasNote` from the flag word; the note byte says nothing.** The decoder
+> already does, which is why nothing miscounted.
+
 **Observed complete flag words.** The whole matched corpus produces only:
 
 | Word | Meaning | Count |
@@ -119,6 +127,7 @@ their trigger slot; the other three carry a stale note that their DN1 originals 
 | `0x0380` / `0x0390` | empty step, even / odd (device, some patterns) | 556 / 522 |
 | `0x0381` / `0x0391` | note trig, even / odd (device) | 522 / 418 |
 | `0x2000` | every step of an importer-untouched track | 589,824 |
+| `0x7801` / `0x7811` | **lock trig, even / odd (device)** — see below | hardware 2026-09-06 |
 | `0x6181`, `0x2381` | three records with high bits inherited verbatim from unusual DN1 flag words | 3 |
 
 Masking away `0x0010`, `0x0200` and the top nibble leaves exactly two shapes: `0x0181` for
@@ -131,8 +140,13 @@ UNKNOWN — calling it a parity bit is a description, not an explanation.
 **`0x2000`.** Present on every step of DN2 tracks 9-16 in a DN1 import — exactly the eight
 tracks the importer never populated — and on no other track: 1,149 of 1,152 patterns show
 it on tracks 9-16 only, the other three add track 3. Those tracks carry `0x2000` on both
-parities and no `0x0010`. Best guess is "step never initialised", SPECULATIVE. It does not
-affect trig detection.
+parities and no `0x0010`. It does not affect trig detection.
+
+> **"Untouched" is the wrong name for it — hardware, 2026-09-06.** A device-authored lock trig on
+> **track 1** writes `0x7801` / `0x7811`, which carries `0x2000` along with `0x4000` and `0x1000`.
+> So the bit is not a marker of an uninitialised track; the importer's usage was one context, not
+> the meaning. The three extra bits the device sets on a lock trig are UNKNOWN and, like the rest of
+> the top nibble, are masked away before the shape is read.
 
 **For writing:** the importer's shapes are proven to load on hardware — these DN2 files
 *are* Elektron's own conversions. Use base `0x0000` / `0x0010` per parity, OR in `0x0181`
@@ -202,8 +216,15 @@ That also explains why the device offers no `not 1:2`: code `0x09` **is** the ne
 and the UI simply labels it `2:2`, because over a two-cycle those are the same rule. The code
 space is uniform; only the labels collapse.
 
-**The unobserved codes are therefore predicted, not measured** — `2:4 = 0x12`, `3:4 = 0x14`, and
-all of `B` = 5, 6, 7. A later capture should spot-check one of them.
+**`B` = 4, 5 and 6 are now measured — hardware, 2026-09-06.** `DNX_CAP_01` A13 walks
+`0x00`–`0x0F` in step order and A14 walks `0x10`–`0x2D`, so the step index names the code exactly as
+in the original capture. That confirms `2:4 = 0x12` and `3:4 = 0x14`, which this section previously
+listed as predicted, and the whole of `B` = 5 and 6 including `6:6 = 0x2C` and `not 6:6 = 0x2D`. A
+trig at `0x4B` in the same pattern re-confirms `not 8:8` at the far end.
+
+**Only `B` = 7 (`0x2E`–`0x3B`) remains predicted**, plus three codes skipped in passing —
+`0x17` (not 4:4), `0x1D` (not 3:5) and `0x27` (not 3:6). The generating arithmetic has now held
+across five blocks and both ends, so those are predictions with a great deal of weight behind them.
 
 ### `+0x180` is the FILL family — VERIFIED
 
@@ -224,7 +245,7 @@ the full extent of what is known and do not extrapolate to unlisted values.
 ```
 +0  u8   track    0..15;  0xFF marks the slot unused
 +1  u8   step     0..127
-+2  u8   note     MIDI note, or 0xFF on a trigless lock trig
++2  u8   note     MIDI note. 0xFF on an IMPORTED lock trig; a device-authored one keeps a note
 +3  u8   velocity 0..127, or 0xFF to inherit the track default
 +4  u8   noteLength       or 0xFF to inherit the track default
 +5  i8   microTiming      signed; 0xFF is -1, NOT "unset"
@@ -277,6 +298,61 @@ verified for all 1,152 converted patterns.
 the pool allows an average of four notes per step across a completely full pattern.
 
 ---
+
+### 3.3 Note length — SOLVED on hardware, 2026-09-06
+
+**A banded table.** Length in units of 1/16 of a step, call it `n`; the value the device shows is
+`n/16` steps.
+
+| bytes | `n` | increment | shows |
+|---|---|---|---|
+| `0`–`29` | `b + 2` | 1 | 0.125 – 1.9375 |
+| `30`–`45` | from 32 | 2 | 2 – 3.875 |
+| `46`–`61` | from 64 | 4 | 4 – 7.75 |
+| `62`–`77` | from 128 | 8 | 8 – 15.5 |
+| `78`–`93` | from 256 | 16 | 16 – 31 |
+| `94`–`109` | from 512 | 32 | 32 – 62 |
+| `110`–`126` | from 1024 | 64 | 64 – **128** |
+| `127` | — | — | **INF** |
+| `255` | — | — | no lock — inherit the track default |
+
+**Seven bands of 16 bytes, and the increment doubles every time the value doubles** — at 2, 4, 8,
+16, 32 and 64 steps exactly. That is why the values available on the encoder change as you turn it.
+
+**How it was captured, because the method is the reusable part.** A first pattern of 16 arbitrary
+readings gave a model; a second pattern then *tested* it with **no transcription at all**. Sixteen
+trigs were dialled to round values the model predicts the byte for — the eight band boundaries
+(`0.125, 2, 4, 8, 16, 32, 64, 128`), six mid-band values (`3, 6, 12, 24, 48, 96`), `INF`, and one
+trig left alone. All sixteen landed on the predicted byte. The boundaries pin where each band
+starts; inside a band the increment is forced by the spans; the mid-band six show the inside really
+is linear.
+
+> **Byte 0 predicts 0.125, which the manual documents as the minimum and which was in neither
+> sample set.** That is the independent check that makes this a reading rather than a curve fit.
+
+### 3.4 Micro timing — SOLVED on hardware, 2026-09-06
+
+**The byte is a signed tick count; one tick is 1/384 of a whole note.** So there are **24 ticks to a
+step** and 96 to a quarter note. The device displays the offset as `ticks/384`, reduced:
+
+| stored | shows | of a step |
+|---|---|---|
+| `-23` | `-23/384` | −0.958 |
+| `-12` | `-1/32` | −0.5 |
+| `-6` | `-1/64` | −0.25 |
+| `+12` | `+1/32` | +0.5 |
+| `+23` | `+23/384` | +0.958 |
+
+The range is **−23 … +23**, which the manual states and the arithmetic explains: `24/384` is `1/16`
+— one whole step, landing exactly on the next trig.
+
+It cross-checks against the manual without using the capture at all. *"A value of 12 moves the note
+halfway towards the next trig"* is `12/24`; *"a value of -6 moves the note a quarter of the way"* is
+`6/24`.
+
+> Anything drawing this should label in the device's own fractions. A chart that gathers trigs into
+> six-tick buckets prints a bucket at `24` for a trig at `+23` — a position the parameter cannot
+> reach, and which means *"on the next trig"*.
 
 ## 4. Parameter locks — VERIFIED
 

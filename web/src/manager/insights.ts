@@ -253,9 +253,9 @@ function comparisonCard(rows: readonly ComparisonRow[], refusals: readonly Insig
         ${s.conditional.length === 1 ? "carries" : "carry"} conditional trigs</b>
         (${s.conditional.reduce((n, r) => n + r.conditional, 0)} in all), so
         ${s.conditional.length === 1 ? "its cycle figure is" : "their cycle figures are"} a
-        <b>floor</b>. A trig set to 2:3 plays on one pass in three and the condition
-        codes are stored but not decoded, so this can say the conditions are there and not how much
-        longer they make it.</p>` : ""}
+        <b>floor</b>. A trig set to 2:3 plays on one pass in three; the codes are decoded but
+        this page does not yet work out what they do to the cycle &mdash; and a percentage
+        condition has no exact answer in any case.</p>` : ""}
 
     ${s.silent.length ? `
       <p class="hint" style="margin-top:.6rem">${s.silent.map((r) =>
@@ -651,9 +651,11 @@ export function renderInsights(
             <b>${conditional} of ${allTrigs} trigs carry a trig condition</b>, so the pattern does
             not sound the same on every pass and the figure above is a <b>floor</b>, not the answer.
             A trig set to 2:3 plays on one pass in three, which multiplies the musical cycle by
-            three. The condition codes are stored and <b>not decoded</b> — the tables at
-            <code>+0x100</code> and <code>+0x180</code> have never been captured — so this can say
-            the conditions are there and cannot say how much longer they make it.</p>`}
+            three. <b>The codes are decoded</b> — <code>+0x100</code> was solved on hardware and
+            <code>+0x180</code> is the FILL family — but this page does not yet work out what a
+            mixture of them does to the cycle, and a <b>percentage</b> condition has no exact
+            answer at all. So the figure above is a floor, and saying which conditions are present
+            is as far as this goes today.</p>`}
           ${latest === undefined ? "" : latest.steps === reach.total ? `
             <p class="why" style="margin-top:.35rem">The pairing that decides it is
               <b>${latest.a.period} against ${latest.b.period}</b> — every other pair comes round
