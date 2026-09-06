@@ -215,11 +215,16 @@ export function patternSubject(
      * in one mode and the reset in the other, and it must not be read as a reset in the mode where
      * it is a length.
      *
-     * **`1` is taken to mean INF, and that is the one guess here.** `dn2-pattern-format.md` already
-     * records `1 = off` for CHANGE at `+0x16`, and RESET sits beside it with an INF setting the
-     * manual describes in the same breath. The corpus fits: the 30 per-track patterns reading 1 are
-     * all in `017 PRESETS`, whose tracks run 14 to 64 steps and would be cut to ribbons by a reset
-     * of one step. **Unconfirmed on hardware** — see `Tests_To_Run.html` T41.
+     * **`1` means INF, and it was measured, not guessed** — `dn2-pattern-format.md` §"Both fields
+     * are pattern-level" records `RESET → +0x14 (… and INF → 1)` from the `Per_Track_Reset_T01`
+     * single-variable capture, and the instrument confirmed it again on 2026-09-05 (`017 PRESETS`
+     * B8 stores 1 and shows RESET INF; `012 TECNO_EXP` A1 stores 64 and shows RESET 64).
+     *
+     * **This comment previously called it a guess, and that was a documentation-reading failure,
+     * not a gap in the evidence.** It cited the same file for CHANGE's `1 = off` and stopped
+     * thirty-five lines short of the line that already answered RESET, then reasoned by analogy to
+     * the conclusion that was sitting there measured. A hardware test was written to settle it. If
+     * a fact feels like it ought to be recorded somewhere, search for it before inferring it.
      */
     ...(pattern.perTrackScale && pattern.length > 1 ? { resetSteps: pattern.length } : {}),
     // CHANGE, at `+0x16`, where `dn2-pattern-format.md` records `1 = off`. Read in both scale
