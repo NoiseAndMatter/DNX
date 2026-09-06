@@ -796,17 +796,17 @@ export function renderInsights(
         </figure>
         <div id="i-keylegend"></div>
         <div class="inferred">
-          <span class="h">Best fit over the whole cycle — an inference, not a reading</span>
+          <span class="h">Best fit over the whole cycle. An inference.</span>
           <p class="fit">${escapeHtml(whole!.name)}
-            <span style="color:var(--ink2);font-size:.8rem">— margin
+            <span style="color:var(--ink2);font-size:.8rem">margin
             ${whole!.margin.toFixed(2)} over ${escapeHtml(whole!.runnerUp)}</span></p>
-          <p class="why">Krumhansl–Schmuckler correlation against the standard profiles, named so
-            the method is attributable. <b>The margin is the confidence, not the correlation</b> — a
-            relative minor shares six of seven notes with its major, so a high score with a small
-            margin is the normal case rather than the exception. The device stores no key, and
-            ${tonal.length} of ${live.length} playing tracks were used: the rest sound one pitch
-            class each and would swamp the fit. The <b>arpeggiator</b> transposes and its settings
-            are not decoded, so a track using one is not fully read here.</p>
+          <p class="why">Krumhansl–Schmuckler correlation against the standard profiles.
+            <b>Read the margin, not the score.</b> A relative minor shares six of seven notes with
+            its major, so most patterns score high on two keys at once and the margin is what
+            separates them. The device stores no key. ${tonal.length} of ${live.length} playing
+            tracks fed this fit; the rest sound one pitch class each and would swamp it. The
+            <b>arpeggiator</b> transposes, and nothing decodes its settings, so a track using one is
+            read short here.</p>
         </div>`}
       ${table(["Pitch class", "Notes", "Presets"], pitch.filter((c) => c.total).map((c) =>
         [c.name, c.total, Object.entries(c.byPreset).sort((a, b) => b[1] - a[1])
