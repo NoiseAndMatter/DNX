@@ -51,7 +51,8 @@ const lcm = (a: number, b: number): number => {
 const align = (a: number, b: number): number =>
   a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 import {
-  MACHINE_ORDER, MICRO_MAX, NOTE_NAMES, barsOf, clock, machineLabel, masterOffset, masterPeriod,
+  MACHINE_ORDER, MICRO_MAX, NOTE_NAMES, barsOf, clock, gateLabel, machineLabel, masterOffset,
+  masterPeriod,
   microFraction, noteName,
   overlappingNotes, periodSources, pitchClass, presetOf, speedLabel,
   type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
@@ -245,11 +246,12 @@ export function phaseStrip(
            */
           const bx = cxp - stepW / 2 + .75;
           const right = padL + plot;
-          const bw = Math.max(2.5, Math.min(g.length * stepW - 1.5, right - bx));
+          // An INF gate is drawn to the edge of the window rather than as `Infinity` wide.
+          const bw = Math.max(2.5, Math.min(g.length * stepW - 1.5, right - bx)) || (right - bx);
           out += `<rect x="${bx}" y="${cy - 2.5}" width="${bw}" height="5"
             rx="2.5" fill="${fill}" opacity=".85"
             ${tip(`T${t.number} step ${g.step + 1}`,
-              `${NOTE_NAMES[rootPc]} · length ${g.length} steps`)}/>`;
+              `${NOTE_NAMES[rootPc]} · length ${gateLabel(g.length)}`)}/>`;
           continue;
         } else if (mode === "locks") {
           op = g.lockPreset !== undefined ? 1 : .18;
@@ -556,7 +558,7 @@ export function voiceLanes(
         out += `<rect x="${x(at)}" y="${y + 1}" width="${Math.max(2, x(end) - x(at) - 1)}"
           height="${rowH - 2}" rx="2" fill="${fill}" opacity="${guilty ? 1 : .42}"
           ${tip(`T${t.number} — ${t.preset}`,
-            `step ${at + 1}, holds ${g.length} step${g.length === 1 ? "" : "s"}`
+            `step ${at + 1}, holds ${gateLabel(g.length)}`
             + (guilty ? " · sounding during an overrun" : ""))}/>`;
       }
     }

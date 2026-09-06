@@ -24,7 +24,8 @@
  */
 
 import {
-  alignmentOf, barsOf, clock, cycleSteps, fitKey, harmonic, machineLabel, masterPeriod, microBuckets,
+  alignmentOf, barsOf, clock, cycleSteps, drawableWindow, fitKey, harmonic, machineLabel,
+  masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
   overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds,
   trackWindows, voicesPerStep,
@@ -398,7 +399,14 @@ export function renderInsights(
     (a, t) => a + t.trigs.filter((g) => g.lockPreset !== undefined).length, 0);
 
   const tonal = harmonic(live);
-  const keyWindows = tonal.length ? pitchWindows(tonal, cycle, 16, 16) : [];
+  /*
+   * **Windowed over what can be drawn, not over what the arithmetic returned.** A pattern whose
+   * tracks never come round has a saturated cycle, and asking for a window per bar of a million
+   * steps is 62,500 windows — eight minutes of work, or a frozen tab. `PRESETS` `FUCHSIA` is one:
+   * tracks of 128, 124, 74, 88 and a 103 at half speed, with RESET at INF.
+   */
+  const drawn = drawableWindow(cycle);
+  const keyWindows = tonal.length ? pitchWindows(tonal, drawn.steps, 16, 16) : [];
   const whole = keyWindows.length
     ? fitKey(keyWindows.reduce((acc, v) => acc.map((x, i) => x + v.counts[i]!), new Array(12).fill(0)))
     : undefined;
@@ -409,7 +417,7 @@ export function renderInsights(
     : undefined;
   const rowsBeat = tonal.length ? trackWindows(tonal, subject.masterLength, 4, 4, () => masterFit) : [];
   const rowsBar = tonal.length
-    ? trackWindows(tonal, cycle, 16, 16, (i): KeyFit | undefined => keyWindows[i]?.fit)
+    ? trackWindows(tonal, drawn.steps, 16, 16, (i): KeyFit | undefined => keyWindows[i]?.fit)
     : [];
 
   const bars = cycle / 16;
@@ -900,7 +908,11 @@ export function renderInsights(
            chord name.</b>`
         : `The same stacks across the whole ${bars}-bar cycle, a column per bar, with the chord read
            against the key fitted around it. Good for finding <b>where a track changes</b>.`)
-      : `A key belongs to a <b>moment</b>, not to a pattern${cycle > subject.masterLength
+      : `${drawn.capped
+          ? `<b>The first ${barsOf(drawn.steps)} of a pattern that never comes round.</b> These
+             track lengths do not share a common multiple inside a million steps, so there is no
+             whole cycle to draw — this is the opening of it. ` : ""}A key belongs to a
+         <b>moment</b>, not to a pattern${cycle > subject.masterLength
           ? `. With per-track lengths the tracks phase against one another, so what sounds together
              changes bar by bar with nothing edited` : ""} — across
          ${bars} bar${bars === 1 ? "" : "s"} the fit moves <b>${changes}
