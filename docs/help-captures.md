@@ -11,13 +11,11 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-09-07
 
-**20 of the 21 referenced PNGs exist.** 9 pages, 31 sections, 21 screenshot slots. Counted from the
+**21 of the 21 referenced PNGs exist.** 9 pages, 31 sections, 21 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-The missing one is `library-two-panes`, and it needs a **Digitone II connected**. The library's
-right-hand pane is the instrument's +Drive, and the whole point of that section is the two panes
-holding something at the same time; disconnected it is a picture of an empty box. It renders as a
-labelled placeholder until then.
+The two Library shots came last, because both are the instrument's +Drive pane and it holds nothing
+until a **Digitone II** answers. They were taken against `/soundbanks/A`, 256 slots read.
 
 `test/helppages.test.ts` fails when a referenced file has no row here, so this table cannot fall
 behind the pages.
@@ -59,8 +57,8 @@ closing step. Re-open any suspect image before committing it.
 | `insights-dormant.png` | Insights | Trigs the sequencer never reaches | captured |
 | `insights-pitch.png` | Insights | Voices, pitch and key | captured |
 | `insights-compare.png` | Insights | Comparing patterns | captured |
-| `library-two-panes.png` | Library | Why both are on one page | **waiting on a Digitone II** |
-| `library-search.png` | Library | Finding a preset | captured (controls only) |
+| `library-two-panes.png` | Library | Why both are on one page | captured |
+| `library-search.png` | Library | Finding a preset | captured |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
 | `probe-drive.png` | Probe | The +Drive | captured |
@@ -85,15 +83,18 @@ Chrome's element screenshot crops to one node, and the node has to be addressabl
 A `?` marker in shot is wanted, not a mistake: it is how a reader finds their way back to the page
 they are looking at.
 
-### One shot was taken of a row the page had hidden
+### A control shot is worth more doing something than sitting still
 
-`library-search.png` is the library's filter row, which stays `hidden` until an instrument is
-connected. It was **unhidden and cropped to**, with no device attached and nothing invented: the
-search box is empty and the switch is off, exactly as they arrive. What the shot leaves out is the
-table underneath, which is why it is marked *controls only*.
+`library-search.png` was first taken with no instrument connected, by unhiding the filter row the
+page keeps `hidden` until one is. It was honest and it taught nothing: an empty search box and an
+unticked switch look the same whether or not the feature works.
 
-That is the limit of what is acceptable here. `library-two-panes` is the same pane with content in
-it, and there is no honest way to photograph content that no instrument has sent.
+Retaken against a connected instrument it carries `pad` in the box, **90 of 256** in the heading,
+the tag chips re-counted against the match, and the presets that matched. Same control, and now a
+reader can see what pressing it does.
+
+**Wait for the hardware rather than photograph the empty state.** A placeholder that says a shot is
+pending costs a reader nothing; a picture of an empty box costs them the belief that the page works.
 
 ## Sections with no screenshot, on purpose
 
