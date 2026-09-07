@@ -113,6 +113,31 @@ test("every page can reach the settings sheet, and the licence link with it", ()
   assert.match(SOURCE_URL, /^https:\/\/github\.com\/\S+$/);
 });
 
+test("the source link points at the repository this package declares", () => {
+  /*
+   * **AGPL-3.0 section 13 is the reason this link exists**, and a link is only an offer of source
+   * while it resolves to the source. Moving the repository broke it silently: the old URL stayed in
+   * `settings.ts` and every page went on offering an archived, private repository. The shape check
+   * above passed throughout, because the shape was never what was wrong.
+   *
+   * `package.json` is the other place the repository is written down, and it is the one a move
+   * updates first. Tying them together means the second half cannot be forgotten.
+   */
+  const manifest = JSON.parse(readFileSync(join(WEB, "..", "package.json"), "utf8")) as {
+    repository?: { url?: string };
+  };
+  const declared = manifest.repository?.url;
+  assert.ok(declared, "package.json must declare the repository");
+
+  // `git+https://github.com/owner/name.git` and `https://github.com/owner/name` are the same place
+  // written two ways. Compare what identifies it.
+  const place = (url: string): string =>
+    url.replace(/^git\+/, "").replace(/\.git$/, "").replace(/\/+$/, "").toLowerCase();
+
+  assert.equal(place(SOURCE_URL), place(declared),
+    "the source offered in the interface is not the repository this package declares");
+});
+
 test("the sheet says what a musician can act on, and nothing about why it was built", () => {
   /*
    * The mockup carried lines like "Asked for on Elektronauts" and "the reason a person can afford

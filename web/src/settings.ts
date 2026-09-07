@@ -36,7 +36,7 @@
  * Pages is never downloaded. It lives here rather than in `toolnav.ts` so the import runs one way:
  * the tool row needs the settings sheet, and the sheet must not need the tool row.
  */
-export const SOURCE_URL = "https://github.com/angellinares/DNX";
+export const SOURCE_URL = "https://github.com/NoiseAndMatter/DNX";
 
 /** `arrival.js` owns this key and reads it before paint. These three values are its whole range. */
 const MOTION_KEY = "dnx-motion";
