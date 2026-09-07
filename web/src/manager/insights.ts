@@ -329,6 +329,20 @@ export function renderInsights(
    */
   const scroll = window.scrollY;
 
+  /*
+   * **Every write to the panel goes through here**, so a heading carrying `data-help` gets its `?`
+   * whichever exit rendered it. The markers were installed once at start-up, before this panel
+   * existed; a card written later and never scanned keeps its attribute and shows no `?`, which
+   * looks like a section nobody wrote help for.
+   *
+   * Scoped to `host`: the rest of the page has its markers already, and re-scanning the document on
+   * every repaint is work for nothing.
+   */
+  const paint = (html: string): void => {
+    host.innerHTML = html;
+    installHelpMarkers(host);
+  };
+
   const tipEl = document.getElementById("tip");
   if (tipEl && !tooltipAttached) {
     attachTooltip(tipEl);
@@ -342,9 +356,9 @@ export function renderInsights(
      * refused.** The reader did exactly what it asks; telling them to do it again reads as the page
      * not having noticed. The refusals are the answer in that case, on their own.
      */
-    host.innerHTML = refusals.length
+    paint(refusals.length
       ? card("Nothing here can be read", refusalNote(refusals))
-      : card("Insights", `<p class="hint">Select a pattern above to analyse it.</p>`);
+      : card("Insights", `<p class="hint">Select a pattern above to analyse it.</p>`));
     return;
   }
 
@@ -379,9 +393,9 @@ export function renderInsights(
 
   const live = playing(subject);
   if (live.length === 0) {
-    host.innerHTML = overview + card("Insights", `<p class="hint">
+    paint(overview + card("Insights", `<p class="hint">
       <strong>${escapeHtml(subject.label)}</strong> has no trigs on any track, so there is nothing
-      to measure. Select a pattern that plays something.</p>`);
+      to measure. Select a pattern that plays something.</p>`));
     drawOverview();
     window.scrollTo({ top: scroll });
     return;
@@ -504,7 +518,7 @@ export function renderInsights(
   const dormant = dormantTrigs(subject.tracks);
   const dormantTotal = dormant.reduce((n, d) => n + d.steps.length, 0);
 
-  host.innerHTML = overview +
+  paint(overview +
     (dormant.length ? card("Trigs the sequencer never reaches", `
       <p class="why"><b>${dormantTotal} note${dormantTotal === 1 ? "" : "s"} on
         ${dormant.length} track${dormant.length === 1 ? "" : "s"}</b> sit past the end of the track
@@ -520,7 +534,7 @@ export function renderInsights(
       <p class="why" style="margin-top:.35rem">Everything else on this page counts only the trigs
         that sound. The instrument cannot show you this: LEN lives on one screen and the trig pages
         on another, and a page past the last one looks unlit whether it is empty or out of
-        reach.</p>`) : "", "insights/dormant") +
+        reach.</p>`, "insights/dormant") : "") +
     card(`Play time and cycle — ${subject.label}`, `
       <div class="tiles">
         <div class="tile"><span class="k">Tempo</span>
@@ -893,7 +907,7 @@ export function renderInsights(
             longest === Infinity ? "INF" : Number(longest.toFixed(3)),
             overlappingNotes(t).length || "—"];
         }))}
-    `)
+    `));
 
   drawOverview();
   mount(document.getElementById("i-voices")!, (w) =>

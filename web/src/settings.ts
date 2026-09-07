@@ -219,7 +219,7 @@ function build(panel: HTMLElement): HTMLElement {
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
-      "Read every project, sound and kit off the connected instrument into one .dnx file. Empty " +
+      "Read every project, sound and kit the connected instrument holds into one .dnx file. Empty " +
         "slots are skipped. Nothing on the instrument is changed.",
       runBackup
         ? action("Back up…", (button) => {
