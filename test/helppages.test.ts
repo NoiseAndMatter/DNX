@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { HELP_FOR_TOOL, HELP_PAGES } from "../web/src/helppages.js";
+import { parseTarget } from "../web/src/helpmarker.js";
 import { mdToHtml } from "../web/src/markdown.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -106,4 +107,65 @@ test("every body renders, and nothing in one reaches HTML unescaped", () => {
 test("the keys are unique, because the side-nav and the tool link both address them", () => {
   const keys = HELP_PAGES.map((p) => p.key);
   assert.deepEqual([...new Set(keys)], keys, "two pages share a key");
+});
+
+test("every ? in the markup opens onto a section, and every id is pointed at", () => {
+  /*
+   * **Both directions, because both fail silently.** A `data-help` naming a section that does not
+   * exist gives a `?` that opens on nothing; a section carrying an `id` nothing points at is help
+   * somebody wrote a link target for and never linked.
+   *
+   * The ids are explicit rather than slugged from headings for exactly this reason — a slug would
+   * break the first time somebody improved a heading's wording, and nothing would say so.
+   */
+  const pages = new Map(HELP_PAGES.map((p) => [p.key, p]));
+  const ids = new Set(
+    HELP_PAGES.flatMap((p) => p.sections.filter((s) => s.id).map((s) => `${p.key}/${s.id!}`)),
+  );
+
+  /*
+   * **Markup and source.** A `?` on a static heading is an attribute in an `.html`; one on an
+   * Insights card or a settings group is a string in a `.ts`, because those surfaces are built at
+   * run time. Scanning only the markup would call every dynamic marker unreachable.
+   *
+   * A target is recognised by its shape — `page/section`, where the page is one this file knows —
+   * so it is found whether it arrives as an attribute or as an argument.
+   */
+  const markers: string[] = [];
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "dist" || entry.name === "help") continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(html|ts)$/.test(entry.name)) files.push(path);
+    }
+  };
+  walk(join(ROOT, "web"));
+
+  const known = [...pages.keys()].join("|");
+  const shaped = new RegExp(`"((?:${known})\/[a-z][a-z0-9-]*)"`, "g");
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    for (const m of text.matchAll(/\bdata-help="([^"]*)"/g)) {
+      // `${help}` is the template that writes a real one, and `<page>/<section>` is a comment
+      // describing the contract. Neither is a marker.
+      if (!/[$<]/.test(m[1]!)) markers.push(m[1]!);
+    }
+    for (const m of text.matchAll(shaped)) markers.push(m[1]!);
+  }
+
+  assert.ok(markers.length >= 8, `only ${markers.length} markers found; the scan stopped matching`);
+
+  const broken = markers.filter((value) => {
+    const target = parseTarget(value);
+    if (!target) return true;
+    const page = pages.get(target.page);
+    return !page || !page.sections.some((s) => s.id === target.section);
+  });
+  assert.deepEqual(broken, [], "these markers put a ? on a control and open onto nothing");
+
+  const unreachable = [...ids].filter((id) => !markers.includes(id));
+  assert.deepEqual(unreachable, [],
+    "these sections carry an id nothing points at; give them a ? or drop the id");
 });

@@ -462,25 +462,12 @@ for (const [name, , html] of PAGES) {
    * looks entirely correct until somebody presses the button. Same silent-pairing shape as the
    * legend swatches that rendered as empty boxes for want of a `.sw` rule.
    */
-  test(`every ? on the ${name} opens onto a topic, and every topic has a ?`, () => {
-    const source = readFileSync(html, "utf8");
-    const asked = [...source.matchAll(/\bdata-help="([^"]*)"/g)].map((m) => m[1]!);
-    const offered = [...source.matchAll(/\bdata-topic="([^"]*)"/g)].map((m) => m[1]!);
-
-    assert.deepEqual(
-      asked.filter((topic) => !offered.includes(topic)),
-      [],
-      `the ${name} has a "?" for a topic its help template does not define`,
-    );
-    assert.deepEqual(
-      offered.filter((topic) => !asked.includes(topic)),
-      [],
-      `the ${name}'s help template defines a topic nothing on the page opens`,
-    );
-    // A page with help at all needs the template `installHelp` is handed, and `$("help")` throws
-    // at load if it is missing — but only on the page that asks, and only once it is opened.
-    if (asked.length) assert.match(source, /<template id="help">/, `${name} has ? but no template`);
-  });
+  /*
+   * **The `?` pairing moved to `test/helppages.test.ts`.** A marker used to open a `<template>` on
+   * the same page, so checking both directions was a question about one file. It now opens a
+   * section of the shared help, so the question is whether the marker resolves against
+   * `HELP_PAGES` — which is that file's subject, not this one's.
+   */
 }
 
 for (const [name, entry, html] of PAGES) {

@@ -45,6 +45,7 @@ import { cycleBars } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../analysis/model.js";
 import { escapeHtml } from "../dom.js";
+import { installHelpMarkers } from "../helpmarker.js";
 
 /** What the controls are set to, kept across repaints so changing pattern does not reset them. */
 interface Controls {
@@ -71,8 +72,16 @@ const controls: Controls = { phase: "velocity", key: "pitch", span: "beat" };
  */
 let tooltipAttached = false;
 
-const card = (title: string, body: string) =>
-  `<section class="panel"><h2>${escapeHtml(title)}</h2><div class="body">${body}</div></section>`;
+/**
+ * One Insights card.
+ *
+ * `help` names a section of the help pages, which puts a `?` on the card's heading pointing at the
+ * explanation of what it draws. The cards are built as strings and mounted after this returns, so
+ * `renderInsights` calls `installHelpMarkers` over the container once it has.
+ */
+const card = (title: string, body: string, help?: string) =>
+  `<section class="panel"><h2${help ? ` data-help="${help}"` : ""}>${escapeHtml(title)}</h2>` +
+  `<div class="body">${body}</div></section>`;
 
 /** A pattern the reader selected that could not be read, and the reason it gave. */
 export interface InsightsRefusal {
@@ -285,7 +294,7 @@ function comparisonCard(rows: readonly ComparisonRow[], refusals: readonly Insig
         r.cutTracks || "—",
         r.lostTrigs || "—",
       ]))}
-  `);
+  `, "insights/compare");
 }
 
 /**
@@ -511,7 +520,7 @@ export function renderInsights(
       <p class="why" style="margin-top:.35rem">Everything else on this page counts only the trigs
         that sound. The instrument cannot show you this: LEN lives on one screen and the trig pages
         on another, and a page past the last one looks unlit whether it is empty or out of
-        reach.</p>`) : "") +
+        reach.</p>`) : "", "insights/dormant") +
     card(`Play time and cycle — ${subject.label}`, `
       <div class="tiles">
         <div class="tile"><span class="k">Tempo</span>
@@ -584,7 +593,7 @@ export function renderInsights(
         live.map((t) => [`T${t.number}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
           machineLabel(t.machine), t.trigs.length, polymeter / t.length]))}
-    `) +
+    `, "insights/cycle") +
 
     card("Polymeter and the reset", `
       <div class="tiles">
@@ -761,7 +770,7 @@ export function renderInsights(
             hit ? `${hit.cutAfter} of ${period}` : "—",
             hit ? (hit.lost || "none") : "—"];
         }))}
-    `) +
+    `, "insights/reset") +
 
     card("What is on each track", `
       <div class="tiles">
@@ -838,7 +847,7 @@ export function renderInsights(
       ${table(["Pitch class", "Notes", "Presets"], pitch.filter((c) => c.total).map((c) =>
         [c.name, c.total, Object.entries(c.byPreset).sort((a, b) => b[1] - a[1])
           .map(([p, n]) => `${p} x${n}`).join(", ")]))}
-    `) +
+    `, "insights/pitch") +
 
     card("Voice pressure", `
       <div class="tiles">

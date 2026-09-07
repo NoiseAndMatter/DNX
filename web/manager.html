@@ -34,7 +34,7 @@
   about a change, send it somewhere.
 -->
 <div class="bar toolbar">
-  <span class="lbl">Open</span>
+  <span class="lbl" data-help="manager/open-device">Open</span>
   <label class="btn file" id="reopen" hidden>Open another…<input type="file" id="file2" accept=".dnprj,.dn2prj"></label>
   <!--
     A device is a source alongside files, not a mode. What comes back is an ordinary image, so
@@ -113,7 +113,7 @@
       has. One button spanning the heading is also the honest markup for a disclosure — a nested
       clickable heading would not be.
     -->
-    <h2>
+    <h2 data-help="manager/songs">
       <button class="songfold" id="songFold" aria-expanded="true"
               title="Collapse or expand the song panel">
         <span id="songTitle">Songs</span>
@@ -132,7 +132,7 @@
   </section>
 
   <section class="panel" id="gridPanel">
-    <h2><span id="bankTitle">Patterns</span></h2>
+    <h2 data-help="manager/grid"><span id="bankTitle">Patterns</span></h2>
     <div class="body">
       <div id="dropzone" class="dropzone">
         <p><strong>Open a project</strong> — a Digitone <code>.dnprj</code> or a Digitone II <code>.dn2prj</code>.</p>
@@ -175,7 +175,7 @@
 
   <div class="side">
     <section class="panel">
-      <h2>Operations</h2>
+      <h2 data-help="manager/operations">Operations</h2>
       <div class="body">
         <div class="ops">
           <button class="btn" id="opMove" disabled>Move</button>

@@ -77,12 +77,18 @@ export function action(
   return button;
 }
 
-/** A titled set of rows. */
-export function group(title: string, rows: readonly HTMLElement[]): HTMLElement {
+/**
+ * A titled set of rows.
+ *
+ * `help` names a section of the help pages, which puts a `?` on the heading. The caller installs
+ * the markers once the group is in the document.
+ */
+export function group(title: string, rows: readonly HTMLElement[], help?: string): HTMLElement {
   const section = document.createElement("section");
   section.className = "set-group";
   const heading = document.createElement("h4");
   heading.textContent = title;
+  if (help) heading.dataset["help"] = help;
   section.append(heading, ...rows);
   return section;
 }

@@ -138,7 +138,6 @@ renderToolNav($("toolnav"), "probe");
 
 // Also immediately, and for the same reason: the `?` on each card is how this page explains
 // itself now that the explanation is not lying across the results. See `help.ts`.
-installHelp($<HTMLTemplateElement>("help"), "Device probe");
 import { ProductId } from "../../../src/sysex/devices.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
 import { blankPatternKit } from "../../../src/librarian/blank.js";
@@ -149,7 +148,6 @@ import {
   hex,
 } from "../../../src/device/capabilities.js";
 import { renderToolNav } from "../toolnav.js";
-import { installHelp } from "../help.js";
 
 let access: MIDIAccess | undefined;
 
