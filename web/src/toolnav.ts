@@ -1,4 +1,5 @@
 import { SOURCE_URL, renderSettingsLink } from "./settings.js";
+import { renderHelpLink } from "./helpview.js";
 import { renderWriteEnable } from "./writeenable.js";
 
 /**
@@ -140,6 +141,7 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
    * it in.
    */
   renderWriteEnable(nav);
+  renderHelpLink(nav, current);
   renderSettingsLink(nav);
   nav.append(sourceLink());
   container.append(nav);

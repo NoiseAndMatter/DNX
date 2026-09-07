@@ -19,6 +19,19 @@ as a helper, it had no owner for the `status` class its whole appearance hangs o
 able to pass an argument that erased it. It is now `web/src/statusbar.ts`, which owns the markup
 contract, the class and the one way to write to it.
 
+### Ask before writing, not before merging
+
+**The question comes before the first line, not at the merge.** Before adding a function, an
+interface, a type or an enum: does it belong in the file you have open, or in one of its own? A
+lightbox written inside a help view is an image viewer living in a file about documentation; a set
+of form-row builders written inside a settings sheet is a widget library filed under one caller.
+
+Both of those happened on 2026-09-07, in one afternoon, and both were caught by the person paying
+for the work rather than by the person writing it. **Nobody should have to remind you of this.**
+
+Cheap test, and it takes a second: say what the new thing is, out loud, without naming the file it
+is going into. If that sentence does not contain the file's subject, it belongs somewhere else.
+
 ## 2. Anything a second caller needs moves up
 
 The moment a second page, CLI or module needs something, it leaves the folder it was written in and
@@ -101,10 +114,35 @@ in anything a person reads. One name per concept, across CLI, page and docs.
 
 ---
 
+## 11. Documentation is written for the people who come after
+
+Every `.md` and every module comment here has three readers, and the third one is the reason the
+first two are worth the effort:
+
+1. **Whoever picks this up cold**, including the author in six months. Facts, with the evidence and
+   the date attached. A claim with no source becomes a claim nobody can check.
+2. **Whoever builds the next thing.** What is settled, what is open, what was tried and refused, and
+   what a number was measured against. A roadmap says what to build; the format records say what is
+   safe to build on.
+3. **Whoever joins.** DNX is going public, and a stranger reading this repository should be able to
+   work out **how decisions get made here** without being told: nothing is claimed that was not
+   measured, a status word means what it says, a summary that disagrees with the section under it is
+   a bug, and a fix without the failure that caused it is half the value.
+
+That third reader is why the "found by" notes exist and why a comment explains a decision rather
+than restating the code. **A repository that only says what the code does teaches nobody how to add
+to it.**
+
+Some of this record is for the archive rather than the public repository — working notes, a corpus
+of somebody's music, three months of commit messages written for an audience of one. Deciding what
+is gated is a separate act from writing it. **Write it fully, then decide what ships.**
+
 ## Applying these to a change
 
 Before opening an MR:
 
+- **Before you wrote it**: did you ask whether each new function, interface or type belonged in the
+  file you had open?
 - Can each file you touched be described without an "and"?
 - Did you copy anything that already exists? Did the copy you replaced actually get deleted?
 - Does anything in `src/` now know about a browser?
@@ -112,4 +150,5 @@ Before opening an MR:
 - Did you run the page or the CLI, not only the tests?
 - Can any output you added grow without bound?
 
-`docs/ROADMAP.md` tracks what to build. This file governs how it is built.
+`docs/ROADMAP.md` tracks what to build. This file governs how it is built, and why it is
+written down the way it is.

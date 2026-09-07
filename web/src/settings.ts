@@ -184,78 +184,15 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
   }));
 }
 
+import { action, group, row, segmented } from "./formrow.js";
+import { openOverlay, type Overlay } from "./overlay.js";
+
 /* ---- the sheet ----------------------------------------------------------------------------- */
 
-let sheet: HTMLElement | undefined;
-let scrim: HTMLElement | undefined;
-let opener: HTMLElement | undefined;
+let sheet: Overlay | undefined;
 
-function row(name: string, description: string, control: HTMLElement): HTMLElement {
-  const el = document.createElement("div");
-  el.className = "set-row";
-  const label = document.createElement("span");
-  label.className = "label";
-  const title = document.createElement("b");
-  title.textContent = name;
-  const why = document.createElement("span");
-  why.textContent = description;
-  label.append(title, why);
-  const holder = document.createElement("span");
-  holder.className = "control";
-  holder.append(control);
-  el.append(label, holder);
-  return el;
-}
-
-function segmented<T extends string>(
-  options: readonly T[], labels: Record<T, string>, current: T, onPick: (value: T) => void,
-): HTMLElement {
-  const group = document.createElement("span");
-  group.className = "seg";
-  group.setAttribute("role", "group");
-  for (const option of options) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = labels[option];
-    button.setAttribute("aria-pressed", String(option === current));
-    button.addEventListener("click", () => {
-      // `forEach` rather than `for..of`: a Node test imports this module, and the Node tsconfig's
-      // lib has no iterator on `NodeListOf`.
-      group.querySelectorAll("button").forEach((other) => {
-        other.setAttribute("aria-pressed", String(other === button));
-      });
-      onPick(option);
-    });
-    group.append(button);
-  }
-  return group;
-}
-
-function action(label: string, onClick: (button: HTMLButtonElement) => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "act";
-  button.textContent = label;
-  button.addEventListener("click", () => onClick(button));
-  return button;
-}
-
-function group(title: string, rows: readonly HTMLElement[]): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "set-group";
-  const heading = document.createElement("h4");
-  heading.textContent = title;
-  section.append(heading, ...rows);
-  return section;
-}
-
-function build(): HTMLElement {
-  const panel = document.createElement("aside");
-  panel.className = "sheet";
+function build(panel: HTMLElement): HTMLElement {
   panel.id = "settings-sheet";
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", "Settings");
 
   const header = document.createElement("header");
   const title = document.createElement("h3");
@@ -335,40 +272,25 @@ function build(): HTMLElement {
   return panel;
 }
 
-/** Close on Escape, from anywhere, because a sheet you cannot dismiss by reflex is a trap. */
-function onKey(event: KeyboardEvent): void {
-  if (event.key === "Escape") closeSettings();
-}
-
 export function openSettings(from?: HTMLElement): void {
   if (sheet) return;
-  opener = from;
-
-  scrim = document.createElement("div");
-  scrim.className = "sheet-scrim";
-  scrim.addEventListener("click", () => closeSettings());
-
-  sheet = build();
-  document.body.append(scrim, sheet);
-  document.addEventListener("keydown", onKey);
-  sheet.querySelector<HTMLElement>("button, a")?.focus();
+  sheet = openOverlay({
+    className: "sheet",
+    label: "Settings",
+    ...(from === undefined ? {} : { opener: from }),
+  });
+  build(sheet.panel);
+  sheet.panel.querySelector<HTMLElement>("button, a")?.focus();
 }
 
 export function closeSettings(): void {
-  document.removeEventListener("keydown", onKey);
-  sheet?.remove();
-  scrim?.remove();
+  sheet?.close();
   sheet = undefined;
-  scrim = undefined;
-  // Focus goes back where it came from. Dropping it to the document start makes the next Tab feel
-  // like a different page.
-  opener?.focus();
-  opener = undefined;
 }
 
 /** True while the sheet is open. Exported for tests and for a caller that must not stack sheets. */
 export function settingsOpen(): boolean {
-  return sheet !== undefined;
+  return sheet?.open === true;
 }
 
 /** The link that opens it, rendered into the tool row so every page has one. */

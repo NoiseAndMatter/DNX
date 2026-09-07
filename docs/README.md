@@ -39,6 +39,7 @@ The reason anybody else would want this repository. All current.
 |---|---|
 | [`PRINCIPLES.md`](PRINCIPLES.md) | The rules the code follows |
 | [`capture-protocol.md`](capture-protocol.md) | How to design a capture that cannot lie to you |
+| [`help-captures.md`](help-captures.md) | The in-app help's screenshot slots, which exist and which are outstanding |
 | [`device-probing.md`](device-probing.md) | Talking to an instrument over SysEx, and what it does when you get it wrong |
 | [`analysis.md`](analysis.md) | The musical analysis subsystem, and the boundary that keeps it testable |
 
