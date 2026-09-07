@@ -829,6 +829,29 @@ anything else still reads as the device failing to store what was sent.
 > Digitone 1 in 2026-08-04. It is proven on a Digitone II for **projects** (2026-08-14, slots 13 and
 > 14), for **kits** (`/kits/A/1` into `/kits/A/38`), and now for **sounds**.
 
+### The read-back verification had never actually run — FIXED 2026-09-07
+
+`safeWriteFile` reads a file twice: once to back the destination up, once to verify the write. Both
+compare against the stored payload that was sent. **The backup read was corrected on 2026-08-15 and
+the verify read was not**, so it fetched the raw expanded image and compared it against a stored
+payload: a 10,795-byte image against 3,481 bytes, `compareStored`'s length mismatch, and
+`verified: false` on every file write that had ever run.
+
+Nothing failed loudly. **A tool reporting a write as unverified reads as a cautious tool**, and the
+note explaining the first fix sits forty lines above the call that still needed it.
+
+Found by writing a sound to a Digitone II and diffing the round trip by hand. The manual read passed
+`STORED_FORM` and found one byte differing; `safeWriteFile` reported a mismatch on the same write.
+The two disagreed because they were reading different files.
+
+```
+before   H/130 -> H/131   committed: true   verified: false   mismatches: 1
+after    H/130 -> H/131   committed: true   verified: true    mismatches: 0
+```
+
+> **A fix applied to one of two calls is half a fix.** `test/safewrite.test.ts` now asserts that no
+> `readStoredFile` in that module defaults its form.
+
 ### A Digitone II preset bank has never been listed — OPEN, found 2026-08-07
 
 Note which device each row of that table came from. **The preset row is a Digitone 1** — the
