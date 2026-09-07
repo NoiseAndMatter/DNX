@@ -108,7 +108,19 @@ function clearStored(): number {
  * So the manager lends it a function. A page that has not registers nothing, and the row says where
  * to go rather than offering a button that cannot work.
  */
-export type BackupRunner = (report: (message: string) => void) => Promise<void>;
+export interface BackupReport {
+  /** What is happening, in words. */
+  say(message: string): void;
+  /**
+   * How far through, or `undefined` while the total is unknown.
+   *
+   * Two arguments rather than a fraction, because the bar says "412 of 1,869" as well as filling,
+   * and a fraction cannot be turned back into those.
+   */
+  at(done: number, total: number): void;
+}
+
+export type BackupRunner = (report: BackupReport) => Promise<void>;
 
 let runBackup: BackupRunner | undefined;
 
@@ -203,6 +215,21 @@ function build(): HTMLElement {
 
   const note = document.createElement("span");
   note.className = "set-note";
+
+  /*
+   * **Hidden until something is running.** A bar sitting at zero on a panel nobody has pressed
+   * anything on reads as a thing that is stuck.
+   */
+  const bar = document.createElement("div");
+  bar.className = "set-progress";
+  bar.hidden = true;
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-valuemin", "0");
+  const fill = document.createElement("div");
+  fill.className = "fill";
+  const count = document.createElement("span");
+  count.className = "count";
+  bar.append(fill, count);
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
@@ -211,8 +238,27 @@ function build(): HTMLElement {
       runBackup
         ? action("Back up…", (button) => {
             button.disabled = true;
-            const say = (message: string): void => { note.textContent = message; };
-            void runBackup!(say).finally(() => { button.disabled = false; });
+            bar.hidden = false;
+            fill.style.width = "0%";
+            count.textContent = "";
+            void runBackup!({
+              say: (message) => { note.textContent = message; },
+              at: (done, total) => {
+                /*
+                 * The bar and the count say the same thing two ways. A bar alone cannot tell you
+                 * that 1,869 items is a lot and 18 is not, and a count alone is slow to read at a
+                 * glance. Both are cheap.
+                 */
+                const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                fill.style.width = `${pct}%`;
+                count.textContent = total > 0 ? `${done.toLocaleString()} of ${total.toLocaleString()}` : "";
+                bar.setAttribute("aria-valuenow", String(done));
+                bar.setAttribute("aria-valuemax", String(total));
+              },
+            }).finally(() => {
+              button.disabled = false;
+              fill.style.width = "100%";
+            });
           })
         : (() => {
             const disabled = action("Back up…", () => {});
@@ -222,7 +268,7 @@ function build(): HTMLElement {
           })(),
     ),
   ]));
-  panel.append(note);
+  panel.append(bar, note);
 
   panel.append(group("This application", [
     row(

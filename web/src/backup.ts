@@ -78,11 +78,14 @@ export class BackupError extends Error {}
 
 /** How a slot read reports itself while it runs. */
 export interface BackupProgress {
-  /** Slots finished, out of `total`. */
+  /** Items finished, out of `total`. Both are known before the first read. */
   done: number;
   total: number;
-  /** The slot being read now. */
+  /** What is being read now. */
   name: string;
+  /** `projects`, `soundbanks` or `kits`, so a caller can say which stage it is in. */
+  kind: string;
+  /** Bytes of the current item so far. Reported for projects, which are the slow ones. */
   bytes: number;
 }
 
@@ -97,6 +100,8 @@ export interface BackupOptions {
    */
   kinds?: readonly string[];
   onProgress?: (progress: BackupProgress) => void;
+  /** Called once, before the listing, which takes a moment and looks like nothing happening. */
+  onList?: () => void;
   /** Cooperative cancellation, checked between slots rather than mid-file. */
   shouldStop?: () => boolean;
 }
@@ -118,6 +123,8 @@ interface DriveItem {
   file: string;
   name: string;
   slot: number;
+  /** `projects`, `soundbanks` or `kits`. Decides whether the bytes need wrapping. */
+  kind: string;
 }
 
 /** List a directory, keeping only the entries that hold something. */
@@ -153,6 +160,7 @@ async function everything(
           file: `soundbanks/${bank}/${String(entry.index).padStart(3, "0")} ${safeLeaf(entry.name)}.dn2snd`,
           name: entry.name,
           slot: entry.index,
+          kind: "soundbanks",
         });
       }
     }
@@ -169,6 +177,7 @@ async function everything(
           file: `kits/${bank}/${String(entry.index).padStart(3, "0")} ${safeLeaf(entry.name)}.dn2kit`,
           name: entry.name,
           slot: entry.index,
+          kind: "kits",
         });
       }
     }
@@ -193,104 +202,105 @@ export async function backupDevice(
   device: ConnectedDevice,
   options: BackupOptions = {},
 ): Promise<{ backup: DeviceBackup; failed: { slot: number; name: string; why: string }[] }> {
+  const kinds = options.kinds ?? ["projects", "soundbanks", "kits"];
+  const transport = apiTransport(device);
+
+  /*
+   * **Everything is listed before anything is read.** A progress bar needs a denominator, and one
+   * that arrives after the projects are done would jump from "18 of 18" to "18 of 1,869" halfway
+   * through. Listing costs 17 messages against 1,869 reads, so knowing the total up front is
+   * effectively free.
+   */
+  options.onList?.();
   const listed = await listDeviceProjects(device);
   const occupied = listed.filter((p) => p.name.trim().length > 0);
-  const wanted = options.slots
+  const chosen = options.slots
     ? occupied.filter((p) => options.slots!.includes(p.index))
     : occupied;
 
-  if (wanted.length === 0) {
-    throw new BackupError(
-      listed.length === 0
-        ? "The +Drive listing came back empty, so there is nothing to back up."
-        : "Every slot on this +Drive is empty. There is nothing to back up.",
-    );
-  }
+  const items: DriveItem[] = [];
+  const contents: string[] = [];
 
-  const kinds = options.kinds ?? ["projects", "soundbanks", "kits"];
-  const transport = apiTransport(device);
-  const files: { path: string; bytes: Uint8Array }[] = [];
-  const entries: BackupEntry[] = [];
-  const failed: { slot: number; name: string; why: string }[] = [];
-
-  for (const [at, project] of wanted.entries()) {
-    if (options.shouldStop?.()) break;
-    options.onProgress?.({ done: at, total: wanted.length, name: project.name, bytes: 0 });
-
-    const source = projectPath(project.index);
-    try {
-      const read = await readStoredFile(source, {
-        transport,
-        // The whole reason this is minutes rather than an hour, and the only form a write accepts.
-        form: STORED_FORM,
-        msgId: reserveMessageIds(IDS_FOR.wholeProject),
-        totalFromHead: fileLengthFromHead,
-        onProgress: (_chunks, bytes, total) => {
-          options.onProgress?.({ done: at, total: wanted.length, name: project.name, bytes });
-          void total;
-        },
-      });
-      /*
-       * **Wrapped into a real `.dn2prj`, or named for what it is.**
-       *
-       * The device sends a payload; a `.dn2prj` is that payload inside a container. The first
-       * backup this wrote saved payloads under a `.dn2prj` name and not one of the eighteen files
-       * parsed. Wrapping needs the instrument's firmware, which it may not have answered — and
-       * with no firmware there is nothing honest to put in the container, so the payload is kept
-       * under a name that does not claim to be a project file.
-       */
-      const wrap = device.firmwareVersion;
-      const file = safeName(project.index, project.name, wrap ? ".dn2prj" : ".payload");
-      const bytes = wrap
-        ? await projectFile(project.name, wrap, read.bytes)
-        : read.bytes;
-      files.push({ path: file, bytes });
-      entries.push({
-        file,
-        source,
-        slot: project.index,
+  /*
+   * Projects lead. A backup interrupted halfway should hold the thing somebody is most afraid of
+   * losing, and 3,072 small reads take longer than 18 large ones.
+   */
+  if (kinds.includes("projects") && chosen.length > 0) {
+    contents.push("projects");
+    for (const project of chosen) {
+      items.push({
+        path: projectPath(project.index),
+        file: safeName(project.index, project.name, ".dn2prj"),
         name: project.name,
-        bytes: bytes.length,
+        slot: project.index,
+        kind: "projects",
       });
-    } catch (error) {
-      failed.push({ slot: project.index, name: project.name, why: String(error) });
     }
   }
 
-  /*
-   * Sounds and kits, after the projects. A backup interrupted halfway should hold the thing
-   * somebody is most afraid of losing, and 3,072 small reads take longer than 18 large ones.
-   */
-  const extra = kinds.length > 1
-    ? await everything(transport, kinds)
-    : { items: [], contents: [] };
-  const total = wanted.length + extra.items.length;
+  const rest = await everything(transport, kinds);
+  items.push(...rest.items);
+  contents.push(...rest.contents);
 
-  for (const [at, item] of extra.items.entries()) {
+  if (items.length === 0) {
+    throw new BackupError(
+      listed.length === 0
+        ? "The +Drive listing came back empty, so there is nothing to back up."
+        : "Everything on this +Drive is empty. There is nothing to back up.",
+    );
+  }
+
+  const files: { path: string; bytes: Uint8Array }[] = [];
+  const entries: BackupEntry[] = [];
+  const failed: { slot: number; name: string; why: string }[] = [];
+  const total = items.length;
+
+  for (const [at, item] of items.entries()) {
     if (options.shouldStop?.()) break;
-    const done = wanted.length + at;
-    options.onProgress?.({ done, total, name: item.name, bytes: 0 });
+    options.onProgress?.({ done: at, total, name: item.name, kind: item.kind, bytes: 0 });
+
     try {
       const read = await readStoredFile(item.path, {
         transport,
+        // The whole reason this is a minute rather than an hour, and the only form a write accepts.
         form: STORED_FORM,
         msgId: reserveMessageIds(IDS_FOR.wholeProject),
         totalFromHead: fileLengthFromHead,
+        ...(item.kind === "projects"
+          ? {
+              onProgress: (_chunks: number, bytes: number) => {
+                options.onProgress?.({ done: at, total, name: item.name, kind: item.kind, bytes });
+              },
+            }
+          : {}),
       });
-      files.push({ path: item.file, bytes: read.bytes });
-      entries.push({
-        file: item.file,
-        source: item.path,
-        slot: item.slot,
-        name: item.name,
-        bytes: read.bytes.length,
-      });
+
+      /*
+       * **A project is wrapped into a real `.dn2prj`; a sound and a kit are already objects.**
+       *
+       * The device sends a project as a payload, and a `.dn2prj` is that payload inside a
+       * container. The first backup written here saved payloads under a `.dn2prj` name and not one
+       * of the eighteen files parsed. Sounds and kits arrive carrying the Elektron object magic
+       * already, so they are written through untouched.
+       *
+       * Wrapping needs the instrument's firmware, which it may not have answered. With no firmware
+       * there is nothing honest to put in the container, so the payload keeps a name that does not
+       * claim to be a project file.
+       */
+      const wrap = item.kind === "projects" ? device.firmwareVersion : undefined;
+      const file = item.kind === "projects" && !wrap
+        ? safeName(item.slot, item.name, ".payload")
+        : item.file;
+      const bytes = wrap ? await projectFile(item.name, wrap, read.bytes) : read.bytes;
+
+      files.push({ path: file, bytes });
+      entries.push({ file, source: item.path, slot: item.slot, name: item.name, bytes: bytes.length });
     } catch (error) {
       failed.push({ slot: item.slot, name: item.name, why: String(error) });
     }
   }
 
-  options.onProgress?.({ done: entries.length, total, name: "", bytes: 0 });
+  options.onProgress?.({ done: entries.length, total, name: "", kind: "", bytes: 0 });
 
   return {
     backup: {
@@ -302,7 +312,7 @@ export async function backupDevice(
           productId: device.productId,
           ...(device.firmwareVersion === undefined ? {} : { firmwareVersion: device.firmwareVersion }),
         },
-        contents: ["projects", ...extra.contents],
+        contents,
         form: "stored",
         entries,
       },

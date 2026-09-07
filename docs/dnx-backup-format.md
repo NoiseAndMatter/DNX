@@ -129,6 +129,15 @@ been tried, and `0x54` froze nothing.
 `contents` says which kinds were read, so a reader can tell a projects-only backup from a whole one
 rather than inferring it from an empty folder.
 
+## Progress
+
+Everything is listed before anything is read. Listing costs 17 messages against 1,869 reads, so a
+denominator that is right from the first item is effectively free — and one that arrived after the
+projects were done would jump from "18 of 18" to "18 of 1,869" halfway through.
+
+The bar and the count say the same thing two ways. A bar alone cannot tell you that 1,869 items is
+a lot and 18 is not; a count alone is slow to read at a glance.
+
 ## What is not in it yet
 
 **Global device settings.** Probably not readable at all today. The instrument advertises dump types
