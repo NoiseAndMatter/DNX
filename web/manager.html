@@ -67,7 +67,7 @@
   <span class="lbl">Out</span>
   <button class="btn primary" id="export" disabled>Export…</button>
   <!-- The only control here that changes an instrument, and it looks unlike the others. -->
-  <button class="btn danger" id="writedevice" hidden disabled>Write to device</button>
+  <button class="btn danger" data-writes-device id="writedevice" hidden disabled>Write to device</button>
   <!--
     A different destination with a different meaning, so it is a separate control rather than a mode
     of the one above. "Write to device" sends changed pattern records to the project the musician has
@@ -76,7 +76,7 @@
   -->
   <button class="btn" id="savetodrive" hidden>Save to +Drive…</button>
   <select id="drivetarget" hidden title="An empty +Drive project slot"></select>
-  <button class="btn danger" id="dodrivesave" hidden disabled>Save to slot</button>
+  <button class="btn danger" data-writes-device id="dodrivesave" hidden disabled>Save to slot</button>
   <span class="sep"></span>
   <!--
     **A view, not a command**, which is why it is its own group and why it is a toggle rather than

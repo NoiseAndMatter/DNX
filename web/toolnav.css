@@ -186,3 +186,66 @@ body.sliding > *:not(.status) {
 }
 .toolnav .source:hover,
 .toolnav .source:focus-visible { opacity: 1; }
+
+/*
+ * The write switch.
+ *
+ * Loud when armed, and that is the point: the state persists across the four pages for a whole
+ * browsing session, so the cost of persistence is somebody forgetting they armed it. A lit pixel
+ * would not be enough to notice half an hour later.
+ */
+.toolnav .writeenable {
+  margin-left: auto;
+  padding: .18rem .6rem;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: .78em;
+  letter-spacing: .06em;
+  opacity: .55;
+  cursor: pointer;
+}
+.toolnav .writeenable:hover { opacity: .85; }
+.toolnav .writeenable[aria-pressed="true"] {
+  background: var(--crit, #b03b2e);
+  border-color: var(--crit, #b03b2e);
+  color: #fff;
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* A control that writes, while writing is off. Not `disabled`: the page owns that property. */
+[data-write-gated="off"] {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/*
+ * Says why nothing happened, on the control that was pressed.
+ *
+ * **An outline, not a shake.** `arrival.js` decides once whether this application animates, and it
+ * stamps nothing a stylesheet can read — so a `@media (prefers-reduced-motion)` block here would be
+ * a second thing deciding motion, which is the fault `web.test.ts` guards against and which this
+ * row has already had over its size, its position and its height. An outline needs no such
+ * decision.
+ */
+.write-refused { outline: 2px solid var(--crit, #b03b2e); outline-offset: 1px; }
+
+/*
+ * The whole page is edged in red while writing is armed.
+ *
+ * `position: fixed` with `inset: 0` on a pseudo-element: it frames the viewport without entering
+ * the layout, so nothing reflows when writing is switched on, and `pointer-events: none` keeps it
+ * from eating a click at the edge of the window. Below `boot-error`'s 9999, which has to sit above
+ * everything including this.
+ */
+html.write-armed::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 2px solid var(--crit, #b03b2e);
+  pointer-events: none;
+  z-index: 9998;
+}
