@@ -1,0 +1,20 @@
+# Normalise every text file to LF, in the repository and in the working tree.
+#
+# Several tests read source and documentation as text and match against it: `docstatus.test.ts`
+# scans headings, `safewrite.test.ts` scans imports, `web.test.ts` scans stylesheets and markup.
+# **A regex that anchors with `$` behaves differently under CRLF** — `.` does not match a line
+# terminator in JavaScript and `\r` is one — so `(.*)$` matches nothing at all on a Windows
+# checkout. `docstatus.test.ts` shipped with exactly that bug: green on the author's tree, red on a
+# fresh clone, and reporting conflicts that were not there.
+#
+# `eol=lf` rather than plain `text=auto`, because `text=auto` still hands Windows a CRLF working
+# tree and the tests read the working tree.
+* text=auto eol=lf
+
+# Not text, whatever a heuristic decides.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.syx binary
+*.dnprj binary
+*.dn2prj binary
