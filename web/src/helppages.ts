@@ -310,7 +310,7 @@ A mistake costs a reload, not a recording.`,
         heading: "Finding a preset",
         body: `**Search** filters by name. **Occupied only** hides empty slots, which is most of a
 library most of the time. **Refresh** re-reads the instrument.`,
-        image: { src: "help/library-search.png", alt: "The library filter row with search, an occupied-only switch, clear and refresh" },
+        image: { src: "help/library-search.png", alt: "A search narrowing a bank to 90 of its 256 slots, the tag chips re-counted against the match, and the presets that matched" },
       },
     ],
   },
