@@ -676,3 +676,21 @@ test("the song card cannot stretch into its grid row", () => {
   // a history entry made it grow again, which read as "rows are being added but I cannot see them".
   assert.match(css, /main\.split > \.panel\.songs \{[^}]*align-self:\s*start/);
 });
+
+test("every page offers the source, because the licence requires it", () => {
+  /*
+   * **AGPL section 13.** Anyone interacting with DNX remotely must be offered the source of the
+   * version they are running. DNX is served as a page and never distributed as a file, so the
+   * offer exists in the interface or it exists nowhere.
+   *
+   * It is asserted here rather than left to review because it is invisible when it is missing: the
+   * page looks finished without it, and the only signal is a licence term nobody re-reads. The link
+   * is built in `toolnav.ts`, which every page mounts, so one assertion covers all four.
+   */
+  const source = readFileSync(resolve(HERE, "../web/src/toolnav.ts"), "utf8");
+  assert.match(source, /SOURCE_URL\s*=\s*"https:\/\/github\.com\//,
+    "the source offer must point at a repository over https");
+  assert.match(source, /nav\.append\(sourceLink\(\)\)/,
+    "the link must be appended to the row every page mounts, not to one page");
+  assert.match(source, /AGPL/, "the reason has to survive next to the code that satisfies it");
+});
