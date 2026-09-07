@@ -113,9 +113,14 @@ before `kits` was looked for.
 /kits/A..H           128 kits per bank      1,024
 ```
 
-Sounds and kits open the way projects do, by index under their bank. Measured on a Digitone II,
-2026-09-07: `/soundbanks/A/1` reads in two chunks, `/kits/A/1` in three. That path form had never
-been tried, and `0x54` froze nothing.
+Sounds and kits open the way projects do, by index under their bank, confirmed again on a Digitone
+II 2026-09-07.
+
+> **This was written as though the path form had never been tried. It had.** `device-storage.md`
+> has carried a kit section since 2026-08-06, including a read of `/kits/A/1`, and a **sound write
+> to `/soundbanks/H/256` was committed and verified on hardware on 2026-08-04**. The summary list
+> at the top of that document said the root held two directories, and that list was read instead of
+> the document.
 
 **A whole instrument, measured on the same device:**
 
@@ -144,14 +149,30 @@ a lot and 18 is not; a count alone is slow to read at a glance.
 `0x50`–`0x5e` and we name five; `0x55`–`0x5e` are unidentified, and if settings can be dumped they
 are among them. See `capabilities.ts`.
 
-## Restore
+## Restore, and why it is not a single button
 
-Not built. Backup first, on the reasoning that a backup you have never restored is worth more than a
-restore you have never backed up for.
+**A full 1:1 restore wipes an instrument in one act.** It stays on the list; it is not the first
+thing built. The first thing is opening a backup and taking pieces out of it deliberately.
 
-When it lands it is a **write** of every entry in the manifest to the slot it names, which means it
-goes through the write-enable switch and `safeWriteFile` like every other write here: each
-destination read back and saved before it is overwritten.
+Because a `.dnx` holds real `.dn2prj` files, the read side is already done:
+
+```ts
+const files = await readZip(dnxBytes);
+const loaded = await readProjectFile(entry.file, files.get(entry.file)!);
+```
+
+`readProjectFile` takes bytes from anywhere, so a backed-up project reaches the manager, the grid
+and Insights through the path that exists.
+
+| stage | what it needs |
+|---|---|
+| open a `.dnx` and browse it | nothing. No device, no writes |
+| load a project from it into the manager | nothing new |
+| write one project to one slot | `writeProjectToDrive`, which already backs up the destination and verifies the read-back |
+| write a sound or a kit to a slot | the `0x57`/`0x58`/`0x59` path, **proven on a Digitone 1 on 2026-08-04** and never run against a DN2 |
+
+The checksum those writes are validated against is `crc32ZeroInit`, solved 2026-08-06 and already
+in `src/project/checksum.ts`. See `device-storage.md`.
 
 ## Where the code is
 
