@@ -584,6 +584,23 @@ export async function safeWriteFile(
   status(`Verifying — reading ${path} back…`);
   const readBack = await readStoredFile(path, {
     transport,
+    /*
+     * **`STORED_FORM`, for the same reason the backup read above needs it.**
+     *
+     * `readStoredFile` defaults to the raw expanded image, and `bytes` is the stored payload —
+     * `refuseRawForm` guarantees it. Without this the comparison is a 10,795-byte image against a
+     * 3,481-byte payload, `compareStored` returns its length mismatch, and **`verified` is false
+     * for every file write that has ever run.**
+     *
+     * Found 2026-09-07 by writing a sound to a Digitone II and diffing the round trip by hand: the
+     * manual read passed `STORED_FORM` and found one byte differing, while `safeWriteFile` reported
+     * a mismatch on the same write. The two disagreed because they were reading different files.
+     *
+     * The identical omission was fixed on the backup read on 2026-08-15 and the note explaining it
+     * sits forty lines above this call. **A fix applied to one of two calls is half a fix**, and
+     * nothing failed loudly enough to say so: a false `verified` reads as a cautious tool.
+     */
+    form: STORED_FORM,
     ...(options.verifyMsgId === undefined ? {} : { msgId: options.verifyMsgId }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     onProgress: (_chunks, got) => progress(got, bytes.length, "verify"),
