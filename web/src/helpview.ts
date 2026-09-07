@@ -161,6 +161,9 @@ export function openHelp(key?: string, from?: HTMLElement, section?: string): vo
     ...(from === undefined ? {} : { opener: from }),
     // An enlarged screenshot is on top. The first Escape closes that, not the help.
     isBlocked: lightboxOpen,
+    // Escape and a click outside close it without going through `closeHelp`, and a stale reference
+    // here makes the guard above refuse every later open.
+    onClose: () => { overlay = undefined; },
   });
   render();
   overlay.panel.querySelector<HTMLElement>("button")?.focus();
