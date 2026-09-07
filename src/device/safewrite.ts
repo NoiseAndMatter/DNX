@@ -486,6 +486,26 @@ export interface SafeFileWriteResult {
 export const CONTAINER_SLOT_OFFSET = 24;
 
 /**
+ * The container's zero-based **bank** index, which the instrument also writes for itself.
+ *
+ * Found 2026-09-07 by writing `/soundbanks/A/1` into `/soundbanks/H/129` on a Digitone II. The
+ * round trip differed in **two** bytes of 334, not one:
+ *
+ * | offset | sent | read back | |
+ * |---|---|---|---|
+ * | `+23` | `0` | `7` | bank H, zero-based |
+ * | `+24` | `0` | `128` | slot 129, zero-based |
+ *
+ * **The earlier kit experiment could not have seen this.** It wrote `/kits/A/1` into `/kits/A/38`,
+ * within one bank, so the bank byte never moved and `+24` looked like the only stamp. A test that
+ * varies one coordinate cannot tell you about the other.
+ *
+ * `compareStored` reported this as a single unexpected mismatch, which is the verifier working:
+ * it excused `+24` because that was known and named `+23` because it was not.
+ */
+export const CONTAINER_BANK_OFFSET = 23;
+
+/**
  * Write one file to the +Drive, safely.
  *
  * The destination must be provably empty in a listing taken now, so there is nothing there to copy
@@ -625,8 +645,8 @@ export function compareStored(sent: Uint8Array, readBack: Uint8Array): Mismatch[
   const differing: number[] = [];
   for (let i = 0; i < sent.length; i++) {
     if (sent[i] === readBack[i]) continue;
-    // The device's own slot index, and the only byte it is known to write for itself.
-    if (i === CONTAINER_SLOT_OFFSET) continue;
+    // The two bytes the instrument writes for itself. See `CONTAINER_BANK_OFFSET`.
+    if (i === CONTAINER_SLOT_OFFSET || i === CONTAINER_BANK_OFFSET) continue;
     differing.push(i);
     if (differing.length >= 8) break;
   }
