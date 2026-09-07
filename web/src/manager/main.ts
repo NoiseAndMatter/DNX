@@ -53,6 +53,7 @@ import {
 } from "../project.js";
 import { describeDonor, loadDonor } from "../donor.js";
 import { openBackup } from "../dnxopen.js";
+import { identityOf, mayReplaceSlot, type SlotOrigin } from "../originclaim.js";
 import { pickFromBackup } from "../backuppicker.js";
 import {
   type ConnectedDevice,
@@ -727,7 +728,22 @@ async function browseDriveTargets(): Promise<void> {
   try {
     status("Reading the +Drive listing…");
     const empty = await emptyProjectSlots(device);
-    const back = origin && !empty.includes(origin.slot) ? origin : undefined;
+    /*
+     * **Asked against the instrument that is actually connected**, not against a remembered slot
+     * number. A project opened off one Digitone and saved after switching to another used to be
+     * offered its old slot number on the new device's +Drive.
+     */
+    const claim = origin ? mayReplaceSlot(origin, identityOf(device), origin.slot) : undefined;
+    const back = origin && claim?.allowed === true && !empty.includes(origin.slot)
+      ? origin : undefined;
+    /*
+     * **Said in the same sentence as the result, not before it.** Written as its own `status` call
+     * first, it was overwritten by the summary below within the same tick — so a slot vanished
+     * from the picker and nothing ever said why, which is the shape of a bug report rather than of
+     * an explanation.
+     */
+    const withheld = origin && claim?.allowed === false && !empty.includes(origin.slot)
+      ? ` ${claim.reason}` : "";
     const select = $<HTMLSelectElement>("drivetarget");
     select.textContent = "";
     if (back) {
@@ -757,8 +773,8 @@ async function browseDriveTargets(): Promise<void> {
         : back
           ? `Slot ${back.slot} holds ${back.name}, the project you opened — saving there replaces ` +
             `it, and copies it to your machine first. ${empty.length} empty slot(s) otherwise.`
-          : `${empty.length} empty slot(s). Pick one and press Save to slot.`,
-      none ? "warn" : "ok",
+          : `${empty.length} empty slot(s). Pick one and press Save to slot.${withheld}`,
+      none ? "warn" : withheld ? "warn" : "ok",
     );
   } catch (error) {
     status(`Could not read the +Drive: ${String(error)}`, "error");
@@ -787,8 +803,9 @@ async function saveToDrive(): Promise<void> {
 
   // Replacing is allowed for exactly one slot, and this is the line that decides it. Compared
   // against `origin` rather than against the listing's occupancy: "the slot is full" is not the
-  // permission, "this is the project that was in it" is.
-  const replacing = origin && origin.slot === slot ? origin : undefined;
+  // permission, "this is the project that was in it" is. The device is part of that question —
+  // slot 47 on one instrument is not slot 47 on another.
+  const claimedFor = origin?.slot === slot ? origin : undefined;
 
   /*
    * **Name it, because the device lists projects by name and nothing else.**
@@ -802,6 +819,22 @@ async function saveToDrive(): Promise<void> {
    * the manager says is open. A project silently saved under a name the page never showed would be
    * worse than no naming at all.
    */
+  /*
+   * **Connected before the naming dialog, because the permission depends on the instrument.**
+   * Finding out that this project cannot replace that slot is worth knowing before typing a name
+   * for it, not after.
+   */
+  const device = await driveDevice();
+  if (!device) return;
+
+  const claim = claimedFor ? mayReplaceSlot(claimedFor, identityOf(device), slot) : undefined;
+  if (claimedFor && claim?.allowed === false) {
+    status(claim.reason, "error");
+    device.close();
+    return;
+  }
+  const replacing = claim?.allowed === true ? claimedFor : undefined;
+
   const current = projectName(session.image);
   const named = await askText({
     title: replacing
@@ -815,7 +848,10 @@ async function saveToDrive(): Promise<void> {
     maxLength: 15,
     confirmLabel: "Continue",
   });
-  if (named === undefined) return;
+  if (named === undefined) {
+    device.close();
+    return;
+  }
 
   const wanted = named.toUpperCase().trim();
   if (wanted !== "" && wanted !== current) {
@@ -826,9 +862,6 @@ async function saveToDrive(): Promise<void> {
     });
     if (changed) render();
   }
-
-  const device = await driveDevice();
-  if (!device) return;
 
   const button = $<HTMLButtonElement>("dodrivesave");
   button.disabled = true;
@@ -1460,8 +1493,13 @@ let chosenPort: string | undefined;
  * `undefined` for a project opened from a file, and cleared whenever the open project changes. A
  * stale origin would offer to overwrite a slot on the strength of a project that is no longer the
  * one on screen, which is the one way this feature could destroy something.
+ *
+ * **It carries the instrument too.** The manager works with either Digitone, and with two of the
+ * same one. A slot number on its own said nothing about which +Drive it was a slot on, and
+ * switching instruments between opening and saving offered to replace the wrong device's slot. See
+ * `originclaim.ts`, which also says what identity can and cannot prove.
  */
-let origin: { slot: number; name: string } | undefined;
+let origin: SlotOrigin | undefined;
 
 /**
  * Take a newly opened project as the one on screen.
@@ -1476,7 +1514,7 @@ let origin: { slot: number; name: string } | undefined;
  */
 function beginProject(
   image: Uint8Array,
-  from: { slot: number; name: string } | undefined,
+  from: SlotOrigin | undefined,
 ): void {
   state.device = deviceFor(image);
   state.session = new Session(image);
@@ -1618,7 +1656,11 @@ async function openFromDrive(): Promise<void> {
       );
     });
 
-    beginProject(opened.image, { slot: project.index, name: project.name });
+    beginProject(opened.image, {
+      slot: project.index,
+      name: project.name,
+      device: identityOf(drive.connected),
+    });
     const device = state.device!;
     // **What makes this project exportable.** The stored file is complete — its own container
     // header, its own payload — so the export needs no donor and inherits nothing from another
@@ -1678,10 +1720,10 @@ async function load(file: File): Promise<void> {
  * out of a `.dnx` arrives through exactly the path a picked file does — same session, same undo,
  * same warnings about songs.
  */
-async function adopt(loaded: LoadedProject): Promise<void> {
+async function adopt(loaded: LoadedProject, from?: SlotOrigin): Promise<void> {
   state.file = loaded;
-  // A file has no slot behind it, so there is nothing to save back over.
-  beginProject(loaded.image, undefined);
+  // A picked file has no slot behind it; a project out of a backup does, and says which.
+  beginProject(loaded.image, from);
   const device = state.device!;
 
   $("device").hidden = false;
@@ -1900,6 +1942,19 @@ async function exportProject(): Promise<void> {
 // --- a backup as a source ----------------------------------------------------------------------
 
 /**
+ * The project slot a `/projects/N` source names, or `undefined` for anything else.
+ *
+ * Deliberately narrow. `/soundbanks/A/12` is a slot too, and it is not one this page can write, so
+ * it must not come back as a number that later reads as a project slot.
+ */
+function slotOfProjectSource(source: string): number | undefined {
+  const match = /^\/projects\/(\d+)$/.exec(source);
+  if (!match) return undefined;
+  const slot = Number(match[1]);
+  return Number.isInteger(slot) && slot > 0 ? slot : undefined;
+}
+
+/**
  * Ask before throwing away edits, wherever the replacement is coming from.
  *
  * The session lives in memory and nothing has been written, so replacing the open project loses
@@ -1951,10 +2006,31 @@ async function openBackupFile(file: File): Promise<void> {
     return;
   }
 
-  await adopt(await readProjectFile(name, chosen.bytes));
+  /*
+   * **A backup entry knows the slot it came out of**, which is the one slot it may be written back
+   * over. That is the same permission a project opened off the +Drive gets, from the same kind of
+   * evidence: the manifest records the instrument and the source path, and `mayReplaceSlot` will
+   * not honour the claim unless the instrument connected at the time matches.
+   *
+   * Only a project can claim one. A sound's `source` names a bank slot, which this page has no way
+   * to write, and a claim nothing can act on would be a promise in a variable.
+   */
+  const slot = slotOfProjectSource(chosen.entry.source);
+  await adopt(
+    await readProjectFile(name, chosen.bytes),
+    slot === undefined ? undefined : {
+      slot,
+      name: chosen.entry.name,
+      device: identityOf(backup.manifest.device),
+    },
+  );
   status(
     `${name} open, from ${file.name}. It came off ${backup.manifest.device.name} at ` +
-      `${chosen.entry.source}. Nothing has been written to any instrument.`,
+      `${chosen.entry.source}.` +
+      (slot === undefined
+        ? ""
+        : ` Save to +Drive… can put it back in slot ${slot} of a ${backup.manifest.device.name}.`) +
+      " Nothing has been written to any instrument.",
     "ok",
   );
 }
