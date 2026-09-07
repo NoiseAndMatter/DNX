@@ -327,6 +327,9 @@ shows exactly what came back, including nothing.`,
         body: `**Probe** identifies what is connected. **Listen** shows every message arriving,
 which is how you tell a silent device from a busy one.
 
+**Listen has to be on before anything asks a question**, on this page: it is what collects the
+reply. Press a request without it and the status bar says so and nothing is sent.
+
 If a request times out, the first thing to check is whether **another application has the port**.
 Overbridge or Elektron Transfer holding it produces truncated replies that look exactly like a
 protocol bug.`,
@@ -353,7 +356,7 @@ back. **Read project** reads a whole project by request, one object at a time.`,
 **Read file** is marked dangerous because it once froze a Digitone 1 three times. That cause is
 understood and fixed, and the warning stays because the failure needed a power cycle and cost
 whatever was unsaved.`,
-        image: { src: "help/probe-drive.png", alt: "The +Drive listing controls with a path, a starting index and a count" },
+        image: { src: "help/probe-drive.png", alt: "A listing of /soundbanks/A: the request that was sent, the cursor to continue from, and the seven presets that came back with their sizes" },
       },
       {
         id: "writing",
