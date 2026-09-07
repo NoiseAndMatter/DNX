@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX settings surface, three shapes</title>
+<!--
+  This is a mockup. It links the real stylesheets, so it sits on the real surface in the real
+  tokens at the real 13px. A mockup with a look of its own would prove nothing.
+
+  Nothing here is wired. No device is touched, no preference is stored, and the toggles move their
+  own appearance and nothing else. Two questions: **where does the surface go**, and **what belongs
+  on it**. You can answer both faster by clicking than by reading.
+
+  The three shapes commit to different things:
+
+    A. an overlay sheet, opened from the tool row
+    B. a fifth tool, with a page of its own
+    C. a drawer under the chrome bar, in place
+
+  The backdrop is a stripped manager. Each shape covers, displaces or pushes it down, and you can
+  see which.
+-->
+<link rel="stylesheet" href="../dnx.css">
+<link rel="stylesheet" href="../toolnav.css">
+<style>
+  /* ---- the mockup's own chrome. No proposal includes this strip. ------------------------- */
+  .mock-pick {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    display: flex; gap: .5rem; align-items: center;
+    padding: .5rem .9rem; background: #14171a; border-top: 1px solid var(--line);
+    font-size: .82rem;
+  }
+  .mock-pick b { color: var(--teal); letter-spacing: .04em; }
+  .mock-pick button {
+    font: inherit; padding: .28rem .7rem; border-radius: 3px; cursor: pointer;
+    background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+  }
+  .mock-pick button[aria-pressed="true"] {
+    background: var(--teal); color: #06222a; border-color: var(--teal); font-weight: 600;
+  }
+  .mock-pick .note { color: var(--muted); margin-left: auto; }
+  body { padding-bottom: 3.2rem; }
+
+  /* ---- what every shape shares ------------------------------------------------------------ */
+  .set-group { border-top: 1px solid var(--line); padding: .8rem 0 .2rem; }
+  .set-group:first-of-type { border-top: 0; }
+  .set-group > h4 {
+    margin: 0 0 .5rem; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+  }
+  .set-row { display: flex; align-items: flex-start; gap: .9rem; padding: .42rem 0; }
+  .set-row .label { flex: 1; min-width: 0; }
+  .set-row .label b { display: block; font-weight: 500; }
+  .set-row .label span { color: var(--muted); font-size: .84em; }
+  .set-row .control { flex: 0 0 auto; padding-top: .1rem; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-size: .84em; padding: .2rem .55rem; cursor: pointer;
+    background: transparent; color: var(--muted); border: 0; border-left: 1px solid var(--line);
+  }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--fg); }
+  .act {
+    font: inherit; font-size: .86em; padding: .25rem .7rem; border-radius: 3px;
+    background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); cursor: pointer;
+  }
+  .set-note { color: var(--muted); font-size: .82em; margin: .3rem 0 .7rem; }
+
+  /* ---- A: overlay sheet ------------------------------------------------------------------- */
+  .sheet-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 90; }
+  .sheet {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(30rem, 92vw); z-index: 91;
+    background: var(--panel); border-left: 1px solid var(--line);
+    padding: 1rem 1.2rem 3.5rem; overflow: auto; box-shadow: -18px 0 40px rgba(0,0,0,.45);
+  }
+  .sheet header { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .7rem; }
+  .sheet header h3 { margin: 0; font-size: .95rem; }
+  .sheet header .esc { margin-left: auto; color: var(--muted); font-size: .8rem; }
+
+  /* ---- C: drawer -------------------------------------------------------------------------- */
+  .drawer { border-bottom: 1px solid var(--line); background: var(--panel); padding: .7rem 1rem 1rem; }
+  .drawer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 0 2rem; }
+
+  /* ---- B: a page -------------------------------------------------------------------------- */
+  .page { padding: 1rem; max-width: 46rem; }
+  .page h2 { margin: 0 0 .2rem; font-size: 1rem; }
+
+  .hidden { display: none !important; }
+  .backdrop-dim { opacity: .35; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand"><span class="d">DNX</span></span>
+  <span id="toolnav"></span>
+  <span class="spacer"></span>
+</div>
+
+<div id="drawerslot"></div>
+
+<main id="backdrop">
+  <div style="padding:1rem">
+    <div class="panel" style="padding:.7rem 1rem;margin-bottom:.8rem">
+      <b>PATTERNS</b>. A stripped manager. Each shape covers, displaces or pushes it down, and
+      you can see which.
+    </div>
+    <div class="panel" style="padding:2.4rem 1rem;text-align:center;color:var(--muted)">
+      the grid would be here
+    </div>
+  </div>
+</main>
+
+<div id="sheetslot"></div>
+<div id="pageslot" class="hidden"></div>
+
+<div class="mock-pick">
+  <b>SHAPE</b>
+  <button id="pa" aria-pressed="true">A · overlay sheet</button>
+  <button id="pb" aria-pressed="false">B · a fifth tool</button>
+  <button id="pc" aria-pressed="false">C · drawer in place</button>
+  <span class="note">Nothing is wired. Toggles move only themselves.</span>
+</div>
+
+<script type="module">
+  import { renderToolNav } from "../dist/web/src/toolnav.js";
+  renderToolNav(document.getElementById("toolnav"), "manager");
+
+  /*
+   * The settings, written once and rendered into all three shapes, so you compare containers and
+   * not contents. Each one shows the case for its own existence. Add a setting you cannot justify
+   * to a reader and you have added a setting nobody wanted.
+   *
+   * The write switch is absent by choice. See the note at the foot of each shape.
+   */
+  const GROUPS = [
+    ["The instrument", [
+      ["Back up this device",
+       "Read every project, preset and kit off the +Drive into one archive. Asked for on Elektronauts. Do this first and you can afford to say yes to everything else here.",
+       "act", "Back up now…"],
+      ["Where backups go",
+       "Every write already takes one first and refuses without it. This decides where the file lands: your downloads, or a prompt each time.",
+       "seg", ["Download", "Ask"]],
+      ["Remember the last instrument",
+       "Skip the port picker when only one Digitone has ever been connected.",
+       "seg", ["On", "Off"]],
+    ]],
+    ["This application", [
+      ["Motion",
+       "Honour the system's reduced-motion setting, or overrule it. Built already. Today you reach it by typing ?motion=always into the address bar.",
+       "seg", ["System", "Always", "Never"]],
+      ["Show experimental device operations",
+       "The probe can do things that have frozen a Digitone. Switch this off and they leave the page.",
+       "seg", ["On", "Off"]],
+      ["Clear stored preferences",
+       "Everything above, the remembered instrument, and the panel states. Your projects are stored nowhere.",
+       "act", "Clear…"],
+    ]],
+    ["About", [
+      ["DNX", "Free software under the AGPL-3.0. Read, fork and modify it.", "act", "Source"],
+    ]],
+  ];
+
+  const WRITE_NOTE =
+    "<b>The write switch stays in the tool row.</b> You turn it on to do a thing and off again. It " +
+    "earns that place by being visible without you going to look. Put it behind a menu and you can " +
+    "be armed with nothing on screen saying so.";
+
+  function renderGroups(host) {
+    host.innerHTML = GROUPS.map(([title, rows]) => `
+      <section class="set-group">
+        <h4>${title}</h4>
+        ${rows.map(([name, why, kind, arg]) => `
+          <div class="set-row">
+            <span class="label"><b>${name}</b><span>${why}</span></span>
+            <span class="control">${
+              kind === "seg"
+                ? `<span class="seg">${arg.map((o, i) => `<button aria-pressed="${i === 0}">${o}</button>`).join("")}</span>`
+                : `<button class="act">${arg}</button>`
+            }</span>
+          </div>`).join("")}
+      </section>`).join("");
+    host.querySelectorAll(".seg").forEach((seg) => {
+      seg.addEventListener("click", (event) => {
+        const hit = event.target.closest("button");
+        if (!hit) return;
+        seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === hit)));
+      });
+    });
+  }
+
+  const sheetSlot = document.getElementById("sheetslot");
+  const drawerSlot = document.getElementById("drawerslot");
+  const pageSlot = document.getElementById("pageslot");
+  const backdrop = document.getElementById("backdrop");
+
+  function showA() {
+    sheetSlot.innerHTML = `
+      <div class="sheet-scrim"></div>
+      <aside class="sheet">
+        <header><h3>Settings</h3><span class="esc">Esc to close</span></header>
+        <p class="set-note">Opens from <b>settings</b> in the tool row, over whatever you were
+          doing. Nothing on the page moves, and it closes back to where you were.</p>
+        <div id="a-groups"></div>
+        <p class="set-note" style="margin-top:1rem">${WRITE_NOTE}</p>
+      </aside>`;
+    renderGroups(document.getElementById("a-groups"));
+  }
+
+  function showC() {
+    drawerSlot.innerHTML = `
+      <div class="drawer">
+        <p class="set-note" style="margin-top:0">Pinned under the chrome bar. It pushes the page
+          down instead of covering it, so you can read a setting and the thing it changes at once.
+          It stays open while you work.</p>
+        <div class="cols" id="c-groups"></div>
+        <p class="set-note" style="margin-bottom:0">${WRITE_NOTE}</p>
+      </div>`;
+    renderGroups(document.getElementById("c-groups"));
+  }
+
+  function showB() {
+    pageSlot.innerHTML = `
+      <div class="page">
+        <h2>Settings</h2>
+        <p class="set-note">A fifth entry in the tool row, with a page of its own. It matches how
+          every other surface here works. It also spends a permanent screen position in a row that
+          earns its keep by never moving.</p>
+        <div id="b-groups"></div>
+        <p class="set-note" style="margin-top:1rem">${WRITE_NOTE}</p>
+      </div>`;
+    renderGroups(document.getElementById("b-groups"));
+  }
+
+  const shapes = {
+    pa: () => {
+      showA();
+      backdrop.classList.remove("hidden");
+      backdrop.classList.add("backdrop-dim");
+      pageSlot.classList.add("hidden");
+    },
+    pb: () => {
+      showB();
+      backdrop.classList.add("hidden");
+      pageSlot.classList.remove("hidden");
+    },
+    pc: () => {
+      showC();
+      backdrop.classList.remove("hidden");
+      pageSlot.classList.add("hidden");
+    },
+  };
+
+  function pick(id) {
+    sheetSlot.innerHTML = "";
+    drawerSlot.innerHTML = "";
+    pageSlot.innerHTML = "";
+    backdrop.classList.remove("backdrop-dim");
+    for (const key of Object.keys(shapes)) {
+      document.getElementById(key).setAttribute("aria-pressed", String(key === id));
+    }
+    shapes[id]();
+  }
+  for (const key of Object.keys(shapes)) {
+    document.getElementById(key).addEventListener("click", () => pick(key));
+  }
+  pick("pa");
+</script>
+</body>
+</html>
