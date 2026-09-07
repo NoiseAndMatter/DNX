@@ -498,3 +498,37 @@ html.write-armed::after {
   background: color-mix(in srgb, var(--teal) 12%, transparent);
   border-radius: 3px;
 }
+
+/* ---- picking one thing out of a backup ----------------------------------------------------- */
+/*
+ * A wider sheet than settings. Settings is a column of rows; this is a list of up to 128 projects
+ * a reader is scanning by name, and a narrow column turns that into scrolling.
+ */
+.pick-sheet { width: min(38rem, 94vw); }
+.pick-sheet header { flex-wrap: wrap; }
+.pick-from { margin: 0; width: 100%; color: var(--muted); font-size: .84em; }
+/*
+ * Warnings sit above the list and are not dismissable. `openBackup` reports damage instead of
+ * refusing the file, which is only worth doing if the reader is told.
+ */
+.pick-warn {
+  margin: 0 0 .6rem; padding: .5rem .7rem; font-size: .86em;
+  border: 1px solid var(--warn, #b7791f); border-radius: 3px;
+  background: color-mix(in srgb, var(--warn, #b7791f) 12%, transparent);
+}
+.pick-note { margin: .2rem 0 .4rem; color: var(--muted); font-size: .86em; }
+.pick-group { border-top: 1px solid var(--line); padding: .8rem 0 .2rem; }
+.pick-group > h4 {
+  margin: 0 0 .5rem; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+.pick-list { display: flex; flex-direction: column; }
+.pick-row {
+  display: flex; align-items: baseline; gap: .7rem; width: 100%; text-align: left;
+  font: inherit; padding: .35rem .5rem; cursor: pointer; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+}
+.pick-row:hover, .pick-row:focus-visible { background: var(--panel-2); border-color: var(--line); }
+.pick-row b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; }
+.pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-where { color: var(--muted); font-size: .82em; font-variant-numeric: tabular-nums; }
