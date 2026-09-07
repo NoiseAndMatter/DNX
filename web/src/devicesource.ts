@@ -37,6 +37,7 @@ import {
   type WriteStage,
   safeWriteRecords,
 } from "../../src/device/safewrite.js";
+import { requireWriteEnabled } from "./writeenable.js";
 import {
   type ApiFrame,
   Code,
@@ -360,6 +361,9 @@ export async function writeBack(
   edited: Uint8Array,
   hooks: WriteBackHooks,
 ): Promise<SafeRecordWriteResult> {
+  // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
+  // sent, so a control the page forgot to gate still cannot write. See `writeenable.ts`.
+  requireWriteEnabled();
   return safeWriteRecords({
     productId: handle.productId,
     io: handle.io,
