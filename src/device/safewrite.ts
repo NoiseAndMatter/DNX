@@ -19,9 +19,11 @@
  *
  * ## The sequence, and what each step is actually for
  *
- * Adapted from digi-roll's `safe-write.js`, which is the same idea arrived at from the same
- * direction — its author had a pattern editor writing to a Digitakt II and the same problem of
- * several callers each remembering a different subset of the rules.
+ * digi-roll's `safe-write.js` reached the same sequence from the same direction: its author had a
+ * pattern editor writing to a Digitakt II and the same problem of several callers each remembering
+ * a different subset of the rules. **No code was taken from it** — its licence is unstated, and
+ * this was written before it was read. Cited because independent arrival at the same six steps is
+ * evidence the steps are right.
  *
  * 1. **Re-fetch.** The destination is read off the device *now*, not taken from the image in the
  *    editor. A manager session can sit open for an hour while somebody plays on the instrument, and

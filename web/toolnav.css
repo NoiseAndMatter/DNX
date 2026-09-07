@@ -172,3 +172,17 @@ body.sliding > *:not(.status) {
  * It also named `body.slide-from-*`, which moved to `html.slide-from-*` when the stamp had to
  * happen before `<body>` existed. Dead selectors, quietly.
  */
+
+/*
+ * The source link is a licence term (AGPL section 13), not navigation, so it does not look like a
+ * tool: no highlight, no shortcut, and set apart from the row it sits in.
+ */
+.toolnav .source {
+  margin-left: 1.1rem;
+  padding-left: 1.1rem;
+  border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  opacity: .55;
+  font-size: .85em;
+}
+.toolnav .source:hover,
+.toolnav .source:focus-visible { opacity: 1; }

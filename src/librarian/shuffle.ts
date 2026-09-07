@@ -1,7 +1,8 @@
 /**
  * A shuffle: a reordering of slots, described before anything is written.
  *
- * Adapted from elk-herd's `Bank.Shuffle` (BSD 2-Clause, Mark Lentczner). The idea worth
+ * The design follows elk-herd's `Bank.Shuffle` (BSD 2-Clause, Mark Lentczner), which is where the
+ * shape of it comes from; the code is this project's. The idea worth
  * borrowing is the separation of *intent* from *application*: a shuffle is a pure
  * description of where things move, so it can be inspected, previewed, merged with another
  * shuffle, and — crucially — used to **repair references** to the things that moved.
