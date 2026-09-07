@@ -688,7 +688,10 @@ test("every page offers the source, because the licence requires it", () => {
    * is built in `toolnav.ts`, which every page mounts, so one assertion covers all four.
    */
   const source = readFileSync(resolve(HERE, "../web/src/toolnav.ts"), "utf8");
-  assert.match(source, /SOURCE_URL\s*=\s*"https:\/\/github\.com\//,
+  // SOURCE_URL is declared in `settings.ts`, which is the About row's home and which the tool row
+  // imports. Keeping it in the tool row would have made the two modules import each other.
+  const settings = readFileSync(resolve(HERE, "../web/src/settings.ts"), "utf8");
+  assert.match(settings, /SOURCE_URL\s*=\s*"https:\/\/github\.com\//,
     "the source offer must point at a repository over https");
   assert.match(source, /nav\.append\(sourceLink\(\)\)/,
     "the link must be appended to the row every page mounts, not to one page");

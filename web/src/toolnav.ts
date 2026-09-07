@@ -1,3 +1,4 @@
+import { SOURCE_URL, renderSettingsLink } from "./settings.js";
 import { renderWriteEnable } from "./writeenable.js";
 
 /**
@@ -139,6 +140,7 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
    * it in.
    */
   renderWriteEnable(nav);
+  renderSettingsLink(nav);
   nav.append(sourceLink());
   container.append(nav);
   wireShortcuts(current);
@@ -156,7 +158,7 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
  * It lives in the tool row rather than in a footer because three of the four pages fill the
  * viewport and grow downwards, so a footer is a place a user reaches by accident or not at all.
  */
-export const SOURCE_URL = "https://github.com/angellinares/DNX";
+
 
 function sourceLink(): HTMLAnchorElement {
   const link = document.createElement("a");
