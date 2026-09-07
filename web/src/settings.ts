@@ -96,6 +96,27 @@ function clearStored(): number {
   return cleared;
 }
 
+/* ---- what a page lends the sheet ------------------------------------------------------------ */
+
+/**
+ * Backing up needs an instrument, and the sheet has no business knowing how to find one.
+ *
+ * `chooseDevice` is private to the manager: it owns the port picker, the connection, and what to do
+ * when two Digitones are plugged in. The sheet is shared by four pages and three of them have no
+ * device at all.
+ *
+ * So the manager lends it a function. A page that has not registers nothing, and the row says where
+ * to go rather than offering a button that cannot work.
+ */
+export type BackupRunner = (report: (message: string) => void) => Promise<void>;
+
+let runBackup: BackupRunner | undefined;
+
+/** Called by a page that can reach an instrument. */
+export function registerBackup(runner: BackupRunner): void {
+  runBackup = runner;
+}
+
 /* ---- the sheet ----------------------------------------------------------------------------- */
 
 let sheet: HTMLElement | undefined;
@@ -179,6 +200,29 @@ function build(): HTMLElement {
   close.addEventListener("click", () => closeSettings());
   header.append(title, close);
   panel.append(header);
+
+  const note = document.createElement("span");
+  note.className = "set-note";
+  panel.append(group("The instrument", [
+    row(
+      "Back up the +Drive",
+      "Read every project off the connected instrument into one .dnx file. Empty slots are " +
+        "skipped. Nothing on the instrument is changed.",
+      runBackup
+        ? action("Back up…", (button) => {
+            button.disabled = true;
+            const say = (message: string): void => { note.textContent = message; };
+            void runBackup!(say).finally(() => { button.disabled = false; });
+          })
+        : (() => {
+            const disabled = action("Back up…", () => {});
+            disabled.disabled = true;
+            disabled.title = "Open the manager to reach an instrument";
+            return disabled;
+          })(),
+    ),
+  ]));
+  panel.append(note);
 
   panel.append(group("This application", [
     row(
