@@ -14,8 +14,10 @@ ten years when DNX is gone.
 ```
 manifest.json
 projects/001 PRESETS.dn2prj
-projects/002 COREVAULT.dn2prj
 projects/018 DNX_CAP_01.dn2prj
+soundbanks/A/001 HIDDEN TEARS.dn2snd
+soundbanks/H/256 ...
+kits/A/001 SOLID.dn2kit
 ```
 
 ## `manifest.json`
@@ -45,7 +47,7 @@ projects/018 DNX_CAP_01.dn2prj
 | `taken` | ISO 8601. Also the sortable part of the file name. |
 | `device.name`, `device.productId` | Which instrument. A restore refuses a backup from another model. |
 | `device.firmwareVersion` | **Absent when the instrument did not answer.** See below. |
-| `contents` | Which kinds of thing were read. |
+| `contents` | Which kinds were read: `projects`, `soundbanks`, `kits`. |
 | `form` | Always `stored`. See below. |
 | `entries[].slot` | **The reason the manifest exists.** |
 | `entries[].source` | The +Drive path it came from, which is what a restore writes back to. |
@@ -100,15 +102,34 @@ manifest omits the field rather than writing a guess. A restore that refuses on 
 has to be able to tell **different** from **unknown**, and a manifest claiming a version nobody read
 is the plausible-looking wrong field this project keeps paying for.
 
+## What a whole instrument is
+
+The +Drive root holds **three** directories. `device-storage.md` recorded two, from a listing taken
+before `kits` was looked for.
+
+```
+/projects            128 slots
+/soundbanks/A..H     256 sounds per bank    2,048
+/kits/A..H           128 kits per bank      1,024
+```
+
+Sounds and kits open the way projects do, by index under their bank. Measured on a Digitone II,
+2026-09-07: `/soundbanks/A/1` reads in two chunks, `/kits/A/1` in three. That path form had never
+been tried, and `0x54` froze nothing.
+
+**A whole instrument, measured on the same device:**
+
+| | |
+|---|---|
+| projects | 18 of 128 |
+| sounds | 1,835 of 2,048 |
+| kits | 16 of 1,024 |
+| total | **1,869 items, 1.7 MB, 69 seconds** |
+
+`contents` says which kinds were read, so a reader can tell a projects-only backup from a whole one
+rather than inferring it from an empty folder.
+
 ## What is not in it yet
-
-**Soundbanks.** Eight banks of 256 sounds each. `/soundbanks/A` lists them, but opening one sound
-needs a path form nobody has tested, and `0x54` is the message that froze a Digitone 1 three times
-(`device-storage.md`). One experiment settles it.
-
-`contents` is a list for exactly this reason: a backup with no `soundbanks` entry is one that never
-read them, and a reader inferring that from an empty folder could not tell it apart from an
-instrument with no sounds.
 
 **Global device settings.** Probably not readable at all today. The instrument advertises dump types
 `0x50`–`0x5e` and we name five; `0x55`–`0x5e` are unidentified, and if settings can be dumped they
