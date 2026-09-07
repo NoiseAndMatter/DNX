@@ -206,8 +206,8 @@ function build(): HTMLElement {
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
-      "Read every project off the connected instrument into one .dnx file. Empty slots are " +
-        "skipped. Nothing on the instrument is changed.",
+      "Read every project, sound and kit off the connected instrument into one .dnx file. Empty " +
+        "slots are skipped. Nothing on the instrument is changed.",
       runBackup
         ? action("Back up…", (button) => {
             button.disabled = true;

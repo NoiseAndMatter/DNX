@@ -166,9 +166,10 @@ registerBackup(async (report) => {
       ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ` +
         failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
       : "";
+    const kinds = backup.manifest.contents.join(", ");
     report(
-      `Saved ${name} — ${backup.manifest.entries.length} project` +
-        `${backup.manifest.entries.length === 1 ? "" : "s"}, ${describeBytes(bytes.length)}.${lost}`,
+      `Saved ${name} — ${backup.manifest.entries.length} items (${kinds}), ` +
+        `${describeBytes(bytes.length)}.${lost}`,
     );
     status(`Backup saved as ${name}`, failed.length ? "warn" : "ok");
   } catch (error) {
