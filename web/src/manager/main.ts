@@ -105,7 +105,7 @@ import {
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
 import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
-import { $, escapeHtml } from "../dom.js";
+import { $, escapeHtml, saveBlob } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
 import { describeBytes, progressBar } from "../progress.js";
@@ -117,6 +117,9 @@ import {
 } from "../history.js";
 import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
+import { registerBackup } from "../settings.js";
+import { backupDevice } from "../backup.js";
+import { backupFileName, packBackup } from "../dnxfile.js";
 import { renderInsights, type InsightsRefusal } from "./insights.js";
 import { patternSubject } from "../patternsubject.js";
 import { type AnalysisSubject } from "../analysis/model.js";
@@ -127,6 +130,52 @@ const progress = progressBar();
 // Drawn rather than written into the HTML, so the row cannot say different things on different
 // pages. Immediately, because a navigation control that appears late is one you click through.
 renderToolNav($("toolnav"), "manager");
+
+/**
+ * Lend the settings sheet a way to reach an instrument.
+ *
+ * The sheet is shared by four pages and three of them have no device. `chooseDevice` lives here
+ * because this page owns the port picker and what to do when two Digitones are plugged in, so the
+ * sheet is handed a function rather than the knowledge.
+ *
+ * **This reads and never writes.** `backupDevice` opens each slot, reads it and closes it; the
+ * write-enable switch is not involved because nothing is sent. That is the point of a backup being
+ * the first thing a nervous person does.
+ */
+registerBackup(async (report) => {
+  try {
+    report("Looking for an instrument…");
+    const connected = drive?.connected ?? (await chooseDevice());
+    report("Listing the +Drive…");
+
+    const { backup, failed } = await backupDevice(connected, {
+      onProgress: ({ done, total, name, bytes }) => {
+        report(
+          name
+            ? `Reading ${name} — slot ${done + 1} of ${total}${bytes ? `, ${describeBytes(bytes)}` : ""}…`
+            : `Read ${done} of ${total}.`,
+        );
+      },
+    });
+
+    const bytes = await packBackup(backup);
+    const name = backupFileName(backup.manifest);
+    saveBlob(new Blob([bytes as BlobPart], { type: "application/zip" }), name);
+
+    const lost = failed.length
+      ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ` +
+        failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
+      : "";
+    report(
+      `Saved ${name} — ${backup.manifest.entries.length} project` +
+        `${backup.manifest.entries.length === 1 ? "" : "s"}, ${describeBytes(bytes.length)}.${lost}`,
+    );
+    status(`Backup saved as ${name}`, failed.length ? "warn" : "ok");
+  } catch (error) {
+    report(`Backup stopped: ${String(error)}`);
+    status(`Backup stopped: ${String(error)}`, "error");
+  }
+});
 
 interface State {
   file?: LoadedProject;
