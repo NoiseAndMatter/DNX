@@ -51,6 +51,8 @@ speculative or unknown.
 | Manager reads and writes a **live device** | done, **hardware-verified on a Digitone II** — no file in the loop |
 | Expand from one live device onto another | planner done, **two-device UI next** — see ROADMAP §4b-i |
 | Insights — cross-pattern analysis in the manager | done — polymeter, reset, voice pressure, key fit |
+| One-click +Drive backup to a `.dnx` | done — a zip with a manifest; see `docs/dnx-backup-format.md` |
+| Restoring a `.dnx` to an instrument | next |
 | Storage version 2 projects (pre-update firmware) | **readable**, including the factory presets project |
 | CHORD MEMORY, note length, micro timing, trig conditions | decoded on hardware |
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
