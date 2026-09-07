@@ -27,10 +27,7 @@ import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js
 import { type Entry, StorageCode } from "../src/device/storage.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
 import {
-  type Backup,
-  type FileWriteReview,
-  type RecordWriteReview,
-  type SafeFileWriteOptions,
+  CONTAINER_BANK_OFFSET,
   CONTAINER_SLOT_OFFSET,
   WriteRefusal,
   compareStored,
@@ -38,6 +35,10 @@ import {
   recordWriteMessage,
   safeWriteFile,
   safeWriteRecords,
+  type Backup,
+  type FileWriteReview,
+  type RecordWriteReview,
+  type SafeFileWriteOptions,
 } from "../src/device/safewrite.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
@@ -713,4 +714,28 @@ test("saying no to an overwrite costs nothing — no backup, no write", async ()
   assert.equal(result.cancelled, true);
   assert.equal(asked, 0, "a backup downloaded for a write nobody made is litter");
   assert.deepEqual(io.log, [], "and nothing reached the device");
+});
+
+test("the two bytes the instrument writes for itself are not reported as corruption", () => {
+  /*
+   * **Measured on a Digitone II, 2026-09-07.** `/soundbanks/A/1` written into `/soundbanks/H/129`
+   * read back differing in two bytes of 334: `+23` carried `7` for bank H and `+24` carried `128`
+   * for slot 129, both zero-based, both written by the instrument.
+   *
+   * The earlier kit experiment wrote `/kits/A/1` into `/kits/A/38` — one bank, so the bank byte
+   * never moved and `+24` looked like the only stamp. **A test that varies one coordinate cannot
+   * tell you about the other.**
+   *
+   * Anything else differing is the device not storing what was sent, and has to still be reported.
+   */
+  const sent = new Uint8Array(64);
+  const read = new Uint8Array(64);
+  read[CONTAINER_BANK_OFFSET] = 7;
+  read[CONTAINER_SLOT_OFFSET] = 128;
+  assert.deepEqual(compareStored(sent, read), [], "the instrument's own stamps are not corruption");
+
+  read[40] = 1;
+  const found = compareStored(sent, read);
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.at, 40, "a real difference is still named, and named first");
 });
