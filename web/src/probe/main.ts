@@ -92,6 +92,7 @@ import {
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
 import { CONTAINER_SLOT_OFFSET, safeWriteFile } from "../../../src/device/safewrite.js";
 import { STAGE_LABEL, confirmFileWrite } from "../safewriteui.js";
+import { requireWriteEnabled } from "../writeenable.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
 import { $, escapeHtml, saveBytes as save } from "../dom.js";
 import { statusBar } from "../statusbar.js";
@@ -1782,6 +1783,9 @@ async function readThenWrite(): Promise<void> {
     // read-back are not optional here either. **The read-back is skipped only for the corruption
     // run**, where the write is meant to be refused and a verifying read would report a failure
     // that is the finding rather than a fault.
+    // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
+    // sent, so a control the page forgot to gate still cannot write. See `writeenable.ts`.
+    requireWriteEnabled();
     const result = await safeWriteFile({
       transport: apiTransport(output),
       path: target,
