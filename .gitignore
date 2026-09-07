@@ -3,6 +3,10 @@ dist/
 *.tsbuildinfo
 .DS_Store
 
+# Editor state. Nobody else's IDE wants this repository's window layout.
+.idea/
+.vscode/
+
 # --------------------------------------------------------------------------
 # Never commit Digitone project, pattern or sound data.
 #

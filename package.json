@@ -1,7 +1,12 @@
 {
-  "name": "dn-sysex",
+  "name": "dnx",
   "version": "0.1.0",
-  "description": "Expand Elektron Digitone 1 patterns across the 16 tracks of the Digitone II",
+  "description": "Read, write and convert Elektron Digitone and Digitone II project files, and talk to the instruments over WebMIDI",
+  "license": "CC0-1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/angellinares/DNX.git"
+  },
   "type": "module",
   "scripts": {
     "inspect": "tsx src/cli/inspect.ts",
