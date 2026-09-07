@@ -144,16 +144,18 @@ renderToolNav($("toolnav"), "manager");
  */
 registerBackup(async (report) => {
   try {
-    report("Looking for an instrument…");
+    report.say("Looking for an instrument…");
     const connected = drive?.connected ?? (await chooseDevice());
-    report("Listing the +Drive…");
 
     const { backup, failed } = await backupDevice(connected, {
-      onProgress: ({ done, total, name, bytes }) => {
-        report(
+      onList: () => report.say("Listing the +Drive…"),
+      onProgress: ({ done, total, name, kind, bytes }) => {
+        report.at(done, total);
+        report.say(
           name
-            ? `Reading ${name} — slot ${done + 1} of ${total}${bytes ? `, ${describeBytes(bytes)}` : ""}…`
-            : `Read ${done} of ${total}.`,
+            ? `${kind === "projects" ? "Project" : kind === "kits" ? "Kit" : "Sound"} ${name}` +
+              `${bytes ? `, ${describeBytes(bytes)}` : ""}…`
+            : `Packing ${done.toLocaleString()} items…`,
         );
       },
     });
@@ -167,13 +169,13 @@ registerBackup(async (report) => {
         failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
       : "";
     const kinds = backup.manifest.contents.join(", ");
-    report(
+    report.say(
       `Saved ${name} — ${backup.manifest.entries.length} items (${kinds}), ` +
         `${describeBytes(bytes.length)}.${lost}`,
     );
     status(`Backup saved as ${name}`, failed.length ? "warn" : "ok");
   } catch (error) {
-    report(`Backup stopped: ${String(error)}`);
+    report.say(`Backup stopped: ${String(error)}`);
     status(`Backup stopped: ${String(error)}`, "error");
   }
 });

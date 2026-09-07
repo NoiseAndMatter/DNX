@@ -305,3 +305,30 @@ html.write-armed::after {
   text-decoration: none;
 }
 .sheet .act:disabled { opacity: .5; cursor: default; }
+
+/* The backup progress bar. Hidden until something runs, because a bar at zero reads as stuck. */
+.set-progress {
+  position: relative;
+  height: 1.05rem;
+  margin: .1rem 0 .5rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.set-progress .fill {
+  height: 100%;
+  width: 0;
+  background: var(--teal-dim, #2b6b74);
+  transition: width .15s linear;
+}
+.set-progress .count {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  letter-spacing: .02em;
+  color: var(--fg);
+}

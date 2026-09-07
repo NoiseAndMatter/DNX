@@ -147,7 +147,21 @@ user pointed out must exist.
 ### The shape of the store, read off the listings
 
 - **`/projects`** — 128 entries
-- **`/soundbanks`** — 8 entries, each listing **256** sounds
+- **`/soundbanks`** — 8 banks, `A`..`H`, each listing **256** sounds
+- **`/kits`** — 8 banks, `A`..`H`, each listing **128** kits
+
+> [!warning] **This said two directories until 2026-09-07, and the root has three.**
+>
+> `kits` was never in it. The first listing of `/` was taken while looking for projects and sounds,
+> both were found, and nobody asked what else was there. A listing that answers the question you
+> brought to it is the easiest kind of evidence to stop reading.
+>
+> Found while building the backup, which had to enumerate everything rather than the things already
+> known. **An exhaustive consumer is a better test of a listing than any question about it.**
+
+**Sounds and kits open by index under their bank**, exactly as projects open by index:
+`/soundbanks/A/1` reads in two chunks, `/kits/A/1` in three. Measured on a Digitone II 2026-09-07,
+and `0x54` froze nothing. See `dnx-backup-format.md`.
 
 ### Unidentified
 
@@ -377,7 +391,9 @@ positive — see `KNOWN-ISSUES.md`.
 ## 5a. The request side — SOLVED for listing, 2026-07-30
 
 **[verified] on hardware.** The requests were reconstructed from response shapes alone and then
-confirmed one field at a time. `/` returned `projects` and `soundbanks` on the first attempt.
+confirmed one field at a time. `/` returned `projects`, `soundbanks` and `kits` on the first
+attempt; the first two were the ones being looked for, and `kits` went unrecorded here until
+2026-09-07.
 
 ### `0x53` — list a directory
 
