@@ -118,12 +118,21 @@ test("empty slots are skipped, which is what makes this minutes rather than an h
   assert.match(source, /listed\.filter\(\(p\) => p\.name\.trim\(\)\.length > 0\)/);
 });
 
-test("a slot that fails is reported, not dropped", () => {
-  // A backup missing one project is worth having. A backup that quietly lost one is not, and
-  // nothing downstream can tell the two apart without this.
+test("an item that fails is reported, not dropped", () => {
+  /*
+   * A backup missing one project is worth having. One that quietly lost it is not, and nothing
+   * downstream can tell those apart unless the reader says which happened.
+   *
+   * **This test named a loop variable and broke on a rename while the behaviour held.** It now
+   * asserts the shape it cares about: a catch that records rather than swallows, and a caller that
+   * receives the record. `backupDevice` needs an instrument, so the property is read out of the
+   * source; naming as little of that source as possible is what keeps it about the behaviour.
+   */
   const source = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
-  assert.match(source, /failed\.push\(\{ slot: project\.index/);
-  assert.match(source, /failed:/, "the caller has to receive it");
+  assert.match(source, /catch \(error\) \{\s*failed\.push\(/,
+    "a failed read must be recorded in the catch, never swallowed");
+  assert.match(source, /^\s*failed,\s*$/m, "and handed back to the caller");
+  assert.doesNotMatch(source, /catch \{\s*\}/, "an empty catch would lose an item silently");
 });
 
 test("a project inside a .dnx parses as a real project file", { skip: NO_CORPUS }, async () => {

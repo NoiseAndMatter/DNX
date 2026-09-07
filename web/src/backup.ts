@@ -77,6 +77,15 @@ import {
 export class BackupError extends Error {}
 
 /** How a slot read reports itself while it runs. */
+/** One kind of thing, and how far through it the read has got. */
+export interface BackupStage {
+  /** `projects`, `soundbanks` or `kits`. */
+  kind: string;
+  done: number;
+  total: number;
+  state: "pending" | "reading" | "done";
+}
+
 export interface BackupProgress {
   /** Items finished, out of `total`. Both are known before the first read. */
   done: number;
@@ -87,6 +96,14 @@ export interface BackupProgress {
   kind: string;
   /** Bytes of the current item so far. Reported for projects, which are the slow ones. */
   bytes: number;
+  /**
+   * Every kind, in read order, each with its own count.
+   *
+   * **One bar cannot say what a backup is doing.** 1,835 sounds and 18 projects share a total, so a
+   * bar at 40% is somewhere in the sounds and gives no clue which parts are safely read. A row per
+   * kind says that at a glance, and says which is still pending.
+   */
+  stages: BackupStage[];
 }
 
 export interface BackupOptions {
@@ -255,9 +272,26 @@ export async function backupDevice(
   const failed: { slot: number; name: string; why: string }[] = [];
   const total = items.length;
 
+  /*
+   * Counted per kind as well as overall. The totals come from the listing, so every row is complete
+   * before the first read and a pending kind shows its size rather than a blank.
+   */
+  const stages: BackupStage[] = contents.map((kind) => ({
+    kind,
+    done: 0,
+    total: items.filter((i) => i.kind === kind).length,
+    state: "pending" as const,
+  }));
+  const stageOf = (kind: string): BackupStage | undefined => stages.find((g) => g.kind === kind);
+  const snapshot = (): BackupStage[] => stages.map((g) => ({ ...g }));
+
   for (const [at, item] of items.entries()) {
     if (options.shouldStop?.()) break;
-    options.onProgress?.({ done: at, total, name: item.name, kind: item.kind, bytes: 0 });
+    const stage = stageOf(item.kind);
+    if (stage) stage.state = "reading";
+    options.onProgress?.({
+      done: at, total, name: item.name, kind: item.kind, bytes: 0, stages: snapshot(),
+    });
 
     try {
       const read = await readStoredFile(item.path, {
@@ -269,7 +303,9 @@ export async function backupDevice(
         ...(item.kind === "projects"
           ? {
               onProgress: (_chunks: number, bytes: number) => {
-                options.onProgress?.({ done: at, total, name: item.name, kind: item.kind, bytes });
+                options.onProgress?.({
+                  done: at, total, name: item.name, kind: item.kind, bytes, stages: snapshot(),
+                });
               },
             }
           : {}),
@@ -298,9 +334,21 @@ export async function backupDevice(
     } catch (error) {
       failed.push({ slot: item.slot, name: item.name, why: String(error) });
     }
+
+    /*
+     * The count moves whether the read succeeded or failed, because it is a count of what has been
+     * attempted. A row that stalls on a failure would say the backup had stopped when it had not.
+     */
+    if (stage) {
+      stage.done++;
+      if (stage.done >= stage.total) stage.state = "done";
+    }
   }
 
-  options.onProgress?.({ done: entries.length, total, name: "", kind: "", bytes: 0 });
+  for (const stage of stages) if (stage.done >= stage.total) stage.state = "done";
+  options.onProgress?.({
+    done: entries.length, total, name: "", kind: "", bytes: 0, stages: snapshot(),
+  });
 
   return {
     backup: {
