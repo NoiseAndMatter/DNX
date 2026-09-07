@@ -48,9 +48,12 @@ import {
   buildProjectBlob,
   download,
   openProject,
+  readProjectFile,
   type LoadedProject,
 } from "../project.js";
 import { describeDonor, loadDonor } from "../donor.js";
+import { openBackup } from "../dnxopen.js";
+import { pickFromBackup } from "../backuppicker.js";
 import {
   type ConnectedDevice,
   type DeviceChoice,
@@ -1664,8 +1667,18 @@ async function openFromDrive(): Promise<void> {
 
 async function load(file: File): Promise<void> {
   status(`Reading ${file.name}…`);
-  const loaded = await openProject(file);
+  await adopt(await openProject(file));
+}
 
+/**
+ * Make an already-read project the one this page is working on.
+ *
+ * Split out of `load` when a backup became a second source of project bytes. Everything below is
+ * about becoming the open project and nothing about where the bytes came from, so a project taken
+ * out of a `.dnx` arrives through exactly the path a picked file does — same session, same undo,
+ * same warnings about songs.
+ */
+async function adopt(loaded: LoadedProject): Promise<void> {
   state.file = loaded;
   // A file has no slot behind it, so there is nothing to save back over.
   beginProject(loaded.image, undefined);
@@ -1686,14 +1699,15 @@ async function load(file: File): Promise<void> {
   const songs = device.songState(loaded.image);
   if (songs === "unknown") {
     status(
-      `${file.name} open. Songs cannot be checked on the ${device.name} — its song table has ` +
-        `never been located, so verify any songs after loading.`,
+      `${loaded.fileName} open. Songs cannot be checked on the ${device.name} — its song ` +
+        `table has never been located, so verify any songs after loading.`,
       "warn",
     );
   } else if (songs === "occupied") {
-    status(`${file.name} open. This project has songs; moving patterns may desync them.`, "warn");
+    status(
+      `${loaded.fileName} open. This project has songs; moving patterns may desync them.`, "warn");
   } else {
-    status(`${file.name} open.`, "ok");
+    status(`${loaded.fileName} open.`, "ok");
   }
 }
 
@@ -1883,6 +1897,68 @@ async function exportProject(): Promise<void> {
   );
 }
 
+// --- a backup as a source ----------------------------------------------------------------------
+
+/**
+ * Ask before throwing away edits, wherever the replacement is coming from.
+ *
+ * The session lives in memory and nothing has been written, so replacing the open project loses
+ * its undo history for good. Two routes reach that now — a picked file and a project taken out of
+ * a backup — and they must not drift into asking differently.
+ */
+async function mayReplaceOpenProject(what: string): Promise<boolean> {
+  if (!state.session?.canUndo) return true;
+  return await askConfirm({
+    title: `Open ${what}?`,
+    body: [
+      "This discards the edits made to the open project, and its undo history with them.",
+      "Nothing has been written to disk yet — export first if you want to keep them.",
+    ],
+    confirmLabel: "Discard and open",
+    danger: true,
+  });
+}
+
+/**
+ * Open a `.dnx`, show what is in it, and take one project out.
+ *
+ * **Nothing reaches an instrument here.** A backup is opened, read and listed in the browser, and
+ * what comes back is an ordinary project image — so the grid, undo and Export work on it exactly
+ * as they do on a file. Putting one back on a device is the next stage of this work, and it is a
+ * separate decision that deserves its own confirmation.
+ */
+async function openBackupFile(file: File): Promise<void> {
+  status(`Reading ${file.name}…`);
+  const backup = await openBackup(new Uint8Array(await file.arrayBuffer()));
+
+  const chosen = await pickFromBackup(backup, {
+    // Projects only, for now. A sound goes into a pool rather than onto the grid, and pretending
+    // otherwise would put a row here that does nothing.
+    actionable: ["projects"],
+    fileName: file.name,
+    opener: $("openbackup"),
+  });
+  if (!chosen) {
+    status("Nothing taken out of the backup.");
+    return;
+  }
+
+  // The name inside the zip, which already carries the slot and the right extension for the
+  // instrument it came off.
+  const name = chosen.entry.file.split("/").pop() ?? chosen.entry.name;
+  if (!await mayReplaceOpenProject(name)) {
+    status("Cancelled — the open project is untouched.");
+    return;
+  }
+
+  await adopt(await readProjectFile(name, chosen.bytes));
+  status(
+    `${name} open, from ${file.name}. It came off ${backup.manifest.device.name} at ` +
+      `${chosen.entry.source}. Nothing has been written to any instrument.`,
+    "ok",
+  );
+}
+
 // --- wiring -------------------------------------------------------------------------------
 
 /**
@@ -1900,22 +1976,11 @@ function wireFileInput(id: string, guard: boolean): void {
     if (!file) return;
 
     void (async () => {
-      if (guard && state.session?.canUndo) {
-        const ok = await askConfirm({
-          title: `Open ${file.name}?`,
-          body: [
-            "This discards the edits made to the open project, and its undo history with them.",
-            "Nothing has been written to disk yet — export first if you want to keep them.",
-          ],
-          confirmLabel: "Discard and open",
-          danger: true,
-        });
-        if (!ok) {
-          // Clear it, or picking the same file again fires no change event and looks broken.
-          input.value = "";
-          status("Cancelled — the open project is untouched.");
-          return;
-        }
+      if (guard && !await mayReplaceOpenProject(file.name)) {
+        // Clear it, or picking the same file again fires no change event and looks broken.
+        input.value = "";
+        status("Cancelled — the open project is untouched.");
+        return;
       }
 
       await load(file);
@@ -1929,6 +1994,17 @@ function wireFileInput(id: string, guard: boolean): void {
 
 wireFileInput("file", false);
 wireFileInput("file2", true);
+
+$<HTMLInputElement>("backupfile").addEventListener("change", (event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  void openBackupFile(file)
+    .catch(report)
+    // Cleared for the same reason the project inputs are: picking the same backup again fires no
+    // change event, and a control that does nothing the second time looks broken.
+    .finally(() => { input.value = ""; });
+});
 
 // A modifier pressed or released mid-drag changes what the drop will do, and `dragover` does not
 // fire unless the pointer moves. Without these two, holding still and pressing Shift leaves the
