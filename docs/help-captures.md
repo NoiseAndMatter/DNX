@@ -11,7 +11,7 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-09-07
 
-**21 of the 21 referenced PNGs exist.** 9 pages, 31 sections, 21 screenshot slots. Counted from the
+**22 of the 22 referenced PNGs exist.** 9 pages, 32 sections, 22 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
 The two Library shots came last, because both are the instrument's +Drive pane and it holds nothing
@@ -51,6 +51,7 @@ closing step. Re-open any suspect image before committing it.
 | `manager-grid.png` | Manager | The grid | captured |
 | `manager-operations.png` | Manager | Move, copy, swap, rename, clear | captured |
 | `manager-drive.png` | Manager | Opening from an instrument | captured |
+| `backup-picker.png` | Manager | Opening a project out of a backup | captured |
 | `manager-song.png` | Manager | Songs | captured |
 | `insights-cycle.png` | Insights | How long a pattern really takes | captured |
 | `insights-reset.png` | Insights | What the reset interrupts | captured |
@@ -98,7 +99,7 @@ pending costs a reader nothing; a picture of an empty box costs them the belief 
 
 ## Sections with no screenshot, on purpose
 
-Eleven of the 31 sections carry no image. A section explaining a rule rather than a surface does not
+Eleven of the 32 sections carry no image. A section explaining a rule rather than a surface does not
 need one, and an invented picture is worse than none: *Nothing leaves this machine*, *What DNX will
 not do*, *Apply, then export or write*, *What it writes*, *Writing*, *Every write backs up first*,
 *If something goes wrong*, *A .dnx is a zip*, *What manifest.json is for*, and *Why the write switch
