@@ -57,6 +57,12 @@
   -->
   <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
   <button class="btn" id="browsedrive">Browse +Drive…</button>
+  <!--
+    A .dnx is a backup of a whole instrument, and opening one here is the first half of a restore:
+    look at what is in it, take one project out, and decide with the project in front of you rather
+    than from a file name. Nothing is written to an instrument by opening one.
+  -->
+  <label class="btn file" id="openbackup">Open a backup…<input type="file" id="backupfile" accept=".dnx,.zip"></label>
   <select id="driveprojects" hidden title="Projects stored on the device, by slot"></select>
   <button class="btn" id="opendrive" hidden disabled>Open slot</button>
   <span class="sep"></span>
