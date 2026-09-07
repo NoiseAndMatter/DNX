@@ -96,6 +96,94 @@ function clearStored(): number {
   return cleared;
 }
 
+/* ---- what a page lends the sheet ------------------------------------------------------------ */
+
+/**
+ * Backing up needs an instrument, and the sheet has no business knowing how to find one.
+ *
+ * `chooseDevice` is private to the manager: it owns the port picker, the connection, and what to do
+ * when two Digitones are plugged in. The sheet is shared by four pages and three of them have no
+ * device at all.
+ *
+ * So the manager lends it a function. A page that has not registers nothing, and the row says where
+ * to go rather than offering a button that cannot work.
+ */
+export interface BackupReport {
+  /** What is happening, in words. */
+  say(message: string): void;
+  /**
+   * How far through, as a row per kind.
+   *
+   * **One bar cannot say what a long backup is doing.** 1,835 sounds and 18 projects share a total,
+   * so a bar at 40% is somewhere in the sounds and gives no clue whether the projects are safely
+   * read. A row each says that at a glance, and says which kinds have not started.
+   */
+  at(stages: readonly ProgressStage[]): void;
+}
+
+export interface ProgressStage {
+  kind: string;
+  done: number;
+  total: number;
+  state: "pending" | "reading" | "done";
+}
+
+export type BackupRunner = (report: BackupReport) => Promise<void>;
+
+let runBackup: BackupRunner | undefined;
+
+/** Called by a page that can reach an instrument. */
+export function registerBackup(runner: BackupRunner): void {
+  runBackup = runner;
+}
+
+/**
+ * A row per kind: a name, a count, a state, and a bar.
+ *
+ * Rebuilt rather than diffed. Four rows at a few updates a second is nothing, and a renderer that
+ * patches in place is where a stale row survives a change nobody notices.
+ */
+function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
+  const label: Record<string, string> = {
+    projects: "Projects", soundbanks: "Sounds", kits: "Kits",
+  };
+  const said: Record<string, string> = {
+    pending: "Pending", reading: "In progress", done: "Complete",
+  };
+  host.replaceChildren(...stages.map((stage) => {
+    const row = document.createElement("div");
+    row.className = "stage";
+    row.dataset["state"] = stage.state;
+
+    const name = document.createElement("span");
+    name.className = "what";
+    name.textContent = label[stage.kind] ?? stage.kind;
+
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${stage.done.toLocaleString()}/${stage.total.toLocaleString()}`;
+
+    const state = document.createElement("span");
+    state.className = "state";
+    state.textContent = said[stage.state]!;
+
+    const track = document.createElement("span");
+    track.className = "track";
+    track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-label", name.textContent);
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuemax", String(stage.total));
+    track.setAttribute("aria-valuenow", String(stage.done));
+    const fill = document.createElement("span");
+    fill.className = "fill";
+    fill.style.width = `${stage.total > 0 ? Math.round((stage.done / stage.total) * 100) : 0}%`;
+    track.append(fill);
+
+    row.append(name, count, state, track);
+    return row;
+  }));
+}
+
 /* ---- the sheet ----------------------------------------------------------------------------- */
 
 let sheet: HTMLElement | undefined;
@@ -179,6 +267,41 @@ function build(): HTMLElement {
   close.addEventListener("click", () => closeSettings());
   header.append(title, close);
   panel.append(header);
+
+  const note = document.createElement("span");
+  note.className = "set-note";
+
+  /*
+   * **Hidden until something is running.** A bar sitting at zero on a panel nobody has pressed
+   * anything on reads as a thing that is stuck.
+   */
+  const bar = document.createElement("div");
+  bar.className = "set-stages";
+  bar.hidden = true;
+  panel.append(group("The instrument", [
+    row(
+      "Back up the +Drive",
+      "Read every project, sound and kit off the connected instrument into one .dnx file. Empty " +
+        "slots are skipped. Nothing on the instrument is changed.",
+      runBackup
+        ? action("Back up…", (button) => {
+            button.disabled = true;
+            bar.hidden = false;
+            bar.replaceChildren();
+            void runBackup!({
+              say: (message) => { note.textContent = message; },
+              at: (stages) => drawStages(bar, stages),
+            }).finally(() => { button.disabled = false; });
+          })
+        : (() => {
+            const disabled = action("Back up…", () => {});
+            disabled.disabled = true;
+            disabled.title = "Open the manager to reach an instrument";
+            return disabled;
+          })(),
+    ),
+  ]));
+  panel.append(bar, note);
 
   panel.append(group("This application", [
     row(
