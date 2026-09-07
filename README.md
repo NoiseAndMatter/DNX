@@ -276,4 +276,26 @@ Full detail in `docs/`. The headlines:
 
 ## Licence
 
-See `LICENSE.md`.
+**[GNU AGPL-3.0-or-later](LICENSE).** In plain terms:
+
+- **Use it for anything, including work you are paid for.** A licence covers the software, not what
+  you make with it. Sequence an album with DNX and sell the album; that is what it is for.
+- **Fork it, change it, share it.** Keep the notices, and pass on the same freedoms you got.
+- **A modified version stays open.** If you distribute one, or run one as a service other people
+  use, its source has to be available to them. DNX runs in a browser, so the second case is the
+  likely one and the AGPL is the licence that covers it. This is why every page carries a
+  **source** link: [section 13](LICENSE) requires the offer, and the interface is the only place it
+  can live for a page nobody downloads.
+
+If you want to build something closed on top of this, ask. A separate licence is available and the
+copyright is in one pair of hands, so it is a conversation rather than a legal project.
+
+### Prior art, and what was actually taken from it
+
+Nothing in `src/` is copied from another project. Two files name one anyway, because the design came
+from somewhere and saying so is cheaper than being asked:
+
+- `src/librarian/shuffle.ts` follows the *shape* of elk-herd's `Bank.Shuffle`
+  (BSD 2-Clause, Mark Lentczner) — separating a described reordering from its application.
+- `src/device/safewrite.ts` reaches the same six-step write sequence as digi-roll's
+  `safe-write.js`, independently. Its licence is unstated and its code was not read.

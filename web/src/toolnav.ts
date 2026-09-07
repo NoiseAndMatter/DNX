@@ -130,9 +130,34 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
     nav.append(link);
   });
 
+  nav.append(sourceLink());
   container.append(nav);
   wireShortcuts(current);
   slideIn();
+}
+
+/**
+ * Where to get the source, on every page.
+ *
+ * **This is a licence term, not a courtesy.** DNX is AGPL-3.0, and section 13 says that anyone
+ * interacting with the program remotely must be offered the source of the version they are using.
+ * A page served from GitHub Pages is exactly that case: nothing is ever distributed as a file, so
+ * the offer has to be in the interface or it is nowhere.
+ *
+ * It lives in the tool row rather than in a footer because three of the four pages fill the
+ * viewport and grow downwards, so a footer is a place a user reaches by accident or not at all.
+ */
+export const SOURCE_URL = "https://github.com/angellinares/DNX";
+
+function sourceLink(): HTMLAnchorElement {
+  const link = document.createElement("a");
+  link.className = "source";
+  link.href = SOURCE_URL;
+  link.textContent = "source";
+  link.rel = "noopener";
+  link.target = "_blank";
+  link.title = "DNX is free software under the AGPL-3.0. Read, fork and modify it.";
+  return link;
 }
 
 /** Navigate to a tool by position, remembering which way the page should appear to move. */
