@@ -55,10 +55,9 @@ speculative or unknown.
 | CHORD MEMORY, note length, micro timing, trig conditions | decoded on hardware |
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
 
-`docs/ROADMAP.md` tracks progress and what is next. `docs/MILESTONES.md` records when things
-actually landed. `docs/device-storage.md` documents the Digitone's +Drive API — directory listings
-with names and positions, and whole files read by path — decoded from Elektron Transfer's own
-traffic. `docs/KNOWN-ISSUES.md` tracks defects, gaps and the traps that have already cost time.
+**[`docs/README.md`](docs/README.md) says what is in `docs/` and which three to read first.** The
+format references are the reason anybody else would want this repository; the rest is method,
+tracking, and plans kept for their reasoning.
 
 ## Usage
 
