@@ -279,6 +279,9 @@ export function openSettings(from?: HTMLElement): void {
     className: "sheet",
     label: "Settings",
     ...(from === undefined ? {} : { opener: from }),
+    // Escape and a click outside close it without going through `closeSettings`, and a stale
+    // reference here makes the guard above refuse every later open.
+    onClose: () => { sheet = undefined; },
   });
   build(sheet.panel);
   installHelpMarkers(sheet.panel);

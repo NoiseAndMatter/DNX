@@ -40,6 +40,17 @@ export interface OverlayOptions {
    * first Escape should close that, not the whole thing.
    */
   isBlocked?: () => boolean;
+  /**
+   * Called once, when the overlay closes by any route.
+   *
+   * **A caller that keeps an overlay in a variable has to be told when it goes away.** Both callers
+   * here guard re-opening with `if (thing) return;`, and an overlay closed by Escape or by a click
+   * outside left that variable holding a closed overlay: help opened once per page load and then
+   * did nothing, silently, for the rest of the session. Nothing threw and nothing logged.
+   *
+   * Closing is the overlay's own event, so it is the overlay that reports it.
+   */
+  onClose?: () => void;
 }
 
 export function openOverlay(options: OverlayOptions): Overlay {
@@ -63,6 +74,7 @@ export function openOverlay(options: OverlayOptions): Overlay {
     // Focus goes back where it came from. Dropping it to the document start makes the next Tab feel
     // like a different page.
     options.opener?.focus();
+    options.onClose?.();
   };
 
   function onKey(event: KeyboardEvent): void {
