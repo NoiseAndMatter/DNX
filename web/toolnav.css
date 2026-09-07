@@ -463,3 +463,38 @@ html.write-armed::after {
   border-left: 2px solid var(--teal-dim, #2b6b74); color: var(--muted);
 }
 .help-md a { color: var(--teal); }
+
+/*
+ * The `?` that links a control to the help section explaining it.
+ *
+ * Unintrusive at rest and discoverable on approach. A permanently loud `?` on every panel is noise
+ * on a page somebody uses for hours; one that appears only on hover cannot be found by a keyboard,
+ * a touch screen, or anyone not already looking for it. So: dim but present, lifting when the
+ * pointer enters the block it belongs to.
+ */
+.helpq {
+  margin-left: .35rem;
+  width: 1.05rem; height: 1.05rem; padding: 0; line-height: 1;
+  flex: none; vertical-align: middle;
+  background: none; border: 1px solid currentColor; border-radius: 50%;
+  color: var(--muted); font: inherit; font-size: .66rem; font-weight: 600;
+  opacity: .32; cursor: help;
+  /*
+   * No transition, and no `prefers-reduced-motion` block to switch one off. `arrival.js` decides
+   * once whether this application animates and stamps nothing a stylesheet can read, so a media
+   * query here would be a second decider — the fault `web.test.ts` guards for this file, and the
+   * second time this session it has been tripped. The state change is legible without a fade.
+   */
+}
+.has-helpq:hover > .helpq { opacity: .8; }
+.helpq:hover, .helpq:focus-visible { opacity: 1; color: var(--teal); }
+.helpq:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/*
+ * Where a `?` landed you. A flat tint removed on a timer rather than an animation, for the same
+ * reason the marker has no transition: motion is decided in one place and this stylesheet is not it.
+ */
+.help-section.help-landed {
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  border-radius: 3px;
+}

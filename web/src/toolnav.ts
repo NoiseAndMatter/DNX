@@ -1,5 +1,6 @@
 import { SOURCE_URL, renderSettingsLink } from "./settings.js";
 import { renderHelpLink } from "./helpview.js";
+import { installHelpMarkers } from "./helpmarker.js";
 import { renderWriteEnable } from "./writeenable.js";
 
 /**
@@ -145,6 +146,11 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
   renderSettingsLink(nav);
   nav.append(sourceLink());
   container.append(nav);
+  /*
+   * Every page mounts the tool row, so a `?` is one attribute in the markup and never a second call
+   * somebody has to remember. A page that builds controls later calls `installHelpMarkers` again.
+   */
+  installHelpMarkers();
   wireShortcuts(current);
   slideIn();
 }

@@ -185,6 +185,7 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
 }
 
 import { action, group, row, segmented } from "./formrow.js";
+import { installHelpMarkers } from "./helpmarker.js";
 import { openOverlay, type Overlay } from "./overlay.js";
 
 /* ---- the sheet ----------------------------------------------------------------------------- */
@@ -237,7 +238,7 @@ function build(panel: HTMLElement): HTMLElement {
             return disabled;
           })(),
     ),
-  ]));
+  ], "backup/backup-contents"));
   panel.append(bar, note);
 
   panel.append(group("This application", [
@@ -257,7 +258,7 @@ function build(panel: HTMLElement): HTMLElement {
         button.disabled = true;
       }),
     ),
-  ]));
+  ], "settings/settings-rows"));
 
   const source = document.createElement("a");
   source.className = "act";
@@ -280,6 +281,7 @@ export function openSettings(from?: HTMLElement): void {
     ...(from === undefined ? {} : { opener: from }),
   });
   build(sheet.panel);
+  installHelpMarkers(sheet.panel);
   sheet.panel.querySelector<HTMLElement>("button, a")?.focus();
 }
 

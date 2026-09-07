@@ -27,6 +27,8 @@ import { openOverlay, type Overlay } from "./overlay.js";
 
 let overlay: Overlay | undefined;
 let current = HELP_PAGES[0]!.key;
+/** A section to scroll to and mark once the page is drawn. */
+let target: string | undefined;
 
 function pageFor(key: string): HelpPage {
   return HELP_PAGES.find((p) => p.key === key) ?? HELP_PAGES[0]!;
@@ -96,6 +98,7 @@ function render(): void {
   for (const section of page.sections) {
     const block = document.createElement("section");
     block.className = "help-section";
+    if (section.id) block.dataset["section"] = section.id;
 
     const heading = document.createElement("h3");
     heading.textContent = section.heading;
@@ -128,12 +131,28 @@ function render(): void {
 
   overlay.panel.replaceChildren(header, columns);
   body.scrollTop = 0;
+
+  /*
+   * **Scrolled to and marked, not just scrolled to.** A `?` that jumps you into the middle of a
+   * long page leaves you working out which paragraph answered your question. The mark fades on its
+   * own, so it says "this one" without leaving the page looking permanently annotated.
+   */
+  if (target) {
+    const found = body.querySelector<HTMLElement>(`[data-section="${target}"]`);
+    target = undefined;
+    if (found) {
+      found.scrollIntoView({ block: "start" });
+      found.classList.add("help-landed");
+      setTimeout(() => found.classList.remove("help-landed"), 1600);
+    }
+  }
 }
 
 /** Open the help, on `key` if given, on the current tool's page otherwise. */
-export function openHelp(key?: string, from?: HTMLElement): void {
+export function openHelp(key?: string, from?: HTMLElement, section?: string): void {
   if (overlay) return;
   if (key) current = pageFor(key).key;
+  target = section;
 
   overlay = openOverlay({
     className: "help-panel",

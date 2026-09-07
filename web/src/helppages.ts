@@ -40,6 +40,17 @@ export interface HelpImage {
 }
 
 export interface HelpSection {
+  /**
+   * A stable name a `?` in the interface can point at.
+   *
+   * **Explicit, never derived from the heading.** A slug would break silently the first time
+   * somebody improved a heading's wording, which is exactly the class of rot
+   * `test/docstatus.test.ts` exists for. `test/helppages.test.ts` checks that every `data-help` in
+   * the markup names one of these and that every id here is pointed at by something.
+   *
+   * Optional: a section nothing links to needs no id.
+   */
+  id?: string;
   heading: string;
   /** Markdown, rendered by `mdToHtml`. Soft-wrapped lines are folded. */
   body: string;
@@ -103,6 +114,7 @@ trigs**, so one track plays several instruments. The expander undoes that crowdi
 sound its own track on the Digitone II's sixteen.`,
     sections: [
       {
+        id: "expander-io",
         heading: "Pick a source and a destination",
         body: `**Source** is the Digitone 1 project being expanded — from a file, from a connected
 instrument, or from an instrument's +Drive.
@@ -113,6 +125,7 @@ that project survives.`,
         image: { src: "help/expander-in.png", alt: "The IN row: source and destination pickers, each offering a file, a connected instrument, or its +Drive" },
       },
       {
+        id: "expander-options",
         heading: "Choosing what to expand",
         body: `**Selected patterns** expands the ones you pick. **Whole project** takes all of them.
 
@@ -130,6 +143,7 @@ Then five options change how sounds are laid out:
         image: { src: "help/expander-options.png", alt: "The expansion options row with Selected patterns, Whole project and the five layout switches" },
       },
       {
+        id: "expander-out",
         heading: "Apply, then export or write",
         body: `**Apply** plans and performs the expansion into the destination held in this page.
 Nothing has been saved anywhere yet, and **Undo** reverses it.
@@ -147,6 +161,7 @@ connected Digitone II, which needs **WRITE** to be on.`,
 Open a project from a file, from an instrument, or from an instrument's +Drive.`,
     sections: [
       {
+        id: "grid",
         heading: "The grid",
         body: `Each slot shows its bank letter and number, the pattern's name, and what is in it —
 trig and lock counts, or *empty*.
@@ -159,6 +174,7 @@ DNX does not know. It is shown rather than hidden, and it is not edited.`,
         image: { src: "help/manager-grid.png", alt: "The pattern grid showing a bank of sixteen slots with names and trig counts" },
       },
       {
+        id: "operations",
         heading: "Move, copy, swap, rename, clear",
         body: `The operations act on the selection.
 
@@ -176,6 +192,7 @@ whole session.`,
         image: { src: "help/manager-operations.png", alt: "The Operations panel with Move, Copy, Swap, Rename and Clear, and the current selection listed beside it" },
       },
       {
+        id: "open-device",
         heading: "Opening from an instrument",
         body: `**Open device…** reads the project currently loaded on the instrument.
 
@@ -185,6 +202,7 @@ goes to the instrument's *active* project, so edits made to slot 47 would land s
         image: { src: "help/manager-drive.png", alt: "The +Drive project picker listing slots by number and name" },
       },
       {
+        id: "songs",
         heading: "Songs",
         body: `The song panel shows the 16 arrangements a project holds and the rows in each. A
 pattern moved by an operation has its song references repaired, so an arrangement still plays what
@@ -201,6 +219,7 @@ it did.`,
 grid and press *Insights*. Selecting more than one compares them.`,
     sections: [
       {
+        id: "cycle",
         heading: "How long a pattern really takes",
         body: `Tracks can have their own lengths and their own speeds, so a pattern does not
 necessarily repeat when its longest track does.
@@ -214,6 +233,7 @@ gets there.`,
         image: { src: "help/insights-cycle.png", alt: "The play time and cycle card, with tempo, window, repeat length and tracks in play" },
       },
       {
+        id: "reset",
         heading: "What the reset interrupts",
         body: `A track whose length does not divide the reset is cut mid-figure, in the same place
 every time round. It is audible as a part that goes wrong on every repeat, and invisible on the
@@ -224,6 +244,7 @@ dashed outline; one that drops notes is filled and counted.`,
         image: { src: "help/insights-reset.png", alt: "The reset ruler showing each track's complete passes and where the reset interrupts it" },
       },
       {
+        id: "dormant",
         heading: "Trigs the sequencer never reaches",
         body: `Shortening a track keeps whatever was written on the pages it drops. A 16-step track
 can hold notes on steps 33 to 45 that are in the file and silent until you lengthen it again.
@@ -236,6 +257,7 @@ Everything else on the page counts only the trigs that sound.`,
         image: { src: "help/insights-dormant.png", alt: "The card naming tracks that hold trigs past their own length, with the steps and the LEN that reaches them" },
       },
       {
+        id: "pitch",
         heading: "Voices, pitch and key",
         body: `A Digitone II sounds **16 voices** at once, and a chord trig spends one per note. The
 voice chart shows where a pattern asks for more than it has.
@@ -245,6 +267,7 @@ with over a window, and they change as the pattern moves.`,
         image: { src: "help/insights-pitch.png", alt: "The pitch content card with the per-track pitch bars and the key timeline" },
       },
       {
+        id: "compare",
         heading: "Comparing patterns",
         body: `Select several patterns and the page opens with a comparison: whether they share a
 tempo, which has the shortest cycle, which lose notes to their reset, and a bar for each showing how
@@ -264,6 +287,7 @@ The page says so when that happens rather than leaving you to check the column.`
 a preset has to be for a trig to preset-lock it; the library is where 2,048 of them live.`,
     sections: [
       {
+        id: "pool-vs-library",
         heading: "Why both are on one page",
         body: `Elektron's manual is blunt about the difference: *"the primary benefit of presets
 loaded to the pool is the possibility for them to be preset locked. This feature is not available
@@ -282,6 +306,7 @@ page**. The instrument is not written to, and the file on disk is untouched unti
 A mistake costs a reload, not a recording.`,
       },
       {
+        id: "library-search",
         heading: "Finding a preset",
         body: `**Search** filters by name. **Occupied only** hides empty slots, which is most of a
 library most of the time. **Refresh** re-reads the instrument.`,
@@ -297,6 +322,7 @@ library most of the time. **Refresh** re-reads the instrument.`,
 shows exactly what came back, including nothing.`,
     sections: [
       {
+        id: "session",
         heading: "Finding an instrument",
         body: `**Probe** identifies what is connected. **Listen** shows every message arriving,
 which is how you tell a silent device from a busy one.
@@ -307,12 +333,14 @@ protocol bug.`,
         image: { src: "help/probe-connect.png", alt: "The probe's output and input pickers with the identify and listen controls" },
       },
       {
+        id: "requests",
         heading: "Asking for one object",
         body: `Request a single pattern, kit, sound or settings object by number and read the bytes
 back. **Read project** reads a whole project by request, one object at a time.`,
         image: { src: "help/probe-request.png", alt: "The request row: what to ask for, which object number, and the reply" },
       },
       {
+        id: "drive",
         heading: "The +Drive",
         body: `List any directory and read a file by path. The +Drive holds three directories:
 
@@ -328,6 +356,7 @@ whatever was unsaved.`,
         image: { src: "help/probe-drive.png", alt: "The +Drive listing controls with a path, a starting index and a count" },
       },
       {
+        id: "writing",
         heading: "Writing",
         body: `**Write back** returns a captured record to the slot it came from. **Write to slot**
 copies a pattern into another slot. **Read → write** copies a +Drive file.
@@ -397,6 +426,7 @@ The affirmative button is marked as destructive and focus starts on **Cancel**.`
 Nothing on the instrument is changed.`,
     sections: [
       {
+        id: "backup-contents",
         heading: "What it reads",
         body: `Every occupied slot in all three of the +Drive's directories:
 
@@ -445,6 +475,7 @@ Firmware is **left out when the instrument did not answer**, rather than guessed
 this browser, and none of them is about your projects.`,
     sections: [
       {
+        id: "settings-rows",
         heading: "What is in it",
         body: `- **Back up the +Drive** — see *Backup*.
 - **Motion** — honour your system's reduced-motion setting, or overrule it.
