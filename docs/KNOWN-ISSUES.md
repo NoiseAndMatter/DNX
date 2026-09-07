@@ -35,13 +35,21 @@ A trig can carry a condition — 2:3 plays it on the second of every three passe
 same on each of them. **1,388 of the 15,258 note trigs in the corpus are conditional, across 220 of
 the 352 playing patterns**, so this is the common case rather than an edge one.
 
-The code tables at `+0x100` and `+0x180` are listed as unread in `dn2-pattern-format.md`: the
-numbering is non-linear between the two families and no capture has exercised it. So the analysis
-can say *that* trigs are conditional and cannot say *how much* longer they make the cycle.
+**The code tables are decoded** — `+0x100` was solved on hardware 2026-07-26 with two generating
+rules, `+0x180` is the FILL family, and `DNX_CAP_01` A13/A14 then measured the blocks the rules had
+only predicted. `dn2-pattern-format.md` §2.3 has both.
+
+What is still open is not the encoding but the arithmetic: **this page does not work out what a
+mixture of conditions does to the cycle**, and a percentage condition has no exact answer at all. So
+the analysis can say *which* conditions are present and cannot say *how much* longer they make it.
 
 `AnalysisTrig.conditional` is a boolean for exactly that reason, and the page reports the alignment
-figure as a **floor** wherever conditions are present. Decoding the table is a capture; it is the
-natural companion to the note-length one in `dn2-capture-plan.md` §7.
+figure as a **floor** wherever conditions are present. That stays right until the cycle arithmetic
+is written; the capture it used to wait on has happened.
+
+> **This entry claimed the tables were unread for six weeks after they were solved**, and the
+> Insights page repeated it to users. Corrected 2026-09-07. An issue nobody closes is a claim that
+> keeps being made.
 
 ## The true cycle ignored PATTERN RESET, and was up to 15x too long — FIXED 2026-09-05
 
@@ -77,7 +85,7 @@ The same field also serves two purposes: it is the pattern **length** in PER PAT
 **RESET** in PER TRACK mode, because per-track mode has no pattern length at all. Reading it as a
 reset in the wrong mode is what produced the overstatement.
 
-## A note length is stored and never decoded, and it blocks three charts — OPEN 2026-09-05
+## A note length is stored and never decoded, and it blocks three charts — FIXED 2026-09-06
 
 A DN2 trig carries a note-length byte and every track a default. **Nothing maps either to a
 duration.** `dn2-pattern-format.md` records the track default at `+0x02` as INFERRED — the name
@@ -103,6 +111,15 @@ produce a voice-count chart indistinguishable from a measured one.
 **The capture that settles it is small**: set one trig to each `LEN` value on the instrument, save,
 and diff. Worth doing in the same session as the SETUP-page capture that mono/poly and portamento
 need.
+
+> **Done, 2026-09-06.** `DNX_CAP_01` A11, A12 and A15 walked the range against the screen and
+> `dn2-pattern-format.md` §3.3 has the table: a banded encoding in sixteenths of a step, the
+> increment doubling every sixteen bytes, `127` = INF and `255` = no lock. `gateLengthKnown` is now
+> true for every Digitone II project, and all three charts draw.
+>
+> **The resistance was the right call.** A plausible curve fitted to the low end would have been
+> wrong above byte 30, where the step size starts doubling, and a voice chart drawn from it would
+> have looked exactly as convincing as this one.
 
 ## Key analysis asks whether a track has one root, not whether it has one note — OPEN 2026-09-05
 

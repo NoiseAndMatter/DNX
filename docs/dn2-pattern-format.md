@@ -69,9 +69,9 @@ Offsets relative to the start of the track record (`0x0004 + 1187 × track`).
 | Offset | Size | Field | Status |
 |---|---|---|---|
 | `+0x000` | 128 × u16be | step flag words, one per step | VERIFIED |
-| `+0x100` | 128 × u8 | trig condition, primary family (`0xFF` = none) | INFERRED |
-| `+0x180` | 128 × u8 | trig condition, second family (`0xFF` = none) | UNKNOWN |
-| `+0x200` | 128 × u8 | per-trig probability, percent (`0xFF` = none) | INFERRED |
+| **`+0x100`** | 128 × u8 | **trig condition, primary family** (`0xFF` = none) | **SOLVED** — §2.3, hardware 2026-07-26 |
+| **`+0x180`** | 128 × u8 | **trig condition, FILL family** (`0xFF` = none) | **VERIFIED** — §2.3 |
+| **`+0x200`** | 128 × u8 | **per-trig probability, percent** (`0xFF` = none) | **VERIFIED** — §2.3, hardware 2026-07-26 |
 | `+0x280` | 128 × u8 | unidentified | UNKNOWN |
 | `+0x300` | 128 × u8 | unidentified | UNKNOWN |
 | `+0x380` | 128 × u8 | unidentified | UNKNOWN |
@@ -167,7 +167,7 @@ analogue of the DN1's `track+0x380+step`, widened from 64 to 128 steps.
 None of the 419 SysEx captures exercises a sound lock, so this field rests entirely on the
 matched pairs — which is the stronger evidence anyway, since it comes with known answers.
 
-### 2.3 Trig conditions and probability — INFERRED
+### 2.3 Trig conditions and probability — SOLVED on hardware, 2026-07-26
 
 DN1 trig conditions land in **three different arrays** depending on the condition's family.
 Each affected trig writes exactly one array and leaves the other two at `0xFF`. Complete

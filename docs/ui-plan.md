@@ -142,7 +142,7 @@ makes a plan feel finished when it is not.
 | DN2 pattern move | **done** — `librarian/rearrange.ts`, both families |
 | One device-agnostic librarian over both | **done** — `librarian/device.ts` |
 | Rewriting `slotIndexOffset` on every move | **done**, and asserted by the verifier |
-| Tolerating DN2 pattern record **version 2** | **done** — detected, reported, refused |
+| Tolerating DN2 pattern record **version 2** | **superseded 2026-09-06** — version 2 is now *read*, not refused, and the factory presets project opens |
 | Song guard on the move path | **done** — DN1 checked, DN2 reports `unknown` |
 | Verify-after-write | **done** — `verifyRearrange` |
 
