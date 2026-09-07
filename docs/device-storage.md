@@ -150,18 +150,29 @@ user pointed out must exist.
 - **`/soundbanks`** — 8 banks, `A`..`H`, each listing **256** sounds
 - **`/kits`** — 8 banks, `A`..`H`, each listing **128** kits
 
-> [!warning] **This said two directories until 2026-09-07, and the root has three.**
+> [!warning] **This list said two directories until 2026-09-07. The document has had a section on
+> kits since 2026-08-06.**
 >
-> `kits` was never in it. The first listing of `/` was taken while looking for projects and sounds,
-> both were found, and nobody asked what else was there. A listing that answers the question you
-> brought to it is the easiest kind of evidence to stop reading.
+> "Kits on the +Drive — listed 2026-08-06" is six hundred lines below, with the bank geometry, the
+> 10,752-byte entry size agreeing with `DN2_KIT.kitSize`, and a read of `/kits/A/1`. None of that
+> reached this summary.
 >
-> Found while building the backup, which had to enumerate everything rather than the things already
-> known. **An exhaustive consumer is a better test of a listing than any question about it.**
+> Rediscovered on 2026-09-07 while building the backup, and written up as new. **The summary was
+> read instead of the document**, which is the third time this project has paid for a top-of-file
+> list falling behind the sections under it — the §5 settings table against §3.6 in
+> `dn2-pattern-format.md`, a solved trig-condition table reported to users as unread, and now this.
+>
+> `test/docstatus.test.ts` catches the offset form of this and would not have caught this one.
+> A summary is a cache, and nothing here invalidates it.
 
-**Sounds and kits open by index under their bank**, exactly as projects open by index:
-`/soundbanks/A/1` reads in two chunks, `/kits/A/1` in three. Measured on a Digitone II 2026-09-07,
-and `0x54` froze nothing. See `dnx-backup-format.md`.
+**Sounds and kits open by index under their bank**, exactly as projects open by index. Confirmed
+again on a Digitone II 2026-09-07 while backing one up: `/soundbanks/A/1` and `/kits/A/1` both
+opened, and `0x54` froze nothing.
+
+> **A kit reads at two sizes, and the difference is the form.** 2026-08-06 recorded `/kits/A/1` at
+> **10,795 bytes**; the 2026-09-07 read of the same path returned **3,481**. The second asked for
+> `STORED_FORM`, the first did not. Same distinction as a project's 12,889,647 raw against ~90 KB
+> stored, and worth keeping in mind before either number is compared with anything.
 
 ### Unidentified
 
