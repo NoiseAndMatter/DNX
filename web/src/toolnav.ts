@@ -1,3 +1,5 @@
+import { renderWriteEnable } from "./writeenable.js";
+
 /**
  * The tool titles, which are also the navigation between tools.
  *
@@ -130,6 +132,13 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
     nav.append(link);
   });
 
+  /*
+   * **Before the source link and after the tools**, because it is the only control in this row that
+   * changes what the application will do. It is on every page for the same reason the row is: a
+   * person must be able to see whether writing is armed without remembering which tool they armed
+   * it in.
+   */
+  renderWriteEnable(nav);
   nav.append(sourceLink());
   container.append(nav);
   wireShortcuts(current);

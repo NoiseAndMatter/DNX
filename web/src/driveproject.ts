@@ -69,6 +69,7 @@ import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
 import { type BackupHook, safeWriteFile } from "../../src/device/safewrite.js";
 import { confirmFileWrite } from "./safewriteui.js";
+import { requireWriteEnabled } from "./writeenable.js";
 import { STORED_FORM } from "../../src/device/storage.js";
 import { readStoredFile } from "../../src/device/storagesession.js";
 
@@ -150,6 +151,9 @@ export async function writeProjectToDrive(
   const target = await entryForSlot(device, slot);
   const transport = apiTransport(device);
 
+  // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
+  // sent, so a control the page forgot to gate still cannot write. See `writeenable.ts`.
+  requireWriteEnabled();
   const result = await safeWriteFile({
     transport,
     path: projectPath(slot),
