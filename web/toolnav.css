@@ -332,3 +332,33 @@ html.write-armed::after {
   letter-spacing: .02em;
   color: var(--fg);
 }
+
+/*
+ * The backup, a row per kind.
+ *
+ * One bar cannot say what a long backup is doing: 1,835 sounds and 18 projects share a total, so a
+ * bar at 40% is somewhere in the sounds and says nothing about whether the projects are safe.
+ */
+.set-stages { margin: .2rem 0 .5rem; display: grid; gap: .28rem; }
+.set-stages .stage {
+  display: grid;
+  grid-template-columns: 5.2rem 5.2rem 5.6rem 1fr;
+  align-items: center;
+  gap: .5rem;
+  font-size: .78rem;
+}
+.set-stages .what { color: var(--fg); }
+.set-stages .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.set-stages .state { color: var(--muted); }
+.set-stages .track {
+  height: .5rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.set-stages .track .fill { display: block; height: 100%; background: var(--teal-dim, #2b6b74); }
+.set-stages .stage[data-state="reading"] .state { color: var(--teal); }
+.set-stages .stage[data-state="done"] .state { color: var(--fg); opacity: .75; }
+.set-stages .stage[data-state="done"] .track .fill { background: var(--teal); }
+.set-stages .stage[data-state="pending"] { opacity: .55; }

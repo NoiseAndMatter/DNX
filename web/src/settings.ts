@@ -112,12 +112,20 @@ export interface BackupReport {
   /** What is happening, in words. */
   say(message: string): void;
   /**
-   * How far through, or `undefined` while the total is unknown.
+   * How far through, as a row per kind.
    *
-   * Two arguments rather than a fraction, because the bar says "412 of 1,869" as well as filling,
-   * and a fraction cannot be turned back into those.
+   * **One bar cannot say what a long backup is doing.** 1,835 sounds and 18 projects share a total,
+   * so a bar at 40% is somewhere in the sounds and gives no clue whether the projects are safely
+   * read. A row each says that at a glance, and says which kinds have not started.
    */
-  at(done: number, total: number): void;
+  at(stages: readonly ProgressStage[]): void;
+}
+
+export interface ProgressStage {
+  kind: string;
+  done: number;
+  total: number;
+  state: "pending" | "reading" | "done";
 }
 
 export type BackupRunner = (report: BackupReport) => Promise<void>;
@@ -127,6 +135,53 @@ let runBackup: BackupRunner | undefined;
 /** Called by a page that can reach an instrument. */
 export function registerBackup(runner: BackupRunner): void {
   runBackup = runner;
+}
+
+/**
+ * A row per kind: a name, a count, a state, and a bar.
+ *
+ * Rebuilt rather than diffed. Four rows at a few updates a second is nothing, and a renderer that
+ * patches in place is where a stale row survives a change nobody notices.
+ */
+function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
+  const label: Record<string, string> = {
+    projects: "Projects", soundbanks: "Sounds", kits: "Kits",
+  };
+  const said: Record<string, string> = {
+    pending: "Pending", reading: "In progress", done: "Complete",
+  };
+  host.replaceChildren(...stages.map((stage) => {
+    const row = document.createElement("div");
+    row.className = "stage";
+    row.dataset["state"] = stage.state;
+
+    const name = document.createElement("span");
+    name.className = "what";
+    name.textContent = label[stage.kind] ?? stage.kind;
+
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = `${stage.done.toLocaleString()}/${stage.total.toLocaleString()}`;
+
+    const state = document.createElement("span");
+    state.className = "state";
+    state.textContent = said[stage.state]!;
+
+    const track = document.createElement("span");
+    track.className = "track";
+    track.setAttribute("role", "progressbar");
+    track.setAttribute("aria-label", name.textContent);
+    track.setAttribute("aria-valuemin", "0");
+    track.setAttribute("aria-valuemax", String(stage.total));
+    track.setAttribute("aria-valuenow", String(stage.done));
+    const fill = document.createElement("span");
+    fill.className = "fill";
+    fill.style.width = `${stage.total > 0 ? Math.round((stage.done / stage.total) * 100) : 0}%`;
+    track.append(fill);
+
+    row.append(name, count, state, track);
+    return row;
+  }));
 }
 
 /* ---- the sheet ----------------------------------------------------------------------------- */
@@ -221,15 +276,8 @@ function build(): HTMLElement {
    * anything on reads as a thing that is stuck.
    */
   const bar = document.createElement("div");
-  bar.className = "set-progress";
+  bar.className = "set-stages";
   bar.hidden = true;
-  bar.setAttribute("role", "progressbar");
-  bar.setAttribute("aria-valuemin", "0");
-  const fill = document.createElement("div");
-  fill.className = "fill";
-  const count = document.createElement("span");
-  count.className = "count";
-  bar.append(fill, count);
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
@@ -239,26 +287,11 @@ function build(): HTMLElement {
         ? action("Back up…", (button) => {
             button.disabled = true;
             bar.hidden = false;
-            fill.style.width = "0%";
-            count.textContent = "";
+            bar.replaceChildren();
             void runBackup!({
               say: (message) => { note.textContent = message; },
-              at: (done, total) => {
-                /*
-                 * The bar and the count say the same thing two ways. A bar alone cannot tell you
-                 * that 1,869 items is a lot and 18 is not, and a count alone is slow to read at a
-                 * glance. Both are cheap.
-                 */
-                const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-                fill.style.width = `${pct}%`;
-                count.textContent = total > 0 ? `${done.toLocaleString()} of ${total.toLocaleString()}` : "";
-                bar.setAttribute("aria-valuenow", String(done));
-                bar.setAttribute("aria-valuemax", String(total));
-              },
-            }).finally(() => {
-              button.disabled = false;
-              fill.style.width = "100%";
-            });
+              at: (stages) => drawStages(bar, stages),
+            }).finally(() => { button.disabled = false; });
           })
         : (() => {
             const disabled = action("Back up…", () => {});

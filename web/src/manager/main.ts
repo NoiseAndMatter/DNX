@@ -149,8 +149,10 @@ registerBackup(async (report) => {
 
     const { backup, failed } = await backupDevice(connected, {
       onList: () => report.say("Listing the +Drive…"),
-      onProgress: ({ done, total, name, kind, bytes }) => {
-        report.at(done, total);
+      onProgress: ({ done, total, name, kind, bytes, stages }) => {
+        report.at(stages);
+        void done;
+        void total;
         report.say(
           name
             ? `${kind === "projects" ? "Project" : kind === "kits" ? "Kit" : "Sound"} ${name}` +
