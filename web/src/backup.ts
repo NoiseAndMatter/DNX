@@ -70,6 +70,7 @@ import { listRequest, parseListing } from "../../src/device/storage.js";
 import type { ApiTransport } from "../../src/device/storagesession.js";
 import { apiTransport, listDeviceProjects, type ConnectedDevice } from "./devicesource.js";
 import { IDS_FOR, reserveMessageIds } from "./messageids.js";
+import { extensionsFor } from "./objectextensions.js";
 import {
   DNX_VERSION, projectFile, type BackupEntry, type DeviceBackup,
 } from "./dnxfile.js";
@@ -156,25 +157,41 @@ async function listNamed(
 }
 
 /**
+ * The directories this +Drive actually has, by name.
+ *
+ * A Digitone II root holds `projects`, `soundbanks` and `kits`. A **Digitone 1 holds the first two
+ * and answers `Invalid path` for `/kits`** — measured 2026-09-07, where it took the whole backup
+ * down with it. Every project and every sound had already been listed; the run ended with nothing
+ * saved because one directory the instrument never had was asked for anyway.
+ *
+ * Asking the root costs one message, and it is also right for a firmware that adds a fourth
+ * directory. Deciding from the product id would not be.
+ */
+async function driveKinds(transport: ApiTransport): Promise<Set<string>> {
+  return new Set((await listNamed(transport, "/")).map((entry) => entry.name));
+}
+
+/**
  * Everything on the +Drive worth reading, in the order it will be read.
  *
  * Projects first, because they are the thing somebody is most afraid of losing and a backup that
  * is interrupted should have them. Sounds and kits follow.
  */
 async function everything(
-  transport: ApiTransport, kinds: readonly string[],
+  transport: ApiTransport, kinds: readonly string[], sound: string,
 ): Promise<{ items: DriveItem[]; contents: string[] }> {
   const items: DriveItem[] = [];
   const contents: string[] = [];
+  const present = await driveKinds(transport);
 
-  if (kinds.includes("soundbanks")) {
+  if (kinds.includes("soundbanks") && present.has("soundbanks")) {
     let any = false;
     for (const bank of BANKS) {
       for (const entry of await listNamed(transport, `/soundbanks/${bank}`)) {
         any = true;
         items.push({
           path: `/soundbanks/${bank}/${entry.index}`,
-          file: `soundbanks/${bank}/${String(entry.index).padStart(3, "0")} ${safeLeaf(entry.name)}.dn2snd`,
+          file: `soundbanks/${bank}/${String(entry.index).padStart(3, "0")} ${safeLeaf(entry.name)}${sound}`,
           name: entry.name,
           slot: entry.index,
           kind: "soundbanks",
@@ -184,13 +201,14 @@ async function everything(
     if (any) contents.push("soundbanks");
   }
 
-  if (kinds.includes("kits")) {
+  if (kinds.includes("kits") && present.has("kits")) {
     let any = false;
     for (const bank of BANKS) {
       for (const entry of await listNamed(transport, `/kits/${bank}`)) {
         any = true;
         items.push({
           path: `/kits/${bank}/${entry.index}`,
+          // Only a Digitone II has kits, so this one extension is not the instrument's to choose.
           file: `kits/${bank}/${String(entry.index).padStart(3, "0")} ${safeLeaf(entry.name)}.dn2kit`,
           name: entry.name,
           slot: entry.index,
@@ -221,6 +239,9 @@ export async function backupDevice(
 ): Promise<{ backup: DeviceBackup; failed: { slot: number; name: string; why: string }[] }> {
   const kinds = options.kinds ?? ["projects", "soundbanks", "kits"];
   const transport = apiTransport(device);
+  // A backup's file names are the only thing saying which instrument the bytes came off once the
+  // zip is open somewhere else.
+  const extension = extensionsFor(device.productId);
 
   /*
    * **Everything is listed before anything is read.** A progress bar needs a denominator, and one
@@ -247,7 +268,7 @@ export async function backupDevice(
     for (const project of chosen) {
       items.push({
         path: projectPath(project.index),
-        file: safeName(project.index, project.name, ".dn2prj"),
+        file: safeName(project.index, project.name, extension.project),
         name: project.name,
         slot: project.index,
         kind: "projects",
@@ -255,7 +276,7 @@ export async function backupDevice(
     }
   }
 
-  const rest = await everything(transport, kinds);
+  const rest = await everything(transport, kinds, extension.sound);
   items.push(...rest.items);
   contents.push(...rest.contents);
 
@@ -312,10 +333,10 @@ export async function backupDevice(
       });
 
       /*
-       * **A project is wrapped into a real `.dn2prj`; a sound and a kit are already objects.**
+       * **A project is wrapped into a real project file; a sound and a kit are already objects.**
        *
-       * The device sends a project as a payload, and a `.dn2prj` is that payload inside a
-       * container. The first backup written here saved payloads under a `.dn2prj` name and not one
+       * The device sends a project as a payload, and a `.dn2prj` — or a `.dnprj` off a Digitone 1 —
+       * is that payload inside a container. The first backup written here saved payloads under a `.dn2prj` name and not one
        * of the eighteen files parsed. Sounds and kits arrive carrying the Elektron object magic
        * already, so they are written through untouched.
        *
