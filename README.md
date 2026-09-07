@@ -36,7 +36,6 @@ speculative or unknown.
 | Compact per-pattern allocation | done, opt-in (`--compact`) |
 | Aggregate sounds by name onto one track | done, opt-in (`--aggregate`) |
 | Hardware test sheet generator | done (`npm run sheet`) |
-| Compact per-pattern allocation | done, opt-in |
 | Remaining field transfers | in progress, see `docs/KNOWN-ISSUES.md` |
 | Web UI | first version — load, plan, export, all in the browser |
 | Session model with undo/redo | done |
@@ -51,6 +50,9 @@ speculative or unknown.
 | WebMIDI — copy a pattern into another slot on the device | **works, verified on a Digitone II** — one byte differs, and it is the slot index |
 | Manager reads and writes a **live device** | done, **hardware-verified on a Digitone II** — no file in the loop |
 | Expand from one live device onto another | planner done, **two-device UI next** — see ROADMAP §4b-i |
+| Insights — cross-pattern analysis in the manager | done — polymeter, reset, voice pressure, key fit |
+| Storage version 2 projects (pre-update firmware) | **readable**, including the factory presets project |
+| CHORD MEMORY, note length, micro timing, trig conditions | decoded on hardware |
 | Two devices at once, editors, oscilloscope | planned in detail, see ROADMAP §4 |
 
 `docs/ROADMAP.md` tracks progress and what is next. `docs/MILESTONES.md` records when things
