@@ -202,6 +202,23 @@ goes to the instrument's *active* project, so edits made to slot 47 would land s
         image: { src: "help/manager-drive.png", alt: "The +Drive project picker listing slots by number and name" },
       },
       {
+        id: "open-backup",
+        heading: "Opening a project out of a backup",
+        body: `**Open a backup…** reads a \`.dnx\` and shows what is inside it: the instrument it came
+off, when it was taken, and every project, sound and kit in it. Pick a project and it opens here
+like any other, with the grid, undo and *Export* working on it as usual.
+
+**Nothing is written to an instrument by opening a backup.** The file is read in the browser and
+what comes out of it is an ordinary project.
+
+Sounds and kits are counted and named but cannot be placed yet — a backup of a Digitone II holds
+around 1,835 sounds, and listing them to choose one project would bury it.
+
+If part of the backup is damaged, the missing entries are **named at the top and the rest still
+opens**. A backup that lost one slot is still worth the other 1,868.`,
+        image: { src: "help/backup-picker.png", alt: "The contents of a backup: the instrument and date it was taken, its projects listed by slot, and its sounds and kits counted" },
+      },
+      {
         id: "songs",
         heading: "Songs",
         body: `The song panel shows the 16 arrangements a project holds and the rows in each. A
