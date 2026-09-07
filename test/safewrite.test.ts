@@ -15,7 +15,8 @@
 
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { buildMessage, parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
@@ -738,4 +739,31 @@ test("the two bytes the instrument writes for itself are not reported as corrupt
   const found = compareStored(sent, read);
   assert.equal(found.length, 1);
   assert.equal(found[0]!.at, 40, "a real difference is still named, and named first");
+});
+
+test("every read of a file the writer touches asks for the stored form", () => {
+  /*
+   * **A fix applied to one of two calls is half a fix.**
+   *
+   * `safeWriteFile` reads a file twice: once to back the destination up, once to verify the write.
+   * Both compare against `bytes`, which `refuseRawForm` guarantees is the stored payload. The
+   * backup read was corrected on 2026-08-15 and the verify read was not, so `verified` was false
+   * for every file write that had ever run — a 10,795-byte image compared against a 3,481-byte
+   * payload, returning `compareStored`'s length mismatch.
+   *
+   * Nothing failed loudly. A tool that reports a write as unverified reads as a cautious tool, and
+   * the note explaining the first fix sat forty lines above the call that still needed it.
+   *
+   * Read out of the source because both calls need a device. The property is that no
+   * `readStoredFile` inside this module defaults its form.
+   */
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "device", "safewrite.ts"), "utf8");
+
+  const calls = [...source.matchAll(/readStoredFile\(([\s\S]*?)\n  \}\);/g)];
+  assert.ok(calls.length >= 2, `found ${calls.length} readStoredFile calls; expected the backup and the verify`);
+  for (const [index, call] of calls.entries()) {
+    assert.match(call[0]!, /form:\s*STORED_FORM/,
+      `readStoredFile call ${index + 1} defaults to the raw image and compares it against a stored payload`);
+  }
 });
