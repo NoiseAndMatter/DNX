@@ -219,7 +219,7 @@ function build(panel: HTMLElement): HTMLElement {
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
-      "Read every project, sound and kit off the connected instrument into one .dnx file. Empty " +
+      "Read every project, sound and kit the connected instrument holds into one .dnx file. Empty " +
         "slots are skipped. Nothing on the instrument is changed.",
       runBackup
         ? action("Back up…", (button) => {
@@ -279,6 +279,9 @@ export function openSettings(from?: HTMLElement): void {
     className: "sheet",
     label: "Settings",
     ...(from === undefined ? {} : { opener: from }),
+    // Escape and a click outside close it without going through `closeSettings`, and a stale
+    // reference here makes the guard above refuse every later open.
+    onClose: () => { sheet = undefined; },
   });
   build(sheet.panel);
   installHelpMarkers(sheet.panel);

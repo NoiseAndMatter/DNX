@@ -48,6 +48,11 @@ const TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  // The help pages' screenshots. A browser sniffs an `application/octet-stream`
+  // and draws it anyway, so a wrong type here is invisible until something stricter
+  // than a browser reads it.
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
 };
 
 /** The path the page asks for its template on. Not a file inside `web/`. */
