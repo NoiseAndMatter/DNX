@@ -249,3 +249,59 @@ html.write-armed::after {
   pointer-events: none;
   z-index: 9998;
 }
+
+/* The settings link. Styled as the source link is, since neither is navigation between tools. */
+.toolnav .settingslink {
+  font: inherit;
+  font-size: .85em;
+  margin-left: 1.1rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  opacity: .55;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.toolnav .settingslink:hover,
+.toolnav .settingslink:focus-visible { opacity: 1; }
+
+/* ---- the settings sheet ------------------------------------------------------------------ */
+.sheet-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 90; }
+.sheet {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(30rem, 92vw); z-index: 91;
+  background: var(--panel); border-left: 1px solid var(--line);
+  padding: 1rem 1.2rem 2.5rem; overflow: auto; box-shadow: -18px 0 40px rgba(0, 0, 0, .45);
+}
+.sheet header { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .7rem; }
+.sheet header h3 { margin: 0; font-size: .95rem; }
+.sheet .sheet-close {
+  margin-left: auto; font: inherit; font-size: .82em; padding: .18rem .6rem;
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 3px; cursor: pointer;
+}
+.set-group { border-top: 1px solid var(--line); padding: .8rem 0 .2rem; }
+.set-group:first-of-type { border-top: 0; }
+.set-group > h4 {
+  margin: 0 0 .5rem; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+.set-row { display: flex; align-items: flex-start; gap: .9rem; padding: .42rem 0; }
+.set-row .label { flex: 1; min-width: 0; }
+.set-row .label b { display: block; font-weight: 500; }
+.set-row .label span { color: var(--muted); font-size: .84em; }
+.set-row .control { flex: 0 0 auto; padding-top: .1rem; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.seg button {
+  font: inherit; font-size: .84em; padding: .2rem .55rem; cursor: pointer;
+  background: transparent; color: var(--muted); border: 0; border-left: 1px solid var(--line);
+}
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--fg); }
+.sheet .act {
+  display: inline-block; font: inherit; font-size: .86em; padding: .25rem .7rem; border-radius: 3px;
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); cursor: pointer;
+  text-decoration: none;
+}
+.sheet .act:disabled { opacity: .5; cursor: default; }
