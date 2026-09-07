@@ -402,8 +402,11 @@ quiet, which is exactly when you want the copy.`,
       },
       {
         heading: "What a confirmation tells you",
-        body: `A confirmation names the slots, the instrument, and what is in them now — not just a
-count. A write to an occupied slot says which project it is replacing.
+        body: `A confirmation names the file, its size and the exact path it is going to, and it says
+what is at that path now and when it looked. A count of slots would tell you none of that.
+
+**An occupied +Drive slot is refused, not overwritten**, so the picker offers only free ones and the
+confirmation says so.
 
 The affirmative button is marked as destructive and focus starts on **Cancel**.`,
         image: { src: "help/safeguards-confirm.png", alt: "A write confirmation naming the instrument, the destination slots and what they currently hold" },
@@ -428,19 +431,22 @@ Nothing on the instrument is changed.`,
       {
         id: "backup-contents",
         heading: "What it reads",
-        body: `Every occupied slot in all three of the +Drive's directories:
+        body: `Every occupied slot in every directory the +Drive has:
 
-| | |
-|---|---|
-| projects | up to 128 |
-| sounds | 8 banks of 256 |
-| kits | 8 banks of 128 |
+| | | |
+|---|---|---|
+| projects | up to 128 | both instruments |
+| sounds | 8 banks of 256 | both instruments |
+| kits | 8 banks of 128 | Digitone II only |
 
-Empty slots are skipped. On the instrument this was built against that is 18 projects, 1,835 sounds
-and 16 kits — **1,869 items, 1.7 MB, about a minute.**
+**The directories are read off the instrument, not assumed.** A Digitone 1 has no \`/kits\`, and a
+backup that asked for one anyway would end with nothing saved.
+
+Empty slots are skipped. A Digitone II with 18 projects, 1,835 sounds and 16 kits is **1,869 items,
+1.7 MB, about a minute**; a Digitone 1 with 55 projects and 1,364 sounds is **1,419 items, 1.0 MB.**
 
 Projects are read first, so a backup interrupted halfway holds the thing you would miss most.`,
-        image: { src: "help/backup-progress.png", alt: "The backup running, with a row per kind showing counts and progress for projects, sounds and kits" },
+        image: { src: "help/backup-progress.png", alt: "The backup running, with a row for each kind of thing showing how many of its slots have been read" },
       },
       {
         heading: "A .dnx is a zip",
@@ -453,6 +459,10 @@ projects/001 PRESETS.dn2prj
 soundbanks/A/001 HIDDEN TEARS.dn2snd
 kits/A/001 SOLID.dn2kit
 \`\`\`
+
+That is a Digitone II. A Digitone 1 backup holds \`.dnprj\` and \`.dnsnd\` files and no \`kits\`
+directory, because **the names say which instrument the bytes came off** long after the backup was
+taken.
 
 **A backup only DNX can read would be a way of losing music slowly.** This one degrades into a
 folder of ordinary files the moment you need it to.`,

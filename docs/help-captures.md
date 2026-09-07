@@ -11,8 +11,13 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-09-07
 
-**0 of the 21 referenced PNGs exist.** 9 pages, 31 sections, 21 screenshot slots. Counted from the
+**20 of the 21 referenced PNGs exist.** 9 pages, 31 sections, 21 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
+
+The missing one is `library-two-panes`, and it needs a **Digitone II connected**. The library's
+right-hand pane is the instrument's +Drive, and the whole point of that section is the two panes
+holding something at the same time; disconnected it is a picture of an empty box. It renders as a
+labelled placeholder until then.
 
 `test/helppages.test.ts` fails when a referenced file has no row here, so this table cannot fall
 behind the pages.
@@ -25,9 +30,10 @@ Serve the app with `npm run web` and capture against **http://127.0.0.1:8173**.
 - **Crop tight to the panel the section describes.** The two-column help renders each image at
   roughly 40% of the content column, so a full-window screenshot arrives unreadable.
 - **Target ~1200px wide** before cropping.
-- **Open a real project first.** `00_Examples/02_DN2/01_Projects/MORNING_JAM.dn2prj` has per-track
-  lengths, a reset that cuts, and dormant trigs, so the Insights shots have something to show. An
-  empty grid teaches nothing.
+- **Open the factory presets, not a personal project.** `017 PRESETS.dn2prj` is content every owner
+  already has, so a screenshot of it publishes nobody's music. It also has what the Insights shots
+  need: A3 holds dormant trigs on two tracks, and **B2 · SAL-GÖTÜ** is the one pattern in the file
+  whose RESET cuts a track mid-figure (22 against 64, 9% reachable). An empty grid teaches nothing.
 - **Connect an instrument** for the probe, +Drive and backup shots. Those states cannot be faked and
   a mocked one would be a lie with a picture attached.
 
@@ -41,27 +47,53 @@ closing step. Re-open any suspect image before committing it.
 
 | file | page | section | status |
 |---|---|---|---|
-| `overview-toolrow.png` | Overview | Four tools, always in the same order | to capture |
-| `expander-in.png` | Expander | Pick a source and a destination | to capture |
-| `expander-options.png` | Expander | Choosing what to expand | to capture |
-| `manager-grid.png` | Manager | The grid | to capture |
-| `manager-operations.png` | Manager | Move, copy, swap, rename, clear | to capture |
-| `manager-drive.png` | Manager | Opening from an instrument | to capture |
-| `manager-song.png` | Manager | Songs | to capture |
-| `insights-cycle.png` | Insights | How long a pattern really takes | to capture |
-| `insights-reset.png` | Insights | What the reset interrupts | to capture |
-| `insights-dormant.png` | Insights | Trigs the sequencer never reaches | to capture |
-| `insights-pitch.png` | Insights | Voices, pitch and key | to capture |
-| `insights-compare.png` | Insights | Comparing patterns | to capture |
-| `library-two-panes.png` | Library | Why both are on one page | to capture |
-| `library-search.png` | Library | Finding a preset | to capture |
-| `probe-connect.png` | Probe | Finding an instrument | to capture |
-| `probe-request.png` | Probe | Asking for one object | to capture |
-| `probe-drive.png` | Probe | The +Drive | to capture |
-| `safeguards-write-armed.png` | Safeguards | Nothing is written until you arm it | to capture |
-| `safeguards-confirm.png` | Safeguards | What a confirmation tells you | to capture |
-| `backup-progress.png` | Backup | What it reads | to capture |
-| `settings-sheet.png` | Settings | What is in it | to capture |
+| `overview-toolrow.png` | Overview | Four tools, always in the same order | captured |
+| `expander-in.png` | Expander | Pick a source and a destination | captured |
+| `expander-options.png` | Expander | Choosing what to expand | captured |
+| `manager-grid.png` | Manager | The grid | captured |
+| `manager-operations.png` | Manager | Move, copy, swap, rename, clear | captured |
+| `manager-drive.png` | Manager | Opening from an instrument | captured |
+| `manager-song.png` | Manager | Songs | captured |
+| `insights-cycle.png` | Insights | How long a pattern really takes | captured |
+| `insights-reset.png` | Insights | What the reset interrupts | captured |
+| `insights-dormant.png` | Insights | Trigs the sequencer never reaches | captured |
+| `insights-pitch.png` | Insights | Voices, pitch and key | captured |
+| `insights-compare.png` | Insights | Comparing patterns | captured |
+| `library-two-panes.png` | Library | Why both are on one page | **waiting on a Digitone II** |
+| `library-search.png` | Library | Finding a preset | captured (controls only) |
+| `probe-connect.png` | Probe | Finding an instrument | captured |
+| `probe-request.png` | Probe | Asking for one object | captured |
+| `probe-drive.png` | Probe | The +Drive | captured |
+| `safeguards-write-armed.png` | Safeguards | Nothing is written until you arm it | captured |
+| `safeguards-confirm.png` | Safeguards | What a confirmation tells you | captured |
+| `backup-progress.png` | Backup | What it reads | captured |
+| `settings-sheet.png` | Settings | What is in it | captured |
+
+## How the crops were taken
+
+Chrome's element screenshot crops to one node, and the node has to be addressable. So:
+
+1. Put `role="region"` and `aria-label="capture"` on the element wanted. It then appears in the
+   accessibility snapshot with a uid, and a screenshot of that uid is the crop.
+2. **Do not clone the element.** A clone loses a canvas's bitmap and every listener on it, so a
+   cloned Insights card renders its charts blank.
+3. A panel taller than the viewport needs its sticky heading set to `position: static` first, or the
+   heading is clipped out of the top of its own picture.
+4. Hide `#tip` before shooting. A tooltip left over from the last mouse position lands in the image
+   and reads as part of the UI.
+
+A `?` marker in shot is wanted, not a mistake: it is how a reader finds their way back to the page
+they are looking at.
+
+### One shot was taken of a row the page had hidden
+
+`library-search.png` is the library's filter row, which stays `hidden` until an instrument is
+connected. It was **unhidden and cropped to**, with no device attached and nothing invented: the
+search box is empty and the switch is off, exactly as they arrive. What the shot leaves out is the
+table underneath, which is why it is marked *controls only*.
+
+That is the limit of what is acceptable here. `library-two-panes` is the same pane with content in
+it, and there is no honest way to photograph content that no instrument has sent.
 
 ## Sections with no screenshot, on purpose
 

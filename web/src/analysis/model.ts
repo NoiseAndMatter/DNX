@@ -1073,8 +1073,10 @@ export function trackWindows(
   keyAt?: (index: number) => KeyFit | undefined,
 ): TrackRow[] {
   const rows: TrackRow[] = tracks.map((track) => ({ track, cells: [] }));
-  let w = 0;
-  for (let at = 0; at + win <= total; at += hop, w++) {
+  for (let at = 0; at + win <= total; at += hop) {
+    // The window's index, derived rather than carried alongside `at`. A second counter
+    // incremented in the loop header is the shape `test/commaoperator.test.ts` keeps out.
+    const w = at / hop;
     for (const row of rows) {
       const counts = new Map<number, number>();
       const stride = row.track.length >= 1 ? masterPeriod(row.track) : total;
