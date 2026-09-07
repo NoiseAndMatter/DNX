@@ -807,6 +807,28 @@ between a stored file and a pool or kit slot.
 
 **Confirmed**: `/kits/A/1` read **10,795 bytes**. The 43-byte wrapper is constant across both.
 
+### The instrument stamps **two** bytes, not one — 2026-09-07
+
+`/soundbanks/A/1` written into `/soundbanks/H/129` on a Digitone II. Committed, and the device's own
+re-listing showed slot 129 named. The round trip differed in **two bytes of 334**:
+
+| offset | sent | read back | |
+|---|---|---|---|
+| `+23` | `0` | `7` | bank **H**, zero-based |
+| `+24` | `0` | `128` | slot **129**, zero-based |
+
+**The kit experiment could not have found this.** It wrote `/kits/A/1` into `/kits/A/38` — one bank,
+so the bank byte never moved and `+24` looked like the only stamp. A test that varies one coordinate
+says nothing about the other, and this one had looked complete for a month.
+
+`compareStored` reported it as a single unexpected mismatch, which is the verifier doing its job:
+excusing `+24` because it was known, naming `+23` because it was not. Both are excused now, and
+anything else still reads as the device failing to store what was sent.
+
+> **This also settles the DN2 question.** The `0x57`/`0x58`/`0x59` path was recorded as proven on a
+> Digitone 1 in 2026-08-04. It is proven on a Digitone II for **projects** (2026-08-14, slots 13 and
+> 14), for **kits** (`/kits/A/1` into `/kits/A/38`), and now for **sounds**.
+
 ### A Digitone II preset bank has never been listed — OPEN, found 2026-08-07
 
 Note which device each row of that table came from. **The preset row is a Digitone 1** — the
