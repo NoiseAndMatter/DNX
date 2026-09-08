@@ -28,6 +28,19 @@
  * the first is that every overwrite copies the destination to your machine before it starts, and
  * the confirmation names what is at the path according to a listing taken seconds earlier.
  *
+ * **A serial number exists; it is just not on this road.** Digitone II OS 1.10E carries a factory
+ * service protocol whose string pool holds `#READ_SERIAL`, a `%.14s` serial, `SERIAL NUMBER CRC
+ * ERROR` and `NO SERIAL NUMBER` — found by reading the firmware, in the sibling `dn_firmware`
+ * project, 2026-09-08. **Nothing has been sent to any instrument to confirm it**: the transport,
+ * the framing and whether it answers on a normal boot are all unknown, and the same command table
+ * holds `#WRITE_SERIAL` and `#MMC_RECONFIGURE`, which write persistent state a unit carries for
+ * good.
+ *
+ * So the sentence above is exact as scoped — *nothing unique in what the dump and file protocols
+ * answer* — and it is not the same as "a Digitone has no serial". If that interface is ever
+ * understood and shown to be safe to ask, this comparison has an obvious upgrade and the test
+ * below is written to fail when somebody makes it.
+ *
  * ## Two numbering systems, never compared
  *
  * `productId` here is the **dump-protocol** id — 13 for a Digitone 1, 21 for a Digitone II — which

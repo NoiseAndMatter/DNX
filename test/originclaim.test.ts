@@ -63,10 +63,12 @@ test("a matching product id with a different name is still refused", () => {
 test("two instruments of the same model cannot be told apart, and the claim is granted", () => {
   /*
    * **A stated limit, not an oversight.** A Digitone answers its product id, its name and its
-   * firmware, and nothing unique — no serial in `0x01` or `0x02`. So a second Digitone II passes
-   * this check, and the protection that still holds is the one that does not depend on identity:
-   * every overwrite copies the destination to your machine first, and the confirmation names what
-   * the listing says is there now.
+   * firmware, and nothing unique — no serial in `0x01` or `0x02`. The firmware does hold a
+   * `#READ_SERIAL` service command, on an interface nobody has spoken to and which sits beside
+   * commands that write persistent state, so it is not a serial this can ask for today. So a
+   * second Digitone II passes this check, and the protection that still holds is the one that does
+   * not depend on identity: every overwrite copies the destination to your machine first, and the
+   * confirmation names what the listing says is there now.
    *
    * The test exists so that anybody who later adds a serial number to this comparison finds a
    * failing assertion and the reason next to it.
