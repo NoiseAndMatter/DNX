@@ -408,6 +408,14 @@ NO SERIAL NUMBER
 **That is strings in a firmware image. Nothing has been sent to any instrument**, and the transport,
 the framing, the terminator and whether it answers on a normal boot are all unknown.
 
+**How far the serial claim actually reaches: one link.** The strings exist. That is all. The only
+command whose code has been disassembled is `#HELLO` — `strcmp` against `0x402020ad`, then a reply
+with `HOW DO YOU DO?` — and the chain's stated ends are `#HELLO` and `#STATUS`, which does not say
+`#READ_SERIAL` is in it. No handler for it has been read, nothing shows where a serial is stored or
+that any unit carries one, and `%.14s` is associated with it by *adjacency in a string pool*: the
+order a compiler emitted literals in, not a binding. Treat "the Digitone has a 14-character serial"
+as unevidenced until a handler is disassembled.
+
 ### Why it is not being probed
 
 The same table holds `#WRITE_SERIAL`, `#WRITE_TESTED`, `#MMC_RECONFIGURE` and `#FULL_UPGRADE`. This
