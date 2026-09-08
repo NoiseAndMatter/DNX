@@ -15,7 +15,7 @@ rest are the sweep's reading and should be confirmed when the work is picked up.
 card/table renderers, the probe run, capture listening, dump requesting, whole-project read, two
 different write flows, link liveness, four +Drive transports, and a second `ApiTransport`.
 
-Eight functions exceed 80 lines (`probe` 210, `writeToChosenSlot` 167, `writeBack` 164, `listPath`
+Eight functions exceed 80 lines (`probe` 210, `writeToChosenSlot` 195, `writeBack` 164, `listPath`
 129, `tryUnknownCode` 114, `readProject` 94, `readThenWrite` 92, `readFile` 83). Every one is the
 same five steps — validate ports, correlate one reply, send, narrate, render a verdict — written out
 eight times with no shared helper.
