@@ -403,13 +403,13 @@ const ALLOWED: Record<string, { paths: string[]; because: string }> = {
     because: "same, for the +Drive",
   },
   // The probe's two builders. They *build* a message rather than send one, and the probe's own
-  // write does the occupancy check, the confirmation and the read-back inline — four of the five
-  // rules. It is exempt because it writes **one captured record to an arbitrary slot**, which is
-  // not an image diff and cannot go through `safeWriteRecords` at all.
+  // write does the occupancy check, the confirmation, the backup and the read-back inline — all
+  // five rules, since 2026-09-08. It is exempt because it writes **one captured record to an
+  // arbitrary slot**, which is not an image diff and cannot go through `safeWriteRecords` at all.
   //
-  // What it still lacks is a backup of the *destination*: `existing` comes from the capture rather
-  // than from a fresh read. That is a real gap, recorded in `docs/KNOWN-ISSUES.md` rather than
-  // waved through here.
+  // The backup was the one it lacked, and the test at the bottom of this file is what keeps it:
+  // the destination is read fresh, the copy is offered after the question, and nothing goes out
+  // before the copy exists.
   writeToSlot: {
     paths: ["web/src/probe/main.ts"],
     because: "the probe writes one captured record to a chosen slot, which is not an image diff",
@@ -781,4 +781,50 @@ test("every read of a file the writer touches asks for the stored form", () => {
     assert.match(call[0]!, /form:\s*STORED_FORM/,
       `readStoredFile call ${index + 1} defaults to the raw image and compares it against a stored payload`);
   }
+});
+
+test("the probe's slot write copies the destination before it sends anything", () => {
+  /*
+   * **The fifth rule, on the one page exempt from the other four.**
+   *
+   * `writeToChosenSlot` cannot go through `safeWriteRecords` — it writes one captured record to an
+   * arbitrary slot, which is not an image diff — so the exemption above lets it build its own
+   * message. It carried the occupancy check, the confirmation and the read-back inline, and until
+   * 2026-09-08 it carried no backup at all: the destination's contents came from `splitCapture()`,
+   * so a slot nobody had happened to read was overwritten with nothing kept and a confirmation that
+   * said so out loud (*"not in the capture — unknown"*).
+   *
+   * Read out of the source because the whole function is DOM and MIDI. The properties are the
+   * order, which is the part that is easy to get subtly wrong: the destination is read before the
+   * question is asked, the file is offered after the answer, and **nothing is sent until the copy
+   * exists**. `safeWriteFile` settled that order for the reason quoted beside it there — a backup
+   * downloaded for a write somebody then cancels is rude, and a write that began before the copy
+   * was taken is worse.
+   */
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe", "main.ts"), "utf8");
+
+  const start = source.indexOf("async function writeToChosenSlot(");
+  assert.ok(start > 0, "writeToChosenSlot has been renamed; this fence no longer guards anything");
+  const body = source.slice(start, source.indexOf("\n}\n", start));
+
+  const at = (needle: string): number => {
+    const index = body.indexOf(needle);
+    assert.ok(index > 0, `writeToChosenSlot no longer contains ${needle}`);
+    return index;
+  };
+
+  assert.doesNotMatch(body, /objNr === destination/,
+    "the destination is being looked up in the capture again, which is the state that had no copy");
+
+  const read = at("await awaitPatternKit(");
+  const ask = at("await askConfirm(");
+  const copy = at("save(backup.bytes");
+  const send = at("output.send(");
+
+  assert.ok(read < ask, "the destination must be read before the person is asked about it");
+  assert.ok(ask < copy, "a file downloaded for a write somebody then cancels is rude");
+  assert.ok(copy < send, "the write began before the copy was taken");
+  assert.ok(body.includes("buildRecordBackup("),
+    "the copy must be the same replayable .syx the safe path writes, not a bespoke one");
 });

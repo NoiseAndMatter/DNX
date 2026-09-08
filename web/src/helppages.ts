@@ -381,8 +381,12 @@ whatever was unsaved.`,
         body: `**Write back** returns a captured record to the slot it came from. **Write to slot**
 copies a pattern into another slot. **Read → write** copies a +Drive file.
 
-All three need **WRITE** to be on, take a backup of the destination first, and read the result back
-to check it.`,
+All three need **WRITE** to be on and read the result back to check it.
+
+**Write to slot** and **Read → write** save a copy of the destination to your downloads
+before sending anything, and refuse the write if that copy cannot be taken. **Write back**
+returns a record to the slot it came from, so the capture on screen is that copy: save it first
+if you want it on disk.`,
       },
     ],
   },
@@ -433,7 +437,8 @@ The affirmative button is marked as destructive and focus starts on **Cancel**.`
       },
       {
         heading: "If something goes wrong",
-        body: `- A backup is saved to your downloads before every write. It is a replayable file.
+        body: `- A copy of the destination is saved to your downloads before every write that changes it,
+  and the write is refused if the copy cannot be taken. It is a replayable file.
 - A refused write reports the instrument's own words rather than a guess.
 - A write that reaches the instrument and stores nothing is caught by the read-back, which is the
   only proof there is: a device that stored the bytes and one that ignored the message look
