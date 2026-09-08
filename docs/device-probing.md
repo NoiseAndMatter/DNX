@@ -436,6 +436,14 @@ little-endian**; big-endian gives `0xC7BF6731`.
 **Still not established:** that any particular unit *has* a valid record. `NO SERIAL NUMBER` is a
 real branch, and nothing has been run against hardware.
 
+**What the byte order does and does not suggest.** The CPU is big-endian and every other multi-byte
+field in that firmware is too, which invites the reading that the record is written by something
+else — a factory tool rather than the instrument. Worth holding loosely: **a little-endian CRC-32 is
+the conventional serialisation whatever the CPU is.** Zip stores it that way, and most CRC-32
+routines hand back a word that gets written out in the host's convenient order without anybody
+deciding an endianness. So a foreign writer is one explanation, and "somebody used a stock CRC-32
+and stored it the usual way" is another that needs no external tool at all.
+
 ### The serial is in no byte DNX has ever read
 
 Searched everything both repositories hold — 1,742 files — for a `SERI` magic followed by a 22-byte
