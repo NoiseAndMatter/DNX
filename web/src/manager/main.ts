@@ -886,6 +886,9 @@ async function saveToDrive(): Promise<void> {
             onBackup: downloadBackup(
               (message) => status(message, "ok"),
               () => `${replacing.name} from slot ${replacing.slot}`,
+              // So the copy is a project file somebody can open, rather than a payload named like
+              // one. Undefined when the instrument never answered, and then it stays a payload.
+              device.firmwareVersion,
             ),
           }
         : {}),
