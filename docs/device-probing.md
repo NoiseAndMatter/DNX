@@ -503,8 +503,16 @@ Inferred from framing and buffer shape, not proven — the reader has not been f
 `0x400cf906` has no callers and no pointer references anywhere in the image, which fits a task or
 callback registered at run time.
 
-**Consequence for this repo: stop offering the service parser as an explanation for `0x55`-`0x5e`.**
-Those ten advertised dump codes are still unidentified and they are now unrelated to this.
+**Consequence for this repo: the service parser is not an explanation for `0x55`-`0x5e`.** Those ten
+advertised dump codes are still unidentified, and this is not what they are.
+
+That began as an inference from the strings the firmware *prints*. It is now evidence from the code
+that *reads*: a Ghidra pass found the line assembler at `0x40110ff8`, a state machine over incoming
+bytes that switches on the first one — `0x23` `#` opens a command line — accumulates into a
+`0x480`-byte buffer, **discards `` and terminates on `
+`**, then posts the line to an RTOS queue
+that the dispatcher blocks on. A byte stream assembled on a newline carries no SysEx framing, and a
+dump-protocol code does not arrive as a text line.
 
 ### A candidate transport, from the host side — 2026-09-08
 
@@ -545,10 +553,19 @@ as well as any mode does.
 
 ### Two guesses of mine, for the record
 
-`0x40110fe2` looked like a channel being opened — `pea 0x402ebe40` with `0x80008` pushed. It is two
-instructions that store both arguments into globals and return: a setter, so `0x402ebe40` is an
-object, not a port name. And the CDC function existing is **not** evidence the `#` parser reads from
-it; `0x400cf906` still has no identifiable caller. Two facts that fit each other are two facts.
+`0x40110fe2` looked to me like a channel being opened — `pea 0x402ebe40` with `0x80008` pushed. It
+is two instructions storing both arguments into globals, so `0x402ebe40` is a buffer and not a port
+name, and reading intent off an argument shape was worth nothing.
+
+The follow-up is worth recording too, because it went the other way. Those setters were reported
+back to me as dead ends and are not: they are **the dispatcher registering itself** with the line
+assembler, which reads exactly those globals. Neither of us had it right — a setter is not a channel
+open, and it was not a dead end either.
+
+And the CDC function existing is still **not** evidence the `#` parser reads from it. Neither the
+dispatcher nor the assembler has any static caller: no `jsr` reaches either, and the one apparent
+pointer to the assembler turned out to be mid-instruction bytes rather than an address. The byte
+source sits outside that section's call graph, so the transport remains unnamed.
 
 ---
 
