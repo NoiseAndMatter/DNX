@@ -392,6 +392,51 @@ what people should be able to do without thinking.
 
 ---
 
+## A factory service protocol exists, and is on none of our wires — 2026-09-08
+
+The sibling `dn_firmware` project read the Digitone II OS 1.10E MAIN OS section and found a
+`#`-prefixed text protocol in the string pool near `0x402020ad`: about sixty commands, including
+`#HELLO` answered with `HOW DO YOU DO?`, `#STATUS`, and
+
+```
+#READ_SERIAL
+%.14s
+SERIAL NUMBER CRC ERROR
+NO SERIAL NUMBER
+```
+
+**That is strings in a firmware image. Nothing has been sent to any instrument**, and the transport,
+the framing, the terminator and whether it answers on a normal boot are all unknown.
+
+### Why it is not being probed
+
+The same table holds `#WRITE_SERIAL`, `#WRITE_TESTED`, `#MMC_RECONFIGURE` and `#FULL_UPGRADE`. This
+document's rule applies exactly: an advertised code is not a question you can ask, it is a sentence
+you can say. A unit left with a wrong serial or wrong factory-test flags carries that permanently,
+and unlike a project slot there is no copy to restore from.
+
+`#HELLO` really is harmless — no arguments, and a fixed reply that would confirm the whole picture.
+It is also unsendable until somebody names the transport, which is the point: the blocker is not
+nerve, it is an address.
+
+### What the capture corpus says: nothing, and that is informative
+
+Searched every byte we hold — **1,379 files, 225 MB**, including 500 `.syx` captures of Transfer and
+Overbridge sessions and our own probe runs — for `#HELLO`, `HOW DO YOU DO`, `#STATUS`,
+`#READ_SERIAL`, `#ENTER_TEST_MODE`, `SERIAL NUMBER`, `READY FOR OS`, `#UPGRADE` and `PCBA0109`, and
+then for the general shape `#[A-Z][A-Z_]{3,}`.
+
+**No hit.** The twenty-one shape matches are all noise: PDF font streams in the two user manuals, and
+a Digitone 1 project named `#RIDDING`.
+
+Read it carefully. It does **not** show the protocol is absent from the MIDI path — every capture we
+hold is of *normal operation*, and an interface that only speaks when spoken to would be silent in
+all of them. What it does establish is that **the corpus cannot name the transport**, so the
+dispatch table's caller is the only route to it. That is work for the firmware side, not for a
+device.
+
+---
+
 ## What we know so far
 
 | Device | Product id | Firmware / build | File API | Query | Dump types |
