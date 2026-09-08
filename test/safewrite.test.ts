@@ -661,6 +661,21 @@ test("the backup holds what was in the slot, and is taken before the first byte 
   assert.deepEqual(backups[0]!.slots, [5]);
   assert.match(backups[0]!.name, /^MORNING_JAM-before-/, "named after what it is a copy of");
 
+  /*
+   * **The name has to be honest about what the bytes are.** These are the file's payload; a
+   * `.dn2prj` is that payload inside a zip beside a manifest. It was named `.dn2prj` until
+   * 2026-09-08, when the copy taken before a real overwrite of `/projects/17` turned out to open
+   * in nothing — 293,332 bytes starting `ac11d303`, the Elektron object magic, where a project
+   * file starts `PK`. The confirmation calls that copy the only undo there is.
+   *
+   * Wrapping it into a real project file needs the instrument's firmware, which the library does
+   * not have; the caller that does is the one that wraps. `kind` is how it knows this is a file
+   * payload rather than the pattern path's SysEx.
+   */
+  assert.equal(backups[0]!.kind, "storedFile");
+  assert.doesNotMatch(backups[0]!.name, /\.dn2prj$/, "a payload must not be named as a project file");
+  assert.match(backups[0]!.name, /\.payload$/);
+
   // The ordering that matters: the read that took the copy finished before the write opened. Only
   // the first Close counts — the verifying read afterwards opens and closes the file again.
   const opened = io.log.indexOf(StorageCode.WriteOpen);

@@ -392,6 +392,166 @@ what people should be able to do without thinking.
 
 ---
 
+## A factory service protocol exists, and is on none of our wires — 2026-09-08
+
+The sibling `dn_firmware` project read the Digitone II OS 1.10E MAIN OS section and found a
+`#`-prefixed text protocol in the string pool near `0x402020ad`: about sixty commands, including
+`#HELLO` answered with `HOW DO YOU DO?`, `#STATUS`, and
+
+```
+#READ_SERIAL
+%.14s
+SERIAL NUMBER CRC ERROR
+NO SERIAL NUMBER
+```
+
+**That is strings in a firmware image. Nothing has been sent to any instrument**, and the transport,
+the framing, the terminator and whether it answers on a normal boot are all unknown.
+
+**The serial record, evidenced — 2026-09-08.** That paragraph originally said the claim was one link
+long: four strings near each other, with `%.14s` tied to the serial only by the order a compiler
+emitted literals in. `dn_firmware` then disassembled it, and the binding is now by data flow.
+
+`#READ_SERIAL` is in the compare chain at `0x400d0338`. Its handler at `0x400cf532` reads **22 bytes
+from offset `0x3C0000`**, checks a 4-byte magic against `SERI`, runs CRC-32 over all 22, and copies
+14 bytes from `+4` to the caller — which is the buffer printed with `%.14s`. Three branches:
+
+| result | reply |
+|---|---|
+| magic absent | `NO SERIAL NUMBER` |
+| CRC fails | `SERIAL NUMBER CRC ERROR` |
+| both pass | the 14 characters |
+
+```
++0    4   "SERI"
++4   14   the serial
++18   4   CRC-32
+```
+
+**Checked here rather than taken:** `0xDEBB20E3` is the standard CRC-32 residue for a message
+carrying its own CRC, and running it over a synthetic 22-byte record confirms the constant. It also
+settles a detail the disassembly did not state — the residue only comes out if the **CRC is stored
+little-endian**; big-endian gives `0xC7BF6731`.
+
+**Still not established:** that any particular unit *has* a valid record. `NO SERIAL NUMBER` is a
+real branch, and nothing has been run against hardware.
+
+**What the byte order does and does not suggest.** The CPU is big-endian and every other multi-byte
+field in that firmware is too, which invites the reading that the record is written by something
+else — a factory tool rather than the instrument. Worth holding loosely: **a little-endian CRC-32 is
+the conventional serialisation whatever the CPU is.** Zip stores it that way, and most CRC-32
+routines hand back a word that gets written out in the host's convenient order without anybody
+deciding an endianness. So a foreign writer is one explanation, and "somebody used a stock CRC-32
+and stored it the usual way" is another that needs no external tool at all.
+
+### The serial is in no byte DNX has ever read
+
+Searched everything both repositories hold — 1,742 files — for a `SERI` magic followed by a 22-byte
+record whose CRC-32 residue checks out. **Thirteen occurrences of `SERI`, none of them a record, and
+all thirteen are this documentation quoting the strings.** Nothing in any project image, `.syx`
+capture, listing or dump.
+
+That is what `0x3C0000` being device-internal storage looks like from out here, and it has a
+consequence worth stating plainly: **a `.dnx` backup carries no device serial.** Its manifest records
+the instrument's name, its dump-protocol product id and its firmware string, all of which describe a
+*model*. Sharing a backup does not identify the physical unit it came off.
+
+### Why it is not being probed
+
+The same table holds `#WRITE_SERIAL`, `#WRITE_TESTED`, `#MMC_RECONFIGURE` and `#FULL_UPGRADE`. This
+document's rule applies exactly: an advertised code is not a question you can ask, it is a sentence
+you can say. A unit left with a wrong serial or wrong factory-test flags carries that permanently,
+and unlike a project slot there is no copy to restore from.
+
+`#HELLO` really is harmless — no arguments, and a fixed reply that would confirm the whole picture.
+It is also unsendable until somebody names the transport, which is the point: the blocker is not
+nerve, it is an address.
+
+### What the capture corpus says: nothing, and that is informative
+
+Searched every byte we hold — **1,379 files, 225 MB**, including 500 `.syx` captures of Transfer and
+Overbridge sessions and our own probe runs — for `#HELLO`, `HOW DO YOU DO`, `#STATUS`,
+`#READ_SERIAL`, `#ENTER_TEST_MODE`, `SERIAL NUMBER`, `READY FOR OS`, `#UPGRADE` and `PCBA0109`, and
+then for the general shape `#[A-Z][A-Z_]{3,}`.
+
+**No hit.** The twenty-one shape matches are all noise: PDF font streams in the two user manuals, and
+a Digitone 1 project named `#RIDDING`.
+
+Read it carefully. It does **not** show the protocol is absent from the MIDI path — every capture we
+hold is of *normal operation*, and an interface that only speaks when spoken to would be silent in
+all of them. What it does establish is that **the corpus cannot name the transport**, so the
+dispatch table's caller is the only route to it. That is work for the firmware side, not for a
+device.
+
+### The dispatcher, and why it is not the SysEx path — 2026-09-08
+
+`dn_firmware` disassembled it. It is a chain of inline string compares rather than a table, one per
+command about 52 bytes apart, running `0x400cfca2` (`#HELLO`) to `0x400d095e` (`#STATUS`), inside
+`0x400cf906`. **The line it compares against is a ~32-byte buffer at `fp-192` — local to that
+function's frame**, not a receive buffer owned by a MIDI reader.
+
+Everything it emits is CRLF-terminated: `UNIT IN FACTORY TEST MODE
+`, `WRONG UI CARD
+`,
+`UI CARD NOT TESTED
+`. A line terminator accumulated into a small stack buffer is a **byte
+stream**. SysEx is `F0`/`F7`-framed with a 7-bit payload and no concept of a line, and a SysEx
+reader hands over a finished message rather than something you terminate on `
+`.
+
+Inferred from framing and buffer shape, not proven — the reader has not been found, and
+`0x400cf906` has no callers and no pointer references anywhere in the image, which fits a task or
+callback registered at run time.
+
+**Consequence for this repo: stop offering the service parser as an explanation for `0x55`-`0x5e`.**
+Those ten advertised dump codes are still unidentified and they are now unrelated to this.
+
+### A candidate transport, from the host side — 2026-09-08
+
+Windows remembers every USB interface an instrument has ever presented, and reading that back sends
+nothing to anything. On this machine, `VID_1935` (Elektron):
+
+| device | interface class | what it is |
+|---|---|---|
+| `PID_1034` DN2, connected now | `Class_01` audio/MIDI on MI_00 and MI_03 | ordinary operation |
+| `PID_0B34` DN2 | `Class_ff` vendor-specific on MI_00, bound to `OverbridgeUSBDriver` | Overbridge |
+| **`PID_FFFF`** Digitone | **`Class_02 SubClass_01 Prot_01`** on MI_00, **no driver bound** | see below |
+
+`0xFFFF` is not a shipping product id, and USB class `0x02` is Communications. **A CRLF text protocol
+read into a small line buffer is what a communications interface carries**, so this is the strongest
+transport candidate anyone has produced for the service commands.
+
+### The firmware carries those descriptors, and it accounts for all three shapes
+
+`dn_firmware` then found the USB device descriptors in the DN2 1.10E image: seven of them, and
+**only `PID 0xFFFF` has CDC interfaces** — the rest are Audio/MIDI-Streaming. `0x1034` and `0x0b34`
+are among them, so every shape in the table above is explained by one image. The `0xFFFF` set is a
+CDC-ACM function: interface 0 class `0x02` subclass `0x02` with an interrupt IN on `0x83`, interface
+1 class `0x0a` CDC-Data with bulk OUT `0x02` and bulk IN `0x82`. The same descriptors appear in the
+updater section, so a unit running the updater would present `0xFFFF`.
+
+**A disagreement worth keeping rather than resolving.** That image says subclass `0x02`, Abstract
+Control Model. The device that actually enumerated here presented subclass **`0x01`** — the
+compatible id is `USB\COMPAT_VID_1935&Class_02&SubClass_01&Prot_01`, recorded from what the device
+sent. Both can be true, because they are **different instruments**: the PnP record is
+`DeviceDesc = Elektron Digitone`, `REV_0001` — a Digitone 1 — and the descriptors are from Digitone
+II firmware. **No Digitone II has ever enumerated as `PID_FFFF` on this machine.** So the firmware
+does not correct the registry here; it describes the other product.
+
+**What still selects `PID 0xFFFF`, and what returns a unit to normal, is named nowhere** — not in
+the image, not here. That question comes before any port is opened, and there is no reason to guess
+at it: the trace on this machine has no known cause, and a cable or a failed enumeration explains it
+as well as any mode does.
+
+### Two guesses of mine, for the record
+
+`0x40110fe2` looked like a channel being opened — `pea 0x402ebe40` with `0x80008` pushed. It is two
+instructions that store both arguments into globals and return: a setter, so `0x402ebe40` is an
+object, not a port name. And the CDC function existing is **not** evidence the `#` parser reads from
+it; `0x400cf906` still has no identifiable caller. Two facts that fit each other are two facts.
+
+---
+
 ## What we know so far
 
 | Device | Product id | Firmware / build | File API | Query | Dump types |
