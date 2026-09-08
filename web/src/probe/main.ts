@@ -90,7 +90,11 @@ import {
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
-import { CONTAINER_SLOT_OFFSET, safeWriteFile } from "../../../src/device/safewrite.js";
+import {
+  CONTAINER_SLOT_OFFSET,
+  buildRecordBackup,
+  safeWriteFile,
+} from "../../../src/device/safewrite.js";
 import { STAGE_LABEL, confirmFileWrite } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
@@ -1223,28 +1227,53 @@ async function writeToChosenSlot(): Promise<void> {
     return;
   }
 
-  // Is there something in the way? Judged against the device's own blank, not ours.
+  // Is there something in the way, and what is it? **Asked fresh, not read out of the capture.**
+  // The capture holds whatever happened to have been read earlier, so a destination nobody had
+  // read was overwritten with no copy of it at all, under a confirmation that admitted as much
+  // ("not in the capture — unknown"). One read answers both questions: what the slot holds now,
+  // and what to keep.
   const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
-  const existing = messages.find((m) => m.dumpType === 0x50 && m.objNr === destination);
-  let occupancy = "not in the capture — unknown, so assume it holds something";
-  if (existing) {
-    const blank = blankPatternKit(device, destination);
-    const verdict = looksBlank(
-      existing.payload, blank, device.slotIndexOffset, device.layout.patternSize + 8, 16,
-    );
-    occupancy = verdict.blank
-      ? "empty — matches the device's own blank exactly"
-      : `HOLDS WORK — ${verdict.differingBytes.toLocaleString()} bytes differ from a blank`;
-  }
-
   const from = patternName(sourceObj);
   const to = patternName(destination);
+
+  status(`Asking for ${to} before touching it…`);
+  const before = await awaitPatternKit(output, productId, destination);
+  if (!before) {
+    // The refusal `safeWriteRecords` makes, for the reason it gives: a device that has gone quiet
+    // is exactly when a copy matters, so nothing is sent.
+    verdictCard("Write refused — no copy of the destination", [
+      ["To", to],
+      ["Asked for it back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
+      [
+        "Reason",
+        "the copy of what is about to be destroyed comes from this read. Without it there is no " +
+          "undo, so nothing was sent.",
+      ],
+      ["Device", "untouched"],
+    ]);
+    status(`${to} did not answer, so nothing was sent.`, "error");
+    return;
+  }
+
+  // Judged against the device's own blank, not ours.
+  const emptiness = looksBlank(
+    before,
+    blankPatternKit(device, destination),
+    device.slotIndexOffset,
+    device.layout.patternSize + 8,
+    16,
+  );
+  const occupancy = emptiness.blank
+    ? "empty — matches the device's own blank exactly"
+    : `HOLDS WORK — ${emptiness.differingBytes.toLocaleString()} bytes differ from a blank`;
+
   if (
     !(await askConfirm({
       title: `Copy pattern ${from} into slot ${to}?`,
       body: [
         `Destination ${to} is ${occupancy}.`,
         `This overwrites ${to} in the device's ACTIVE project. ${from} is unaffected.`,
+        `${to} as it stands is saved to your machine first, as a .syx you can send straight back.`,
         "To undo: load another project on the device without saving. A write does not reach the " +
           "+Drive until you press SAVE PROJECT.",
       ],
@@ -1260,6 +1289,29 @@ async function writeToChosenSlot(): Promise<void> {
     ["To", to],
     ["Destination was", occupancy],
   ];
+
+  /*
+   * **The copy: after the question, before anything is sent.** `safeWriteFile` settled that order
+   * for both halves of the reason — a backup downloaded for a write somebody then cancels is rude,
+   * and a write that began before the copy was taken is worse. A failure here is a refusal rather
+   * than a warning, because this file is the only undo the page offers.
+   */
+  const backup = buildRecordBackup(
+    productId, device.name, [destination], new Map([[destination, before]]),
+  );
+  try {
+    save(backup.bytes, backup.name);
+  } catch (error) {
+    verdictCard("Write refused — the copy could not be saved", [
+      ...log,
+      ["Reason", String(error)],
+      ["Device", "untouched"],
+    ]);
+    status(`The copy of ${to} could not be saved, so nothing was sent: ${String(error)}`, "error");
+    return;
+  }
+  log.push(["Backup", `${backup.name} (${backup.bytes.length.toLocaleString()} bytes)`]);
+
   // Every line carries how long the write has been running. Two stalled runs on hardware reported
   // their last line at *different* steps, which no single code path explains — without elapsed
   // times there was no way to tell a wait that is running from a page that has stopped running at
@@ -1334,9 +1386,10 @@ async function writeToChosenSlot(): Promise<void> {
    * **Three outcomes, not two**, and the reasoning is in `writeverdict.ts` with its tests. A device
    * that overwrote and a device that refused both answer the read and both stay silent about the
    * write, so "did not match what we sent" is two situations wearing one label. Held against what
-   * the slot contained *before*, the answer is unambiguous.
+   * the slot contained *before*, the answer is unambiguous — and there is always a *before* now,
+   * because the read that took the backup is that same record.
    */
-  const outcome = writeOutcome(verdict.ok, !!existing && verifyWrite(existing.payload, readBack).ok);
+  const outcome = writeOutcome(verdict.ok, verifyWrite(before, readBack).ok);
   const said = describeWrite(outcome, { from, to, ...(verdict.reason === undefined ? {} : { reason: verdict.reason }) });
 
   verdictCard(said.title, [
