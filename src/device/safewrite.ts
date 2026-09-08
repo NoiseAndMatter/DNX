@@ -113,7 +113,17 @@ export class WriteRefusal extends Error {}
 export interface Backup {
   /** A filename that says what it is, which device it came from, and when. */
   name: string;
-  /** SysEx messages, ready to send straight back to the instrument. */
+  /**
+   * What `bytes` actually are, because the two kinds are not interchangeable and a caller that
+   * saves them the same way tells a lie in one of the two cases.
+   *
+   * `sysex` — messages ready to send straight back to the instrument.
+   * `storedFile` — **the payload of one +Drive file, with no container around it.** It is what a
+   * write sends and it is *not* a project file: a `.dn2prj` is that payload inside a zip with a
+   * manifest. Saved under a `.dn2prj` name it opens in nothing — not in DNX, not in Transfer —
+   * which for the copy taken before an overwrite is as bad as having no copy.
+   */
+  kind: "sysex" | "storedFile";
   bytes: Uint8Array;
   /** The slots it covers. */
   slots: number[];
@@ -386,6 +396,7 @@ export function buildRecordBackup(
   const slug = deviceName.toLowerCase().replaceAll(" ", "-");
   return {
     name: `dnx-${slug}-prewrite-${stamp}.syx`,
+    kind: "sysex",
     bytes,
     slots: [...slots],
   };
@@ -635,7 +646,18 @@ async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
   });
   const label = (options.target.name || "slot").replace(/[^A-Za-z0-9 _-]/g, "_").trim();
   return {
-    name: `${label === "" ? "slot" : label}-before-${stamp}.dn2prj`,
+    /*
+     * **Not `.dn2prj`, because it is not one.** These are the file's payload bytes; a project file
+     * is that payload inside a zip beside a manifest. It was named `.dn2prj` until 2026-09-08,
+     * when the copy taken before a real overwrite turned out to open in nothing — the same
+     * mistake as the raw-form run above, one layer up: a name the bytes had no right to.
+     *
+     * A caller that knows the instrument's firmware can wrap this into a real project file and
+     * should; one that does not has nothing honest to put in a manifest, and an honest extension
+     * is better than a convenient lie.
+     */
+    name: `${label === "" ? "slot" : label}-before-${stamp}.payload`,
+    kind: "storedFile",
     bytes: existing.bytes,
     slots: [options.target.index],
   };
