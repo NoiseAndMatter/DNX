@@ -408,13 +408,45 @@ NO SERIAL NUMBER
 **That is strings in a firmware image. Nothing has been sent to any instrument**, and the transport,
 the framing, the terminator and whether it answers on a normal boot are all unknown.
 
-**How far the serial claim actually reaches: one link.** The strings exist. That is all. The only
-command whose code has been disassembled is `#HELLO` — `strcmp` against `0x402020ad`, then a reply
-with `HOW DO YOU DO?` — and the chain's stated ends are `#HELLO` and `#STATUS`, which does not say
-`#READ_SERIAL` is in it. No handler for it has been read, nothing shows where a serial is stored or
-that any unit carries one, and `%.14s` is associated with it by *adjacency in a string pool*: the
-order a compiler emitted literals in, not a binding. Treat "the Digitone has a 14-character serial"
-as unevidenced until a handler is disassembled.
+**The serial record, evidenced — 2026-09-08.** That paragraph originally said the claim was one link
+long: four strings near each other, with `%.14s` tied to the serial only by the order a compiler
+emitted literals in. `dn_firmware` then disassembled it, and the binding is now by data flow.
+
+`#READ_SERIAL` is in the compare chain at `0x400d0338`. Its handler at `0x400cf532` reads **22 bytes
+from offset `0x3C0000`**, checks a 4-byte magic against `SERI`, runs CRC-32 over all 22, and copies
+14 bytes from `+4` to the caller — which is the buffer printed with `%.14s`. Three branches:
+
+| result | reply |
+|---|---|
+| magic absent | `NO SERIAL NUMBER` |
+| CRC fails | `SERIAL NUMBER CRC ERROR` |
+| both pass | the 14 characters |
+
+```
++0    4   "SERI"
++4   14   the serial
++18   4   CRC-32
+```
+
+**Checked here rather than taken:** `0xDEBB20E3` is the standard CRC-32 residue for a message
+carrying its own CRC, and running it over a synthetic 22-byte record confirms the constant. It also
+settles a detail the disassembly did not state — the residue only comes out if the **CRC is stored
+little-endian**; big-endian gives `0xC7BF6731`.
+
+**Still not established:** that any particular unit *has* a valid record. `NO SERIAL NUMBER` is a
+real branch, and nothing has been run against hardware.
+
+### The serial is in no byte DNX has ever read
+
+Searched everything both repositories hold — 1,742 files — for a `SERI` magic followed by a 22-byte
+record whose CRC-32 residue checks out. **Thirteen occurrences of `SERI`, none of them a record, and
+all thirteen are this documentation quoting the strings.** Nothing in any project image, `.syx`
+capture, listing or dump.
+
+That is what `0x3C0000` being device-internal storage looks like from out here, and it has a
+consequence worth stating plainly: **a `.dnx` backup carries no device serial.** Its manifest records
+the instrument's name, its dump-protocol product id and its firmware string, all of which describe a
+*model*. Sharing a backup does not identify the physical unit it came off.
 
 ### Why it is not being probed
 
