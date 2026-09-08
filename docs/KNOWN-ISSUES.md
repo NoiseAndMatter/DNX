@@ -164,19 +164,55 @@ and only the reader's slack covered it. It had never bitten because nothing had 
 function. That is the **fifth** fact this codebase had written down twice; a test now pins
 `RESPONSE_SIZES[…].patternKit` against `patternSize + kitSize`.
 
-## The probe's slot write still has no backup of its destination — OPEN 2026-08-14
+## The probe's null round trip trusts a capture that may have gone stale — OPEN 2026-09-08
 
-`writeToChosenSlot` on the probe page carries four of the five safe-write rules: it judges the
-destination's occupancy against the device's own blank, names it in the confirmation, refuses on a
-bad record, and reads back and byte-compares afterwards. What it does not do is **keep a copy of
-what it is about to overwrite**: `existing` comes from the capture in memory, not from a fresh read,
-so a destination that was never captured has no backup at all — and the confirmation says so
+Found while fixing the entry below, and left alone rather than folded into it.
+
+`writeBack` sends a captured record to the slot it came from, and its confirmation says *"the bytes
+are identical to what the device just sent, so nothing should change"*. That is true at the moment
+of the read and not afterwards. Turn a knob on the instrument between the read and the write and the
+capture is no longer what is in the slot, so the round trip is a real overwrite of a real edit, with
+no copy of it anywhere.
+
+It is narrower than the slot write was: the record on screen *is* a copy of that slot as of the
+read, and **Save capture** puts it on disk. So the loss needs someone to edit on the instrument
+between two clicks on the same page. The fix is the same one shape: read the destination first, and
+either take the copy or say plainly that the slot has moved on since the capture. That second half
+is the more interesting one, because a null round trip that turns out not to be null is a result
+worth a card rather than a silent overwrite.
+
+## The probe's slot write had no backup of its destination — FIXED 2026-09-08
+
+`writeToChosenSlot` on the probe page carried four of the five safe-write rules: it judged the
+destination's occupancy against the device's own blank, named it in the confirmation, refused on a
+bad record, and read back and byte-compared afterwards. What it did not do is **keep a copy of what
+it was about to overwrite**: `existing` came from the capture in memory, not from a fresh read, so
+a destination that was never captured had no backup at all — and the confirmation said so
 (*"not in the capture — unknown, so assume it holds something"*) rather than fixing it.
 
 It is exempt from the safe path for a real reason, recorded in `test/safewrite.test.ts` beside the
 exemption: it writes **one captured record to an arbitrary slot**, which is not an image diff and
-cannot go through `safeWriteRecords` at all. The fix is to give it a destination read of its own
-before the write, which is a probe-page change rather than a write-path one.
+cannot go through `safeWriteRecords` at all. So the fix is a probe-page change rather than a
+write-path one: one fresh `requestPatternKit` of the destination before the confirmation, which
+serves both questions at once — what the slot holds, and what to keep.
+
+Three details are the fix rather than decoration:
+
+- **A silent device is a refusal, not a warning.** If the destination does not answer, nothing is
+  sent. That is the sentence `safeWriteRecords` already uses for the same situation: a device that
+  has gone quiet is exactly when a copy matters.
+- **The order is confirm, copy, send.** `safeWriteFile` settled it for both halves of the reason: a
+  backup downloaded for a write somebody then cancels is rude, and a write that began before the
+  copy was taken is worse. A save that throws aborts the write.
+- **The third outcome got sounder as a side effect.** `writeverdict.ts` separates "the device
+  refused" from "the device overwrote wrongly" by holding the read-back against what the slot
+  contained *before*. That comparison used to be skipped whenever the capture had no copy of the
+  destination — which is precisely the case it exists for. It is now always available.
+
+The copy is the same replayable `.syx` the safe path writes, from the same `buildRecordBackup`, so
+sending it back is the ordinary write-back the page already does. `test/safewrite.test.ts` pins the
+ordering by reading the function's source, because the whole of it is DOM and MIDI; the fence fails
+on the code as it stood the day before.
 
 ## Every converted parameter lock had its two value bytes swapped — FIXED 2026-08-07
 
