@@ -481,14 +481,34 @@ nothing to anything. On this machine, `VID_1935` (Elektron):
 read into a small line buffer is what a communications interface carries**, so this is the strongest
 transport candidate anyone has produced for the service commands.
 
-What is *not* known: this is a stale PnP record from **14 August 2026**, not a live device; nothing
-has been opened, enumerated live, or sent to; the exact subclass is `0x01` (Direct Line Control
-Model) rather than the `0x02` ACM most serial adapters use, so "it is a COM port" is a guess beyond
-the evidence; and what put a Digitone into that mode that day is unrecorded.
+### The firmware carries those descriptors, and it accounts for all three shapes
 
-The next question is for a person, not a disassembler: **what was done to the Digitone 1 on 14 August
-2026?** A firmware update or the Early Start-up Menu would explain it, and would say how to get back
-there deliberately.
+`dn_firmware` then found the USB device descriptors in the DN2 1.10E image: seven of them, and
+**only `PID 0xFFFF` has CDC interfaces** — the rest are Audio/MIDI-Streaming. `0x1034` and `0x0b34`
+are among them, so every shape in the table above is explained by one image. The `0xFFFF` set is a
+CDC-ACM function: interface 0 class `0x02` subclass `0x02` with an interrupt IN on `0x83`, interface
+1 class `0x0a` CDC-Data with bulk OUT `0x02` and bulk IN `0x82`. The same descriptors appear in the
+updater section, so a unit running the updater would present `0xFFFF`.
+
+**A disagreement worth keeping rather than resolving.** That image says subclass `0x02`, Abstract
+Control Model. The device that actually enumerated here presented subclass **`0x01`** — the
+compatible id is `USB\COMPAT_VID_1935&Class_02&SubClass_01&Prot_01`, recorded from what the device
+sent. Both can be true, because they are **different instruments**: the PnP record is
+`DeviceDesc = Elektron Digitone`, `REV_0001` — a Digitone 1 — and the descriptors are from Digitone
+II firmware. **No Digitone II has ever enumerated as `PID_FFFF` on this machine.** So the firmware
+does not correct the registry here; it describes the other product.
+
+**What still selects `PID 0xFFFF`, and what returns a unit to normal, is named nowhere** — not in
+the image, not here. That question comes before any port is opened, and there is no reason to guess
+at it: the trace on this machine has no known cause, and a cable or a failed enumeration explains it
+as well as any mode does.
+
+### Two guesses of mine, for the record
+
+`0x40110fe2` looked like a channel being opened — `pea 0x402ebe40` with `0x80008` pushed. It is two
+instructions that store both arguments into globals and return: a setter, so `0x402ebe40` is an
+object, not a port name. And the CDC function existing is **not** evidence the `#` parser reads from
+it; `0x400cf906` still has no identifiable caller. Two facts that fit each other are two facts.
 
 ---
 
