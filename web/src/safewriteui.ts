@@ -32,6 +32,7 @@ import {
 } from "../../src/device/safewrite.js";
 import { askConfirm } from "./dialog.js";
 import { saveBlob } from "./dom.js";
+import { projectFile } from "./dnxfile.js";
 
 /**
  * What the bar says during each pass of a safe write.
@@ -60,10 +61,35 @@ export const STAGE_LABEL: Record<WriteStage, string> = {
 export function downloadBackup(
   onStatus: (message: string) => void,
   what: (backup: Backup) => string = (b) => `${b.slots.length} pattern(s)`,
+  /**
+   * The instrument's own firmware string, when it answered.
+   *
+   * Only used to wrap a `storedFile` copy into a real project file. **Absent means absent**: with
+   * no firmware there is nothing honest to put in the manifest, so the payload is saved as a
+   * payload rather than under a name it has no right to. The same rule `backupDevice` follows.
+   */
+  firmwareVersion?: string,
 ): BackupHook {
-  return (backup: Backup): void => {
-    saveBlob(new Blob([backup.bytes as BlobPart], { type: "application/octet-stream" }), backup.name);
-    onStatus(`Backup of ${what(backup)} saved as ${backup.name}`);
+  return async (backup: Backup): Promise<void> => {
+    /*
+     * **A copy that opens in nothing is not a copy.** The bytes of a `storedFile` backup are one
+     * +Drive file's payload, and a project file is that payload inside a zip beside a manifest.
+     * Saved bare it opens in neither DNX nor Transfer — and this is the copy the confirmation
+     * calls the only undo there is.
+     *
+     * Found on 2026-09-08 by opening one: 293,332 bytes starting `ac11d303`, the Elektron object
+     * magic, where a project file starts `PK`.
+     */
+    const wrap = backup.kind === "storedFile" && firmwareVersion !== undefined;
+    const name = wrap ? backup.name.replace(/\.payload$/, ".dn2prj") : backup.name;
+    const bytes = wrap
+      // The payload's own name inside the container. `projectFile` puts it in the manifest, which
+      // is how a reader finds it again.
+      ? await projectFile(backup.name.replace(/-before-.*$/, ""), firmwareVersion, backup.bytes)
+      : backup.bytes;
+
+    saveBlob(new Blob([bytes as BlobPart], { type: "application/octet-stream" }), name);
+    onStatus(`Backup of ${what(backup)} saved as ${name}`);
   };
 }
 
