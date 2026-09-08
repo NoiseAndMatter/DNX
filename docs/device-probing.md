@@ -435,6 +435,53 @@ all of them. What it does establish is that **the corpus cannot name the transpo
 dispatch table's caller is the only route to it. That is work for the firmware side, not for a
 device.
 
+### The dispatcher, and why it is not the SysEx path — 2026-09-08
+
+`dn_firmware` disassembled it. It is a chain of inline string compares rather than a table, one per
+command about 52 bytes apart, running `0x400cfca2` (`#HELLO`) to `0x400d095e` (`#STATUS`), inside
+`0x400cf906`. **The line it compares against is a ~32-byte buffer at `fp-192` — local to that
+function's frame**, not a receive buffer owned by a MIDI reader.
+
+Everything it emits is CRLF-terminated: `UNIT IN FACTORY TEST MODE
+`, `WRONG UI CARD
+`,
+`UI CARD NOT TESTED
+`. A line terminator accumulated into a small stack buffer is a **byte
+stream**. SysEx is `F0`/`F7`-framed with a 7-bit payload and no concept of a line, and a SysEx
+reader hands over a finished message rather than something you terminate on `
+`.
+
+Inferred from framing and buffer shape, not proven — the reader has not been found, and
+`0x400cf906` has no callers and no pointer references anywhere in the image, which fits a task or
+callback registered at run time.
+
+**Consequence for this repo: stop offering the service parser as an explanation for `0x55`-`0x5e`.**
+Those ten advertised dump codes are still unidentified and they are now unrelated to this.
+
+### A candidate transport, from the host side — 2026-09-08
+
+Windows remembers every USB interface an instrument has ever presented, and reading that back sends
+nothing to anything. On this machine, `VID_1935` (Elektron):
+
+| device | interface class | what it is |
+|---|---|---|
+| `PID_1034` DN2, connected now | `Class_01` audio/MIDI on MI_00 and MI_03 | ordinary operation |
+| `PID_0B34` DN2 | `Class_ff` vendor-specific on MI_00, bound to `OverbridgeUSBDriver` | Overbridge |
+| **`PID_FFFF`** Digitone | **`Class_02 SubClass_01 Prot_01`** on MI_00, **no driver bound** | see below |
+
+`0xFFFF` is not a shipping product id, and USB class `0x02` is Communications. **A CRLF text protocol
+read into a small line buffer is what a communications interface carries**, so this is the strongest
+transport candidate anyone has produced for the service commands.
+
+What is *not* known: this is a stale PnP record from **14 August 2026**, not a live device; nothing
+has been opened, enumerated live, or sent to; the exact subclass is `0x01` (Direct Line Control
+Model) rather than the `0x02` ACM most serial adapters use, so "it is a COM port" is a guess beyond
+the evidence; and what put a Digitone into that mode that day is unrecorded.
+
+The next question is for a person, not a disassembler: **what was done to the Digitone 1 on 14 August
+2026?** A firmware update or the Early Start-up Menu would explain it, and would say how to get back
+there deliberately.
+
 ---
 
 ## What we know so far
