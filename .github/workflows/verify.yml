@@ -1,0 +1,44 @@
+# The command this project already trusts, run by something that is not the author's machine.
+#
+# `npm run verify` is what the contributing notes tell a person to run, and CI running anything
+# *else* would create a second definition of "passing" that drifts from the first. So there is one
+# step and it is that command.
+#
+# **The corpus is deliberately absent here.** It is the author's own music and is not in the
+# repository, so a runner sees exactly what a fresh clone sees: the corpus-dependent tests skip and
+# the rest must pass. `test/nocorpus.ts` exists to make that run honest, and `verify` includes it.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer worthless, so it is cancelled
+# rather than left to finish and report on bytes nobody has any more.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # Nothing here writes to the repository. Stated rather than left to the default, because the
+    # default is whatever the organisation's settings happen to be today.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The version this is developed against. Pinned to the major rather than to `latest`, so a
+          # Node release cannot turn a green suite red overnight and look like a code change.
+          node-version: '24'
+          cache: npm
+
+      # `ci` rather than `install`: it installs the lockfile exactly and fails if package.json and
+      # the lockfile disagree, which is a thing worth being told about rather than resolved silently.
+      - run: npm ci
+
+      - run: npm run verify
