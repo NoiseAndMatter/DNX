@@ -62,7 +62,7 @@ import {
   wireHistory,
   wireHistoryKeys,
 } from "../history.js";
-import { askConfirm } from "../dialog.js";
+import { askConfirm, askText } from "../dialog.js";
 import {
   type LibraryFilter,
   type LibraryRow,
@@ -72,6 +72,8 @@ import {
 } from "./filter.js";
 import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
+import { renamePresetOnDrive } from "./renamepreset.js";
+import { NAME_SIZE } from "../../../src/librarian/rename.js";
 import {
   type BankCache,
   type SlotFacts,
@@ -113,6 +115,8 @@ interface State {
   device?: ConnectedDevice;
   bank?: LibraryBank;
   bankLetter: string;
+  /** The library row last clicked, and which bank it was in. Rename acts on it. */
+  selected?: { path: string; index: number };
   /** The rows behind the table, tags filled in as the reads land. */
   rows: LibraryRow[];
   filter: LibraryFilter;
@@ -640,6 +644,8 @@ function renderTable(): void {
     drag,
     onToggleTag: (tag) => toggleTagAndRender(tag),
     onSelect: (index) => {
+      state.selected = { path: bank.path, index };
+      renderRenameButton();
       const row = state.rows.find((r) => r.index === index);
       status(
         row
@@ -653,6 +659,7 @@ function renderTable(): void {
   renderTagChips($("libraryTags"), state.rows, state.filter, toggleTagAndRender);
   $("librarySub").textContent =
     `— ${bank.path}, ${summarise(result, state.rows.length, filtered)}`;
+  renderRenameButton();
 }
 
 function toggleTagAndRender(tag: TagName): void {
@@ -1082,4 +1089,112 @@ $("libraryClear").addEventListener("click", () => {
   $<HTMLInputElement>("librarySearch").value = "";
   $<HTMLInputElement>("libraryOccupied").checked = false;
   renderTable();
+});
+
+// --- renaming a preset on the instrument ------------------------------------------------------------
+
+/**
+ * Whether Rename can act, and why not when it cannot.
+ *
+ * The reason goes in the tooltip because a disabled button with no explanation reads as broken, and
+ * the commonest reason, a factory preset, is not something anybody would guess.
+ */
+function renameReadiness(): { row?: LibraryRow; why?: string } {
+  const bank = state.bank;
+  const picked = state.selected;
+  if (!state.device) return { why: "Connect an instrument first" };
+  if (!bank || kind() !== "preset") return { why: "Browse a preset bank first" };
+  if (!picked || picked.path !== bank.path) return { why: "Click a preset to rename it" };
+  const row = state.rows.find((r) => r.index === picked.index);
+  if (!row || !row.occupied) return { why: "That slot is empty" };
+  if (row.writable === false) return { row, why: "Factory presets are write-protected on the instrument" };
+  return { row };
+}
+
+function renderRenameButton(): void {
+  const button = $<HTMLButtonElement>("libraryRename");
+  const { why } = renameReadiness();
+  button.disabled = why !== undefined;
+  button.title = why ?? "Rename the selected preset on the instrument. A copy is saved first.";
+}
+
+async function renameSelected(): Promise<void> {
+  const { row, why } = renameReadiness();
+  const device = state.device;
+  const bank = state.bank;
+  if (why || !row || !device || !bank) {
+    if (why) status(why + ".", "warn");
+    return;
+  }
+
+  const typed = await askText({
+    title: `Rename ${bank.path}/${row.index}`,
+    body: [
+      `Up to ${NAME_SIZE} characters. The device has no lowercase, so anything typed in lower case ` +
+        "is stored upper.",
+      "This writes to the instrument. Before anything is sent you are asked again, and the preset " +
+        "as it is now is saved to your downloads.",
+    ],
+    value: row.name,
+    maxLength: NAME_SIZE,
+    confirmLabel: "Continue",
+  });
+  if (typed === undefined) return;
+
+  // **Two conversations must not share one instrument.** A tag read may still be in flight; stop it
+  // and wait for its last request to land, exactly as a browse does, before the write begins.
+  state.tagRun++;
+  await state.reading?.catch(() => undefined);
+
+  const result = await renamePresetOnDrive({
+    device,
+    bank: bank.bank,
+    index: row.index,
+    name: typed,
+    onStatus: (message) => status(message),
+  });
+
+  const noted = result.notes.length ? ` (${result.notes.join("; ")})` : "";
+  if (result.outcome !== "written") {
+    status(
+      result.outcome === "cancelled"
+        ? "Not renamed. Nothing was sent."
+        : `${bank.path}/${row.index} is already called "${result.to}".${noted}`,
+      "warn",
+    );
+    return;
+  }
+  if (!result.committed) {
+    status(`The instrument did not acknowledge the rename of ${result.from}, so nothing landed.`, "error");
+  } else if (!result.verified) {
+    status(
+      `${result.from} renamed ${result.to}, but the read-back did not match what was sent` +
+        (result.problem ? `: ${result.problem}` : ".") + " The copy in your downloads is the old preset.",
+      "error",
+    );
+  } else if (result.listedAs !== result.to) {
+    status(
+      `${result.from} renamed ${result.to} and read back, but the instrument now lists the slot as ` +
+        `"${result.listedAs ?? "nothing"}".`,
+      "warn",
+    );
+  } else {
+    status(`${result.from} renamed ${result.to} on the instrument, read back and listed.${noted}`, "ok");
+  }
+
+  /*
+   * **The row is updated in place rather than by browsing again.** A browse re-lists and starts a tag
+   * read whose own status lines replace the one above, so the only sentence saying whether the
+   * rename landed was gone before anybody could read it. The next browse still notices the changed
+   * listing entry and re-reads that slot, because the cache compares listings.
+   */
+  if (result.committed && result.listedAs !== undefined) {
+    const renamed = state.rows.find((r) => r.index === row.index);
+    if (renamed) renamed.name = result.listedAs;
+    renderTable();
+  }
+}
+
+$("libraryRename").addEventListener("click", () => {
+  renameSelected().catch(report);
 });
