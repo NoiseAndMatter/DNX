@@ -318,9 +318,21 @@ load a kit into a pattern. A tool showing one side could describe the work but n
         heading: "What it writes",
         body: `Dragging a preset from the library into the pool **edits the project held in this
 page**. The instrument is not written to, and the file on disk is untouched until you press
-**Export project**.
+**Export project**. A mistake costs a reload, not a recording.
 
-A mistake costs a reload, not a recording.`,
+**Rename… is the exception**: it changes a preset on the instrument itself.`,
+      },
+      {
+        heading: "Renaming a preset",
+        body: `Browse a preset bank, click a preset, and press **Rename…**. It needs **WRITE** to be on.
+
+- Up to 16 characters. The instrument has no lowercase, so lower case is stored upper.
+- **Factory presets cannot be renamed.** The instrument marks them write-protected. Save a copy to a
+  free slot on the instrument and rename that.
+- Before anything is sent you are asked again, and the preset as it is now is saved to your downloads
+  as a **.dn2snd** file.
+- After the write, DNX reads the slot back and compares it with what was sent, then lists the bank
+  again so the new name comes from the instrument itself.`,
       },
       {
         id: "library-search",
