@@ -74,8 +74,10 @@ export interface LibraryEntry {
   /**
    * False for a slot the device protects.
    *
-   * An occupied kit slot reads as not writable — the instrument marks saved work — so this is not
-   * simply the inverse of `occupied` and must not be treated as one.
+   * The instrument marks **factory content** protected: the factory kits and presets read not
+   * writable, while a slot holding the owner's own save reads writable, and every empty slot does.
+   * Listed on OS 1.11, 2026-09-14. So this is not the inverse of `occupied` and must not be treated
+   * as one; an earlier reading from two samples had occupied kits as always protected.
    */
   writable: boolean;
   /** The object's size, constant across a collection. Not the stored file's length. */

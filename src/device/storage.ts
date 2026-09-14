@@ -154,7 +154,8 @@ export function openRequest(
   // **The chunk size is asked for, not announced.** The open reply's second field read 2,048 on all
   // three of Transfer's opens and **16** on ours, which sank it as a constant and then explained
   // itself: Transfer *requests* 2,048 and we requested nothing, so we got a 16-byte default. At 16
-  // bytes a chunk a 4 MiB project is 262,144 messages, which is precisely the runaway that followed.
+  // bytes a chunk a Digitone 1's 4 MiB project slot is 262,144 messages, which is precisely the
+  // runaway that followed.
   //
   // Safe to append: the path's NUL is already on the wire, so this cannot recreate the unterminated
   // body that froze the device three times. Inferred, like everything else about this request.
@@ -848,7 +849,8 @@ export function parseListing(body: Uint8Array): Listing {
       at += 4;
     } else if (layout === LONG) {
       // Index, size and two unidentified bytes. Used by files **and** by bank directories, whose
-      // "size" is a fixed 262,144 — an allocation, the way each project's is a fixed 4 MiB.
+      // "size" is a fixed 262,144 — an allocation, the way each project's is a fixed 4 MiB on a
+      // Digitone 1 and 16 MiB on a Digitone II.
       if (at + 12 > body.length) {
         if (entries.length > 0) break;
       throw new ListingError(`entry "${name}" is truncated in its index/size — ${so_far()}`);
