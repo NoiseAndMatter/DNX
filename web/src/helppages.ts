@@ -347,9 +347,9 @@ which is how you tell a silent device from a busy one.
 **Listen has to be on before anything asks a question**, on this page: it is what collects the
 reply. Press a request without it and the status bar says so and nothing is sent.
 
-If a request times out, the first thing to check is whether **another application has the port**.
-Overbridge or Elektron Transfer holding it produces truncated replies that look exactly like a
-protocol bug.`,
+If a request times out, or a listing comes back short, the first thing to check is whether
+**another application has the port**. Overbridge or Elektron Transfer holding it produces truncated
+replies that look exactly like a protocol bug. Quit both and ask again.`,
         image: { src: "help/probe-connect.png", alt: "The probe's output and input pickers with the identify and listen controls" },
       },
       {
@@ -434,6 +434,26 @@ confirmation says so.
 
 The affirmative button is marked as destructive and focus starts on **Cancel**.`,
         image: { src: "help/safeguards-confirm.png", alt: "A write confirmation naming the instrument, the destination slots and what they currently hold" },
+      },
+      {
+        heading: "Close Elektron Transfer and Overbridge first",
+        body: `**Only one application can talk to an instrument's USB port cleanly at a time.** With
+Elektron Transfer or Overbridge open, DNX's messages still go out and replies still come back, but
+the replies arrive **cut short**. Nothing on the instrument is wrong, and it looks exactly as if it
+were.
+
+What that looks like in DNX:
+
+- A preset bank that lists **35 of 256** slots, or the +Drive listing **45 of 128** projects.
+- A project or preset that stops part-way through reading.
+- A request that never gets an answer.
+
+DNX checks every listing and refuses one that did not arrive whole, rather than showing you part of
+a bank as if it were all of it. The message names both applications. **Quit them, then press the
+button again**: there is nothing to reset on the instrument.
+
+A list you choose a destination from is the one place a short answer would cost you work, which is
+why a partial one is an error and not a shorter list.`,
       },
       {
         heading: "If something goes wrong",

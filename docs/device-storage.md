@@ -416,7 +416,9 @@ attempt; the first two were the ones being looked for, and `kits` went unrecorde
   `projects` or `soundbanks` is refused.
 - **Directory-only.** `/soundbanks/A/DIGIT-ONE` and `/soundbanks/A/SIMPLE LEAD JM` both answer
   `Invalid path`. There is no stat; a file has no listing.
-- **A bare path returns the whole directory** — 128 projects, 256 sounds, one response.
+- **A bare path returns the whole directory** — 128 projects, 256 sounds, one response — **when
+  no other application holds the port.** With Overbridge or Transfer open the reply arrives cut
+  short, 45 of 128 projects or 35 of 256 presets, and `wholeListing` refuses it.
 - **`start` alone returns nothing.** Sent a start of 28 with no count, the device answered
   `first 28, next 28, count 0` — on two different paths. It honoured the cursor and returned the
   zero entries we asked for, which is how the second field was found.
@@ -852,7 +854,12 @@ after    H/130 -> H/131   committed: true   verified: true    mismatches: 0
 > **A fix applied to one of two calls is half a fix.** `test/safewrite.test.ts` now asserts that no
 > `readStoredFile` in that module defaults its form.
 
-### A Digitone II preset bank has never been listed — OPEN, found 2026-08-07
+### A Digitone II preset bank has never been listed — LISTED 2026-09-14, size still unrecorded
+
+`/soundbanks/A` on a Digitone II running OS 1.11 listed all **256** entries, and every preset's
+body decoded. The object size that listing reported was not written down, so the 302-or-359 question
+below is still open; one more listing with the size column recorded closes it.
+
 
 Note which device each row of that table came from. **The preset row is a Digitone 1** — the
 captured file declares container kind **9** and format **`"0097"`**, the DN1 project signature, and

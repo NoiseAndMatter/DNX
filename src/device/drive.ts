@@ -39,7 +39,7 @@ import {
   parsePayload,
 } from "../project/container.js";
 import { type ApiTransport, type StoredFile, readStoredFile } from "./storagesession.js";
-import { StorageCode, type Entry, ListingError, listRequest, parseListing } from "./storage.js";
+import { type Entry, ListingError, listRequest, StorageCode, wholeListing } from "./storage.js";
 import { RESPONSE_BIT } from "./api.js";
 import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE } from "../project/dn2codec.js";
 
@@ -84,7 +84,7 @@ export async function listProjects(
     StorageCode.List,
   );
 
-  return parseListing(reply.body)
+  return wholeListing(reply, PROJECTS)
     .entries
     .filter((e) => e.kind === "file")
     .map(toProject)
