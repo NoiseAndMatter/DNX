@@ -41,7 +41,7 @@
  * point at actually contain sounds?**
  */
 
-import { DN1_LAYOUT, DN2_LAYOUT } from "../project/dn2image.js";
+import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout } from "../project/dn2image.js";
 import { SYNTH_TRACK_COUNT, TRACK, trackRecord } from "../project/dn1.js";
 import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { patternName } from "../sheet/naming.js";
@@ -181,7 +181,7 @@ export interface DeviceExpandPlan {
 export function planDeviceExpand(options: DeviceExpandOptions): DeviceExpandPlan {
   const { source, destination } = options;
 
-  if (destination.length !== DN2_LAYOUT.imageSize) {
+  if (!fitsLayout(destination, DN2_LAYOUT)) {
     throw new DeviceExpandRefused(
       `the destination is ${destination.length} bytes, not a Digitone II image. Expansion targets ` +
         `a DN2; a DN1 cannot receive one.`,

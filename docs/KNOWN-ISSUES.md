@@ -181,7 +181,7 @@ either take the copy or say plainly that the slot has moved on since the capture
 is the more interesting one, because a null round trip that turns out not to be null is a result
 worth a card rather than a silent overwrite.
 
-## Firmware 1.11 projects are 512 bytes longer, and DNX opens none of them — OPEN 2026-09-14
+## Firmware 1.11 projects are 512 bytes longer, and DNX opened none of them — FIXED 2026-09-14
 
 Found by opening `/projects/4` off a Digitone II that had been updated to OS 1.11:
 
@@ -219,9 +219,34 @@ The image size is used as the family test, and one size per family is assumed:
 - `src/expand/convert.ts`, `src/expand/deviceexpand.ts` and `src/expand/merge.ts` each assert the
   destination is exactly `DN2_LAYOUT.imageSize`.
 
-Because nothing moved, the fix is a second accepted length rather than a second layout. The 512 bytes
-have to survive a read, an edit and a write untouched, and a DN1 conversion built on the 1.10E blank
-still produces a `0050` project, which a 1.11 instrument upgrades on load, as it just did to 18.
+### The fix: a second accepted size, not a second layout
+
+Because nothing moved, one layout still describes both firmwares. `ImageLayout` gains `imageSizes`,
+every size a family has written, and `fitsLayout` tests membership. `layoutFor`, `imageFrom`, the
+converter's template check, the expander and merge destinations, the rearrangement check, the device
+write's diff and the rebuild donor all ask that instead of comparing against one number.
+`imageSize` stays, meaning the size a blank or template has, and its comment says it is not the only
+one.
+
+`imageFrom`'s refusal now names both causes: compressed bytes, or a firmware this build does not
+know. The next firmware that changes the size will say so, instead of calling it compression.
+
+**The 512 bytes are carried, not understood.** A 1.11 project opens, edits and writes back with
+them untouched; `test/os111.test.ts` rebuilds the payload and checks every byte survives. What they
+say is not decoded. The firmware session's type-table diff for 1.11 adds exactly one new storage
+type, `BOB::bobConfigStorage_v0_t`, mirrored by `BreakOutBoxSettings`, so the Outbox 8 is the
+likeliest owner. The two objects' header version (2) cannot be matched to that `_v0` suffix: across
+kits, patterns and sounds, DNX's header versions never equal the type names' suffixes.
+
+A Digitone 1 conversion still starts from the 1.10E blank and produces a `0050` project. A 1.11
+instrument upgrades that on load, as it did to all 18 projects on this one.
+
+**Confirmed on hardware**, same session, nothing else on the port: the manager opened SKETCHPAD
+from slot 4 of the 1.11 instrument, 12,890,159 bytes, and drew its patterns.
+
+`test/os111.test.ts` checks the sizes without a device, then, against the private corpus, reads the
+1.11 SKETCHPAD and its 1.10E copy. The first 12,889,604 bytes are identical, the appended block holds
+the two objects where they were measured, a write-back keeps all 512 bytes, and pattern A1 reads.
 
 Evidence: `99_HardwareTest/projects_4_SKETCHPAD_os1.11_stored_139736B.bin` and
 `os-1.11-project-image-2026-09-14.md` in the private corpus.
