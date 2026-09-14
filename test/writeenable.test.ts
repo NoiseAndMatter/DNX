@@ -118,7 +118,7 @@ test("every control that writes is marked, and every dangerous one has been cons
     "a dangerous button must either carry data-writes-device or be listed in DOES_NOT_WRITE with " +
       "a reason it cannot reach the instrument");
   assert.deepEqual(marked.sort(),
-    ["dodrivesave", "fileWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    ["dodrivesave", "fileWrite", "libraryRename", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 
