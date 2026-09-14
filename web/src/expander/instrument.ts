@@ -116,8 +116,9 @@ export class Instrument {
     if (!project) throw new DeviceSourceError("browse the +Drive again — that listing is stale");
 
     this.hooks.onStatus(`Reading ${project.name} from slot ${project.index}…`);
-    // `working`, not a percentage: a +Drive listing reports a flat 4 MiB allocation rather than the
-    // file's size, so there is no honest denominator. See `progress.ts`.
+    // `working`, not a percentage: a +Drive listing reports a flat allocation (4 MiB on a
+    // Digitone 1, 16 MiB on a Digitone II) rather than the file's size, so there is no honest
+    // denominator. See `progress.ts`.
     this.hooks.progress.working(`Reading ${project.name}`);
     let opened;
     try {

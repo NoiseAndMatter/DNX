@@ -16,8 +16,9 @@
  * | reading a bank's tags | **yes** — the occupied slots are counted first |
  * | reading a file off the +Drive | **no** |
  *
- * That last row is not an oversight. A `DriveProject` reports `allocated`, which is *"a flat 4 MiB
- * on every project, **not** the file's size"* — and a real project is 12.9 MB. The `0x54` open
+ * That last row is not an oversight. A `DriveProject` reports `allocated`, which is the slot's
+ * allocation and **not** the file's size: 16 MiB on a Digitone II, whose image is 12.9 MB, and 4 MiB
+ * on a Digitone 1. The `0x54` open
  * reply's five spare bytes were checked too, in case they declared a length; across captures they
  * read 2,048 and 16, which look like chunk counts against that fixed allocation. **A percentage
  * built on either would sail past 100% and then keep going**, which is worse than no percentage.
