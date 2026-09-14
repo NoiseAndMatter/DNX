@@ -40,7 +40,7 @@ import {
   type Dn1Pattern,
   type Dn1Track,
 } from "../project/dn1.js";
-import { DN1_LAYOUT, DN2_KIT, DN2_LAYOUT } from "../project/dn2image.js";
+import { DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, fitsLayout } from "../project/dn2image.js";
 import {
   KIT_MIDI_MASK_OFFSET,
   PATTERN as DN2_PATTERN,
@@ -730,7 +730,11 @@ export function convertProject(
   options: ConvertOptions = {},
 ): { image: Uint8Array; report: ConversionReport } {
   assertImage(dn1Image, DN1_LAYOUT.imageSize, "DN1 image");
-  assertImage(template, DN2_LAYOUT.imageSize, "DN2 template");
+  if (!fitsLayout(template, DN2_LAYOUT)) {
+    throw new ConversionError(
+      `DN2 template must be ${DN2_LAYOUT.imageSizes.join(" or ")} bytes, got ${template.length}`,
+    );
+  }
 
   const out = Uint8Array.from(template);
   const report: ConversionReport = {

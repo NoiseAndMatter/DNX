@@ -103,7 +103,7 @@ test("a compressed payload is refused rather than sliced into nonsense", { skip 
     new Uint8Array(readFileSync(join(CORPUS!, "01_DN1", "01_Projects", "001 PRESETS.dnprj"))),
   ).payload;
 
-  assert.throws(() => imageFrom(compressed), /looks compressed/);
+  assert.throws(() => imageFrom(compressed), /Either it is compressed/);
 });
 
 // --- listing ---------------------------------------------------------------------------------------
