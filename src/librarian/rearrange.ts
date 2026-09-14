@@ -367,8 +367,8 @@ export function verifyRearrange(image: Uint8Array, shuffle: Shuffle): VerifyResu
     }
   }
 
-  if (image.length !== device.layout.imageSize) {
-    problems.push(`image is ${image.length} bytes, expected ${device.layout.imageSize}`);
+  if (!device.layout.imageSizes.includes(image.length)) {
+    problems.push(`image is ${image.length} bytes, expected ${device.layout.imageSizes.join(" or ")}`);
   }
 
   return { ok: problems.length === 0, problems };

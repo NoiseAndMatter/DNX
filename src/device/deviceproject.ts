@@ -209,10 +209,10 @@ export function planChangedRecords(
   layout: ImageLayout,
   limit: number = DEFAULT_WRITE_LIMIT,
 ): WritePlan {
-  if (before.length !== after.length || before.length !== layout.imageSize) {
+  if (before.length !== after.length || !layout.imageSizes.includes(before.length)) {
     throw new WriteTooLarge(
       `the two images are ${before.length} and ${after.length} bytes; this layout is ` +
-        `${layout.imageSize}. Only two readings of the same project can be diffed.`,
+        `${layout.imageSizes.join(" or ")}. Only two readings of the same project can be diffed.`,
     );
   }
 

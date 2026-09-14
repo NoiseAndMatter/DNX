@@ -41,7 +41,7 @@ import {
 import { type ApiTransport, type StoredFile, readStoredFile } from "./storagesession.js";
 import { type Entry, ListingError, listRequest, StorageCode, wholeListing } from "./storage.js";
 import { RESPONSE_BIT } from "./api.js";
-import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE } from "../project/dn2codec.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "../project/dn2image.js";
 
 /** Where projects live. There are no folders — the +Drive is two flat lists. */
 export const PROJECTS = "/projects";
@@ -192,14 +192,19 @@ export function projectFor(read: DriveRead, name: string, firmwareVersion: strin
  * > differences, two entirely independent paths off the same instrument. `test/drive.test.ts`.
  */
 export function imageFrom(payload: ProjectPayload): Uint8Array {
-  const expected = IMAGE_SIZES[payload.kind];
-  if (expected === undefined) {
+  const sizes = IMAGE_SIZES[payload.kind];
+  if (sizes === undefined) {
     throw new ListingError(`payload kind ${payload.kind} is neither a Digitone 1 nor a Digitone II`);
   }
-  if (payload.storedLength !== expected) {
+  const expected = payload.storedLength;
+  if (!sizes.includes(expected)) {
+    // Two causes, and the old message knew one. Until OS 1.11 appended 512 bytes, every image of a
+    // family had one size, so a mismatch could only have meant compressed bytes.
     throw new ListingError(
-      `payload declares ${payload.storedLength} bytes where a ${payload.formatVersion} image is ` +
-        `${expected} — this looks compressed, which a +Drive read never is`,
+      `payload declares ${payload.storedLength} bytes, format ${payload.formatVersion}, and an ` +
+        `uncompressed image of this family is ${sizes.join(" or ")} bytes. Either it is compressed, ` +
+        `which a +Drive read never is, or it was written by a firmware this version of DNX does ` +
+        `not know`,
     );
   }
 
@@ -219,9 +224,9 @@ const DN1_KIND = 9;
 const DN2_KIND = 15;
 const MANIFEST_FORMAT_VERSION = "1.0";
 const DN1_PRODUCT_TYPES = ["24", "30"] as const;
-const IMAGE_SIZES: Record<number, number> = {
-  [DN1_KIND]: DN1_IMAGE_SIZE,
-  [DN2_KIND]: DN2_IMAGE_SIZE,
+const IMAGE_SIZES: Record<number, readonly number[]> = {
+  [DN1_KIND]: DN1_LAYOUT.imageSizes,
+  [DN2_KIND]: DN2_LAYOUT.imageSizes,
 };
 
 /** Refuse a reply that is not the one this request asked for. Same check the session makes. */

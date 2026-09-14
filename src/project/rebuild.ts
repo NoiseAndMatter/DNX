@@ -330,9 +330,9 @@ export function planRebuild(
  */
 export function applyRebuild(donor: Uint8Array, plan: RebuildPlan): Uint8Array {
   const { layout } = plan.placement;
-  if (donor.length !== layout.imageSize) {
+  if (!layout.imageSizes.includes(donor.length)) {
     throw new RebuildError(
-      `the donor image is ${donor.length} bytes and this capture needs ${layout.imageSize} — ` +
+      `the donor image is ${donor.length} bytes and this capture needs ${layout.imageSizes.join(" or ")} — ` +
         `it is a project from the other family`,
     );
   }

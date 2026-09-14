@@ -52,6 +52,21 @@ export const DN1_IMAGE_SIZE = 2_781_700;
 /** Decoded image size of a Digitone II project. Identical in all 9 DN2 payloads. */
 export const DN2_IMAGE_SIZE = 12_889_604;
 
+/**
+ * Decoded image size of a Digitone II project written by **OS 1.11**. Container format `"0059"`.
+ *
+ * 512 bytes longer than 1.10E's, and **nothing before them moved**. Measured 2026-09-14 on the
+ * same project read both ways: the header, all 128 patterns, all 128 kits and the old tail are
+ * byte-identical, and every `BEEFBACE` object sits at the same offset with the same version. The
+ * appended block holds two new version-2 objects. The firmware's type table gained
+ * `BOB::bobConfigStorage_v0_t` (BreakOutBoxSettings, the Outbox 8) in the same release, which is
+ * the likeliest reading of them and is not yet confirmed.
+ *
+ * 1.11 upgraded every stored project on the instrument it was installed on, so this is not an edge
+ * case: on that machine it is the only size there is.
+ */
+export const DN2_OS111_IMAGE_SIZE = 12_890_116;
+
 export class Lz4DecodeError extends Error {}
 
 /**

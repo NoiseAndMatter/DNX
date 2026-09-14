@@ -18,12 +18,20 @@
  * conversion tractable: both sides are fixed-offset arrays of 128 patterns and 128 kits.
  */
 
-import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE } from "./dn2codec.js";
+import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE } from "./dn2codec.js";
 
 /** Layout constants for one device family's decoded project image. */
 export interface ImageLayout {
-  /** Total decoded image size. Constant across every corpus payload for this family. */
+  /**
+   * The decoded image size a blank or a template of this family has: the oldest one still written.
+   *
+   * **Not the only size an image of this family can be.** Test membership with `imageSizes`, or
+   * `fitsLayout`. OS 1.11 appended 512 bytes to the Digitone II image without moving anything,
+   * so one layout describes both, and an exact comparison against this refuses every 1.11 project.
+   */
   imageSize: number;
+  /** Every decoded size this layout describes, oldest first. The offsets below hold for all. */
+  imageSizes: readonly number[];
   /** Bytes before the pattern array. Holds the root object and the project name. */
   headerSize: number;
   /** Number of pattern slots. 128 on both families (16 banks x 8, or 8 x 16). */
@@ -48,6 +56,8 @@ export interface ImageLayout {
  */
 export const DN2_LAYOUT: ImageLayout = {
   imageSize: DN2_IMAGE_SIZE,
+  // 1.10E, then 1.11. Every offset below is the same in both; 1.11 only appends.
+  imageSizes: [DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE],
   headerSize: 0x200,
   patternCount: 128,
   patternSize: 89_088, // 0x15C00
@@ -60,6 +70,7 @@ export const DN2_LAYOUT: ImageLayout = {
 /** Digitone 1, container kind 9, format version "0097". Verified on 53 payloads. */
 export const DN1_LAYOUT: ImageLayout = {
   imageSize: DN1_IMAGE_SIZE,
+  imageSizes: [DN1_IMAGE_SIZE],
   headerSize: 0x200,
   patternCount: 128,
   patternSize: 18_432, // 0x4800
@@ -69,10 +80,15 @@ export const DN1_LAYOUT: ImageLayout = {
   tailSize: 94_212,
 };
 
+/** Whether an image is one this layout describes, at any firmware's size for that family. */
+export function fitsLayout(image: Uint8Array, layout: ImageLayout): boolean {
+  return layout.imageSizes.includes(image.length);
+}
+
 /** Pick the layout that matches a decoded image, by its size. */
 export function layoutFor(image: Uint8Array): ImageLayout {
-  if (image.length === DN2_LAYOUT.imageSize) return DN2_LAYOUT;
-  if (image.length === DN1_LAYOUT.imageSize) return DN1_LAYOUT;
+  if (fitsLayout(image, DN2_LAYOUT)) return DN2_LAYOUT;
+  if (fitsLayout(image, DN1_LAYOUT)) return DN1_LAYOUT;
   throw new Error(`Unrecognised decoded image size ${image.length}`);
 }
 
