@@ -888,6 +888,58 @@ export function parseListing(body: Uint8Array): Listing {
 }
 
 /**
+ * A listing, refused unless it is whole.
+ *
+ * **A partial +Drive listing must never be presented as the +Drive.** Slot numbers come from these
+ * entries, and a project opened from the wrong slot is the mistake this whole subsystem is arranged
+ * to prevent. So a page that carried 45 of a declared 128 is an error here, not a shorter list.
+ *
+ * Moved here from `driveproject.ts`, where it guarded the manager and nothing else. The library,
+ * `listProjects` and the backup each listed a directory and took whatever arrived: on 2026-09-14 a
+ * preset bank showed **35 of 256** as though it were the bank, with Elektron Transfer open on the
+ * same port. A backup doing that saves a partial drive and says it saved the drive.
+ *
+ * **The cause is named in the order it has been true.** On 2026-09-06 two unrelated requests came
+ * back at exactly 885 bytes with Overbridge Engine holding the port, and closing it fixed both: 128
+ * projects in one reply. A directory too large for one reply would look the same and has not been
+ * seen once the port was DNX's own. Reaching for paging first was one of three wrong turns that day,
+ * which is why this refuses rather than asking for the rest.
+ */
+export function wholeListing(
+  reply: { body: Uint8Array; terminated?: boolean },
+  path: string,
+): Listing {
+  const hint =
+    "The usual cause is another application on the same USB port: close Elektron Transfer and " +
+    "Overbridge, then try again.";
+
+  // A reply with no end marker was cut on the way here. It may still parse, because 7-bit
+  // unpacking cannot tell a fragment from a short message, so it is judged before the entries are.
+  if (reply.terminated === false) {
+    let counts = "";
+    try {
+      const partial = parseListing(reply.body);
+      counts = ` after ${partial.entries.length} of the ${partial.declared} entries it declared`;
+    } catch {
+      // Cut part-way through an entry. The refusal below is the finding either way.
+    }
+    throw new ShortListingError(
+      `${path}: the reply was cut in transit${counts}, ${reply.body.length} bytes with no end ` +
+        `marker. ${hint}`,
+    );
+  }
+
+  const listing = parseListing(reply.body);
+  if (!listing.complete) {
+    throw new ShortListingError(
+      `${path} answered with ${listing.entries.length} of the ${listing.declared} entries it ` +
+        `declared, so this is not the whole directory. ${hint}`,
+    );
+  }
+  return listing;
+}
+
+/**
  * The bits a writable entry has and a protected one does not.
  *
  * `0x7e` full, `0x12` protected — so `0x6c` is what protection removes. Compared as a whole rather

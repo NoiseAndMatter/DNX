@@ -61,7 +61,7 @@
  * that exists, so an empty one costs nothing to leave out.
  */
 
-import { STORED_FORM } from "../../src/device/storage.js";
+import { STORED_FORM, wholeListing } from "../../src/device/storage.js";
 import { fileLengthFromHead } from "../../src/project/container.js";
 import { readStoredFile } from "../../src/device/storagesession.js";
 import type { DriveProject } from "../../src/device/drive.js";
@@ -151,7 +151,7 @@ async function listNamed(
 ): Promise<{ index: number; name: string }[]> {
   const id = reserveMessageIds(IDS_FOR.oneMessage);
   const reply = await transport.request(listRequest(id, path), id, 10_000);
-  return parseListing(reply.body).entries
+  return wholeListing(reply, path).entries
     .filter((entry) => entry.name.trim().length > 0)
     .map((entry) => ({ index: entry.index, name: entry.name }));
 }

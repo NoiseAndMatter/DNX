@@ -45,7 +45,7 @@
 
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { parsePayload } from "../project/container.js";
-import { type Entry, StorageCode, listRequest, parseListing } from "./storage.js";
+import { type Entry, listRequest, StorageCode, wholeListing } from "./storage.js";
 import { type ApiFrame, RESPONSE_BIT } from "./api.js";
 
 /** The two library collections, named the way the manual names them. */
@@ -124,7 +124,7 @@ export async function listLibraryBank(
     await transport.request(listRequest(msgId, path), msgId, options.timeoutMs ?? 5_000),
   );
 
-  const entries = parseListing(reply.body)
+  const entries = wholeListing(reply, path)
     .entries
     .filter((e) => e.kind === "file")
     .map(toLibraryEntry)
