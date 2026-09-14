@@ -261,6 +261,58 @@ export function verifyWrite(sent: Uint8Array, readBack: Uint8Array): WriteVerdic
   return { ok: true };
 }
 
+/** How far a slot has moved since it was captured. */
+export interface RecordDrift {
+  same: boolean;
+  /** How many bytes differ. When the lengths differ this is the larger length, not a count. */
+  differingBytes: number;
+  /** First differing byte, when both are the same length. */
+  at?: number;
+  /** A sentence for a confirmation to quote. Absent when nothing has moved. */
+  reason?: string;
+}
+
+/**
+ * Has the slot changed since the capture was taken?
+ *
+ * **The question a null round trip has to ask before it can call itself null.** Sending a captured
+ * record back to its own slot is the safest write there is only while the slot still holds those
+ * bytes. Turn a knob between the read and the write and it is an ordinary overwrite of an ordinary
+ * edit, made under a confirmation promising nothing would change.
+ *
+ * Separate from `verifyWrite`, which answers a different question with the same comparison: that
+ * one asks whether a write landed and stops at the first difference, because one wrong byte is
+ * already the whole answer. This one is read by somebody deciding whether to write at all, and
+ * "three bytes differ" and "half the record differs" are not the same decision.
+ */
+export function driftSince(captured: Uint8Array, onDevice: Uint8Array): RecordDrift {
+  if (captured.length !== onDevice.length) {
+    return {
+      same: false,
+      differingBytes: Math.max(captured.length, onDevice.length),
+      reason: `the slot holds ${onDevice.length.toLocaleString()} bytes and the capture is ` +
+        `${captured.length.toLocaleString()}`,
+    };
+  }
+
+  let differing = 0;
+  let at: number | undefined;
+  for (let i = 0; i < captured.length; i++) {
+    if (captured[i] === onDevice[i]) continue;
+    differing++;
+    at ??= i;
+  }
+
+  if (differing === 0) return { same: true, differingBytes: 0 };
+  return {
+    same: false,
+    differingBytes: differing,
+    at: at!,
+    reason: `${differing.toLocaleString()} of ${captured.length.toLocaleString()} bytes differ, ` +
+      `the first at ${at}`,
+  };
+}
+
 /**
  * The safest possible first write: a record sent back to the slot it came from.
  *

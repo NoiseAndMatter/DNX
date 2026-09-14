@@ -381,12 +381,12 @@ whatever was unsaved.`,
         body: `**Write back** returns a captured record to the slot it came from. **Write to slot**
 copies a pattern into another slot. **Read → write** copies a +Drive file.
 
-All three need **WRITE** to be on and read the result back to check it.
+All three need **WRITE** to be on, save a copy of the destination to your downloads before
+sending anything, and read the result back to check it. A copy that cannot be taken refuses the
+write.
 
-**Write to slot** and **Read → write** save a copy of the destination to your downloads
-before sending anything, and refuse the write if that copy cannot be taken. **Write back**
-returns a record to the slot it came from, so the capture on screen is that copy: save it first
-if you want it on disk.`,
+**Write back** also checks that the slot still holds what was captured. If it has changed since,
+the round trip is not the harmless one it looks like, and the question says so.`,
       },
     ],
   },

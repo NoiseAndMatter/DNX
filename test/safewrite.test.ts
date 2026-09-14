@@ -407,9 +407,10 @@ const ALLOWED: Record<string, { paths: string[]; because: string }> = {
   // five rules, since 2026-09-08. It is exempt because it writes **one captured record to an
   // arbitrary slot**, which is not an image diff and cannot go through `safeWriteRecords` at all.
   //
-  // The backup was the one it lacked, and the test at the bottom of this file is what keeps it:
+  // The backup was the one they lacked, and the tests at the bottom of this file are what keep it:
   // the destination is read fresh, the copy is offered after the question, and nothing goes out
-  // before the copy exists.
+  // before the copy exists. `writeBack` gained the same read on 2026-09-08, and with it the check
+  // that its round trip is still the null one it calls itself.
   writeToSlot: {
     paths: ["web/src/probe/main.ts"],
     because: "the probe writes one captured record to a chosen slot, which is not an image diff",
@@ -783,48 +784,92 @@ test("every read of a file the writer touches asks for the stored form", () => {
   }
 });
 
-test("the probe's slot write copies the destination before it sends anything", () => {
-  /*
-   * **The fifth rule, on the one page exempt from the other four.**
-   *
-   * `writeToChosenSlot` cannot go through `safeWriteRecords` — it writes one captured record to an
-   * arbitrary slot, which is not an image diff — so the exemption above lets it build its own
-   * message. It carried the occupancy check, the confirmation and the read-back inline, and until
-   * 2026-09-08 it carried no backup at all: the destination's contents came from `splitCapture()`,
-   * so a slot nobody had happened to read was overwritten with nothing kept and a confirmation that
-   * said so out loud (*"not in the capture — unknown"*).
-   *
-   * Read out of the source because the whole function is DOM and MIDI. The properties are the
-   * order, which is the part that is easy to get subtly wrong: the destination is read before the
-   * question is asked, the file is offered after the answer, and **nothing is sent until the copy
-   * exists**. `safeWriteFile` settled that order for the reason quoted beside it there — a backup
-   * downloaded for a write somebody then cancels is rude, and a write that began before the copy
-   * was taken is worse.
-   */
+/**
+ * The probe's two writes, read out of their own source.
+ *
+ * They are exempt from `safeWriteRecords` for the reason recorded beside the exemption above, so
+ * nothing structural makes them follow its sequence. This is what does. Both are entirely DOM and
+ * MIDI, so the properties are checked by reading the functions rather than by running them.
+ */
+function probeWrite(name: string): string {
   const source = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe", "main.ts"), "utf8");
 
-  const start = source.indexOf("async function writeToChosenSlot(");
-  assert.ok(start > 0, "writeToChosenSlot has been renamed; this fence no longer guards anything");
-  const body = source.slice(start, source.indexOf("\n}\n", start));
+  const start = source.indexOf(`async function ${name}(`);
+  assert.ok(start > 0, `${name} has been renamed; this fence no longer guards anything`);
 
-  const at = (needle: string): number => {
-    const index = body.indexOf(needle);
-    assert.ok(index > 0, `writeToChosenSlot no longer contains ${needle}`);
-    return index;
-  };
+  // Matched rather than searched for: the file is CRLF on this machine and LF in CI, and
+  // `indexOf("\n}\n")` quietly returns -1 on the first of those, which `slice` then reads as "one
+  // byte from the end" and hands back most of the file. A fence measuring the wrong region passes
+  // for reasons that have nothing to do with the code it names.
+  const end = /\r?\n\}\r?\n/.exec(source.slice(start));
+  assert.ok(end, `${name} has no closing brace at column 0`);
+  const body = source.slice(start, start + end.index);
+  assert.ok(body.length < 12_000, `${name}'s body came out at ${body.length} bytes; the slice is wrong`);
+  return body;
+}
 
-  assert.doesNotMatch(body, /objNr === destination/,
+for (const name of ["writeToChosenSlot", "writeBack"]) {
+  test(`the probe's ${name} copies what it overwrites before it sends anything`, () => {
+    /*
+     * **The fifth safe-write rule, on the one page exempt from the other four.**
+     *
+     * `writeToChosenSlot` carried the occupancy check, the confirmation and the read-back inline
+     * and no backup at all: the destination's contents came from `splitCapture()`, so a slot nobody
+     * had happened to read was overwritten with nothing kept, under a confirmation that said so out
+     * loud (*"not in the capture — unknown"*). `writeBack` had the narrower version of the same
+     * hole: it promised the bytes were identical to what the device just sent, which stops being
+     * true the moment somebody turns a knob between the read and the write.
+     *
+     * The order is the part that is easy to get subtly wrong, so it is the part pinned here: the
+     * destination is read before the question is asked, the file is offered after the answer, and
+     * **nothing is sent until the copy exists**. `safeWriteFile` settled that order for the reason
+     * quoted beside it there — a backup downloaded for a write somebody then cancels is rude, and a
+     * write that began before the copy was taken is worse.
+     */
+    const body = probeWrite(name);
+    const at = (needle: string): number => {
+      const index = body.indexOf(needle);
+      assert.ok(index > 0, `${name} no longer contains ${needle}`);
+      return index;
+    };
+
+    const read = at("await awaitPatternKit(");
+    const ask = at("await askConfirm(");
+    const copy = at("save(backup.bytes");
+    const send = at("output.send(");
+
+    assert.ok(read < ask, "the destination must be read before the person is asked about it");
+    assert.ok(ask < copy, "a file downloaded for a write somebody then cancels is rude");
+    assert.ok(copy < send, "the write began before the copy was taken");
+    assert.ok(body.includes("buildRecordBackup("),
+      "the copy must be the same replayable .syx the safe path writes, not a bespoke one");
+  });
+}
+
+test("the probe's slot write judges occupancy from the device, not from the capture", () => {
+  /*
+   * The specific shape of the state that had no backup: `messages.find(m => … m.objNr ===
+   * destination)`. Kept as its own assertion because it is the mistake somebody would reintroduce
+   * while making the page feel faster.
+   */
+  assert.doesNotMatch(probeWrite("writeToChosenSlot"), /objNr === destination/,
     "the destination is being looked up in the capture again, which is the state that had no copy");
+});
 
-  const read = at("await awaitPatternKit(");
-  const ask = at("await askConfirm(");
-  const copy = at("save(backup.bytes");
-  const send = at("output.send(");
-
-  assert.ok(read < ask, "the destination must be read before the person is asked about it");
-  assert.ok(ask < copy, "a file downloaded for a write somebody then cancels is rude");
-  assert.ok(copy < send, "the write began before the copy was taken");
-  assert.ok(body.includes("buildRecordBackup("),
-    "the copy must be the same replayable .syx the safe path writes, not a bespoke one");
+test("the null round trip checks that it is still null", () => {
+  /*
+   * `writeBack`'s own property, and the interesting half of its fix. The copy matters, but a null
+   * round trip that turns out not to be null is a **result**, and this page exists to record
+   * results — so the drift is compared and shown whatever the person then decides.
+   */
+  const body = probeWrite("writeBack");
+  assert.ok(body.includes("driftSince("),
+    "writeBack no longer compares the capture against what the slot holds now");
+  // Read out of the confirmation itself rather than the whole function, so that prose recording
+  // what the old wording claimed does not satisfy or fail the check.
+  const ask = body.indexOf("await askConfirm(");
+  const confirmation = body.slice(ask, body.indexOf("}))", ask));
+  assert.match(confirmation, /drift\.same/,
+    "the question no longer depends on whether the slot still holds what was captured");
 });
