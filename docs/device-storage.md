@@ -532,9 +532,15 @@ was imaginary and the device paid for it.
 |---|---|---|
 | `/` **on a Digitone 1** | 2 | `projects` (128 children), `soundbanks` (8) |
 | `/` **on a Digitone II** | **3** | `projects` (128), `soundbanks` (8), **`kits` (8)** |
-| `/projects` | 128 | names, 1-based ids, **4,194,304 B each** |
+| `/projects` | 128 | names, 1-based ids, **4,194,304 B each** on a Digitone 1; **16,777,216 B** on a Digitone II |
 | `/soundbanks` | 8 | `A`–`H`, **262,144 B each** |
-| `/soundbanks/A` | 256 | sound names, ids, **302 B each** |
+| `/soundbanks/A` | 256 | sound names, ids, **302 B each** on a Digitone 1; **364 B** on a Digitone II |
+
+The file rows were all taken on a Digitone 1 until 2026-08-06. The Digitone II figures are from OS
+1.11, 2026-09-14, with nothing else on the port, and every slot reports the same size empty or
+full. The 16 MiB project allocation is probably not a 1.11 change: a Digitone II image is
+12,889,604 bytes and could never have fitted in 4 MiB. The 4 MiB figure went on to be quoted as
+the Digitone II's for six weeks, beside that image size, without anyone setting the two side by side.
 
 ### The two families do not have the same root — confirmed 2026-08-06
 
@@ -854,11 +860,18 @@ after    H/130 -> H/131   committed: true   verified: true    mismatches: 0
 > **A fix applied to one of two calls is half a fix.** `test/safewrite.test.ts` now asserts that no
 > `readStoredFile` in that module defaults its form.
 
-### A Digitone II preset bank has never been listed — LISTED 2026-09-14, size still unrecorded
+### A Digitone II preset bank has never been listed — ANSWERED 2026-08-13, re-measured on OS 1.11
 
-`/soundbanks/A` on a Digitone II running OS 1.11 listed all **256** entries, and every preset's
-body decoded. The object size that listing reported was not written down, so the 302-or-359 question
-below is still open; one more listing with the size column recorded closes it.
+**Answered below**, in *A +Drive preset is 364 bytes, and a DN2 sound object is 359*: a Digitone II
+`/soundbanks` entry reports **364**, the stored body, which is the 359-byte sound plus a five-byte
+prefix. Neither 302 nor 359. The OPEN heading outlived its answer by a month, and on 2026-09-14 this
+note was first edited to say the size was "still unrecorded", which it never was.
+
+Re-measured on OS 1.11, 2026-09-14, with nothing else on the port: `/soundbanks/A` and `/soundbanks/H`
+both report 364 on all 256 slots, occupied and empty alike. 1.11 did not change the preset body.
+
+The rest of this section is the question as it stood before 2026-08-13, kept because the reasoning
+about which device a number came from is still the lesson.
 
 
 Note which device each row of that table came from. **The preset row is a Digitone 1** — the
@@ -905,7 +918,7 @@ more thing the kit directory did not need.
 `/kits` itself answers 8 entries named `A`–`H` at 4,194,304 bytes each, the same flat allocation a
 project slot gets.
 
-### The permission mask reads occupancy on kits too
+### The permission mask marks factory content, not occupancy — CORRECTED 2026-09-14
 
 ```
 occupied   SOLID  10,752 B  [00 12 01 01]
@@ -916,10 +929,26 @@ empty             10,752 B  [00 7e 00 01]
 `0x7e & 0x6c == 0x6c` so an empty kit slot is **writable**, and `0x12 & 0x6c == 0` so an occupied
 one is **not**.
 
-That is the mask working unchanged on a directory it was never derived from — and it means the
-instrument marks a saved kit as protected. `writeStoredFile` refuses an occupied target anyway, so
-the two agree; **replacing** a kit in place will need that permission understood rather than
-assumed.
+That was the mask working unchanged on a directory it was never derived from, and it was read as
+the instrument marking a saved kit as protected. **Two samples said so, and one of them was a
+factory kit.**
+
+The full listings, OS 1.11, 2026-09-14, nothing else on the port:
+
+| Where | `0x12`, protected | `0x7e`, writable and occupied |
+|---|---|---|
+| `/kits/A` | slots 1–14, the factory kits `SOLID` to `WOOL` | slots 15 and 38, copies of `SOLID` |
+| `/soundbanks/A` | all 256, the factory presets | none |
+| `/soundbanks/H` | none | all 128, presets the owner saved |
+| `/projects` | 1 `PRESETS`, 2 `COREVAULT` | slots 3–18 |
+
+Every empty slot reads `0x7e`. So **`0x12` marks write-protected factory content**, and a slot
+holding somebody's own save is writable. The occupied `SOLID` in the first sample happened to be
+the factory one.
+
+Occupancy is still the `01 01` pair and nothing else. `writeStoredFile` refuses an occupied target
+whatever the mask says, and the one relaxation, writing a project back over the slot it came out
+of, has to respect `0x12` as well: slot 2, COREVAULT, refused the owner's hardware write test on exactly that, and slot 17 took it.
 
 ## A stored preset or kit is a container around the object — 2026-08-06
 

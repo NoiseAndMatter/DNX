@@ -109,8 +109,8 @@ test("a directory can use the long trailer, which is what /soundbanks does", () 
 });
 
 test("a bank's size is an allocation, not its contents", () => {
-  // 262,144 is a fixed 256 KiB per bank, the way each project gets a fixed 4 MiB — 256 sounds of
-  // 302 bytes is only 77,312. Nobody should compute free space from these.
+  // 262,144 is a fixed 256 KiB per bank, the way each Digitone 1 project gets a fixed 4 MiB — 256
+  // sounds of 302 bytes is only 77,312. Nobody should compute free space from these.
   const bank = parseListing(BANKS).entries[0]!;
   assert.equal(bank.size, 262_144);
   assert.ok(bank.size! > 256 * 302, "the allocation exceeds what the bank can hold");
