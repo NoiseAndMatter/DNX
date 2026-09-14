@@ -56,7 +56,10 @@ export interface DriveProject {
    */
   index: number;
   name: string;
-  /** The slot's allocation — a flat 4 MiB on every project, **not** the file's size. */
+  /**
+   * The slot's allocation, **not** the file's size: a flat 4 MiB on a Digitone 1 and 16 MiB on a
+   * Digitone II, the same on every slot, empty or full.
+   */
   allocated: number;
 }
 
