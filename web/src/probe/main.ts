@@ -82,6 +82,7 @@ import {
   driveChecksum,
   listRequest,
   parseListing,
+  wholeListing,
 } from "../../../src/device/storage.js";
 import {
   INFORMATION_CODES,
@@ -1946,7 +1947,9 @@ async function readThenWrite(): Promise<void> {
 async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]> {
   const reply = await requestListing(linkTo(output), issue(nextListId++), path, undefined);
   if (!reply) throw new Error(`no answer listing ${path} — refusing to treat that as empty`);
-  return parseListing(reply).entries;
+  // Whole or refused. A write deciding "nothing in the way" from part of a directory is the
+  // one use of a partial listing that costs somebody a project.
+  return wholeListing({ body: reply }, path).entries;
 }
 
 
