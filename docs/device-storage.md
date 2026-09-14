@@ -950,6 +950,26 @@ Occupancy is still the `01 01` pair and nothing else. `writeStoredFile` refuses 
 whatever the mask says, and the one relaxation, writing a project back over the slot it came out
 of, has to respect `0x12` as well: slot 2, COREVAULT, refused the owner's hardware write test on exactly that, and slot 17 took it.
 
+## The instrument keeps its own encoding of a file it is sent — 2026-09-14
+
+Found by renaming a preset on a Digitone II (OS 1.11), which is the first +Drive write DNX makes of a
+file it has **rebuilt** rather than copied.
+
+A stored preset is LZ4-compressed: `/soundbanks/H/1` is 267 bytes stored, decoding to the 364-byte body
+a raw read returns. A rename decodes it, changes the sixteen name bytes, and encodes it again under the
+same header with `buildPayload`. Two renames of the copy in `/soundbanks/H/129`, each sending 271 bytes:
+
+| rename | sent | read back | bytes match | decoded body |
+|---|---|---|---|---|
+| `BD 1 BR` to `BD 1 RENAMED` | 271 | 271 | yes | as sent |
+| `BD 1 RENAMED` to `BD 1 BR COPY` | 271 | **275** | **no** | as sent: identical to `H/1` except name bytes 24-28 |
+
+So a byte comparison of a rebuilt file is not a check of whether it landed: the instrument can store a
+different, equally valid encoding of the same body. **Verify a rebuilt file by what it decodes to**,
+which is what `writeProjectToDrive` has always done for projects and what the preset rename now does.
+`safeWriteFile`'s own byte comparison stays right for a verbatim copy, where the only expected
+differences are the bank and slot stamps.
+
 ## A stored preset or kit is a container around the object — 2026-08-06
 
 **The relationship between a file on the +Drive and the thing a project holds is: strip 43 bytes.**
