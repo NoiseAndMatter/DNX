@@ -39,7 +39,13 @@ import {
   landingSlotsFor,
   landingRefusal,
 } from "./landing.js";
-import { DN1_LAYOUT, DN2_LAYOUT, kitRecord, patternRecord } from "../project/dn2image.js";
+import {
+  DN1_LAYOUT,
+  DN2_LAYOUT,
+  fitsLayout,
+  kitRecord,
+  patternRecord,
+} from "../project/dn2image.js";
 import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "../project/dn2pattern.js";
 import {
   DN2_POOL_OFFSET,
@@ -183,7 +189,7 @@ export interface MergeNote {
 export function planPatternMerge(options: MergeOptions): MergePlan {
   const { source, destination, patterns, landing } = options;
 
-  if (destination.length !== DN2_LAYOUT.imageSize) {
+  if (!fitsLayout(destination, DN2_LAYOUT)) {
     throw new MergeRefused(
       `the destination is ${destination.length} bytes, not a Digitone II image — a merge writes ` +
         `DN2 patterns and a DN1 cannot receive them`,
