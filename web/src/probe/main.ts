@@ -67,6 +67,7 @@ import { REQUEST_OPTIONS, dumpProductFor, dumpRequest } from "../../../src/devic
 import { DumpReader, type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
 import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
 import {
+  driftSince,
   looksBlank,
   nullRoundTrip,
   settleMsAfter,
@@ -1023,18 +1024,89 @@ async function writeBack(): Promise<void> {
   }
 
   const slot = patternName(candidate.objNr);
+  const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
+
+  /*
+   * **Is it still a null round trip?** The capture is what the slot held when it was read, and the
+   * confirmation used to promise the bytes were identical to what the device just sent. That stops
+   * being true the moment somebody turns a knob between the read and the write, and then this is an
+   * ordinary overwrite of an ordinary edit, made under a promise that nothing would change.
+   *
+   * So the slot is asked for again, and the answer does two jobs: it decides what the question says,
+   * and it is the copy kept before anything is sent.
+   */
+  status(`Asking for ${slot} before touching it…`);
+  const onDevice = await awaitPatternKit(output, productId, candidate.objNr);
+  if (!onDevice) {
+    verdictCard("Write refused — no copy of the slot", [
+      ["Slot", slot],
+      ["Asked for it back", `nothing within ${VERIFY_TIMEOUT_MS}ms`],
+      [
+        "Reason",
+        "this read is both the check that the round trip is still null and the copy kept before " +
+          "writing. Without it there is neither, so nothing was sent.",
+      ],
+      ["Device", "untouched"],
+    ]);
+    status(`${slot} did not answer, so nothing was sent.`, "error");
+    return;
+  }
+
+  const drift = driftSince(candidate.payload, onDevice);
+  if (!drift.same) {
+    // A card before the question, so the finding survives whatever the person then chooses. A null
+    // round trip that turns out not to be null is a result, and the probe exists to record results.
+    verdictCard("The slot has moved on since the capture", [
+      ["Slot", slot],
+      ["Captured", `${candidate.payload.length.toLocaleString()} bytes`],
+      ["On the device now", drift.reason ?? "differs"],
+      [
+        "Means",
+        "this is no longer a null round trip. Writing puts the older capture back over whatever " +
+          "changed. The copy saved on the way through is the newer one.",
+      ],
+    ]);
+  }
+
   if (
     !(await askConfirm({
-      title: `Write pattern ${slot} back to slot ${slot}?`,
+      title: drift.same
+        ? `Write pattern ${slot} back to slot ${slot}?`
+        : `Slot ${slot} has changed — still write the capture over it?`,
       body: [
-        `This OVERWRITES that slot. The bytes are identical to what the device just sent, so ` +
-          `nothing should change — but this is a real write and there is no undo.`,
+        drift.same
+          ? `This OVERWRITES that slot. The bytes are identical to what the slot holds right now, ` +
+            `asked a moment ago, so nothing should change — but this is a real write and there is ` +
+            `no undo.`
+          : `This is NOT the null round trip it looks like. Since the capture was taken, ${drift.reason}. ` +
+            `Writing puts the older bytes back over that change.`,
+        `${slot} as it stands is saved to your machine first, as a .syx you can send straight back.`,
         "Load a scratch project first.",
       ],
       confirmLabel: `Overwrite ${slot}`,
       danger: true,
     }))
   ) {
+    return;
+  }
+
+  /*
+   * The copy: after the question, before anything is sent. The same order and the same reason as
+   * `safeWriteFile` — a backup downloaded for a write somebody then cancels is rude, and a write
+   * that began before the copy was taken is worse. A failure here is a refusal, not a warning.
+   */
+  const backup = buildRecordBackup(
+    productId, device.name, [candidate.objNr], new Map([[candidate.objNr, onDevice]]),
+  );
+  try {
+    save(backup.bytes, backup.name);
+  } catch (error) {
+    verdictCard("Write refused — the copy could not be saved", [
+      ["Slot", slot],
+      ["Reason", String(error)],
+      ["Device", "untouched"],
+    ]);
+    status(`The copy of ${slot} could not be saved, so nothing was sent: ${String(error)}`, "error");
     return;
   }
 
@@ -1058,6 +1130,8 @@ async function writeBack(): Promise<void> {
     ["Slot", slot],
     ["Record", `${candidate.payload.length.toLocaleString()} bytes payload`],
     ["Message", `${message.length.toLocaleString()} bytes on the wire`],
+    ["Slot before the write", drift.same ? "identical to the capture" : drift.reason ?? "differs"],
+    ["Backup", `${backup.name} (${backup.bytes.length.toLocaleString()} bytes)`],
   ];
   // Every line carries how long the write has been running. Two stalled runs on hardware reported
   // their last line at *different* steps, which no single code path explains — without elapsed

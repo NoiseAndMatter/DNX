@@ -6,6 +6,7 @@ import { DN2_LAYOUT } from "../src/project/dn2image.js";
 import {
   WriteCode,
   WriteRefused,
+  driftSince,
   dumpWrite,
   looksBlank,
   needsJustification,
@@ -250,4 +251,42 @@ test("verify is the only proof a write worked", () => {
   assert.equal(verdict.at, 40);
 
   assert.match(verifyWrite(sent, record(63, 3)).reason!, /returned 63 bytes/);
+});
+
+test("a null round trip asks whether the slot is still what it captured", () => {
+  /*
+   * **The question `writeBack` did not use to ask.** Sending a captured record back to its own slot
+   * is the safest write there is only while the slot still holds those bytes. Turn a knob between
+   * the read and the write and it is an ordinary overwrite of an ordinary edit, made under a
+   * confirmation promising nothing would change.
+   */
+  const captured = record(64, 3);
+  assert.deepEqual(driftSince(captured, record(64, 3)), { same: true, differingBytes: 0 });
+});
+
+test("drift is counted, not stopped at, because the count is what the decision turns on", () => {
+  /*
+   * The difference from `verifyWrite`, which shares the comparison and answers a different
+   * question. That one stops at the first differing byte because one wrong byte is already the
+   * whole answer. This one is read by somebody deciding whether to write at all, and "three bytes
+   * differ" and "half the record differs" are not the same decision.
+   */
+  const captured = record(64, 3);
+  const onDevice = record(64, 3);
+  onDevice[10] = 0x7f;
+  onDevice[40] = 0x01;
+
+  const drift = driftSince(captured, onDevice);
+  assert.equal(drift.same, false);
+  assert.equal(drift.differingBytes, 2, "both are counted, not just the first");
+  assert.equal(drift.at, 10, "and the first is still named");
+  assert.match(drift.reason!, /2 of 64 bytes differ/);
+  assert.match(drift.reason!, /first at 10/);
+});
+
+test("two different lengths are drift without a byte count, which would not mean anything", () => {
+  const drift = driftSince(record(64, 3), record(32, 3));
+  assert.equal(drift.same, false);
+  assert.equal(drift.at, undefined, "there is no first differing byte between records of two sizes");
+  assert.match(drift.reason!, /holds 32 bytes and the capture is 64/);
 });
