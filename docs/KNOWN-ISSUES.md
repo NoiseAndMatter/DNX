@@ -205,6 +205,75 @@ positions. A fence that measures the wrong region passes for reasons that have n
 the code it names. The extractor now matches `/\r?\n\}\r?\n/` and asserts the body came out under
 12 KB, and all four assertions fail against the source of two days ago.
 
+## Firmware 1.11 projects are 512 bytes longer, and DNX opens none of them — OPEN 2026-09-14
+
+Found by opening `/projects/4` off a Digitone II that had been updated to OS 1.11:
+
+> Could not open the slot: Error: payload declares 12890116 bytes where a 0059 image is 12889604 — this
+> looks compressed, which a +Drive read never is
+
+**It is not compressed.** Every size check in DNX knows one Digitone II image, and 1.11 writes another.
+
+### What 1.11 changed, measured
+
+- **Every stored project was upgraded.** All 18 occupied slots read format `0059` and decode to
+  **12,890,116** bytes. 1.10E wrote `0050` and 12,889,604. Nothing was re-saved by hand, so the
+  instrument rewrote them itself.
+- **The 512 bytes are appended, and nothing before them moved.** Slot 4 (SKETCHPAD), read in stored
+  form, against the 1.10E copy of the same project in the private corpus: the header, all 128
+  patterns, all 128 kits and the whole old tail are **byte-identical**, and all 4,386 `BEEFBACE`
+  objects sit at the same offsets with the same versions.
+- The appended block is mostly zero: 68 non-zero bytes, holding **two new objects, both version 2**,
+  at `0xc4ae6f` and `0xc4afd6`.
+
+What those objects are is **not established**. The firmware diff for 1.11 adds Outbox 8 and CV
+configuration, and a new `projectStorage_v14_t`, which makes project-level I/O settings the obvious
+candidate. That is an inference from where the change landed, nothing more.
+
+Also measured on 1.11, and unchanged: the file API advertises the same 22 message codes as 1.10E, a
+preset bank lists all 256 slots, and every preset's tags decode.
+
+### Why nothing opens
+
+The image size is used as the family test, and one size per family is assumed:
+
+- `layoutFor` in `src/project/dn2image.ts` recognises an image by its exact length.
+- `imageFrom` in `src/device/drive.ts` compares a payload's declared length against one size per
+  kind, and calls any mismatch "compressed".
+- `src/expand/convert.ts`, `src/expand/deviceexpand.ts` and `src/expand/merge.ts` each assert the
+  destination is exactly `DN2_LAYOUT.imageSize`.
+
+Because nothing moved, the fix is a second accepted length rather than a second layout. The 512 bytes
+have to survive a read, an edit and a write untouched, and a DN1 conversion built on the 1.10E blank
+still produces a `0050` project, which a 1.11 instrument upgrades on load, as it just did to 18.
+
+Evidence: `99_HardwareTest/projects_4_SKETCHPAD_os1.11_stored_139736B.bin` and
+`os-1.11-project-image-2026-09-14.md` in the private corpus.
+
+## A partial +Drive listing was shown as the whole drive — FIXED 2026-09-14
+
+Reported from hardware: the library listed preset bank A as **35 of 256** slots. Elektron Transfer was
+running on the same machine. With it closed, the same bank listed 256 and `/projects` listed 128.
+
+This is the trap recorded on 2026-09-06, when Overbridge on the same port cut two unrelated replies at
+exactly 885 bytes. An 885-byte listing reply holds about 35 preset entries. What was new is that
+nothing said so. `parseListing` has reported a short page as `complete: false` since that day, and
+`wholeListing` refused one, but only the manager's destination checks called it. The library,
+`listProjects` and the backup each listed a directory and took whatever arrived, so a backup taken
+with Transfer open would save part of a bank and report it as saved.
+
+`wholeListing` now lives in `src/device/storage.ts` and every caller that decides what is on an
+instrument goes through it: the library, `listProjects`, the backup, the manager, and the probe's
+destination check before a write. It also refuses a reply with no SysEx end marker, and the refusal
+names Transfer and Overbridge, because a reader can close an application.
+
+`test/shortlisting.test.ts` holds the refusals and a fence: any `parseListing(` outside `storage.ts`
+fails the suite unless it is the probe's listing card, whose job is to show a partial page as one.
+The help's Safeguards page now has a section telling people to close both applications first.
+
+It does not page. Asking for the rest was one of the three wrong turns on 2026-09-06, and a directory
+larger than one reply has not been seen once the port was DNX's own.
+
 ## The probe's slot write had no backup of its destination — FIXED 2026-09-08
 
 `writeToChosenSlot` on the probe page carried four of the five safe-write rules: it judged the
