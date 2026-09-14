@@ -164,22 +164,46 @@ and only the reader's slack covered it. It had never bitten because nothing had 
 function. That is the **fifth** fact this codebase had written down twice; a test now pins
 `RESPONSE_SIZES[…].patternKit` against `patternSize + kitSize`.
 
-## The probe's null round trip trusts a capture that may have gone stale — OPEN 2026-09-08
+## The probe's null round trip trusted a capture that may have gone stale — FIXED 2026-09-08
 
-Found while fixing the entry below, and left alone rather than folded into it.
+Found while fixing the entry below, and fixed the day after rather than folded into it.
 
-`writeBack` sends a captured record to the slot it came from, and its confirmation says *"the bytes
+`writeBack` sends a captured record to the slot it came from, and its confirmation said *"the bytes
 are identical to what the device just sent, so nothing should change"*. That is true at the moment
 of the read and not afterwards. Turn a knob on the instrument between the read and the write and the
-capture is no longer what is in the slot, so the round trip is a real overwrite of a real edit, with
-no copy of it anywhere.
+capture is no longer what is in the slot, so the round trip is a real overwrite of a real edit,
+under a promise that nothing would change, with no copy of it anywhere.
 
-It is narrower than the slot write was: the record on screen *is* a copy of that slot as of the
-read, and **Save capture** puts it on disk. So the loss needs someone to edit on the instrument
-between two clicks on the same page. The fix is the same one shape: read the destination first, and
-either take the copy or say plainly that the slot has moved on since the capture. That second half
-is the more interesting one, because a null round trip that turns out not to be null is a result
-worth a card rather than a silent overwrite.
+It was narrower than the slot write's version: the record on screen *is* a copy of that slot as of
+the read, and **Save capture** puts it on disk, so the loss needed somebody to edit on the
+instrument between two clicks on the same page.
+
+The fix is the same shape and the same read: ask for the slot before the question, keep the answer
+as the copy, and compare it against the capture. `driftSince` in `dumpwrite.ts` is that comparison,
+and it is deliberately not `verifyWrite`. They share the arithmetic and answer different questions:
+`verifyWrite` asks whether a write landed and stops at the first differing byte, because one wrong
+byte is already the whole answer; `driftSince` is read by somebody deciding whether to write at all,
+and *three bytes differ* and *half the record differs* are not the same decision.
+
+**The copy is the dull half.** The interesting half is that a null round trip which turns out not to
+be null is a **result**, and this page exists to record results. So the drift gets a card of its own
+before the question is asked, and it stays up whatever the person then chooses. The confirmation
+changes with it: same title and a checked claim when nothing has moved, and *"Slot A1 has changed —
+still write the capture over it?"* when something has.
+
+### What this cost the fence
+
+Writing the second one exposed the first one as decoration. `test/safewrite.test.ts` extracted the
+function it was checking with `source.indexOf("\n}\n", start)`, which returns **-1** on a CRLF
+working copy; `slice` reads that as *one byte from the end* and hands back most of the file. The
+ordering assertions were passing on the first `awaitPatternKit`, `askConfirm` and `output.send` in
+several hundred lines of unrelated code.
+
+It had been checked against the pre-fix source and had failed there, which is why it looked sound —
+but it failed on the one assertion that scans for a *string*, not on the three that compare
+positions. A fence that measures the wrong region passes for reasons that have nothing to do with
+the code it names. The extractor now matches `/\r?\n\}\r?\n/` and asserts the body came out under
+12 KB, and all four assertions fail against the source of two days ago.
 
 ## The probe's slot write had no backup of its destination — FIXED 2026-09-08
 
