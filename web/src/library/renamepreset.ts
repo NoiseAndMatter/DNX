@@ -9,8 +9,8 @@
  *    protected: factory presets read `0x12` and are refused here rather than by the device.
  * 3. **The file read in stored form**, renamed by `renamePresetFile`, which checks that only the
  *    name moved before anything is sent.
- * 4. **`safeWriteFile` with `overwrite`**: it asks, saves the slot's current file to your downloads,
- *    writes and commits.
+ * 4. **`safeWriteFile` with `overwrite`**: it asks, saves the slot's current file to the DNX folder
+ *    or your downloads, writes and commits.
  * 5. **The slot is read back and decoded**, and the body compared with the renamed body.
  *
  * ## Why the read-back is decoded, not compared byte for byte
@@ -22,8 +22,14 @@
  * a write is verified by what it decodes to. `writeProjectToDrive` skips the byte check for exactly
  * this reason, and so does this.
  *
- * The copy is saved as `.dn2snd`, which is what a backup names the same bytes, so it opens in DNX
- * and can be written back.
+ * The copy is saved as `.dn2snd` from a Digitone II and `.dnsnd` from a Digitone 1, which is what a
+ * backup names the same bytes, so it opens in DNX and can be written back.
+ *
+ * ## Both instruments, one path
+ *
+ * A Digitone 1's stored preset body is its 302-byte sound object with nothing in front; a Digitone
+ * II's has five bytes first. `objectInStoredBody` finds the object by its magic either way, so the
+ * name is written at +12 of the object on both.
  */
 
 import { safeWriteFile } from "../../../src/device/safewrite.js";

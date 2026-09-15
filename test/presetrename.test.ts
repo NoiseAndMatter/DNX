@@ -116,3 +116,29 @@ test("a real stored preset renames, and decodes to its own body with only the na
   assert.deepEqual([...renamed.bytes.subarray(0, 29)], [...stored.subarray(0, 29)], "bank, slot and length kept");
   assert.ok(isCheckValid(renamed.bytes));
 });
+
+// --- a real stored preset off a Digitone 1 --------------------------------------------------------------
+
+const DN1_REAL = CORPUS && join(CORPUS, "..", "99_HardwareTest", "soundbanks_A_1_dn1_stored_266B.bin");
+const skipDn1 = !(DN1_REAL && existsSync(DN1_REAL)) &&
+  "needs the stored Digitone 1 /soundbanks/A/1 from the 2026-09-15 backup in the private corpus";
+
+test("a Digitone 1 stored preset renames the same way, with no prefix in front of its sound", { skip: skipDn1 }, () => {
+  /*
+   * **The library connected to a Digitone II only**, so this had never run on a Digitone 1 file. Its
+   * body is the 302-byte sound object with nothing in front, so the name is at +12 of the body where a
+   * Digitone II's is at +17, and the rename must move bytes there and nowhere else.
+   */
+  const stored = new Uint8Array(readFileSync(DN1_REAL!));
+  assert.equal(stored.length, 266);
+  assert.equal(storedPresetName(stored), "DIGIT-ONE");
+
+  const renamed = renamePresetFile(stored, "DNX DN1 TEST");
+  const before = decodeProjectImage(stored).image;
+  const after = decodeProjectImage(renamed.bytes).image;
+  assert.equal(before.length, 302);
+  const moved = [...after.keys()].filter((i) => after[i] !== before[i]);
+  assert.ok(moved.length > 0 && moved.every((i) => i >= 12 && i < 28), `moved outside the name: ${moved}`);
+  assert.deepEqual([...renamed.bytes.subarray(0, 29)], [...stored.subarray(0, 29)], "bank, slot and length kept");
+  assert.ok(isCheckValid(renamed.bytes));
+});

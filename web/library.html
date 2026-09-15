@@ -87,7 +87,8 @@
       <button class="btn" id="driveOpen" hidden>Open</button>
       <span class="sep"></span>
       <span class="lbl">Instrument</span>
-      <button class="btn" id="connect">Connect a Digitone II…</button>
+      <button class="btn" id="connect">Connect an instrument…</button>
+      <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
       <select id="kind" disabled title="Which library to browse">
         <option value="preset">Presets</option>
         <option value="kit">Kits</option>
@@ -175,7 +176,7 @@
 
 </main>
 
-<div class="status" id="status">Open a Digitone II project, or connect one.</div>
+<div class="status" id="status">Open a Digitone II project, or connect an instrument.</div>
 
 <script type="module" src="./dist/web/src/library/main.js"></script>
 </body>

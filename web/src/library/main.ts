@@ -91,11 +91,11 @@ import {
   type ConnectedDevice,
   DeviceSourceError,
   apiTransport,
-  connectDevice,
   listDeviceProjects,
   openDeviceProject,
 } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
+import { chooseDevice, devicePicker } from "../choosedevice.js";
 
 const status = statusBar();
 const progress = progressBar();
@@ -158,6 +158,9 @@ const state: State = { bankLetter: "A", rows: [], filter: { ...NO_FILTER }, tagR
  * stored copy would get wrong with the most confidence. `bankcache.ts` explains what invalidates it.
  */
 const banks: BankCache = new Map();
+
+/** Which instrument, when more than one is connected. See `choosedevice.ts`. */
+const picker = devicePicker($<HTMLSelectElement>("whichdevice"));
 
 /**
  * Patterns whose kit was replaced, for the amber mark on the grid.
@@ -411,7 +414,7 @@ function describeSlot(index: number): void {
  */
 async function browseDriveProjects(): Promise<void> {
   const device = state.device;
-  if (!device) throw new DeviceSourceError("connect a Digitone II first");
+  if (!device) throw new DeviceSourceError("connect an instrument first");
 
   status(`Listing the +Drive on ${device.name}…`);
   driveProjects = await listDeviceProjects(device);
@@ -444,7 +447,7 @@ async function browseDriveProjects(): Promise<void> {
  */
 async function openDriveProject(): Promise<void> {
   const device = state.device;
-  if (!device) throw new DeviceSourceError("connect a Digitone II first");
+  if (!device) throw new DeviceSourceError("connect an instrument first");
 
   const index = Number($<HTMLSelectElement>("driveProjects").value);
   const project = driveProjects.find((p) => p.index === index);
@@ -512,15 +515,71 @@ async function openDriveProject(): Promise<void> {
 
 // --- the library ---------------------------------------------------------------------------------
 
+/**
+ * Take the shown bank off the page.
+ *
+ * When the collection changes and when the instrument does: a listing of one says nothing about the
+ * other, and clearing is more honest than leaving the previous table under a new heading.
+ *
+ * **Bumping `tagRun` is what stops the reads.** Without it, a run started for a bank of presets
+ * keeps landing rows into a table now showing kits, and because the tag vocabulary is closed, every
+ * one of them would look like a real answer.
+ */
+function clearShownBank(sub: string): void {
+  state.tagRun++;
+  state.bank = undefined;
+  state.rows = [];
+  state.selected = undefined;
+  $("libraryGrid").hidden = true;
+  $("libraryTabs").hidden = true;
+  $("libraryFind").hidden = true;
+  $("libraryTags").hidden = true;
+  $("librarySub").textContent = sub;
+  renderRenameButton();
+}
+
+/**
+ * Connect to a Digitone or a Digitone II.
+ *
+ * **It asked for a Digitone II only**, so a Digitone's presets could be neither browsed nor renamed,
+ * though every piece underneath already handled one: its stored preset body is the sound object with
+ * no prefix, which `objectInStoredBody` finds by the magic, and `renamePresetOnDrive` names the copy
+ * by product. Checked on a Digitone 1 on 2026-09-15.
+ */
 async function connect(): Promise<void> {
-  status("Looking for a Digitone II…");
-  state.device = await connectDevice({ want: ProductId.DN2 });
+  status("Looking for an instrument…");
+  const device = await chooseDevice(picker);
+  state.device?.close();
+  state.device = device;
+  /*
+   * **Another instrument's banks are not this one's.** The cache is keyed by collection and bank
+   * letter, and it compares listings to decide what to read again, so a Digitone connected after a
+   * Digitone II could be shown the other's tags against its own names.
+   */
+  banks.clear();
+
+  // A Digitone has no /kits on its +Drive: a backup of one lists projects and soundbanks, nothing else.
+  const hasKits = device.productId !== ProductId.DN1;
+  const kinds = $<HTMLSelectElement>("kind");
+  const kitOption = kinds.querySelector<HTMLOptionElement>('option[value="kit"]');
+  if (kitOption) {
+    kitOption.disabled = !hasKits;
+    kitOption.title = hasKits ? "" : `${device.name} has no kits on its +Drive`;
+  }
+  if (!hasKits) kinds.value = "preset";
+  clearShownBank(`— press Browse to list ${kind()}s`);
+
   $("deviceInfo").hidden = false;
-  $("deviceInfo").textContent = state.device.name;
-  $<HTMLSelectElement>("kind").disabled = false;
+  $("deviceInfo").textContent = device.name;
+  kinds.disabled = false;
   $<HTMLButtonElement>("browse").disabled = false;
   $<HTMLButtonElement>("driveBrowse").disabled = false;
-  status(`${state.device.name} connected. Choose presets or kits, then Browse.`, "ok");
+  status(
+    hasKits
+      ? `${device.name} connected. Choose presets or kits, then Browse.`
+      : `${device.name} connected. It has no kits on its +Drive, so Browse lists its presets.`,
+    "ok",
+  );
 }
 
 function kind(): LibraryKind {
@@ -529,7 +588,7 @@ function kind(): LibraryKind {
 
 async function browse(options: { force?: boolean } = {}): Promise<void> {
   const device = state.device;
-  if (!device) throw new DeviceSourceError("connect a Digitone II first");
+  if (!device) throw new DeviceSourceError("connect an instrument first");
 
   // **Stop the previous read before saying a word to the device.** Bumping the run makes the loop
   // exit before its next request, and awaiting the promise waits for the one already in flight to
@@ -718,6 +777,8 @@ function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<num
   const running = readBankTags({
     transport: apiTransport(device),
     kind: collection,
+    // A Digitone has one FM engine and no machine byte. See `slotFacts`.
+    machines: device.productId !== ProductId.DN1,
     bank: bank.bank,
     indices,
     msgId: reserveMessageIds(IDS_FOR.wholeBank),
@@ -1043,6 +1104,21 @@ $("connect").addEventListener("click", () => {
   connect().catch(report);
 });
 
+// Choosing the other instrument drops everything read from this one. Its bank names and tags belong
+// to the device they were read from, and the next Connect uses the choice.
+$("whichdevice").addEventListener("change", (event) => {
+  picker.port = (event.target as HTMLSelectElement).value || undefined;
+  state.device?.close();
+  state.device = undefined;
+  banks.clear();
+  clearShownBank("— connect to list a library");
+  $<HTMLSelectElement>("kind").disabled = true;
+  $<HTMLButtonElement>("browse").disabled = true;
+  $<HTMLButtonElement>("driveBrowse").disabled = true;
+  $("deviceInfo").hidden = true;
+  status(picker.port ? `Press Connect to work with ${picker.port}.` : "No instrument chosen.");
+});
+
 $("browse").addEventListener("click", () => {
   browse().catch(report);
 });
@@ -1052,20 +1128,7 @@ $("export").addEventListener("click", () => {
 });
 
 $("kind").addEventListener("change", () => {
-  // The two collections are different sizes and different objects, so a listing of one says nothing
-  // about the other. Clearing is more honest than leaving the previous table under a new heading.
-  //
-  // **Bumping `tagRun` is what stops the reads.** Without it, a run started for a bank of presets
-  // keeps landing rows into a table now showing kits — and because the tag vocabulary is closed,
-  // every one of them would look like a real answer.
-  state.tagRun++;
-  state.bank = undefined;
-  state.rows = [];
-  $("libraryGrid").hidden = true;
-  $("libraryTabs").hidden = true;
-  $("libraryFind").hidden = true;
-  $("libraryTags").hidden = true;
-  $("librarySub").textContent = `— press Browse to list ${kind()}s`;
+  clearShownBank(`— press Browse to list ${kind()}s`);
 });
 
 // --- finding one of 256 --------------------------------------------------------------------------
