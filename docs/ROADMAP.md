@@ -2205,6 +2205,23 @@ Settings.
   the first IndexedDB use in DNX. It answers only the narrow case of remembering a folder; §5's
   persistence question is still open.
 
+## 13. The library on a Digitone 1 — BUILT 2026-09-15
+
+The library connected to a Digitone II only (`connectDevice({ want: ProductId.DN2 })`), found while
+testing the DNX folder on a Digitone 1. Nothing underneath needed it: a DN1 stored preset body is
+its 302-byte sound object with no prefix, which `objectInStoredBody` finds by the magic, and
+`renamePresetFile` renamed the DN1 presets from a backup, moving only name bytes.
+
+- **Connect** uses `choosedevice.ts`, moved out of the manager, so both pages choose an instrument
+  the same way, including the picker when two are connected.
+- **No kits on a Digitone 1**: its +Drive has no `/kits`, so the option is disabled.
+- **Tags yes, machine no.** On a DN1, +244 is a sound setting: across 1,364 presets of a DN1 backup
+  it took 38 values that the DN2 table reads as FM TONE, SWARMER, FM DRUM and MIDI. The tag word
+  at +8 decodes on 1,344 of them. `slotFacts` leaves the machine out for a DN1.
+- **The bank cache is cleared on connect**, because it is keyed by collection and bank letter only.
+- Tests: `test/librarydn1.test.ts`, and a DN1 case in `test/presetrename.test.ts` on
+  `soundbanks_A_1_dn1_stored_266B.bin` from the private corpus.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
