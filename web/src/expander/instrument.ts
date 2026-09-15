@@ -32,6 +32,7 @@
  * was what made that easy to forget.
  */
 
+import type { LoadedProject } from "../project.js";
 import {
   type ConnectedDevice,
   type DeviceProjectHandle,
@@ -65,6 +66,12 @@ export interface StoredProject {
   image: Uint8Array;
   label: string;
   slot: number;
+  /**
+   * The project as a file would hold it, for export: its reconstructed manifest and its own
+   * container header. Absent when the instrument did not give its firmware, because then there is
+   * no honest manifest to build (see `DriveProjectHandle.manifest`).
+   */
+  project?: LoadedProject;
 }
 
 /** What the active project came back as. The `handle` is what makes it writable. */
@@ -146,6 +153,9 @@ export class Instrument {
       image: opened.image,
       label: `${connected.name} · ${project.index}. ${project.name}`,
       slot: project.index,
+      ...(opened.manifest
+        ? { project: { fileName: `${project.name}.dn2prj`, manifest: opened.manifest, payload: opened.payload, image: opened.image } }
+        : {}),
     };
   }
 

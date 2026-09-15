@@ -54,6 +54,7 @@ import {
 import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/deviceexpand.js";
 import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
 import { readProjectName } from "../../../src/project/dn1.js";
+import { deviceFor } from "../../../src/librarian/device.js";
 import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
 // **From `src/`, not from `../dom.js`.** `dom.ts` only re-exports this, and importing it here
 // would pull `HTMLElement` and `Blob` into anything that imports planning — which is how a Node
@@ -140,23 +141,58 @@ export function planFor(
 export function planWhole(args: {
   source: Uint8Array;
   destination: Uint8Array;
+  /** The destination as it was opened. What the report counts against; see `planDeviceExpand`. */
+  baseline?: Uint8Array;
   plan?: ExpansionPlan;
+  /** Consent from a previous outcome's `offer`, for this call only. */
+  overrides?: MergeOverrides;
 }): PlanOutcome {
   const plan = planDeviceExpand({
     source: args.source,
     destination: args.destination,
+    ...(args.baseline === undefined ? {} : { baseline: args.baseline }),
     ...(args.plan === undefined ? {} : { plan: args.plan }),
     projectName: stampedName(readProjectName(args.source)),
+    replaceDestination: true,
   });
+  const described = { lines: describeDeviceExpand(plan) };
+  const kB = Math.round(plan.estimatedBytes / 1024);
+
+  if (plan.pendingSlots.length === 0) {
+    return {
+      described,
+      message:
+        plan.changedSlots.length === 0
+          ? "The device already holds this conversion — nothing to write."
+          : `Applied: ${plan.changedSlots.length} pattern slot(s) differ from the destination as ` +
+            `opened, about ${kB} kB.`,
+    };
+  }
+
+  /*
+   * **Asked before, not undone after.** Whole project replaces every pattern in the destination, and
+   * it used to do that to a project with content without a word. The manager asks before any
+   * destructive operation and names what is lost; this now does the same, through the offer button
+   * the merge already uses, so the question stays beside the plan.
+   */
+  const device = deviceFor(args.destination);
+  const losing = plan.pendingSlots.filter((slot) => device.summarise(args.destination, slot).occupied === true);
+  if (losing.length > 0 && !args.overrides?.confirmOverwrite) {
+    return {
+      described,
+      level: "warn",
+      message:
+        `Whole project replaces every pattern in the destination, and ${losing.length} of them hold ` +
+        `trigs that would be gone: ${losing.slice(0, 8).map(patternName).join(", ")}` +
+        `${losing.length > 8 ? ` +${losing.length - 8} more` : ""}. Undo brings them back until you export.`,
+      offer: { kind: "overwrite", overrides: { ...args.overrides, confirmOverwrite: true } },
+    };
+  }
 
   return {
-    described: { lines: describeDeviceExpand(plan) },
-    ...(plan.changedSlots.length > 0 ? { image: plan.image } : {}),
-    message:
-      plan.changedSlots.length === 0
-        ? "The device already holds this conversion — nothing to write."
-        : `${plan.changedSlots.length} pattern slot(s) would change, about ` +
-          `${Math.round(plan.estimatedBytes / 1024)} kB.`,
+    described,
+    image: plan.image,
+    message: `${plan.pendingSlots.length} pattern slot(s) would change, about ${kB} kB.`,
   };
 }
 
