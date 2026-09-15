@@ -2234,6 +2234,13 @@ The probe is for instrument debugging, and most people never need it.
   Ctrl+Alt+digits and the arrows count only the tools shown; the probe page always shows its own link.
 - Stored preferences → Clear resets it to hidden and tells the row.
 
+## 15. What each model can do, in the help — DONE 2026-09-15
+
+Asked for by the owner: a Digitone / Digitone II feature chart in the help. It is the overview's
+*A Digitone and a Digitone II* section. Each "no" is a gate in the code and was seen on a
+Digitone 1 in the 2026-09-15 release run; `test/helppages.test.ts` pins those rows, so removing a gate
+means editing the chart. Insights for a Digitone 1 is queued as parity work.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop
