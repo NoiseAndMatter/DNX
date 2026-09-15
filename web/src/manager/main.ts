@@ -69,7 +69,7 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { recordWriteMessage } from "../../../src/device/safewrite.js";
-import { emptyProjectSlots, writeProjectToDrive } from "../driveproject.js";
+import { projectSlotEntries, writeProjectToDrive } from "../driveproject.js";
 import { buildPayload } from "../../../src/project/write.js";
 import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
 import { projectName, writeProjectName } from "../../../src/project/dn2image.js";
@@ -725,15 +725,40 @@ async function driveDevice(): Promise<ConnectedDevice | undefined> {
 async function browseDriveTargets(): Promise<void> {
   const device = await driveDevice();
   if (!device) return;
+  /*
+   * **Cleared before the listing, not after.** The old list stayed on screen while the new one was
+   * read, and the first press of Save to +Drive after opening slot 19 offered "Slot 1 — replace
+   * PRESETS" from the project opened before it. A picker must never show choices that belong to a
+   * project that is no longer open.
+   */
+  const stale = $<HTMLSelectElement>("drivetarget");
+  stale.textContent = "";
+  stale.hidden = true;
+  $("dodrivesave").hidden = true;
   try {
     status("Reading the +Drive listing…");
-    const empty = await emptyProjectSlots(device);
+    const entries = await projectSlotEntries(device);
+    const empty = entries.filter((e) => e.occupied === false).map((e) => e.index);
+    const originEntry = origin ? entries.find((e) => e.index === origin!.slot) : undefined;
     /*
      * **Asked against the instrument that is actually connected**, not against a remembered slot
      * number. A project opened off one Digitone and saved after switching to another used to be
      * offered its old slot number on the new device's +Drive.
      */
-    const claim = origin ? mayReplaceSlot(origin, identityOf(device), origin.slot) : undefined;
+    const asClaimed = origin ? mayReplaceSlot(origin, identityOf(device), origin.slot) : undefined;
+    // **Protection is the instrument's answer, and it outranks the claim.** Factory PRESETS came out of
+    // slot 1 and was offered "Slot 1 — replace PRESETS"; the listing marks that slot write-protected,
+    // so the offer was a write the device refuses.
+    const claim = asClaimed?.allowed === true && originEntry?.writable === false
+      ? {
+          allowed: false as const,
+          reason: `Slot ${origin!.slot} is write-protected on the instrument, as factory content is, so it ` +
+            "cannot be replaced. Save a copy to an empty slot instead.",
+        }
+      : asClaimed;
+    // The listing's name for the slot, when it gives one. Straight after a save the instrument has
+    // been seen to list the slot with no name for a moment, so the opened project's name stands in.
+    const slotName = originEntry?.name || origin?.name || (state.session ? projectName(state.session.image) : "");
     const back = origin && claim?.allowed === true && !empty.includes(origin.slot)
       ? origin : undefined;
     /*
@@ -752,7 +777,7 @@ async function browseDriveTargets(): Promise<void> {
       // otherwise.
       const option = document.createElement("option");
       option.value = String(back.slot);
-      option.textContent = `Slot ${back.slot} — replace ${back.name}`;
+      option.textContent = `Slot ${back.slot} — replace ${slotName}`;
       select.append(option);
     }
     for (const slot of empty) {
@@ -771,7 +796,7 @@ async function browseDriveTargets(): Promise<void> {
           "device — so there is nowhere it could go without destroying something. Free a slot on " +
           "the instrument first."
         : back
-          ? `Slot ${back.slot} holds ${back.name}, the project you opened — saving there replaces ` +
+          ? `Slot ${back.slot} holds ${slotName}, the project you opened — saving there replaces ` +
             `it, and copies it to your machine first. ${empty.length} empty slot(s) otherwise.`
           : `${empty.length} empty slot(s). Pick one and press Save to slot.${withheld}`,
       none ? "warn" : withheld ? "warn" : "ok",
@@ -906,10 +931,16 @@ async function saveToDrive(): Promise<void> {
       status(`Slot ${slot}: ${result.problem ?? "the write could not be verified"}`, "error");
       return;
     }
+    // The page's own list follows its own save. The instrument's next listing can lag on the name, and
+    // a list that says "19." for a slot this page just filled is how the gap reached the owner.
+    const savedAs = projectName(session.image);
+    const listed = drive?.projects.find((p) => p.index === slot);
+    if (listed) listed.name = savedAs;
+    if (origin?.slot === slot) origin = { ...origin, name: savedAs };
     status(
       `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
         `${result.chunks} chunk(s), read back and decoded to the same project.` +
-        (replacing ? ` It replaced ${replacing.name}, which was downloaded first.` : ""),
+        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was downloaded first.` : ""),
       "ok",
     );
   } catch (error) {
@@ -1256,6 +1287,26 @@ async function askTarget(what: string): Promise<number | undefined> {
 async function runRename(pattern: number): Promise<void> {
   const { session, device } = state;
   if (!session || !device) return;
+
+  /*
+   * **Refused before the question, not after it.** A version-2 pattern (every factory PRESETS record)
+   * is readable and not editable. The dialog used to open, take a name, close, and leave the pattern,
+   * the history and the status line exactly as they were: nothing on screen said the rename had been
+   * refused, or why. Asking for a name that cannot be written is the wrong order.
+   */
+  const summary = device.summarise(session.image, pattern);
+  if (!summary.supported) {
+    status(
+      summary.readable
+        ? `${patternName(pattern)} is a storage version ${summary.version} pattern. DNX reads it but does not ` +
+          "edit it yet, so it cannot be renamed here. Rename it on the instrument, or copy the project to a " +
+          "slot and re-save it there to upgrade it."
+        : `${patternName(pattern)} has storage version ${summary.version}, which this build cannot read, so it ` +
+          "cannot be renamed.",
+      "error",
+    );
+    return;
+  }
 
   const current = readPatternName(session.image, device, pattern);
   // `maxLength` is the device's own field width, so the box cannot accept what the format cannot
@@ -1659,9 +1710,13 @@ async function openFromDrive(): Promise<void> {
       );
     });
 
+    // **The project's own name when the listing gives none.** Opened straight after being saved, slot
+    // 19 was listed as "19." and came up as "open from slot 19" with nothing before it, and every
+    // sentence that quoted the name after that had a hole in it.
+    const openedName = project.name || projectName(opened.image);
     beginProject(opened.image, {
       slot: project.index,
-      name: project.name,
+      name: openedName,
       device: identityOf(drive.connected),
     });
     const device = state.device!;
@@ -1671,7 +1726,7 @@ async function openFromDrive(): Promise<void> {
     // the status line said "export to a file", and `exportProject` returned at its first line
     // because there was no file to build one from.
     state.file = opened.manifest
-      ? { fileName: `${project.name}.dn2prj`, manifest: opened.manifest, payload: opened.payload, image: opened.image }
+      ? { fileName: `${openedName}.dn2prj`, manifest: opened.manifest, payload: opened.payload, image: opened.image }
       : undefined;
     // No write handle: this is not the project the instrument has *loaded*, so the dump path — which
     // writes into whatever is loaded — must stay shut. Saving the file back over its own slot is a
@@ -1694,7 +1749,7 @@ async function openFromDrive(): Promise<void> {
       : "Export is unavailable: the device did not answer with its firmware version, and a project " +
         "file's manifest has to carry a real one. Reconnect and open the slot again.";
     status(
-      `${project.name} open from slot ${project.index} — ${opened.bytes.length.toLocaleString()} ` +
+      `${openedName} open from slot ${project.index} — ${opened.bytes.length.toLocaleString()} ` +
         `bytes, the complete stored project with no donor. ${route}`,
       state.file ? "ok" : "warn",
     );
