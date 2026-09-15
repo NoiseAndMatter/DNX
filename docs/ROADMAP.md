@@ -2222,6 +2222,18 @@ its 302-byte sound object with no prefix, which `objectInStoredBody` finds by th
 - Tests: `test/librarydn1.test.ts`, and a DN1 case in `test/presetrename.test.ts` on
   `soundbanks_A_1_dn1_stored_266B.bin` from the private corpus.
 
+## 14. The probe hidden by default — BUILT 2026-09-15
+
+Asked for by the owner: a Settings switch, ticked by default, that keeps the probe out of the tool row.
+The probe is for instrument debugging, and most people never need it.
+
+- `web/src/probevisibility.ts` holds the preference (`dnx-hide-probe`, stored only when the probe is
+  shown) and a `dnx-preferences-changed` event, so the sheet and the row share it without the sheet
+  importing the row.
+- `visibleTools` in `toolnav.ts`: the probe is the last position, so hiding it moves no other tool;
+  Ctrl+Alt+digits and the arrows count only the tools shown; the probe page always shows its own link.
+- Stored preferences → Clear resets it to hidden and tells the row.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop

@@ -292,6 +292,19 @@ html.write-armed::after {
 .set-row .label b { display: block; font-weight: 500; }
 .set-row .label span { color: var(--muted); font-size: .84em; }
 .set-row .control { flex: 0 0 auto; padding-top: .1rem; }
+.switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch-track {
+  position: relative; width: 2.1rem; height: 1.15rem; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line);
+}
+.switch-track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: .8rem; height: .8rem;
+  border-radius: 50%; background: var(--muted);
+}
+.switch input:checked + .switch-track { background: var(--teal); border-color: var(--teal); }
+.switch input:checked + .switch-track::after { left: auto; right: 2px; background: var(--panel); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--teal); outline-offset: 2px; }
 .folder-control {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .35rem;
   max-width: 14rem;

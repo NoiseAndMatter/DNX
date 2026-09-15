@@ -50,7 +50,7 @@ const MOTIONS: readonly Motion[] = ["system", "always", "never"];
  * same origin owns. `dnx-results-` is a prefix and is expanded when clearing.
  */
 const STORED = {
-  local: [MOTION_KEY],
+  local: [MOTION_KEY, "dnx-hide-probe"],
   localPrefixes: ["dnx-results-"],
   session: ["dnx-nav-direction", "dnx.writeEnabled"],
 };
@@ -184,7 +184,8 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
   }));
 }
 
-import { action, group, row, segmented } from "./formrow.js";
+import { action, group, row, segmented, toggle } from "./formrow.js";
+import { PREFERENCES_CHANGED, announcePreferencesChanged, readHideProbe, writeHideProbe } from "./probevisibility.js";
 import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder } from "./dnxfolder.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { openOverlay, type Overlay } from "./overlay.js";
@@ -287,6 +288,22 @@ function build(panel: HTMLElement): HTMLElement {
 
   panel.append(group("This application", [
     row(
+      "Hide the probe",
+      "The probe is for asking an instrument questions when something is wrong. While this is on, it " +
+        "stays out of the tool row.",
+      (() => {
+        const control = toggle("Hide the probe", readHideProbe(), writeHideProbe);
+        // Follows Clear, which puts the preference back to its default while the sheet is open.
+        const follow = (): void => {
+          if (!control.isConnected) { window.removeEventListener(PREFERENCES_CHANGED, follow); return; }
+          const input = control.querySelector("input");
+          if (input) input.checked = readHideProbe();
+        };
+        window.addEventListener(PREFERENCES_CHANGED, follow);
+        return control;
+      })(),
+    ),
+    row(
       "DNX folder",
       folderSupported()
         ? "Save exports, backups, the copies taken before a write and probe captures straight into a " +
@@ -311,6 +328,8 @@ function build(panel: HTMLElement): HTMLElement {
         void forgetFolder().catch(() => false).then((forgot) => {
           const total = cleared + (forgot ? 1 : 0);
           button.textContent = total === 0 ? "Nothing stored" : `Cleared ${total}`;
+          // Cleared preferences go back to their defaults on this page too, the probe hidden among them.
+          announcePreferencesChanged();
         });
       }),
     ),
