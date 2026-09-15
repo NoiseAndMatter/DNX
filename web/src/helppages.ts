@@ -82,8 +82,10 @@ That is also why it works with no network at all. Load the page once and it will
 plane, in a studio with no wifi, and in ten years when whoever is hosting it has stopped.`,
       },
       {
-        heading: "Four tools, always in the same order",
-        body: `The row at the top never reorders, so each tool keeps a permanent screen position.
+        heading: "The tools, always in the same order",
+        body: `The row at the top never reorders, so each tool keeps a permanent screen position. The
+probe is hidden until you turn off **Settings → Hide the probe**; it is the last position, so hiding it
+moves nothing else.
 
 | tool | what it is for |
 |---|---|
@@ -360,7 +362,8 @@ library most of the time. **Refresh** re-reads the instrument.`,
     key: "probe",
     title: "Probe",
     intro: `The tool you open when something is wrong. It sends single messages to an instrument and
-shows exactly what came back, including nothing.`,
+shows exactly what came back, including nothing. It is hidden from the tool row until you turn off
+**Settings → Hide the probe**.`,
     sections: [
       {
         id: "session",
@@ -557,6 +560,7 @@ this browser, and none of them is about your projects.`,
         id: "settings-rows",
         heading: "What is in it",
         body: `- **Back up the +Drive** — see *Backup*.
+- **Hide the probe** — keep the probe out of the tool row. On unless you turn it off.
 - **DNX folder** — where DNX saves the files it makes. See *The DNX folder* below.
 - **Motion** — honour your system's reduced-motion setting, or overrule it.
 - **Stored preferences** — clear everything DNX has kept: these settings, the DNX folder, panel
