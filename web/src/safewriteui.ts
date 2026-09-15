@@ -32,7 +32,7 @@ import {
 } from "../../src/device/safewrite.js";
 import { askConfirm } from "./dialog.js";
 import { saveFile, whereSaved } from "./dnxfolder.js";
-import { projectFile } from "./dnxfile.js";
+import { projectExtensionFor, projectFile } from "./dnxfile.js";
 
 /**
  * What the bar says during each pass of a safe write.
@@ -81,7 +81,9 @@ export function downloadBackup(
      * magic, where a project file starts `PK`.
      */
     const wrap = backup.kind === "storedFile" && firmwareVersion !== undefined;
-    const name = wrap ? backup.name.replace(/\.payload$/, ".dn2prj") : backup.name;
+    // The extension comes from the payload's family. It was always `.dn2prj`, so a copy taken before
+    // replacing a Digitone 1 project was named as a Digitone II file.
+    const name = wrap ? backup.name.replace(/\.payload$/, projectExtensionFor(backup.bytes)) : backup.name;
     const bytes = wrap
       // The payload's own name inside the container. `projectFile` puts it in the manifest, which
       // is how a reader finds it again.

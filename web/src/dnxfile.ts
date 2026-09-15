@@ -32,7 +32,8 @@
  */
 
 import { buildZip, type ZipEntry } from "./zip.js";
-import type { ProjectManifest } from "../../src/project/container.js";
+import { type ProjectManifest, parsePayload } from "../../src/project/container.js";
+import { isDn1Payload, productTypesFor } from "../../src/device/drive.js";
 
 /** The format this file writes. Bumped when a reader would get it wrong, never for new fields. */
 export const DNX_VERSION = 1;
@@ -129,7 +130,7 @@ function safeName(slot: number, name: string): string {
  * | field | where it comes from |
  * |---|---|
  * | `FormatVersion` | `"1.0"` in all 26 |
- * | `ProductType` | `[]` in all 26. DN1 files list `["24","30"]`; DN2 files list nothing |
+ * | `ProductType` | from the payload's family byte: `["24","30"]` for a Digitone 1, `[]` for a Digitone II (all 26 in the corpus) |
  * | `FileType` | `"Project"` in all 26 |
  * | `Payload` | the project name, which the +Drive listing gives |
  * | `FirmwareVersion` | the instrument's own answer |
@@ -141,7 +142,9 @@ function safeName(slot: number, name: string): string {
 export function projectFile(name: string, firmwareVersion: string, payload: Uint8Array): Promise<Uint8Array> {
   const manifest: ProjectManifest = {
     FormatVersion: "1.0",
-    ProductType: [],
+    // **Read off the payload, not assumed.** This wrote `[]` for every project, so a Digitone 1
+    // project's copy carried a Digitone II manifest under a Digitone II name (found 2026-09-15).
+    ProductType: productTypesFor(parsePayload(payload)),
     Payload: name,
     FileType: "Project",
     FirmwareVersion: firmwareVersion,
@@ -150,6 +153,11 @@ export function projectFile(name: string, firmwareVersion: string, payload: Uint
     { name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, undefined, 2)) },
     { name, data: payload },
   ]);
+}
+
+/** What a project file holding this payload is called: `.dnprj` for a Digitone 1, `.dn2prj` otherwise. */
+export function projectExtensionFor(payload: Uint8Array): ".dnprj" | ".dn2prj" {
+  return isDn1Payload(parsePayload(payload)) ? ".dnprj" : ".dn2prj";
 }
 
 /** Pack a backup into one `.dnx`. The manifest goes first, so a reader meets it before the data. */
