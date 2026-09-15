@@ -185,7 +185,7 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
 }
 
 import { action, group, row, segmented, toggle } from "./formrow.js";
-import { announcePreferencesChanged, readHideProbe, writeHideProbe } from "./probevisibility.js";
+import { PREFERENCES_CHANGED, announcePreferencesChanged, readHideProbe, writeHideProbe } from "./probevisibility.js";
 import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder } from "./dnxfolder.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { openOverlay, type Overlay } from "./overlay.js";
@@ -291,7 +291,17 @@ function build(panel: HTMLElement): HTMLElement {
       "Hide the probe",
       "The probe is for asking an instrument questions when something is wrong. While this is on, it " +
         "stays out of the tool row.",
-      toggle("Hide the probe", readHideProbe(), writeHideProbe),
+      (() => {
+        const control = toggle("Hide the probe", readHideProbe(), writeHideProbe);
+        // Follows Clear, which puts the preference back to its default while the sheet is open.
+        const follow = (): void => {
+          if (!control.isConnected) { window.removeEventListener(PREFERENCES_CHANGED, follow); return; }
+          const input = control.querySelector("input");
+          if (input) input.checked = readHideProbe();
+        };
+        window.addEventListener(PREFERENCES_CHANGED, follow);
+        return control;
+      })(),
     ),
     row(
       "DNX folder",
