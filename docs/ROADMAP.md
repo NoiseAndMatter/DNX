@@ -2185,6 +2185,26 @@ work on synthetic data; one small capture unblocks them.
 two projects compared, a +Drive surveyed, a preset bank classified. A second caller for `analysis/`
 rather than a move: the manager keeps its pattern inspector.
 
+## 12. The DNX folder — BUILT 2026-09-15
+
+Raised by the owner on the release test report: choose a folder once, and every file DNX makes
+lands there in a known layout, without a download prompt. `web/src/dnxfolder.ts`, and the row in
+Settings.
+
+- **The layout**: `Exports/`, `Backups/`, `Copies before writing/` and `Probe/`, each made on
+  first use. `FOLDER_LAYOUT` is the one list, and `test/dnxfolder.test.ts` checks the Settings
+  help against it.
+- **Nothing is replaced.** A taken name gets ` (1)`, as a download would.
+- **Downloads stay.** No folder, a browser without the File System Access API (Firefox, Safari), a
+  permission Chrome has dropped, or a failed write: each falls back to a download, and the status
+  line says why.
+- **Every save site goes through `saveFile`.** The test fails on a direct `saveBlob` call
+  anywhere else, because a site that bypasses it would ignore the setting without a sound.
+- **Where the choice lives**: a directory handle cannot go in `localStorage`, so it is kept in an
+  IndexedDB database of its own, `dnx-folder`, which *Stored preferences → Clear* deletes. This is
+  the first IndexedDB use in DNX. It answers only the narrow case of remembering a folder; §5's
+  persistence question is still open.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop

@@ -50,17 +50,11 @@ export const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 /**
- * Hand bytes to the browser as a download.
+ * Hand a blob to the browser as a download.
  *
- * The `slice()` is not redundant: a `Uint8Array` over a `SharedArrayBuffer` is not a valid
- * `BlobPart`, and which kind you have depends on how the runtime allocated it. Copying into a fresh
- * buffer makes that stop mattering.
+ * Pages call `saveFile` in `dnxfolder.ts`, which uses this when no DNX folder is chosen or the
+ * chosen one cannot take the file. A page calling it directly would ignore the setting.
  */
-export function saveBytes(bytes: Uint8Array, name: string): void {
-  saveBlob(new Blob([bytes.slice().buffer as ArrayBuffer], { type: "application/octet-stream" }), name);
-}
-
-/** Hand a blob to the browser as a download. */
 export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

@@ -13,11 +13,11 @@ import { readProjectName } from "../../../src/project/dn1.js";
 import type { ExpansionPlan } from "../../../src/expand/types.js";
 import {
   buildProjectBlob,
-  download,
   fetchServedTemplate,
   openProject,
   type LoadedProject,
 } from "../project.js";
+import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";
 import { describeDonor, loadDonor } from "../donor.js";
 import { Source } from "./source.js";
 import { Destination, describeOrigin } from "./destination.js";
@@ -587,8 +587,12 @@ async function exportDestination(): Promise<void> {
   if (named) writeProjectName(image, stampedName(named));
 
   const base = projectName(image) || "EXPANDED";
-  download(await buildProjectBlob(donor.project, image), `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`);
-  status(`Exported ${base}.`);
+  const saved = await saveFile(
+    await buildProjectBlob(donor.project, image),
+    `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`,
+    "exports",
+  );
+  status(`Exported ${base} to ${whereSaved(saved)}.`, savedTone(saved));
 }
 
 /**
