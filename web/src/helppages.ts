@@ -545,11 +545,35 @@ this browser, and none of them is about your projects.`,
         id: "settings-rows",
         heading: "What is in it",
         body: `- **Back up the +Drive** — see *Backup*.
+- **DNX folder** — where DNX saves the files it makes. See *The DNX folder* below.
 - **Motion** — honour your system's reduced-motion setting, or overrule it.
-- **Stored preferences** — clear everything DNX has kept: these settings, panel states, and whether
-  writing is armed. **Your projects are never stored.**
+- **Stored preferences** — clear everything DNX has kept: these settings, the DNX folder, panel
+  states, and whether writing is armed. **Your projects are never stored.**
 - **DNX** — the source, under the AGPL-3.0.`,
         image: { src: "help/settings-sheet.png", alt: "The settings sheet open over the manager, showing the instrument, application and about groups" },
+      },
+      {
+        heading: "The DNX folder",
+        body: `Choose a folder once and DNX saves into it without asking, one subfolder for each kind
+of file. The subfolders are made the first time something goes in them.
+
+\`\`\`
+the folder you chose/
+  Exports/                 project files from Export, in the manager, the library and the expander
+  Backups/                 .dnx backups of a whole +Drive
+  Copies before writing/   what was on the instrument before DNX replaced it
+  Probe/                   captures and raw +Drive reads from the probe
+\`\`\`
+
+**Nothing is replaced.** A name already taken gets a number, as a download would:
+\`SKETCHPAD (1).dn2prj\`.
+
+**Files go to your downloads instead** when no folder is chosen, when the browser cannot save into
+a folder (Chrome and Edge can, Firefox and Safari cannot), or when the browser no longer has
+permission. The status line says which.
+
+**Chrome can ask again after a restart.** Settings then shows the folder as needing permission:
+press **Allow**. **Forget** stops using the folder and leaves its files where they are.`,
       },
       {
         heading: "Why the write switch is not in here",

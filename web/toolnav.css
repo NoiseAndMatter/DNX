@@ -292,6 +292,11 @@ html.write-armed::after {
 .set-row .label b { display: block; font-weight: 500; }
 .set-row .label span { color: var(--muted); font-size: .84em; }
 .set-row .control { flex: 0 0 auto; padding-top: .1rem; }
+.folder-control {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .35rem;
+  max-width: 14rem;
+}
+.folder-control .folder-name { flex-basis: 100%; text-align: right; font-size: .84em; overflow-wrap: anywhere; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .seg button {
   font: inherit; font-size: .84em; padding: .2rem .55rem; cursor: pointer;

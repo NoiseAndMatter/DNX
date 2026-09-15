@@ -185,8 +185,50 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
 }
 
 import { action, group, row, segmented } from "./formrow.js";
+import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder } from "./dnxfolder.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { openOverlay, type Overlay } from "./overlay.js";
+
+/**
+ * The DNX folder's control: the folder's name, and what can be done about it.
+ *
+ * **Drawn from what the browser says now, not from what was chosen.** Chrome can drop the permission
+ * after a restart, and a name shown without saying so reads as a folder that works.
+ */
+function folderControl(): HTMLElement {
+  const holder = document.createElement("span");
+  holder.className = "folder-control";
+  const shown = document.createElement("span");
+  shown.className = "folder-name";
+  shown.textContent = "Downloads";
+  holder.append(shown);
+  if (!folderSupported()) return holder;
+
+  const draw = async (): Promise<void> => {
+    const state = await folderState().catch(() => ({ kind: "none" } as const));
+    const set = state.kind === "set";
+    shown.textContent = set
+      ? state.permission === "granted" ? state.name : `${state.name}, needs permission`
+      : "Downloads";
+    choose.textContent = set ? "Change…" : "Choose…";
+    allow.hidden = !set || state.permission === "granted";
+    forget.hidden = !set;
+  };
+  const choose = action("Choose…", () => {
+    chooseFolder().then(() => draw(), (error: unknown) => {
+      // Closing the picker is an answer, not a failure.
+      if ((error as { name?: string }).name === "AbortError") return;
+      shown.textContent = `Not used: ${error instanceof Error ? error.message : String(error)}`;
+    });
+  });
+  const allow = action("Allow", () => { void allowFolder().finally(() => draw()); });
+  const forget = action("Forget", () => { void forgetFolder().finally(() => draw()); });
+  allow.hidden = true;
+  forget.hidden = true;
+  holder.append(choose, allow, forget);
+  void draw();
+  return holder;
+}
 
 /* ---- the sheet ----------------------------------------------------------------------------- */
 
@@ -243,6 +285,14 @@ function build(panel: HTMLElement): HTMLElement {
 
   panel.append(group("This application", [
     row(
+      "DNX folder",
+      folderSupported()
+        ? "Save exports, backups, the copies taken before a write and probe captures straight into a " +
+          "folder you choose, each kind in its own subfolder. Until you choose one, files go to your downloads."
+        : "Files go to your downloads. Saving into a folder you choose needs Chrome or Edge.",
+      folderControl(),
+    ),
+    row(
       "Motion",
       "Honour your system's reduced-motion setting, or overrule it.",
       segmented(MOTIONS, { system: "System", always: "Always", never: "Never" }, readMotion(),
@@ -250,12 +300,16 @@ function build(panel: HTMLElement): HTMLElement {
     ),
     row(
       "Stored preferences",
-      "The settings on this page, the panel states, and whether writing is armed. Your projects " +
-        "are never stored.",
+      "The settings on this page, the DNX folder, the panel states, and whether writing is armed. " +
+        "Your projects are never stored, and forgetting the folder leaves its files where they are.",
       action("Clear", (button) => {
-        const cleared = clearStored();
-        button.textContent = cleared === 0 ? "Nothing stored" : `Cleared ${cleared}`;
         button.disabled = true;
+        const cleared = clearStored();
+        // The folder is kept in IndexedDB, which answers later, so the count waits for it.
+        void forgetFolder().catch(() => false).then((forgot) => {
+          const total = cleared + (forgot ? 1 : 0);
+          button.textContent = total === 0 ? "Nothing stored" : `Cleared ${total}`;
+        });
       }),
     ),
   ], "settings/settings-rows"));

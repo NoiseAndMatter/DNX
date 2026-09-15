@@ -36,7 +36,7 @@ import { apiTransport, type ConnectedDevice } from "../devicesource.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { confirmFileWrite } from "../safewriteui.js";
-import { saveBlob } from "../dom.js";
+import { saveFile, whereSaved } from "../dnxfolder.js";
 import { extensionsFor } from "../objectextensions.js";
 
 export interface RenamePresetOptions {
@@ -113,8 +113,8 @@ export async function renamePresetOnDrive(options: RenamePresetOptions): Promise
     overwrite: true,
     onBackup: async (backup) => {
       const name = backup.name.replace(/\.payload$/, sound);
-      saveBlob(new Blob([backup.bytes as BlobPart], { type: "application/octet-stream" }), name);
-      status(`Copy of ${target.name} saved as ${name}`);
+      const saved = await saveFile(new Blob([backup.bytes as BlobPart], { type: "application/octet-stream" }), name, "copies");
+      status(`Copy of ${target.name} saved to ${whereSaved(saved)}`);
     },
     confirm: confirmFileWrite,
     msgId: reserveMessageIds(IDS_FOR.oneObject),

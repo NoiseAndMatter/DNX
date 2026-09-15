@@ -47,7 +47,8 @@ import {
 import { summariseTracks } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import { patternSlotView } from "../slotview.js";
-import { buildProjectBlob, download } from "../project.js";
+import { buildProjectBlob } from "../project.js";
+import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
@@ -995,8 +996,8 @@ async function exportProject(): Promise<void> {
   // The session's image, never the one the project was opened with. Exporting the original after
   // an afternoon of edits is the failure this accessor exists to make impossible.
   const blob = await buildProjectBlob(project, state.session?.image ?? project.image);
-  download(blob, project.fileName);
-  status(`Exported ${project.fileName}. The original file is untouched.`, "ok");
+  const saved = await saveFile(blob, project.fileName, "exports");
+  status(`Exported to ${whereSaved(saved)}. The original file is untouched.`, savedTone(saved));
 }
 
 function report(error: unknown): void {

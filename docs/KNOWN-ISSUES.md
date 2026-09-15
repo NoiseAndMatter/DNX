@@ -445,6 +445,29 @@ itself.
 
 > **"Not available" is a claim about the world. Make sure it is one you can support.**
 
+## Exports that never arrived were Chrome holding them — NOT A DEFECT 2026-09-15
+
+The release test of 2026-09-14 and its retest reported project exports that said "Exported" and
+left nothing in Downloads: a full-size `.tmp` the first time, no file at all the second. The copy
+taken before overwriting, saved a minute earlier from the same tab, arrived both times.
+
+**It did not reproduce with a real click.** Measured on 2026-09-15 on `main`: two exports by mouse
+click both arrived. Both failing runs had pressed Export from a script. A scripted export ran and
+handed the file to the browser with user activation, and nothing arrived, with
+`URL.revokeObjectURL` held back 30 s, which rules out the early revoke. After that a real click on
+`127.0.0.1:8173` saved nothing either, while the same page on `localhost:8173` saved normally.
+
+That is Chrome's guard against a site starting many downloads. Once it trips, every download from
+that site waits on a prompt in the address bar, and no page can see the prompt.
+
+**The same guard can catch a person.** DNX saves backups and pre-write copies long after the click
+that caused them, which is the kind of download the guard counts. The DNX folder
+(`web/src/dnxfolder.ts`, ROADMAP §12) writes those files straight to disk where the browser allows
+it. A write there lands or throws, so the status line can say where the file is.
+
+**For release tests:** press download buttons with a real click, and retry a missing file on the
+other host name before calling it a DNX bug.
+
 ## Export did nothing for a project opened from the +Drive — FIXED 2026-08-04
 
 Reported as *"after you rename or do any action the export button doesn't seem to do anything."* It
