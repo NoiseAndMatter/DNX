@@ -265,6 +265,20 @@ async function readStoredForm(
  * allocation but not occupancy — `listProjects` reports every slot, named or not. Occupancy is a
  * property of the directory entry, and the only place it is stated.
  */
+/**
+ * Every project slot's listing entry, from a listing taken now.
+ *
+ * For a picker that has to know more than which slots are empty: whether the slot a project came
+ * from is **write-protected**. Factory content reads `0x12`, and offering to replace it is offering a
+ * write the instrument refuses.
+ */
+export async function projectSlotEntries(device: ConnectedDevice): Promise<Entry[]> {
+  const transport = apiTransport(device);
+  const id = reserveMessageIds(IDS_FOR.oneMessage);
+  const reply = await transport.request(listRequest(id, "/projects"), id, 10_000);
+  return wholeListing(reply, "/projects").entries.filter((e) => e.kind === "file");
+}
+
 export async function emptyProjectSlots(device: ConnectedDevice): Promise<number[]> {
   const transport = apiTransport(device);
   const id = reserveMessageIds(IDS_FOR.oneMessage);
