@@ -468,6 +468,22 @@ it. A write there lands or throws, so the status line can say where the file is.
 **For release tests:** press download buttons with a real click, and retry a missing file on the
 other host name before calling it a DNX bug.
 
+## A Digitone 1 project's copy was named and labelled as a Digitone II file — FIXED 2026-09-15
+
+Found in the Digitone 1 release run (MGR-DN1-COPY-NAMING). The copy the manager takes before saving over
+a +Drive project came out of a Digitone 1 as `RELTEST PRESETS-before-….dn2prj` with `ProductType: []`.
+DNX still read it, but the name and the manifest both said Digitone II.
+
+Two literals did it: `safewriteui.ts` replaced `.payload` with `.dn2prj` whatever the instrument, and
+`projectFile` in `dnxfile.ts` wrote `ProductType: []` for every payload. Backups wrap their projects with
+the same `projectFile`, so a Digitone 1 backup's projects carried the Digitone II manifest too.
+
+Both now read the payload's family byte (`kind` at `0x08`): `productTypesFor` and `isDn1Payload` in
+`src/device/drive.ts`, which `manifestFor` already used the same way, and `projectExtensionFor` in
+`dnxfile.ts`. Checked on both instruments: saving `/projects/127` back over itself on the Digitone 1
+saved `RELTEST PRESETS-before-2026-09-15T13-43-44.dnprj` with `ProductType: ["24","30"]`; the same on
+the Digitone II's `/projects/19` saved a `.dn2prj`.
+
 ## Export did nothing for a project opened from the +Drive — FIXED 2026-08-04
 
 Reported as *"after you rename or do any action the export button doesn't seem to do anything."* It
