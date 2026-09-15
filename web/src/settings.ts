@@ -216,8 +216,10 @@ function folderControl(): HTMLElement {
   };
   const choose = action("Choose…", () => {
     chooseFolder().then(() => draw(), (error: unknown) => {
-      // Closing the picker is an answer, not a failure.
-      if ((error as { name?: string }).name === "AbortError") return;
+      // Closing the picker is an answer, not a failure. Any other refusal says why, an AbortError
+      // included: a tab driven through DevTools aborts every picker it intercepts, with its own message.
+      const refusal = error as { name?: string; message?: string };
+      if (refusal.name === "AbortError" && /user aborted/i.test(refusal.message ?? "")) return;
       shown.textContent = `Not used: ${error instanceof Error ? error.message : String(error)}`;
     });
   });

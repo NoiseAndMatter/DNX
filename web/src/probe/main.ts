@@ -1800,7 +1800,7 @@ async function readFile(): Promise<void> {
       // should carry instead of only ever echoing a value the device gave us for a whole small
       // file. That is the difference between writing a 364-byte preset and writing a project.
       ...describeChunkChecksums(file),
-      ["Saved", "downloaded — check it before pressing this again"],
+      ["Before reading again", "check the saved file"],
     ]);
     status(`Read ${path}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
   } catch (error) {
