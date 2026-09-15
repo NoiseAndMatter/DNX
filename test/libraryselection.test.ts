@@ -38,3 +38,34 @@ test("opening a project clears the previous project's kit marks", () => {
   assert.ok(end, "adopt has no closing brace at column 0");
   assert.match(page.slice(start, start + end.index), /applied\.clear\(\)/);
 });
+
+test("a preset dropped into the pool is named after the bytes that were read", () => {
+  /*
+   * **Found on a Digitone 1, 2026-09-15.** Rename `/soundbanks/H/3` to RELTEST H3D, drop it into a
+   * free pool slot thirty seconds later, and the line read "RELTEST H3C -> slot 37" while the slot
+   * itself held RELTEST H3D. The right preset went in; only the sentence and the undo entry were
+   * wrong, because both named `bank.entries` — the listing taken when Browse ran, which a rename
+   * leaves behind. `preview.name` and `plan.name` come out of the object that was just read.
+   */
+  const page = read("web/src/library/main.ts");
+  const start = page.indexOf("async function addToPool(");
+  assert.ok(start > 0, "addToPool has been renamed; this check no longer guards anything");
+  const end = /\r?\n\}\r?\n/.exec(page.slice(start));
+  assert.ok(end, "addToPool has no closing brace at column 0");
+  const body = page.slice(start, start + end.index);
+
+  assert.doesNotMatch(body, /bank\.entries/, "the pool add must not name a slot from the listing");
+  assert.match(body, /tag\(`add \$\{preview\.name/, "the undo entry names what was read");
+  assert.match(body, /\$\{plan\.name \|\| "preset"\} → slot/, "and so does the line after it");
+});
+
+test("a rename updates the listing behind the table, not only the row", () => {
+  // The same stale listing reached the kit drop's fallback name, and anything else that names a
+  // slot without reading it.
+  const page = read("web/src/library/main.ts");
+  const start = page.indexOf("if (result.committed && result.listedAs !== undefined)");
+  assert.ok(start > 0, "the rename no longer updates the row in place");
+  const block = page.slice(start, start + 600);
+  assert.match(block, /state\.rows\.find/, "the table row still follows the rename");
+  assert.match(block, /state\.bank\?\.entries\.find/, "and so does the listing behind it");
+});
