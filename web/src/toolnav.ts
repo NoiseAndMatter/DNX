@@ -157,8 +157,10 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
       const at = shown.findIndex((tool) => tool.id === link.dataset["tool"]);
       link.hidden = at === -1;
       const label = link.textContent ?? "";
-      // Discoverable, because a shortcut nobody can find is a shortcut nobody uses.
-      link.title = `${label[0]!.toUpperCase()}${label.slice(1)} — Ctrl+Alt+${at + 1}`;
+      const name = `${label[0]!.toUpperCase()}${label.slice(1)}`;
+      // Discoverable, because a shortcut nobody can find is a shortcut nobody uses. A hidden tool has
+      // no shortcut, so its title does not claim one.
+      link.title = at === -1 ? name : `${name} — Ctrl+Alt+${at + 1}`;
     }
   };
   showTools();

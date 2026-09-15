@@ -132,6 +132,7 @@ test("Settings offers the switch, hidden is the default, and Clear resets it", (
   const visibility = readFileSync(resolve(WEB, "src/probevisibility.ts"), "utf8");
   assert.match(settings, /"Hide the probe"/);
   assert.match(settings, /toggle\("Hide the probe", readHideProbe\(\), writeHideProbe\)/);
+  assert.match(settings, /input\.checked = readHideProbe\(\)/, "the switch must follow Clear while the sheet is open");
   assert.match(settings, /local: \[MOTION_KEY, "dnx-hide-probe"\]/, "Clear must reach the preference");
   assert.match(visibility, /HIDE_PROBE_KEY = "dnx-hide-probe"/);
   assert.match(visibility, /!== "false"/, "absent must mean hidden");
