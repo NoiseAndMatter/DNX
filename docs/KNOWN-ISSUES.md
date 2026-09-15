@@ -332,6 +332,23 @@ sending it back is the ordinary write-back the page already does. `test/safewrit
 ordering by reading the function's source, because the whole of it is DOM and MIDI; the fence fails
 on the code as it stood the day before.
 
+## With two instruments connected, the probe chose one without asking — FIXED 2026-09-15
+
+At 21:14, during the Digitone 1 release run PROBE-TWO-PORTS, a Digitone II had just been plugged in
+alongside it. `PortPicker.render()` ran `bestPair` on every render and preselected whichever pair it
+liked best, with nothing on screen distinguishing that guess from the intended device. Two Read
+file presses returned `/soundbanks/H/2` and `/soundbanks/H/3` off the Digitone II. Only the file
+signature (format `0059`, the image a 1.11 instrument writes) showed the reads had gone to the
+wrong machine.
+
+`candidatePairs` already scores a pair by how much of the input and output names it shares. Two
+pairs whose names match each other exactly means two instruments are connected, not one guess to
+make. `ports.ts` now asks `needsPortChoice` before preselecting anything: when two are connected,
+the selects open on an empty "choose the instrument" option, Probe and Listen stay disabled, and
+the status line says so. A single plausible pair, or none, still preselects and disables the same
+as before. `test/probeports.test.ts` holds the rule with plain `{ id, name }` objects, no DOM
+required.
+
 ## Every converted parameter lock had its two value bytes swapped — FIXED 2026-08-07
 
 Reported from hardware: *"the expanded sounds showed a pan in the AMP page all the way to the
