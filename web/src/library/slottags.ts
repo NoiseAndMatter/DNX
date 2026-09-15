@@ -60,6 +60,26 @@ export interface ReadTagsOptions {
   /** Return false to stop. Checked before every read, so switching bank abandons within one slot. */
   keepGoing: () => boolean;
   msgId?: number;
+  /**
+   * Whether the sound object names a machine. **False for a Digitone 1.** See `slotFacts`.
+   */
+  machines?: boolean;
+}
+
+/**
+ * What a slot's sound object says about it: its tags, and its machine where it has one.
+ *
+ * **A Digitone 1 has no machine byte.** It has one FM engine, and +244 of its sound object is a
+ * sound setting. Across the 1,364 presets of a Digitone 1 backup on 2026-09-15 that byte took 38
+ * values, which the Digitone II table names FM TONE, SWARMER, FM DRUM and MIDI, so reading it there
+ * would print a machine the preset does not have. The tag word at +8 is the same field on both:
+ * 1,344 of those presets decode to tags.
+ */
+export function slotFacts(object: Uint8Array, machines = true): { tags: TagName[]; machine: string | undefined } {
+  return {
+    tags: decodeTags(u32be(object, TAG_BITS_OFFSET)),
+    machine: machines ? machineName(object[SOUND_MACHINE_OFFSET] ?? -1) : undefined,
+  };
 }
 
 /**
@@ -92,11 +112,7 @@ export async function readBankTags(options: ReadTagsOptions): Promise<{ read: nu
       // **`object`, not `body`.** A Digitone II preset's stored body carries five bytes in front of
       // the sound, so the tag word at +8 of the body is three bytes into something else — and the
       // tag vocabulary is closed, so it would decode to real tag names and look entirely plausible.
-      options.onSlot({
-        index,
-        tags: decodeTags(u32be(object, TAG_BITS_OFFSET)),
-        machine: machineName(object[SOUND_MACHINE_OFFSET] ?? -1),
-      });
+      options.onSlot({ index, ...slotFacts(object, options.machines !== false) });
       read++;
     } catch {
       // Left with tags undefined, which is what it already was. One bad slot is not a bad bank.

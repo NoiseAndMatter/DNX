@@ -57,17 +57,14 @@ import { identityOf, mayReplaceSlot, type SlotOrigin } from "../originclaim.js";
 import { pickFromBackup } from "../backuppicker.js";
 import {
   type ConnectedDevice,
-  type DeviceChoice,
   type DeviceProjectHandle,
   DeviceSourceError,
-  connectDevice,
-  describeChoice,
-  listDevices,
   listDeviceProjects,
   openDeviceProject,
   readProject,
   writeBack,
 } from "../devicesource.js";
+import { chooseDevice, devicePicker } from "../choosedevice.js";
 import { recordWriteMessage } from "../../../src/device/safewrite.js";
 import { projectSlotEntries, writeProjectToDrive } from "../driveproject.js";
 import { buildPayload } from "../../../src/project/write.js";
@@ -149,7 +146,7 @@ renderToolNav($("toolnav"), "manager");
 registerBackup(async (report) => {
   try {
     report.say("Looking for an instrument…");
-    const connected = drive?.connected ?? (await chooseDevice());
+    const connected = drive?.connected ?? (await chooseDevice(picker));
 
     const { backup, failed } = await backupDevice(connected, {
       onList: () => report.say("Listing the +Drive…"),
@@ -707,7 +704,7 @@ function renderSongs(): void {
  */
 async function driveDevice(): Promise<ConnectedDevice | undefined> {
   try {
-    return await chooseDevice();
+    return await chooseDevice(picker);
   } catch (error) {
     status(`No instrument: ${error instanceof Error ? error.message : String(error)}`, "error");
     return undefined;
@@ -1511,7 +1508,7 @@ function wireOperations(): void {
     drive = undefined;
     $("driveprojects").hidden = true;
     $("opendrive").hidden = true;
-    chosenPort = port || undefined;
+    picker.port = port || undefined;
     status(port ? `Working with ${port}. Browse its +Drive, or open its project.` : "No device chosen.");
   });
 }
@@ -1530,10 +1527,10 @@ let drive: { connected: ConnectedDevice; projects: DriveProject[] } | undefined;
 /**
  * The instrument this page is working with, once there has been a choice to make.
  *
- * Remembered so the choice happens once rather than at every operation. Cleared by the picker,
- * which is the only way to move to the other instrument.
+ * Cleared by the picker, which is the only way to move to the other instrument. The choosing itself
+ * is in `choosedevice.ts`, shared with the library.
  */
-let chosenPort: string | undefined;
+const picker = devicePicker($<HTMLSelectElement>("whichdevice"));
 
 /**
  * The +Drive slot the open project was read out of, when it was read out of one.
@@ -1580,71 +1577,11 @@ function beginProject(
   origin = from;
 }
 
-/**
- * Connect — but to the instrument the person meant.
- *
- * **The manager cannot pick for you and should not pretend to.** The expander can: its two devices
- * have fixed roles, so `connectDevice({ want: DN1 })` says everything. Here either instrument is a
- * legitimate subject, and taking whichever answered first was the reported bug — *"I have no way to
- * select what device to load/use."*
- *
- * With one device connected nothing changes: it is found, used, and no picker appears. With two,
- * the picker appears **empty** and this refuses until something is chosen. The empty first option
- * is the point — a select that defaulted to its first entry would quietly reintroduce the very
- * guess this exists to remove.
- */
-async function chooseDevice(): Promise<ConnectedDevice> {
-  if (chosenPort !== undefined) return await connectDevice({ port: chosenPort });
-
-  const found = await listDevices();
-  if (found.length === 0) {
-    throw new DeviceSourceError(
-      "No Digitone answered on any MIDI port pair. Connect it over USB, and check that no other " +
-        "application is holding it.",
-    );
-  }
-  if (found.length === 1) {
-    chosenPort = found[0]!.port;
-    return await connectDevice({ port: chosenPort });
-  }
-
-  renderDevicePicker(found);
-  const select = $<HTMLSelectElement>("whichdevice");
-  if (!select.value) {
-    throw new DeviceSourceError(
-      `${found.length} instruments are connected: ${found.map((f) => f.name).join(", ")}. ` +
-        `Choose one from the list and try again.`,
-    );
-  }
-  chosenPort = select.value;
-  return await connectDevice({ port: chosenPort });
-}
-
-function renderDevicePicker(found: DeviceChoice[]): void {
-  const select = $<HTMLSelectElement>("whichdevice");
-  const previous = select.value;
-  select.hidden = false;
-  select.replaceChildren(
-    Object.assign(document.createElement("option"), {
-      value: "",
-      textContent: "— which device? —",
-    }),
-    ...found.map((f) =>
-      Object.assign(document.createElement("option"), {
-        value: f.port,
-        textContent: describeChoice(f),
-      }),
-    ),
-  );
-  // Kept across a re-list, so listing again does not silently move the page to another instrument.
-  if (found.some((f) => f.port === previous)) select.value = previous;
-}
-
 /** List what is stored on the instrument. Reads the directory and nothing else. */
 async function browseDrive(): Promise<void> {
   status("Looking for an instrument…");
   try {
-    const connected = drive?.connected ?? (await chooseDevice());
+    const connected = drive?.connected ?? (await chooseDevice(picker));
     status(`Listing the +Drive on ${connected.name}…`);
     const projects = await listDeviceProjects(connected);
     drive = { connected, projects };
@@ -1822,7 +1759,7 @@ async function loadFromDevice(): Promise<void> {
   let connected: ConnectedDevice;
   status("Looking for an instrument…");
   try {
-    connected = await chooseDevice();
+    connected = await chooseDevice(picker);
   } catch (error) {
     status(
       error instanceof DeviceSourceError ? error.message : `MIDI refused: ${String(error)}`,

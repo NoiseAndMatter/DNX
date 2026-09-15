@@ -323,14 +323,26 @@ page**. The instrument is not written to, and the file on disk is untouched unti
 **Rename… is the exception**: it changes a preset on the instrument itself.`,
       },
       {
+        heading: "A Digitone or a Digitone II",
+        body: `**Connect an instrument…** works with either. With two connected, a list appears: choose
+one and press it again.
+
+- **A Digitone has no kits on its +Drive**, so only its presets can be browsed.
+- **Its presets show tags and no machine.** A Digitone has one FM engine, and the byte a Digitone II
+  uses for the machine is a sound setting on a Digitone.
+- Renaming works the same way on both.
+- The pool on the left still reads Digitone II projects only.`,
+      },
+      {
         heading: "Renaming a preset",
         body: `Browse a preset bank, click a preset, and press **Rename…**. It needs **WRITE** to be on.
 
 - Up to 16 characters. The instrument has no lowercase, so lower case is stored upper.
 - **Factory presets cannot be renamed.** The instrument marks them write-protected. Save a copy to a
   free slot on the instrument and rename that.
-- Before anything is sent you are asked again, and the preset as it is now is saved to your downloads
-  as a **.dn2snd** file.
+- Before anything is sent you are asked again, and the preset as it is now is saved to the DNX
+  folder's *Copies before writing*, or to your downloads: a **.dn2snd** file from a Digitone II, a
+  **.dnsnd** from a Digitone.
 - After the write, DNX reads the slot back and compares it with what was sent, then lists the bank
   again so the new name comes from the instrument itself.`,
       },
