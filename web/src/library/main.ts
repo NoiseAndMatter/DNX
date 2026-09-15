@@ -205,6 +205,10 @@ function adopt(loaded: LoadedProject, label: string): void {
   // A fresh session per project: the history describes edits to *this* image, and carrying one
   // across would offer to undo a step into a project that never had it done.
   state.session = new Session(loaded.image);
+  // And the marks that describe that history go with it. Kept until 2026-09-15, the set told a
+  // project just opened from the +Drive that one of its patterns "had a kit loaded this session",
+  // when the kit had been loaded into the previous project and History read "Nothing done yet."
+  applied.clear();
   state.audit = auditPool(loaded.image, device);
   $("poolInfo").hidden = false;
   $("poolInfo").textContent = label;
@@ -642,10 +646,12 @@ function renderTable(): void {
 
   renderRows($("libraryGrid"), result, {
     drag,
+    ...(state.selected && state.selected.path === bank.path ? { selected: state.selected.index } : {}),
     onToggleTag: (tag) => toggleTagAndRender(tag),
     onSelect: (index) => {
       state.selected = { path: bank.path, index };
-      renderRenameButton();
+      // Redrawn so the row shows it is selected. `renderTable` also refreshes Rename.
+      renderTable();
       const row = state.rows.find((r) => r.index === index);
       status(
         row
