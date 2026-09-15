@@ -147,9 +147,11 @@ export function planRename(
     if (!summary.supported) {
       findings.push({
         severity: "blocker",
-        message:
-          `${patternName(pattern)} has storage version ${summary.version}, which this build cannot ` +
-          `read — the name field may not be where we think it is`,
+        message: summary.readable
+          ? `${patternName(pattern)} has storage version ${summary.version}, which this build reads but does ` +
+            `not edit`
+          : `${patternName(pattern)} has storage version ${summary.version}, which this build cannot ` +
+            `read — the name field may not be where we think it is`,
       });
       continue;
     }
