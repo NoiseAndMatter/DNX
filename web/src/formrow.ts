@@ -64,6 +64,27 @@ export function segmented<T extends string>(
   return group;
 }
 
+/**
+ * An on/off switch.
+ *
+ * **A real checkbox under the styling**, so a keyboard toggles it with Space, a screen reader
+ * announces it as checked or not, and nothing about it has to be reimplemented.
+ */
+export function toggle(label: string, checked: boolean, onChange: (checked: boolean) => void): HTMLElement {
+  const holder = document.createElement("label");
+  holder.className = "switch";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.setAttribute("aria-label", label);
+  input.addEventListener("change", () => onChange(input.checked));
+  const track = document.createElement("span");
+  track.className = "switch-track";
+  track.setAttribute("aria-hidden", "true");
+  holder.append(input, track);
+  return holder;
+}
+
 /** A button that does something, handed itself so it can report what happened. */
 export function action(
   label: string,

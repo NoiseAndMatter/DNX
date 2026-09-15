@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { TOOLS, indexOfTool, stepFrom } from "../web/src/toolnav.js";
+import { TOOLS, indexOfTool, stepFrom, visibleTools } from "../web/src/toolnav.js";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "../web");
 
@@ -105,4 +105,34 @@ test("an unknown tool throws rather than reading as position -1", () => {
   // leftmost tool, which is indistinguishable from cycling. Now it says so instead.
   assert.throws(() => indexOfTool("nosuchtool" as never), /not one of expander, manager, library, probe/);
   for (const tool of TOOLS) assert.equal(TOOLS[indexOfTool(tool.id)]!.id, tool.id);
+});
+
+test("the probe is hidden unless asked for, and never from its own page", () => {
+  const ids = (tools: readonly { id: string }[]) => tools.map((tool) => tool.id);
+  assert.deepEqual(ids(visibleTools("manager", true)), ["expander", "manager", "library"]);
+  assert.deepEqual(ids(visibleTools("manager", false)), ["expander", "manager", "library", "probe"]);
+  // A row that does not name the page it sits on is a row you cannot navigate back through.
+  assert.deepEqual(ids(visibleTools("probe", true)), ["expander", "manager", "library", "probe"]);
+});
+
+test("hiding the probe moves no other tool", () => {
+  const hidden = visibleTools("expander", true);
+  const shown = visibleTools("expander", false);
+  hidden.forEach((tool, at) => assert.equal(shown[at]!.id, tool.id, `${tool.id} moved when the probe was hidden`));
+});
+
+test("the arrows stop at the last tool that is shown", () => {
+  // Library is the last of three with the probe hidden, so there is nothing to its right.
+  assert.equal(stepFrom(2, 1, 3), undefined);
+  assert.equal(stepFrom(2, 1, 4), 3);
+});
+
+test("Settings offers the switch, hidden is the default, and Clear resets it", () => {
+  const settings = readFileSync(resolve(WEB, "src/settings.ts"), "utf8");
+  const visibility = readFileSync(resolve(WEB, "src/probevisibility.ts"), "utf8");
+  assert.match(settings, /"Hide the probe"/);
+  assert.match(settings, /toggle\("Hide the probe", readHideProbe\(\), writeHideProbe\)/);
+  assert.match(settings, /local: \[MOTION_KEY, "dnx-hide-probe"\]/, "Clear must reach the preference");
+  assert.match(visibility, /HIDE_PROBE_KEY = "dnx-hide-probe"/);
+  assert.match(visibility, /!== "false"/, "absent must mean hidden");
 });

@@ -45,7 +45,7 @@ closing step. Re-open any suspect image before committing it.
 
 | file | page | section | status |
 |---|---|---|---|
-| `overview-toolrow.png` | Overview | Four tools, always in the same order | captured |
+| `overview-toolrow.png` | Overview | The tools, always in the same order | captured |
 | `expander-in.png` | Expander | Pick a source and a destination | captured |
 | `expander-options.png` | Expander | Choosing what to expand | captured |
 | `manager-grid.png` | Manager | The grid | captured |
