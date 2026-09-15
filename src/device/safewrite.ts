@@ -759,8 +759,8 @@ export function describeFileWrite(review: FileWriteReview): string[] {
     review.replacing === undefined
       ? `That slot is empty in a listing taken just now, and an occupied one is refused rather ` +
           `than overwritten. There is no undo on the instrument.`
-      : `This replaces ${review.replacing}, which is in that slot now. A copy of it is downloaded ` +
-          `before anything is sent — that copy is the only undo there is.`,
+      : `This replaces ${review.replacing}, which is in that slot now. A copy of it is saved to this ` +
+          `computer before anything is sent — that copy is the only undo there is.`,
   );
   if (review.chunks > 1) {
     lines.push(

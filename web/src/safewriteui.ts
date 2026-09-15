@@ -7,12 +7,12 @@
  * that says less on one page than the other is a page where somebody agrees to something they were
  * not told about.
  *
- * ## The backup is a download, and a download can be refused
+ * ## The copy is saved, and the status line says where
  *
- * `saveBlob` hands the browser an anchor and hopes. A blocked or cancelled download does not throw,
- * so this cannot promise the file reached the disk — only that it was offered. That is worth being
- * plain about rather than papering over: the status line says the name, so somebody who did not get
- * the file knows to look for it before trusting the write.
+ * `saveFile` writes it into the DNX folder when one is chosen, and that write lands or throws. With
+ * no folder it is a download, and a blocked or cancelled download does not throw, so then this can
+ * only say the file was offered. Either way the status line names where it went, so somebody who did
+ * not get the file knows to look for it before trusting the write.
  *
  * digi-roll solves the same problem by also stashing the backup inside the browser, so its console
  * can restore without a file at all. Worth having here too, and not in this change: a stash is a
@@ -31,7 +31,7 @@ import {
   describeRecordWrite,
 } from "../../src/device/safewrite.js";
 import { askConfirm } from "./dialog.js";
-import { saveBlob } from "./dom.js";
+import { saveFile, whereSaved } from "./dnxfolder.js";
 import { projectFile } from "./dnxfile.js";
 
 /**
@@ -88,8 +88,8 @@ export function downloadBackup(
       ? await projectFile(backup.name.replace(/-before-.*$/, ""), firmwareVersion, backup.bytes)
       : backup.bytes;
 
-    saveBlob(new Blob([bytes as BlobPart], { type: "application/octet-stream" }), name);
-    onStatus(`Backup of ${what(backup)} saved as ${name}`);
+    const saved = await saveFile(new Blob([bytes as BlobPart], { type: "application/octet-stream" }), name, "copies");
+    onStatus(`Backup of ${what(backup)} saved to ${whereSaved(saved)}`);
   };
 }
 

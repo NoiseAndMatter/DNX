@@ -101,7 +101,8 @@ import {
 import { STAGE_LABEL, confirmFileWrite } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type ApiFrame, decodeMessage, isApiMessage } from "../../../src/device/api.js";
-import { $, escapeHtml, saveBytes as save } from "../dom.js";
+import { $, escapeHtml } from "../dom.js";
+import { saveBytesTo, savedTone, whereSaved } from "../dnxfolder.js";
 import { statusBar } from "../statusbar.js";
 import { describeBytes, progressBar } from "../progress.js";
 import { askConfirm } from "../dialog.js";
@@ -741,8 +742,10 @@ $("save").addEventListener("click", () => {
     return;
   }
   const name = captureFileName(capture.summarise());
-  save(capture.bytes(), name);
-  status(`Saved ${name} — ${capture.byteLength.toLocaleString()} bytes.`, "ok");
+  const length = capture.byteLength;
+  void saveBytesTo(capture.bytes(), name, "probe").then((saved) => {
+    status(`Saved ${whereSaved(saved)} — ${length.toLocaleString()} bytes.`, savedTone(saved));
+  });
 });
 
 
@@ -1115,7 +1118,8 @@ async function writeBack(): Promise<void> {
     productId, device.name, [candidate.objNr], new Map([[candidate.objNr, onDevice]]),
   );
   try {
-    save(backup.bytes, backup.name);
+    const saved = await saveBytesTo(backup.bytes, backup.name, "copies");
+    status(`Copy of the destination saved to ${whereSaved(saved)}.`, savedTone(saved));
   } catch (error) {
     verdictCard("Write refused — the copy could not be saved", [
       ["Slot", slot],
@@ -1390,7 +1394,8 @@ async function writeToChosenSlot(): Promise<void> {
     productId, device.name, [destination], new Map([[destination, before]]),
   );
   try {
-    save(backup.bytes, backup.name);
+    const saved = await saveBytesTo(backup.bytes, backup.name, "copies");
+    status(`Copy of the destination saved to ${whereSaved(saved)}.`, savedTone(saved));
   } catch (error) {
     verdictCard("Write refused — the copy could not be saved", [
       ...log,
@@ -1778,9 +1783,12 @@ async function readFile(): Promise<void> {
     const ms = Math.round(performance.now() - started);
     // Saved immediately and unconditionally. The bytes are the entire point of the exercise and
     // this control may not survive the next press on a Digitone 1.
-    save(file.bytes, `${path.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+/, "")}_${file.bytes.length}B.bin`);
+    const saved = await saveBytesTo(
+      file.bytes, `${path.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+/, "")}_${file.bytes.length}B.bin`, "probe",
+    );
     verdictCard(`${path} — ${file.bytes.length.toLocaleString()} bytes`, [
       ...log,
+      ["Saved to", whereSaved(saved)],
       ["Chunks", `${file.chunks} (${ms} ms)`],
       ["Handle closed", file.closed ? "yes, acknowledged" : "NOT acknowledged — the read still succeeded"],
       ["First bytes", [...file.bytes.subarray(0, 16)].map(hex2).join(" ")],
@@ -1792,7 +1800,7 @@ async function readFile(): Promise<void> {
       // should carry instead of only ever echoing a value the device gave us for a whole small
       // file. That is the difference between writing a 364-byte preset and writing a project.
       ...describeChunkChecksums(file),
-      ["Saved", "downloaded — check it before pressing this again"],
+      ["Before reading again", "check the saved file"],
     ]);
     status(`Read ${path}: ${file.bytes.length.toLocaleString()} bytes in ${file.chunks} chunks.`, "ok");
   } catch (error) {

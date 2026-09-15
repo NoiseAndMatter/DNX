@@ -47,7 +47,8 @@ import {
 import { summariseTracks } from "../../../src/librarian/tracksummary.js";
 import { patternName } from "../../../src/sheet/naming.js";
 import { patternSlotView } from "../slotview.js";
-import { buildProjectBlob, download } from "../project.js";
+import { buildProjectBlob } from "../project.js";
+import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
@@ -995,8 +996,8 @@ async function exportProject(): Promise<void> {
   // The session's image, never the one the project was opened with. Exporting the original after
   // an afternoon of edits is the failure this accessor exists to make impossible.
   const blob = await buildProjectBlob(project, state.session?.image ?? project.image);
-  download(blob, project.fileName);
-  status(`Exported ${project.fileName}. The original file is untouched.`, "ok");
+  const saved = await saveFile(blob, project.fileName, "exports");
+  status(`Exported to ${whereSaved(saved)}. The original file is untouched.`, savedTone(saved));
 }
 
 function report(error: unknown): void {
@@ -1139,7 +1140,7 @@ async function renameSelected(): Promise<void> {
       `Up to ${NAME_SIZE} characters. The device has no lowercase, so anything typed in lower case ` +
         "is stored upper.",
       "This writes to the instrument. Before anything is sent you are asked again, and the preset " +
-        "as it is now is saved to your downloads.",
+        "as it is now is saved to your DNX folder, or to your downloads when none is chosen.",
     ],
     value: row.name,
     maxLength: NAME_SIZE,
@@ -1175,7 +1176,7 @@ async function renameSelected(): Promise<void> {
   } else if (!result.verified) {
     status(
       `${result.from} renamed ${result.to}, but the read-back did not match what was sent` +
-        (result.problem ? `: ${result.problem}` : ".") + " The copy in your downloads is the old preset.",
+        (result.problem ? `: ${result.problem}` : ".") + " The copy saved before the write is the old preset.",
       "error",
     );
   } else if (result.listedAs !== result.to) {
