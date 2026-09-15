@@ -940,7 +940,7 @@ async function saveToDrive(): Promise<void> {
     status(
       `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
         `${result.chunks} chunk(s), read back and decoded to the same project.` +
-        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was downloaded first.` : ""),
+        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was copied to this computer first.` : ""),
       "ok",
     );
   } catch (error) {

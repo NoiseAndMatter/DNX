@@ -1140,7 +1140,7 @@ async function renameSelected(): Promise<void> {
       `Up to ${NAME_SIZE} characters. The device has no lowercase, so anything typed in lower case ` +
         "is stored upper.",
       "This writes to the instrument. Before anything is sent you are asked again, and the preset " +
-        "as it is now is saved to your downloads.",
+        "as it is now is saved to your DNX folder, or to your downloads when none is chosen.",
     ],
     value: row.name,
     maxLength: NAME_SIZE,
@@ -1176,7 +1176,7 @@ async function renameSelected(): Promise<void> {
   } else if (!result.verified) {
     status(
       `${result.from} renamed ${result.to}, but the read-back did not match what was sent` +
-        (result.problem ? `: ${result.problem}` : ".") + " The copy in your downloads is the old preset.",
+        (result.problem ? `: ${result.problem}` : ".") + " The copy saved before the write is the old preset.",
       "error",
     );
   } else if (result.listedAs !== result.to) {
