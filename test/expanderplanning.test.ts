@@ -240,3 +240,32 @@ test("a described plan escapes what it renders", () => {
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /&lt;img/);
 });
+
+test("whole project over a destination with trigs asks first, and names what would go", { skip }, () => {
+  /*
+   * **Found on a Digitone II, 2026-09-15.** Whole project replaced COREVAULT's patterns without a
+   * word. A destination that holds trigs is built here by converting once into the blank.
+   */
+  const source = dn1();
+  const withTrigs = planWhole({ source, destination: dn2() }).image!;
+  const other = image(DN1_PROJECTS, "050 JAGGED.dnprj");
+
+  const asked = planWhole({ source: other, destination: withTrigs });
+  assert.equal(asked.image, undefined, "an offer means nothing was planned");
+  assert.equal(asked.offer?.kind, "overwrite");
+  assert.match(asked.message, /hold trigs that would be gone/);
+
+  const agreed = planWhole({ source: other, destination: withTrigs, overrides: asked.offer!.overrides });
+  assert.ok(agreed.image, "consent given, so there are bytes");
+});
+
+test("after Apply the plan still says how far the destination has moved from what was opened", { skip }, () => {
+  const source = dn1();
+  const opened = dn2();
+  const first = planWhole({ source, destination: opened });
+  const after = planWhole({ source, destination: first.image!, baseline: opened });
+
+  assert.equal(after.image, undefined, "nothing left to apply");
+  assert.match(after.message, /^Applied: \d+ pattern slot\(s\) differ from the destination as opened/);
+  assert.doesNotMatch(after.described.lines.join(" "), /0 slot\(s\) differ/);
+});

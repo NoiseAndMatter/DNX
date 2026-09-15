@@ -47,6 +47,8 @@ import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/
 import { patternName } from "../sheet/naming.js";
 import { type ConversionReport, convertProject } from "./convert.js";
 import type { ExpansionPlan } from "./types.js";
+import { blankPatternKit } from "../librarian/blank.js";
+import { DN2_DEVICE } from "../librarian/device.js";
 
 /** One DN1 sound record. 302 bytes on that family. */
 const DN1_SOUND_SIZE = 302;
@@ -144,8 +146,29 @@ export function poolCoverage(dn1Image: Uint8Array): PoolCoverage {
 export interface DeviceExpandOptions {
   /** The Digitone 1 project, read from the source device (and its pool, if separately captured). */
   source: Uint8Array;
-  /** The Digitone II project as it is now — the transplant target and the diff baseline. */
+  /** The Digitone II project as it is now: the transplant target, and what is still to change. */
   destination: Uint8Array;
+  /**
+   * The destination as it was opened, which `changedSlots` is counted against. Defaults to
+   * `destination`.
+   *
+   * **Found in the Digitone 1 release run, 2026-09-15.** After Apply the page planned against the
+   * image it had just applied, so the plan compared the result with itself and reported "0 slot(s)
+   * differ from the device, about 0.0 MB to send" for a project in which all 128 patterns had
+   * changed and nothing had been sent anywhere.
+   */
+  baseline?: Uint8Array;
+  /**
+   * Replace every pattern and kit of the destination before converting: whole-project mode.
+   *
+   * The conversion always writes a pattern's first eight tracks and touches tracks 9 to 16 only
+   * when a sound-locked trig is promoted onto them. Onto a blank that is faithful. Onto a
+   * destination with content it left the destination's own tracks 9 to 16 in place, so expanding
+   * MORNING_JAM into COREVAULT produced a hybrid: A2 went from the source's 30 trigs to 110, and
+   * slot A3, empty in the source, kept 111 of COREVAULT's trigs under the name UNTITLED.
+   * The header, song table and tail still come from the destination.
+   */
+  replaceDestination?: boolean;
   plan?: ExpansionPlan;
   projectName?: string;
   /**
@@ -163,8 +186,10 @@ export interface DeviceExpandPlan {
   image: Uint8Array;
   report: ConversionReport;
   pool: PoolCoverage;
-  /** DN2 pattern slots that differ from what the destination holds now. */
+  /** DN2 pattern slots that differ from the destination as it was opened (`baseline`). */
   changedSlots: number[];
+  /** DN2 pattern slots that differ from what the destination holds now: what Apply would still change. */
+  pendingSlots: number[];
   /** Roughly what the write will cost, framing included. */
   estimatedBytes: number;
   /** Anything the caller should say out loud before writing. */
@@ -205,14 +230,18 @@ export function planDeviceExpand(options: DeviceExpandOptions): DeviceExpandPlan
     );
   }
 
-  const { image, report } = convertProject(source, destination, {
+  const template = options.replaceDestination ? withBlankPatterns(destination) : destination;
+  const { image, report } = convertProject(source, template, {
     ...(options.plan === undefined ? {} : { plan: options.plan }),
     ...(options.projectName === undefined ? {} : { projectName: options.projectName }),
   });
 
+  const baseline = options.baseline ?? destination;
   const changedSlots: number[] = [];
+  const pendingSlots: number[] = [];
   for (let slot = 0; slot < DN2_LAYOUT.patternCount; slot++) {
-    if (recordDiffers(destination, image, slot)) changedSlots.push(slot);
+    if (recordDiffers(baseline, image, slot)) changedSlots.push(slot);
+    if (recordDiffers(destination, image, slot)) pendingSlots.push(slot);
   }
 
   const warnings = report.warnings.map((w) => w.message);
@@ -241,6 +270,7 @@ export function planDeviceExpand(options: DeviceExpandOptions): DeviceExpandPlan
     report,
     pool,
     changedSlots,
+    pendingSlots,
     estimatedBytes: changedSlots.length * perRecord,
     warnings,
   };
@@ -250,7 +280,7 @@ export function planDeviceExpand(options: DeviceExpandOptions): DeviceExpandPlan
 export function describeDeviceExpand(plan: DeviceExpandPlan): string[] {
   const lines = [
     `${plan.report.patternsWritten} pattern(s) converted, ${plan.report.trigsPromoted} trig(s) promoted`,
-    `${plan.changedSlots.length} slot(s) differ from the device: ${
+    `${plan.changedSlots.length} slot(s) differ from the destination as opened: ${
       plan.changedSlots.slice(0, 12).map(patternName).join(", ")
     }${plan.changedSlots.length > 12 ? ` +${plan.changedSlots.length - 12} more` : ""}`,
     `about ${(plan.estimatedBytes / 1_000_000).toFixed(1)} MB to send`,
@@ -274,4 +304,23 @@ function recordDiffers(a: Uint8Array, b: Uint8Array, slot: number): boolean {
     if (a[kitAt + i] !== b[kitAt + i]) return true;
   }
   return false;
+}
+
+/**
+ * The destination with every pattern and kit record replaced by a blank one.
+ *
+ * Each blank carries its own slot index, as a record the instrument wrote would. Everything outside
+ * the pattern and kit arrays (header, song table, settings, tail) is the destination's.
+ */
+function withBlankPatterns(destination: Uint8Array): Uint8Array {
+  const out = Uint8Array.from(destination);
+  // Decoded once. `blankPatternKit` decodes the captured blank on every call, and 128 calls on top
+  // of a 12.9 MB image ran a test out of memory.
+  const { pattern, kit } = blankPatternKit(DN2_DEVICE, 0);
+  for (let slot = 0; slot < DN2_LAYOUT.patternCount; slot++) {
+    pattern[DN2_DEVICE.slotIndexOffset] = slot;
+    out.set(pattern, DN2_LAYOUT.headerSize + slot * DN2_LAYOUT.patternSize);
+    out.set(kit, DN2_LAYOUT.kitBase + slot * DN2_LAYOUT.kitSize);
+  }
+  return out;
 }

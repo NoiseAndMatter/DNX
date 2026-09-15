@@ -7,11 +7,14 @@ import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
 import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET } from "../src/project/soundmap.js";
 import { TRACK, trackRecord } from "../src/project/dn1.js";
-import {
+import { describeDeviceExpand,
   DeviceExpandRefused,
   planDeviceExpand,
   poolCoverage,
 } from "../src/expand/deviceexpand.js";
+import { blankPatternKit } from "../src/librarian/blank.js";
+import { DN2_DEVICE } from "../src/librarian/device.js";
+import { PATTERN } from "../src/project/dn2pattern.js";
 
 const DN1_SOUND_SIZE = 302;
 
@@ -198,4 +201,43 @@ test("a real DN1 project's locks are all backed by pool sounds", (t) => {
   }
 
   assert.ok(checked > 0, "the corpus is present but no DN1 project could be read");
+});
+
+test("whole-project mode replaces every destination pattern, and keeps the rest of the destination", () => {
+  /*
+   * **Found on a Digitone II, 2026-09-15.** The conversion writes a pattern's first eight tracks and
+   * touches tracks 9 to 16 only when it promotes a sound onto them, so a destination with content
+   * kept its own tracks 9 to 16: expanding into COREVAULT left slot A3, empty in the source, holding
+   * 111 of COREVAULT's trigs under the name UNTITLED.
+   *
+   * The marker is one byte deep inside pattern 100's track 9, which this source never writes.
+   */
+  const source = dn1With(42, true);
+  const marker = DN2_LAYOUT.headerSize + 100 * DN2_LAYOUT.patternSize + 4 + 8 * PATTERN.trackSize + 0x40;
+
+  const kept = new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
+  assert.equal(planDeviceExpand({ source, destination: kept }).image[marker], 0x5a,
+    "without the replacement the destination's own track 9 comes through, which was the bug");
+
+  const replaced = new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
+  const plan = planDeviceExpand({ source, destination: replaced, replaceDestination: true });
+  const { pattern } = blankPatternKit(DN2_DEVICE, 100);
+  assert.equal(plan.image[marker], pattern[4 + 8 * PATTERN.trackSize + 0x40],
+    "with it, that byte is the blank's");
+  assert.notEqual(plan.image[marker], 0x5a);
+  assert.equal(plan.image[DN2_LAYOUT.tailBase + 80_000], 0x5a, "the destination's own tail still comes through");
+});
+
+test("changes are counted from the destination as opened, and what is left to apply separately", () => {
+  const source = dn1With(42, true);
+  const opened = new Uint8Array(DN2_LAYOUT.imageSize);
+  const first = planDeviceExpand({ source, destination: opened });
+  assert.ok(first.pendingSlots.length > 0);
+
+  // After Apply the page plans against the applied image, with the opened one as baseline.
+  const after = planDeviceExpand({ source, destination: first.image, baseline: opened });
+  assert.deepEqual(after.pendingSlots, [], "nothing left to apply");
+  assert.deepEqual(after.changedSlots, first.changedSlots, "but the project has still moved from what was opened");
+  assert.ok(after.estimatedBytes > 0);
+  assert.match(describeDeviceExpand(after).join(" "), /differ from the destination as opened/);
 });

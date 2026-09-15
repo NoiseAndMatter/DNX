@@ -256,7 +256,9 @@ async function loadTemplate(file: File): Promise<void> {
 function useTemplate(template: LoadedProject, asDestination: boolean): void {
   state.template = template;
   if (asDestination) {
-    destination.fill({ image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [] });
+    destination.fill({
+      image: Uint8Array.from(template.image), origin: "file", label: template.fileName, merged: [], project: template,
+    });
   }
 }
 
@@ -398,6 +400,7 @@ async function fillFromBlank(): Promise<void> {
     origin: "blank",
     label: donor.project.fileName,
     merged: [],
+    project: donor.project,
   });
   status(`Destination: a blank project from ${describeDonor(donor)}. Merge into it, then export.`);
 }
@@ -487,7 +490,9 @@ function replanForDevice(overrides: MergeOverrides = {}): void {
       : planWhole({
           source: source.image,
           destination: destination.open.image,
+          ...(destination.open.baseline === undefined ? {} : { baseline: destination.open.baseline }),
           ...(state.plan === undefined ? {} : { plan: state.plan }),
+          overrides,
         });
   } catch (error) {
     // A refusal is a normal outcome of choosing a slot, not an error to shout about. It belongs
@@ -573,10 +578,16 @@ function undoApply(): void {
  */
 async function exportDestination(): Promise<void> {
   if (!destination.open) return;
-  // Only the manifest is wanted here — the firmware version, payload entry name and device
-  // signature a `.dn2prj` must carry. Any Digitone II project supplies it, so the built-in blank
-  // is a perfectly good last resort and an export can no longer be refused for want of a file.
-  const donor = await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
+  /*
+   * **The destination's own project first.** Export needs a manifest and a container header, and it
+   * used to take both from the donor even when the destination came off a +Drive with its own:
+   * COREVAULT, read from a stock 1.11 Digitone II, exported as Payload EMPTY, FirmwareVersion 1.10E,
+   * around a 1.11-sized image. The donor is only the fallback now, for a destination with no file
+   * behind it: a device read, or a +Drive project whose instrument did not give its firmware.
+   */
+  const own = destination.open.project;
+  const donor = own ? undefined : await loadDonor({ picked: state.template, onProblem: (message) => status(message, "warn") });
+  const template = own ?? donor!.project;
 
   const image = Uint8Array.from(destination.open.image);
   // A project authored here is a new project and gets its own identity rather than inheriting the
@@ -587,8 +598,9 @@ async function exportDestination(): Promise<void> {
   if (named) writeProjectName(image, stampedName(named));
 
   const base = projectName(image) || "EXPANDED";
+  // The payload is named after the project it now holds, not after the file it was built from.
   const saved = await saveFile(
-    await buildProjectBlob(donor.project, image),
+    await buildProjectBlob({ ...template, manifest: { ...template.manifest, Payload: base } }, image),
     `${base.replace(/[^A-Za-z0-9 _-]/g, "_")}.dn2prj`,
     "exports",
   );
@@ -667,12 +679,12 @@ async function browseDestinationDrive(): Promise<void> {
 }
 
 async function openDestinationSlot(): Promise<void> {
-  const { image, label, slot } = await instrument.openSlot(
+  const { image, label, slot, project } = await instrument.openSlot(
     Number($<HTMLSelectElement>("destinationProjects").value),
   );
   // **No handle, deliberately.** `Destination.writable` is the handle's presence and nothing else,
   // so withholding it here is what keeps a write from landing in the instrument's active project.
-  destination.fill({ image, origin: "drive", label, merged: [] });
+  destination.fill({ image, origin: "drive", label, merged: [], ...(project ? { project } : {}) });
   status(
     `Open as the destination. Merge into it and export — a write would go to the instrument's ` +
       `active project, not back to slot ${slot}.`,
