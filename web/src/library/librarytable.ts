@@ -32,6 +32,14 @@ import { escapeHtml } from "../dom.js";
 export interface TableHooks {
   /** A row was clicked. */
   onSelect: (index: number) => void;
+  /**
+   * The row that is selected, if it is in this bank.
+   *
+   * **Drawn, not just remembered.** Rename acts on the selection, and until 2026-09-15 the table never
+   * showed one: the owner clicked a preset, saw nothing change, and could not tell what Rename would
+   * rename. A control that acts on something the page does not show is guessing on the user's behalf.
+   */
+  selected?: number;
   /** A tag chip was pressed. The caller toggles and re-renders. */
   onToggleTag: (tag: TagName) => void;
   drag: GridDrag;
@@ -59,6 +67,10 @@ export function renderRows(host: HTMLElement, result: FilterResult, hooks: Table
   for (const row of result.rows) {
     const tr = document.createElement("tr");
     tr.className = row.occupied ? "occupied" : "free";
+    if (row.index === hooks.selected) {
+      tr.classList.add("selected");
+      tr.setAttribute("aria-selected", "true");
+    }
 
     tr.append(
       cell(String(row.index), "n"),

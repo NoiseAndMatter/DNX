@@ -733,6 +733,9 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .libtable td { padding: .28rem .5rem; border-bottom: 1px solid var(--line-soft); }
 .libtable tbody tr.occupied { cursor: grab; }
 .libtable tbody tr.occupied:hover { background: #1d2726; }
+.libtable tbody tr.selected,
+.libtable tbody tr.selected:hover { background: #20312f; box-shadow: inset 3px 0 0 var(--teal); }
+.libtable tbody tr.selected td.name { color: var(--text, #e6f2ef); font-weight: 600; }
 .libtable tbody tr.free td { color: var(--dim); }
 .libtable td.n { color: var(--dim); text-align: right; width: 3rem; font-variant-numeric: tabular-nums; }
 .libtable tr.occupied td.name { color: var(--teal); }
