@@ -84,6 +84,7 @@ import {
   listRequest,
   parseListing,
   wholeListing,
+  STORED_FORM,
 } from "../../../src/device/storage.js";
 import {
   INFORMATION_CODES,
@@ -126,6 +127,7 @@ import {
   LIST_TIMEOUT_MS,
   requestListing,
   linkIsAlive as checkLink,
+  LINK_ID,
 } from "./storageio.js";
 import { type Verdict, verdictAfterSilence } from "./silence.js";
 import {
@@ -289,8 +291,12 @@ async function probe(): Promise<void> {
       ["Name", device.deviceName],
       ["Product id (API space)", String(device.productId)],
       ["Firmware", `${version.version}  (build ${version.build})`],
-      ["Reads +Drive files", caps.driveFiles ? "yes" : "no"],
-      ["Manages +Drive", caps.driveManagement ? "yes" : "no"],
+      // **Named for what the list can say, which is what is advertised.** These rows read "Reads +Drive
+      // files: no" and "Manages +Drive: no" on a Digitone II whose +Drive listed and read in the same
+      // session: the storage API at 0x53–0x5a answers without appearing in the advertised list on
+      // either Digitone. A capability row that contradicts the instrument is worse than none.
+      ["Advertises the Digitakt file API", caps.driveFiles ? "yes" : "no — see DirList below"],
+      ["+Drive storage API (0x53–0x5a)", "never advertised by a Digitone; press List to check it answers"],
     ]);
 
     // Named, not hex. A list of 22 raw codes is a transcription job; what a reader wants is
@@ -409,9 +415,18 @@ async function probe(): Promise<void> {
   } finally {
     input.removeEventListener("midimessage", onMessage);
     session.close();
-    if (session.unmatched.length > 0) {
+    /*
+     * **The link check is ours, and answers on another listener.** When DirList goes unanswered the
+     * probe proves the link with a Device request sent through `DeviceLink` under `LINK_ID`. This
+     * session hears that reply too, has no request of its own waiting for it, and used to count it —
+     * so an identify with nothing else on the port still ended with an "Unmatched replies" card
+     * suggesting a shared port. Only replies this page cannot account for are reported now.
+     */
+    const foreign = session.unmatched.filter((frame) => frame.respId !== LINK_ID);
+    if (foreign.length > 0) {
       card(results, "Unmatched replies", [
-        ["Count", String(session.unmatched.length)],
+        ["Count", String(foreign.length)],
+        ["Replies to ids", foreign.map((f) => String(f.respId)).join(", ")],
         ["Meaning", "a timeout fired early, or something else is sharing this port"],
       ]);
     }
@@ -1873,6 +1888,9 @@ async function readThenWrite(): Promise<void> {
   // *read*, before a single byte went out — the verdict keyed off the chunk arithmetic alone and
   // read as evidence about chunking when it was evidence about nothing.
   let wroteAnything = false;
+  // Whether a chunk actually left for the device. A refusal from DNX's own guards happens after
+  // `wroteAnything` and before this, and is not the instrument's to explain.
+  let sentAnything = false;
   try {
     // The destination's own directory, listed now rather than trusted from earlier. A listing from
     // ten minutes ago is not evidence about what is in a slot at the moment of writing.
@@ -1887,6 +1905,10 @@ async function readThenWrite(): Promise<void> {
 
     const file = await readStoredFile(source, {
       transport: apiTransport(output),
+      // **Stored form, the only form a write accepts.** Read raw, /soundbanks/H/1 came back as 407
+      // uncompressed bytes and `refuseRawForm` refused the copy every time, so this control could
+      // not copy any file. Found in the first release test run, 2026-09-14.
+      form: STORED_FORM,
       msgId: reserveMessageIds(IDS_FOR.wholeProject),
     });
     sourceLength = file.bytes.length;
@@ -1926,6 +1948,7 @@ async function readThenWrite(): Promise<void> {
       skipVerify: corrupt,
       onStatus: (message) => status(message),
       onProgress: (written, total, stage) => {
+        if (stage === "write" && written > 0) sentAnything = true;
         bar.at(written, total, `${STAGE_LABEL[stage]} ${target}`);
         status(`${STAGE_LABEL[stage]} ${target}: ${describeBytes(written)} of ${describeBytes(total)}…`);
       },
@@ -1982,6 +2005,26 @@ async function readThenWrite(): Promise<void> {
     ]);
     status(`${target} written and committed. Verify it on the instrument.`, "ok");
   } catch (error) {
+    if (wroteAnything && !sentAnything) {
+      /*
+       * **Refused here, so said here.** This path used to run the silence verdict, which checks the
+       * link and titles the card "no answer, and the link is proven", then ends "a genuine refusal.
+       * The device's own wording…". The raw-form refusal it was describing came from DNX before a
+       * single chunk was sent; the instrument was never asked.
+       */
+      showVerdict({
+        title: "The write — refused by DNX before anything was sent",
+        rows: [
+          ...log,
+          ["Error", String(error)],
+          ["Sent", "nothing — the instrument was not asked"],
+          ["Means", "one of DNX's own checks stopped the write. The error above says which, and what to change."],
+        ],
+        message: `Not written: ${String(error)}`,
+        level: "warn",
+      });
+      return;
+    }
     showVerdict(
       verdictAfterSilence({
         what: "The write",
