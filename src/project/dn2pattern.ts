@@ -238,7 +238,21 @@ export const STEP_FLAG = {
  */
 export const SETTINGS_TAIL_DEFAULT = Uint8Array.of(0x00, 0x7f, 0x00, 0x7f);
 
-export const TRACK_SIZE_BY_VERSION: Readonly<Record<number, number>> = { 2: 1_183, 3: 1_187 };
+/**
+ * Track record size by storage version.
+ *
+ * **Version 4 is what OS 1.11 sends over the dump protocol**, for a pattern its +Drive file stores as
+ * version 2. Measured 2026-09-15 on factory 1.11: a patternKit for A1 of factory PRESETS is 99,840 bytes,
+ * the version-3 size; with only its version field read as 3, the version-3 reader gives LIGHTHOUSE,
+ * 199 trigs and 16 tracks of 128 steps, which is that pattern. Against the corpus copy normalised from
+ * version 2, 328 of 89,088 bytes differ, all at the same offsets inside each track's settings block,
+ * which is where the version-2 normalisation invents its fill.
+ *
+ * So version 4 is **read** with the version-3 layout. It is not written: `summarise` keeps
+ * `supported` for the version DNX authors, and a record whose layout is inferred rather than proven
+ * must not be sent back to an instrument.
+ */
+export const TRACK_SIZE_BY_VERSION: Readonly<Record<number, number>> = { 2: 1_183, 3: 1_187, 4: 1_187 };
 
 /** The storage version a record declares, straight from its first four bytes. */
 export function recordVersion(pattern: Uint8Array): number {
@@ -270,6 +284,18 @@ export function asVersion3(pattern: Uint8Array): Uint8Array {
     throw new RangeError(
       `pattern record declares storage version ${version}; this reads ${Object.keys(TRACK_SIZE_BY_VERSION).join(" and ")}`,
     );
+  }
+  /*
+   * **A version already laid out as version 3 is copied, not re-packed.** The re-pack below writes the
+   * four settings bytes a narrower track lacks at `to + stride`. With a stride equal to
+   * `PATTERN.trackSize` that is not a gap, it is the first four bytes of the next track, and every
+   * track after the first would be read with its opening bytes replaced. So only the version field
+   * changes, on a copy, because the caller's record must still say what the instrument sent.
+   */
+  if (stride === PATTERN.trackSize) {
+    const same = Uint8Array.from(pattern);
+    new DataView(same.buffer).setUint32(PATTERN.versionOffset, RECORD_VERSION, false);
+    return same;
   }
 
   const out = new Uint8Array(pattern.length);
