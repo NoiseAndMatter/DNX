@@ -836,7 +836,7 @@ for (const name of ["writeToChosenSlot", "writeBack"]) {
 
     const read = at("await awaitPatternKit(");
     const ask = at("await askConfirm(");
-    const copy = at("save(backup.bytes");
+    const copy = at("saveBytesTo(backup.bytes");
     const send = at("output.send(");
 
     assert.ok(read < ask, "the destination must be read before the person is asked about it");

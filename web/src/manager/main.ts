@@ -46,11 +46,11 @@ import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.
 import { patternName } from "../../../src/sheet/naming.js";
 import {
   buildProjectBlob,
-  download,
   openProject,
   readProjectFile,
   type LoadedProject,
 } from "../project.js";
+import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";
 import { describeDonor, loadDonor } from "../donor.js";
 import { openBackup } from "../dnxopen.js";
 import { identityOf, mayReplaceSlot, type SlotOrigin } from "../originclaim.js";
@@ -109,7 +109,7 @@ import {
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
 import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
-import { $, escapeHtml, saveBlob } from "../dom.js";
+import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
 import { describeBytes, progressBar } from "../progress.js";
@@ -168,7 +168,7 @@ registerBackup(async (report) => {
 
     const bytes = await packBackup(backup);
     const name = backupFileName(backup.manifest);
-    saveBlob(new Blob([bytes as BlobPart], { type: "application/zip" }), name);
+    const saved = await saveFile(new Blob([bytes as BlobPart], { type: "application/zip" }), name, "backups");
 
     const lost = failed.length
       ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ` +
@@ -176,10 +176,10 @@ registerBackup(async (report) => {
       : "";
     const kinds = backup.manifest.contents.join(", ");
     report.say(
-      `Saved ${name} — ${backup.manifest.entries.length} items (${kinds}), ` +
+      `Saved ${whereSaved(saved)} — ${backup.manifest.entries.length} items (${kinds}), ` +
         `${describeBytes(bytes.length)}.${lost}`,
     );
-    status(`Backup saved as ${name}`, failed.length ? "warn" : "ok");
+    status(`Backup saved to ${whereSaved(saved)}`, failed.length ? "warn" : savedTone(saved));
   } catch (error) {
     report.say(`Backup stopped: ${String(error)}`);
     status(`Backup stopped: ${String(error)}`, "error");
@@ -940,7 +940,7 @@ async function saveToDrive(): Promise<void> {
     status(
       `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
         `${result.chunks} chunk(s), read back and decoded to the same project.` +
-        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was downloaded first.` : ""),
+        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was copied to this computer first.` : ""),
       "ok",
     );
   } catch (error) {
@@ -1989,10 +1989,11 @@ async function exportProject(): Promise<void> {
   status("Building the project file…");
   const blob = await buildProjectBlob(file, session.image);
   const base = device.projectName(session.image).replace(/[^\w -]/g, "_") || "PROJECT";
-  download(blob, `${base}${device.kind === "dn2" ? ".dn2prj" : ".dnprj"}`);
+  const saved = await saveFile(blob, `${base}${device.kind === "dn2" ? ".dn2prj" : ".dnprj"}`, "exports");
   status(
-    `Exported ${base} — ${blob.size.toLocaleString()} bytes. Nothing on the device was touched.`,
-    "ok",
+    `Exported ${base} to ${whereSaved(saved)} — ${blob.size.toLocaleString()} bytes. ` +
+      "Nothing on the device was touched.",
+    savedTone(saved),
   );
 }
 
