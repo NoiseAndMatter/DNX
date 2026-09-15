@@ -99,6 +99,28 @@ moves nothing else.
         image: { src: "help/overview-toolrow.png", alt: "The DNX tool row: expander, manager, library, probe, the write switch, settings and source" },
       },
       {
+        heading: "A Digitone and a Digitone II",
+        body: `DNX works with both, and not every tool does the same on each.
+
+| | Digitone | Digitone II |
+|---|---|---|
+| **Expander** | the source: a file, the connected instrument, or its +Drive | the destination: blank, a file, its +Drive, or the loaded project |
+| **Manager:** open a project file, open from the +Drive, save to it | yes | yes |
+| **Manager:** move, copy, swap, clear and rename patterns | yes | yes, except patterns in a storage version DNX reads but does not edit |
+| **Manager:** Open device, reading the loaded project | no: use Browse +Drive | yes |
+| **Manager:** a pattern's 16 tracks | no | yes |
+| **Manager:** songs | no | yes |
+| **Manager:** Insights | no | yes |
+| **Library:** browse presets, search, tags, rename | yes | yes |
+| **Library:** machine column | no: one FM engine | yes |
+| **Library:** kits | no: none on its +Drive | yes |
+| **Library:** pool audit, and dropping presets into a pool | the project must be a Digitone II; Digitone presets are converted as they go in | yes |
+| **Backup** | projects and sounds | projects, sounds and kits |
+| **Probe** | yes | yes |
+
+With both instruments connected, the manager, the library and the backup ask which one to use.`,
+      },
+      {
         heading: "What DNX will not do",
         body: `- It will not write to an instrument until you turn **WRITE** on. See *Safeguards*.
 - It will not write anything without first reading the destination back and saving a copy.
