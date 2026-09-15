@@ -14,9 +14,9 @@ import {
   DNX_VERSION, backupFileName, packBackup, type BackupManifest,
 } from "../web/src/dnxfile.js";
 import { readZip } from "../web/src/zip.js";
-import { projectFile } from "../web/src/dnxfile.js";
+import { projectExtensionFor, projectFile } from "../web/src/dnxfile.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_PROJECTS, NO_CORPUS, requireCorpusFile } from "./corpus.js";
+import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, requireCorpusFile } from "./corpus.js";
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 
@@ -178,4 +178,27 @@ test("no manifest field is invented", () => {
   const backup = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
   assert.match(backup, /\.payload/,
     "with no firmware there is nothing honest to wrap with, so the bare payload is kept");
+});
+
+test("a Digitone 1 project is wrapped as a Digitone 1 file", { skip: NO_CORPUS }, async () => {
+  /*
+   * **Found on hardware, 2026-09-15.** The copy the manager takes before saving over a Digitone 1
+   * project came out as `RELTEST PRESETS-before-….dn2prj` with `ProductType: []`: the wrap assumed a
+   * Digitone II. The same `projectFile` wraps every project in a backup, so a Digitone 1 backup's
+   * projects carried the Digitone II manifest too.
+   */
+  const dn1 = parseProject(new Uint8Array(readFileSync(requireCorpusFile(DN1_PROJECTS, "002 MORNING_JAM.dnprj"))));
+  const wrapped = parseProject(await projectFile("MORNING_JAM", "1.42A", dn1.payload.raw));
+  assert.deepEqual(wrapped.manifest.ProductType, ["24", "30"]);
+  assert.equal(projectExtensionFor(dn1.payload.raw), ".dnprj");
+
+  const dn2 = parseProject(new Uint8Array(readFileSync(requireCorpusFile(DN2_PROJECTS, "MORNING_JAM.dn2prj"))));
+  assert.equal(projectExtensionFor(dn2.payload.raw), ".dn2prj");
+});
+
+test("the copy taken before a write is not named for one family", () => {
+  const source = readFileSync(join(WEB, "src", "safewriteui.ts"), "utf8");
+  assert.doesNotMatch(source, /replace\(\/\\\.payload\$\/, "\.dn2prj"\)/,
+    "the extension must come from the payload, not a literal");
+  assert.match(source, /projectExtensionFor\(backup\.bytes\)/);
 });

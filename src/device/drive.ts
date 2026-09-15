@@ -162,14 +162,28 @@ export function manifestFor(
 ): ProjectManifest {
   return {
     FormatVersion: MANIFEST_FORMAT_VERSION,
-    // Only the DN1 lists product types. Nine DN2 files in the corpus carry an empty array, so an
-    // empty array is what a DN2 manifest says — copying the DN1's would be a guess that reads as a
-    // fact.
-    ProductType: payload.kind === DN1_KIND ? [...DN1_PRODUCT_TYPES] : [],
+    ProductType: productTypesFor(payload),
     Payload: name,
     FileType: "Project",
     FirmwareVersion: firmwareVersion,
   };
+}
+
+/**
+ * What a project manifest lists under `ProductType` for this payload.
+ *
+ * Only the DN1 lists product types. Nine DN2 files in the corpus carry an empty array, so an empty
+ * array is what a DN2 manifest says — copying the DN1's would be a guess that reads as a fact.
+ * Decided from the payload's own family byte, because a caller that assumed the family is how a
+ * Digitone 1 project's copy came out labelled as a Digitone II's (found 2026-09-15).
+ */
+export function productTypesFor(payload: Pick<ProjectPayload, "kind">): string[] {
+  return payload.kind === DN1_KIND ? [...DN1_PRODUCT_TYPES] : [];
+}
+
+/** True when a payload is a Digitone 1 project's. */
+export function isDn1Payload(payload: Pick<ProjectPayload, "kind">): boolean {
+  return payload.kind === DN1_KIND;
 }
 
 /** A device read, assembled into the same shape `parseProject` returns for a file. */
