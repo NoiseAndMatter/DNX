@@ -1299,8 +1299,7 @@ async function runRename(pattern: number): Promise<void> {
     status(
       summary.readable
         ? `${patternName(pattern)} is a storage version ${summary.version} pattern. DNX reads it but does not ` +
-          "edit it yet, so it cannot be renamed here. Rename it on the instrument, or copy the project to a " +
-          "slot and re-save it there to upgrade it."
+          "edit it yet, so it cannot be renamed here. Rename it on the instrument instead."
         : `${patternName(pattern)} has storage version ${summary.version}, which this build cannot read, so it ` +
           "cannot be renamed.",
       "error",
