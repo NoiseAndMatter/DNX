@@ -2,13 +2,14 @@ import { SOURCE_URL, renderSettingsLink } from "./settings.js";
 import { renderHelpLink } from "./helpview.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { renderWriteEnable } from "./writeenable.js";
+import { PREFERENCES_CHANGED, readHideProbe } from "./probevisibility.js";
 
 /**
  * The tool titles, which are also the navigation between tools.
  *
  * ## The row never reorders
  *
- * Expander, manager, probe — always, on every page. Settled by the user against a
+ * Expander, manager, library, probe — always in that order, on every page. Settled by the user against a
  * most-recently-used ordering, which was the first sketch and is worse: MRU turns the row into a
  * history stack, so going back and forth between two tools swaps positions 2 and 3 every time and
  * the thing you just clicked is no longer where it was. A fixed row makes each tool a permanent
@@ -16,6 +17,9 @@ import { renderWriteEnable } from "./writeenable.js";
  *
  * So **none of the motion is in the titles**. The highlight moves, nothing reflows, and the page
  * itself slides.
+ *
+ * **The probe is hidden by default** (Settings → Hide the probe, asked for 2026-09-15). It is the last
+ * position, so hiding it moves no other tool, and the shortcuts count only the tools that are shown.
  *
  * ## Why the slide is on arrival only
  *
@@ -85,9 +89,19 @@ export function indexOfTool(tool: ToolId): number {
  * Pure and exported so the rule is actually tested: it was previously three lines inside a keydown
  * listener, where nothing could reach it.
  */
-export function stepFrom(at: number, direction: 1 | -1): number | undefined {
+export function stepFrom(at: number, direction: 1 | -1, length: number = TOOLS.length): number | undefined {
   const to = at + direction;
-  return to < 0 || to >= TOOLS.length ? undefined : to;
+  return to < 0 || to >= length ? undefined : to;
+}
+
+/**
+ * The tools the row shows, in the row's fixed order.
+ *
+ * The probe only when it is not hidden, **or when it is the page you are on**: a row that does not
+ * name the page it sits on is a row you cannot find your way back through.
+ */
+export function visibleTools(current: ToolId, hideProbe: boolean): (typeof TOOLS)[number][] {
+  return TOOLS.filter((tool) => tool.id !== "probe" || !hideProbe || current === "probe");
 }
 
 /** Where the arriving page should slide in from. Set on the way out, read and cleared on arrival. */
@@ -113,13 +127,13 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
   nav.className = "toolnav";
   nav.setAttribute("aria-label", "Tools");
 
-  TOOLS.forEach((tool, at) => {
+  const links: HTMLAnchorElement[] = [];
+  TOOLS.forEach((tool) => {
     const link = document.createElement("a");
     link.className = "tool";
     link.href = tool.href;
     link.textContent = tool.label;
-    // Discoverable, because a shortcut nobody can find is a shortcut nobody uses.
-    link.title = `${tool.label[0]!.toUpperCase()}${tool.label.slice(1)} — Ctrl+Alt+${at + 1}`;
+    link.dataset["tool"] = tool.id;
     if (tool.id === current) {
       // `aria-current` rather than a class alone: the highlight is a statement about where you are,
       // and a screen reader has as much right to it as the stylesheet.
@@ -130,10 +144,25 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
       // ctrl-click from a link is one of the rudest things a page can do.
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
       event.preventDefault();
-      goTo(at, current);
+      goTo(tool.id, current);
     });
+    links.push(link);
     nav.append(link);
   });
+
+  // Which tools show, and the shortcut each tooltip names, follow the settings sheet as it changes.
+  const showTools = (): void => {
+    const shown = visibleTools(current, readHideProbe());
+    for (const link of links) {
+      const at = shown.findIndex((tool) => tool.id === link.dataset["tool"]);
+      link.hidden = at === -1;
+      const label = link.textContent ?? "";
+      // Discoverable, because a shortcut nobody can find is a shortcut nobody uses.
+      link.title = `${label[0]!.toUpperCase()}${label.slice(1)} — Ctrl+Alt+${at + 1}`;
+    }
+  };
+  showTools();
+  window.addEventListener(PREFERENCES_CHANGED, showTools);
 
   /*
    * **Before the source link and after the tools**, because it is the only control in this row that
@@ -179,43 +208,47 @@ function sourceLink(): HTMLAnchorElement {
   return link;
 }
 
-/** Navigate to a tool by position, remembering which way the page should appear to move. */
-function goTo(to: number, current: ToolId): void {
+/** Navigate to a tool, remembering which way the page should appear to move. */
+function goTo(tool: ToolId, current: ToolId): void {
   const from = indexOfTool(current);
-  if (to === from || !TOOLS[to]) return;
+  const to = indexOfTool(tool);
+  if (to === from) return;
   try {
     sessionStorage.setItem(DIRECTION_KEY, to > from ? "right" : "left");
   } catch {
     // Private mode, or storage disabled. The page still navigates; it simply arrives without the
     // slide, which is a missing flourish rather than a missing feature.
   }
-  location.href = TOOLS[to].href;
+  location.href = TOOLS[to]!.href;
 }
 
 function wireShortcuts(current: ToolId): void {
-  const at = indexOfTool(current);
-
   window.addEventListener("keydown", (event) => {
     if (!event.ctrlKey || !event.altKey || event.shiftKey || event.metaKey) return;
 
+    // Counted over the tools the row shows now, so a hidden probe is neither Ctrl+Alt+4 nor the step
+    // to the right of the library.
+    const shown = visibleTools(current, readHideProbe());
+    const at = shown.findIndex((tool) => tool.id === current);
+
     if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-      const to = stepFrom(at, event.key === "ArrowRight" ? 1 : -1);
+      const to = stepFrom(at, event.key === "ArrowRight" ? 1 : -1, shown.length);
       // **Swallowed at the ends, not passed on.** Reported as wrapping from the hardware, and
       // whatever the cause, a modified arrow that reaches the browser from the last tool is one the
       // page has decided not to act on — so it should not act anywhere else either.
       event.preventDefault();
       if (to === undefined) return;
-      goTo(to, current);
+      goTo(shown[to]!.id, current);
       return;
     }
 
     // See the note above: Ctrl+Alt is AltGr, and on several layouts these digits are how you type
     // `@` and `|`. Typing wins wherever typing is what is happening.
     const digit = Number(event.key);
-    if (!Number.isInteger(digit) || digit < 1 || digit > TOOLS.length) return;
+    if (!Number.isInteger(digit) || digit < 1 || digit > shown.length) return;
     if (isEditable(event.target)) return;
     event.preventDefault();
-    goTo(digit - 1, current);
+    goTo(shown[digit - 1]!.id, current);
   });
 }
 
