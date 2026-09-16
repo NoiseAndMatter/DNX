@@ -105,6 +105,68 @@ A few findings that appear in no public source:
 - A SysEx pattern payload equals a project pattern record plus its kit record byte for byte, so
   findings transfer between the two with no offset translation.
 
+## How it is put together
+
+Two front ends over one core. **`src/` is platform-free** — no DOM, no Web MIDI, no filesystem —
+because it is the part proven byte-for-byte against Elektron's own output, and keeping it that way
+is what lets a page, a command and a test exercise the same code.
+
+```mermaid
+flowchart TD
+  subgraph B["In your browser · no server, no account, nothing uploaded"]
+    P["<b>pages</b><br/>expander · manager · library · probe"]
+    W["<b>web/src</b><br/>page shell · device link · settings"]
+    A["<b>web/src/analysis</b><br/>Insights: cycle · voices · pitch · key"]
+  end
+
+  C["<b>src/cli</b><br/>convert · copy · rearrange · diff · sheet"]
+
+  subgraph S["src/ · platform-free: no DOM, no Web MIDI, no filesystem"]
+    L["<b>librarian</b><br/>slots · banks · safe moves"]
+    X["<b>expand</b><br/>Digitone 1 → Digitone II"]
+    D["<b>device</b><br/>+Drive API · read-back · safe write"]
+    J["<b>project</b><br/>container · LZ4 · CRC · patterns · kits · sounds"]
+    Y["<b>sysex</b><br/>8-in-7 codec"]
+  end
+
+  I(["Digitone · Digitone II"])
+
+  P --> W
+  P --> A
+  P --> X
+  W --> D
+  W --> L
+  C --> L
+  C --> X
+  C --> J
+  A --> J
+  L --> J
+  X --> J
+  D --> J
+  D --> Y
+  J --> Y
+  W -. "Web MIDI" .-> I
+```
+
+**Every arrow points down and none point back.** `src/` imports nothing outside `src/`, and no page
+imports another page's folder. That is checked rather than hoped for: the rule and what breaking it
+has already cost are in [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md).
+
+A few consequences worth knowing before reading the code:
+
+- **`sysex` is the floor.** Everything an instrument says arrives through the 8-in-7 codec, and
+  everything written to one leaves through it.
+- **`project` is where the format knowledge lives**, and it is the most depended-on module in the
+  repository. `docs/` documents what it knows and marks each claim with its confidence.
+- **`device` speaks the protocol; the browser carries it.** `src/device` composes and parses every
+  +Drive message and owns the safeguards — the copy taken before a write, the read-back comparison,
+  the fresh listing a destination is checked against — but it never touches a port. It asks for a
+  transport, and `web/src` supplies one backed by Web MIDI. That is what lets the whole write path
+  be tested without an instrument plugged in.
+- **`analysis` describes patterns, not instruments.** Charts never learn what a Digitone is. Each
+  device gets a *producer* that reads its own format and hands over a common shape, which is why
+  Insights works on both without the charts knowing there are two.
+
 ## Running it yourself
 
 ```bash
