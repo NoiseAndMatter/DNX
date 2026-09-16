@@ -173,9 +173,10 @@ test("every ? in the markup opens onto a section, and every id is pointed at", (
 test("the overview's model chart names what is Digitone II only, as the code gates it", () => {
   /*
    * **A chart that drifts is worse than none**: it tells a Digitone owner a tool will work, or that
-   * one will not. Each "no" below is a gate in the code (renderTrackGrid, currentSongs,
-   * renderInsightsPanel, the Open device refusal, the library's kit option), and each was seen on a
-   * Digitone 1 in the 2026-09-15 release run. When a gate goes, this row has to change with it.
+   * one will not. Each "no" below is a gate in the code (renderTrackGrid, currentSongs, the Open
+   * device refusal, the library's kit option), and each was seen on a Digitone 1 in the 2026-09-15
+   * release run. When a gate goes, this row has to change with it — which is what happened to the
+   * Insights row when `dn1subject.ts` was written, so it is checked here in its new wording.
    */
   const overview = HELP_PAGES.find((page) => page.key === "overview");
   const chart = overview?.sections.find((section) => section.heading === "A Digitone and a Digitone II")?.body ?? "";
@@ -184,7 +185,7 @@ test("the overview's model chart names what is Digitone II only, as the code gat
     /Open device, reading the loaded project \| no: use Browse \+Drive \| yes/,
     /a pattern's 16 tracks \| no \| yes/,
     /songs \| no \| yes/,
-    /Insights \| no \| yes/,
+    /Insights \| yes, except voice pressure \| yes/,
     /kits \| no: none on its \+Drive \| yes/,
   ]) {
     assert.match(chart, row);
