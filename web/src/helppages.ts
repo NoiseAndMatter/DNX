@@ -110,7 +110,7 @@ moves nothing else.
 | **Manager:** Open device, reading the loaded project | no: use Browse +Drive | yes |
 | **Manager:** a pattern's 16 tracks | no | yes |
 | **Manager:** songs | no | yes |
-| **Manager:** Insights | yes, except voice pressure | yes |
+| **Manager:** Insights | yes | yes |
 | **Library:** browse presets, search, tags, rename | yes | yes |
 | **Library:** machine column | no: one FM engine | yes |
 | **Library:** kits | no: none on its +Drive | yes |
@@ -120,9 +120,9 @@ moves nothing else.
 
 With both instruments connected, the manager, the library and the backup ask which one to use.
 
-**Voice pressure** is the one Insights card a Digitone 1 does not get. Every number in it depends on
-how long each note holds, and the Digitone 1's note-length byte has never been read against the
-instrument. The card says so in place of drawing itself.`,
+One difference inside Insights: a Digitone II pattern carries a **RESET** and a **CHANGE** setting
+and a Digitone 1's does not, or not anywhere DNX has found. Those two tiles read **?** rather than
+repeating the Digitone II's answer.`,
       },
       {
         heading: "What DNX will not do",
@@ -265,8 +265,8 @@ grid and press *Insights*. Selecting more than one compares them.
 
 It reads both instruments. A Digitone 1 pattern has four synth tracks and four MIDI tracks named
 **A** to **D**, eight voices rather than sixteen, and 64 steps rather than 128, and Insights draws
-it on those terms. The one card it leaves out is **Voice pressure**, because that card is built
-entirely out of note lengths and the Digitone 1's have never been measured.`,
+it on those terms. The only thing it cannot tell you about a Digitone 1 is whether the pattern
+resets: that setting has not been found in its file, so those tiles read **?** instead of guessing.`,
     sections: [
       {
         id: "cycle",
