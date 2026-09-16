@@ -364,7 +364,25 @@ one and press it again.
 - **Its presets show tags and no machine.** A Digitone has one FM engine, and the byte a Digitone II
   uses for the machine is a sound setting on a Digitone.
 - Renaming works the same way on both.
-- The pool on the left still reads Digitone II projects only.`,
+- The pool on the left reads Digitone II projects only, and presets travel one way: see below.`,
+      },
+      {
+        heading: "Presets travel one way",
+        body: `A **Digitone 1 preset goes into a Digitone II project**, converted as it is dropped
+into the pool. **Nothing goes the other way**, and that is a fact about the two instruments rather
+than a feature nobody has written yet.
+
+- **Only FM TONE has an equivalent.** A Digitone has one FM engine. A Digitone II preset using
+  WAVETONE, FM DRUM or SWARMER is not a Digitone sound in any form, so there is nothing to convert.
+- **The third LFO would be lost.** A Digitone II has three LFOs and a Digitone has two. Even an
+  FM TONE preset carries settings the Digitone has no field for.
+- **And more than that would be lost.** Of the 302 bytes in a Digitone sound, 226 have a known
+  source in the Digitone II's 359 and 53 more never vary and could be filled in — but **23 carry
+  real settings that a Digitone II preset does not contain**. A converted preset would be a guess
+  at those, and DNX does not guess at a sound.
+
+So the library opens **Digitone II projects** for pool work, and refuses a Digitone 1 project with
+this reason. A Digitone's presets can still be browsed, tagged, searched and renamed.`,
       },
       {
         heading: "Renaming a preset",
