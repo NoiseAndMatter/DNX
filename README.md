@@ -1,3 +1,5 @@
+![The DNX boot screen: the letters DNX drawn in ASCII on a dark CRT](docs/img/dnx-boot.png)
+
 # DNX
 
 **Tools for Elektron Digitone and Digitone II projects, in your browser.**

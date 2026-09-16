@@ -21,9 +21,8 @@
  *
  * It is tempting to say this is the first time an instrument has been asked to read a payload **we**
  * compressed. **It is not.** `99_HardwareTest/` holds projects that are byte-identical to what
- * `buildPayload` produces — `CLAUDE_TEST`, `GLITCH_EXPLORE_EXPANDED`, `HWTEST_BASE_1629` and others
- * — and those are the files loaded onto the instrument for the expander and rearrange hardware
- * tests. The device has read our LZ4 repeatedly and played what came out.
+ * `buildPayload` produces — `GLITCH_EXPLORE_EXPANDED`, `HWTEST_BASE_1629` and others — and those
+ * are the files loaded onto the instrument for the expander and rearrange hardware tests. The device has read our LZ4 repeatedly and played what came out.
  *
  * So the compression is **not** the risk. What is new is only the **transport**: the same payload
  * that reached the device through Elektron Transfer now goes over SysEx as a +Drive write. Every
