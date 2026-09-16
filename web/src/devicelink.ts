@@ -24,6 +24,7 @@
  * in exactly the part that matters. One home means the next request path cannot get it wrong.
  */
 
+import { noteReply } from "./othertraffic.js";
 import { decodeMessage, isApiMessage, type ApiFrame } from "../../src/device/api.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
 
@@ -224,7 +225,17 @@ export class DeviceLink {
   awaitApiFrame(msgId: number, options: Omit<AwaitOptions<ApiFrame>, "match">): Promise<ApiFrame | undefined> {
     return this.awaitReply<ApiFrame>({
       ...options,
-      match: (data) => matchApiFrame(data, (frame) => frame.respId === msgId),
+      /*
+       * **Every API frame that arrives is counted on the way past**, here rather than in a second
+       * decode, because this predicate already holds the decoded frame and a project read is about
+       * 6,300 of them. `noteReply` ignores anything in this page's own id range; what it keeps is a
+       * reply to an id below the allocator's floor, which cannot be ours. See `othertraffic.ts`.
+       */
+      match: (data) =>
+        matchApiFrame(data, (frame) => {
+          noteReply(frame.respId);
+          return frame.respId === msgId;
+        }),
     });
   }
 

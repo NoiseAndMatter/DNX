@@ -1,4 +1,5 @@
 import { SOURCE_URL, renderSettingsLink } from "./settings.js";
+import { installOtherTrafficWarning } from "./othertraffic.js";
 import { renderHelpLink } from "./helpview.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { renderWriteEnable } from "./writeenable.js";
@@ -182,6 +183,12 @@ export function renderToolNav(container: HTMLElement, current: ToolId): void {
    * somebody has to remember. A page that builds controls later calls `installHelpMarkers` again.
    */
   installHelpMarkers();
+  /*
+   * **Here, because every page mounts this row.** The warning is about the MIDI port, which is a
+   * property of the page rather than of the tool on it, and wiring it per page would mean the one
+   * page somebody forgot is the one running the read that Transfer truncates.
+   */
+  installOtherTrafficWarning(container);
   wireShortcuts(current);
   slideIn();
 }

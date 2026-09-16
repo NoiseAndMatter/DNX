@@ -5,6 +5,40 @@ converter.
 
 ---
 
+## Elektron Transfer on the same port is now visible — BUILT 2026-09-16
+
+Asked for by the owner: *"we should build an elektron transfer detector so we can show a pop-up to
+the users when it is running and there might be conflicts."*
+
+**The detector already existed as a constant.** `messageids.ts` starts this page's ids at 8,192
+because *"Elektron Transfer numbers from the low hundreds"*, so a reply carrying a `respId` below
+that **cannot be ours by construction**. `othertraffic.ts` is that one comparison, counted at
+`awaitApiFrame` — the one place a decoded API frame exists for every page — and at the probe's
+Listen, which is the only mode that hears a port nobody here is driving. The warning is a strip
+under the tool row, installed by `renderToolNav` so no page can be forgotten.
+
+**Measured against a running Transfer, 2026-09-16.** With Transfer browsing the Digitone II's
+library, DNX listening passively for 20 seconds saw **120 replies to requests it never sent**, and
+the strip counted up as they arrived. Transfer's loop is three messages repeating:
+
+| Reply | Ids observed |
+|---|---|
+| `0x81` Device | 127, 130, 133, 136, 139, 142, 145, 148 |
+| `0x82` Version | 128, 131, 134, 137, 140, 143, 146, 149 |
+| `0x83` idle poll | 126, 129, 132, 135, 138, 141, 144, 147 |
+
+Sequential from the low hundreds, exactly as the allocator's comment predicted — **the first time
+that claim has been checked against the application rather than assumed.**
+
+**A running Transfer is not a Transfer on the port**, and this was measured too: with Transfer open
+but idle, 20 seconds of listening saw nothing at all and a `/projects` listing came back complete
+at 128 of 128. Transfer only talks while it has a device active in its window. So this detects
+**interference**, not the application, which is the more useful trigger and is not literally what
+was asked for. A page cannot see processes; traffic is the only thing observable from a browser.
+
+> **The constant that avoids a collision is also the one that detects it.** The floor was chosen to
+> keep DNX's ids away from Transfer's; that same floor answers "is anybody else here".
+
 ## Voice pressure counted a retrigger as a second voice — FIXED 2026-09-16
 
 Insights reported that `002 MORNING_JAM` A1 peaks at **20 voices on a machine that has 8**. The
