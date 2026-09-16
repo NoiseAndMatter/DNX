@@ -49,6 +49,12 @@
  * **Elektron Transfer numbers from the low hundreds**, and sharing a port with it is normal on this
  * desk. An id Transfer also uses is a reply that could belong to either of us, so the allocator
  * never goes there.
+ *
+ * **Measured, 2026-09-16.** With Transfer browsing a Digitone II's library, a passive listen saw
+ * its polling loop use ids **126 to 149** — Device, Version and an idle poll, repeating and
+ * numbering sequentially. The claim above had been an assumption since the file was written; it
+ * is now a measurement. `othertraffic.ts` reads this floor the other way round, to notice that
+ * another application is on the port.
  */
 
 /** The first id this page will ever use. Below it is Elektron Transfer's range. */

@@ -550,3 +550,26 @@ html.write-armed::after {
 .pick-row b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; }
 .pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-where { color: var(--muted); font-size: .82em; font-variant-numeric: tabular-nums; }
+
+/*
+ * Another application on the instrument's MIDI port.
+ *
+ * A strip under the tool row rather than a modal: the read it is warning about may be running, and
+ * taking the page away from somebody mid-read helps nobody. `--warn` and not `--crit`, because
+ * nothing has gone wrong yet — what has happened is that something *might*.
+ */
+.othertraffic {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem .9rem;
+  margin: .7rem 0 0; padding: .55rem .75rem; font-size: .86em;
+  border: 1px solid var(--warn, #b7791f); border-radius: 3px;
+  background: color-mix(in srgb, var(--warn, #b7791f) 12%, transparent);
+}
+.othertraffic-say { margin: 0; flex: 1 1 22rem; min-width: 0; }
+.othertraffic-count {
+  color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.othertraffic-close {
+  font: inherit; color: var(--fg); background: transparent; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 3px; padding: .15rem .55rem;
+}
+.othertraffic-close:hover { border-color: var(--warn, #b7791f); }
