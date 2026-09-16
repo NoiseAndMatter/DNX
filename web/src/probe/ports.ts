@@ -23,11 +23,17 @@
 
 import { escapeHtml } from "../../../src/sheet/html.js";
 import { bestPair as guessPair } from "../devicelink.js";
+import { needsPortChoice } from "./portchoice.js";
 
 /** How many ports of each kind were offered, so the caller can enable its own controls. */
 export interface PortCounts {
   inputs: number;
   outputs: number;
+  /**
+   * Whether more than one plausible instrument is connected and the user has not chosen between
+   * them yet. The caller keeps its controls disabled and says why while this is true.
+   */
+  needsChoice: boolean;
 }
 
 export class PortPicker {
@@ -49,18 +55,27 @@ export class PortPicker {
     this.chosen = {};
   }
 
-  /** Fill both selects, guess the pair, then restore anything the user chose. */
+  /**
+   * Fill both selects, guess the pair unless more than one is plausible, then restore anything the
+   * user chose.
+   */
   render(access: MIDIAccess): PortCounts {
     const inputs = [...access.inputs.values()];
     const outputs = [...access.outputs.values()];
+    const needsChoice = needsPortChoice(inputs, outputs);
 
-    this.inSelect.innerHTML = options(inputs);
-    this.outSelect.innerHTML = options(outputs);
+    this.inSelect.innerHTML = options(inputs, needsChoice);
+    this.outSelect.innerHTML = options(outputs, needsChoice);
 
-    const guess = guessPair(inputs, outputs);
-    if (guess) {
-      this.outSelect.value = guess.output.id;
-      this.inSelect.value = guess.input.id;
+    // No guess offered when two or more instruments are plausible: a guess here is exactly the
+    // silent wrong pick this page shipped once already, on a Digitone 1 and a Digitone II both
+    // connected. Exactly one plausible pair, or none, keeps today's behaviour.
+    if (!needsChoice) {
+      const guess = guessPair(inputs, outputs);
+      if (guess) {
+        this.outSelect.value = guess.output.id;
+        this.inSelect.value = guess.input.id;
+      }
     }
 
     if (this.chosen.output !== undefined && access.outputs.has(this.chosen.output)) {
@@ -70,7 +85,7 @@ export class PortPicker {
       this.inSelect.value = this.chosen.input;
     }
 
-    return { inputs: inputs.length, outputs: outputs.length };
+    return { inputs: inputs.length, outputs: outputs.length, needsChoice };
   }
 
   /** The selected input, or `undefined` if it has been unplugged since. */
@@ -84,10 +99,16 @@ export class PortPicker {
   }
 }
 
-function options(ports: (MIDIInput | MIDIOutput)[]): string {
-  return ports
-    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name ?? p.id)}</option>`)
-    .join("");
+function options(ports: (MIDIInput | MIDIOutput)[], withPlaceholder: boolean): string {
+  // An empty value the caller can tell apart from any real port id, and the first option so it is
+  // what shows until the user picks one.
+  const placeholder = withPlaceholder
+    ? `<option value="">— choose the instrument —</option>`
+    : "";
+  return (
+    placeholder +
+    ports.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name ?? p.id)}</option>`).join("")
+  );
 }
 
 
