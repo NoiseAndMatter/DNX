@@ -30,6 +30,13 @@
  * `SPD` is the one that does not announce itself that way: it rests at **112**, which is `+48`
  * read as bipolar and is the factory default speed. Its polarity is inherited from
  * `soundparams.ts`, which had it before this file existed, rather than re-derived here.
+ *
+ * **The `fine` column is independently confirmed from the firmware.** OS 1.11 carries a
+ * fine-resolution flag at `+0x14` of each parameter record, and reading it for these eight
+ * reproduces the corpus count exactly: `SPD` and `DEP` set, `FADE` clear. Two methods with
+ * nothing in common — 159,744 readings of what instruments wrote, against a flag in the firmware
+ * that decides it — reaching the same answer. Read from the image by the firmware session on
+ * 2026-09-16.
  */
 
 /** What a stored byte means. Separate from resolution: a control can be bipolar *and* fine. */
@@ -73,12 +80,24 @@ export function lfoSlot(name: string): LfoSlot | undefined {
 }
 
 /**
- * **`FADE` is the only bipolar slot without a fine byte**, which is worth knowing beyond this file.
+ * **`FADE` is the only bipolar slot without a fine byte.** Measured, and it is what separates
+ * `FADE` from `DEP`, which are otherwise the same kind of control.
  *
- * The firmware session was hunting a predicate that names `FADE`'s parameter ids, to explain why
- * it draws a widget the other controls do not. Four scans found none. This combination being
- * unique to `FADE` on the page raises the possibility that the widget is chosen from the value
- * encoding rather than from an id, in which case no such predicate exists. Recorded as a lead,
- * not a finding: nobody has confirmed it.
+ * Nothing follows from it about the interface, and this note exists to stop that being tried
+ * again. The firmware session and I spent a while on why `FADE` draws a glyph the other LFO
+ * controls do not, on the assumption that the glyph was computed from something. **It is not.**
+ * Per the instrument's owner, the glyphs are design work: the bowtie fills toward the side you
+ * turn the knob and moves its centre line with it, which is about making a control legible while
+ * you use it, not about how the value is stored.
+ *
+ * So a widget is **assigned** to a parameter by a person, and there was never a rule to find.
+ * `ENV`, `GAIN`, `DEC` and `REL` on the filter page carry the same encoding as `FADE` and draw an
+ * ordinary knob; three encodings alike and three glyphs unalike is what design produces, not an
+ * anomaly needing explanation. Even "every fine parameter draws a plain knob", which survived one
+ * round longer, is a coincidence of the current design rather than a constraint — a future
+ * firmware could give a fine parameter a custom glyph with nothing in the data changing.
+ *
+ * The residue worth keeping is about the code, not the data: both selection mechanisms found in
+ * OS 1.11 are **explicit id lists**, which is what assignment looks like once it reaches a
+ * compiler.
  */
-export const BIPOLAR_WITHOUT_FINE = LFO_SLOTS.filter((s) => s.polarity === "bipolar" && !s.fine);
