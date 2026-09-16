@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { HELP_PAGES } from "../web/src/helppages.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
@@ -68,4 +69,27 @@ test("a rename updates the listing behind the table, not only the row", () => {
   const block = page.slice(start, start + 600);
   assert.match(block, /state\.rows\.find/, "the table row still follows the rename");
   assert.match(block, /state\.bank\?\.entries\.find/, "and so does the listing behind it");
+});
+
+test("the refusal for a Digitone 1 project states the rule, not a delay", () => {
+  /*
+   * Asked for by the owner. The old wording ended "are not joined up yet", which reads as a
+   * feature that is coming — and presets going from a Digitone II to a Digitone 1 is not coming,
+   * because only FM TONE has an equivalent and a Digitone has no field for the third LFO. See
+   * ROADMAP 17 for what a conversion would have to guess at.
+   */
+  const page = read("web/src/library/main.ts");
+  const start = page.indexOf("function adopt(");
+  assert.ok(start > 0, "adopt has been renamed; this check no longer guards anything");
+  const block = page.slice(start, start + 1400);
+  assert.match(block, /travel one way/, "the refusal says presets go one way");
+  assert.doesNotMatch(block, /not joined up yet/, "and does not read as a delay");
+});
+
+test("the help says presets travel one way, with both of the owner's reasons", () => {
+  const library = HELP_PAGES.find((page) => page.key === "library");
+  const section = library?.sections.find((s) => s.heading === "Presets travel one way");
+  assert.ok(section, "the library help lost its one-way section");
+  assert.match(section!.body, /FM TONE/, "only FM TONE has an equivalent");
+  assert.match(section!.body, /third LFO/, "and the third LFO is lost");
 });
