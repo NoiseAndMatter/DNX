@@ -50,7 +50,7 @@ const MOTIONS: readonly Motion[] = ["system", "always", "never"];
  * same origin owns. `dnx-results-` is a prefix and is expanded when clearing.
  */
 const STORED = {
-  local: [MOTION_KEY, "dnx-hide-probe"],
+  local: [MOTION_KEY, "dnx-hide-probe", "dnx-skip-boot", "dnx-seen"],
   localPrefixes: ["dnx-results-"],
   session: ["dnx-nav-direction", "dnx.writeEnabled"],
 };
@@ -188,6 +188,7 @@ import { action, group, row, segmented, toggle } from "./formrow.js";
 import { PREFERENCES_CHANGED, announcePreferencesChanged, readHideProbe, writeHideProbe } from "./probevisibility.js";
 import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder } from "./dnxfolder.js";
 import { installHelpMarkers } from "./helpmarker.js";
+import { readSkipBoot, writeSkipBoot } from "./landing/seen.js";
 import { openOverlay, type Overlay } from "./overlay.js";
 
 /**
@@ -287,6 +288,12 @@ function build(panel: HTMLElement): HTMLElement {
   panel.append(bar, note);
 
   panel.append(group("This application", [
+    row(
+      "Skip the boot screen",
+      "The front page plays DNX starting up. While this is on, opening DNX goes straight to the " +
+        "tools.",
+      toggle("Skip the boot screen", readSkipBoot(), writeSkipBoot),
+    ),
     row(
       "Hide the probe",
       "The probe is for asking an instrument questions when something is wrong. While this is on, it " +

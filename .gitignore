@@ -26,3 +26,6 @@ dist/
 *.dn2pst
 00_Examples/
 99_HardwareTest/
+
+# Written by scripts/version.mjs before every build. Changes on every commit.
+web/src/version.ts
