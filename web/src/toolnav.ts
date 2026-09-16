@@ -1,6 +1,7 @@
 import { SOURCE_URL, renderSettingsLink } from "./settings.js";
 import { installOtherTrafficWarning } from "./othertraffic.js";
 import { renderHelpLink } from "./helpview.js";
+import { renderReportLink } from "./reportissue.js";
 import { installHelpMarkers } from "./helpmarker.js";
 import { renderWriteEnable } from "./writeenable.js";
 import { PREFERENCES_CHANGED, readHideProbe } from "./probevisibility.js";
@@ -188,6 +189,9 @@ export function renderToolNav(container: HTMLElement, current: PageId): void {
   renderWriteEnable(nav);
   renderHelpLink(nav, current);
   renderSettingsLink(nav);
+  // Beside help and settings, because a problem is reported from wherever it was met and the tool
+  // it was met in is what tags the issue.
+  renderReportLink(nav, current);
   nav.append(sourceLink());
   container.append(nav);
   /*
