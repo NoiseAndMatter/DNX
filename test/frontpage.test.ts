@@ -32,9 +32,10 @@ test("the animation runs on the owner's numbers, not on the renderer's defaults"
    * towards the defaults would be undoing a decision rather than fixing a mistake.
    */
   const main = readFileSync(join(ROOT, "web/src/landing/main.ts"), "utf8");
-  for (const [key, value] of [
+  const chosen: [string, string][] = [
     ["idleGlitch", "0.89"], ["glow", "0.86"], ["seed", "26"], ["maxDpr", "2.5"], ["fps", "60"],
-  ]) {
+  ];
+  for (const [key, value] of chosen) {
     assert.match(main, new RegExp(`${key}:\\s*${value.replace(".", "\\.")}`), `${key} is ${value}`);
   }
   assert.match(main, /respectReducedMotion:\s*true/, "reduced motion is honoured");
