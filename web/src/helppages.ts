@@ -99,6 +99,22 @@ moves nothing else.
         image: { src: "help/overview-toolrow.png", alt: "The DNX tool row: expander, manager, library, probe, the write switch, settings and source" },
       },
       {
+        heading: "The front page, and which version you are running",
+        body: `Opening DNX shows a front page: the tools, what DNX is, and **the version in the
+identity line under the animation** — something like **v0.9.0-beta.1 · 11f8a9c**. The second half is
+the commit it was built from. **Quote both when reporting anything**: DNX is served as a web page
+with no release cadence, so two people on the same version can be a fortnight apart.
+
+- **The first time you ever open it**, the animation runs longer and the page offers to set your
+  DNX folder. Afterwards it is shorter and only reminds you where files go.
+- **Settings → Skip the boot screen** goes straight to the tools instead.
+- **The DNX wordmark, top left, comes back here** from any tool.
+
+DNX needs a **Chromium browser** — Chrome, Edge, Brave, Arc. Firefox and Safari have no Web MIDI,
+so they cannot see an instrument at all, and the front page says so rather than letting you find
+out one tool at a time.`,
+      },
+      {
         heading: "A Digitone and a Digitone II",
         body: `DNX works with both, and not every tool does the same on each.
 

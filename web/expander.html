@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNX — expander</title>
+<link rel="stylesheet" href="./dnx.css">
+<link rel="stylesheet" href="./toolnav.css">
+<!-- Classic, not a module: it has to still be standing when the module is not. -->
+<script src="./boot.js"></script>
+<!-- The arriving page starts offset; this must run before the first paint. See arrival.js. -->
+<script src="./arrival.js"></script>
+<style>
+/*
+ * Page-specific layout only. Cells, tabs, buttons, panels and colours come from `dnx.css`.
+ *
+ * The page reads top to bottom in the order the work happens: what you bring in, the source, how it
+ * should be expanded, where it is going, what that does to the sounds, and how to get it out.
+ *
+ * **Nothing here is sized to the viewport**, which was the previous version's whole problem — it
+ * borrowed the manager's app shell, a two-column grid fitted to the window, while using markup that
+ * shell had never styled. A flowing page cannot come apart at a width nobody tested.
+ */
+
+/* The options strip sits between the two explorers and follows you down, because it is what you
+   reach for while looking at either. `sticky` degrades to ordinary flow when the viewport is too
+   short, which is the behaviour we want rather than a rule to guard. */
+.between { position: sticky; top: 0; z-index: 5; }
+
+/* The assignment table is the most important thing on the page, so it gets the full width. */
+.assign .cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.1rem; }
+@media (max-width: 62rem) { .assign .cols { grid-template-columns: minmax(0, 1fr); } }
+
+.plan ul { margin: .3rem 0; padding-left: 1.1rem; }
+
+/* The plan panel closes the assignment section, separated from the table above it. It used to sit
+   in the sticky strip, where a merge reporting every conversion note grew taller than the page and
+   drew the rest of the tool underneath it — hence the folded notes below, and nothing here that can
+   grow without bound. */
+#devicePlan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
+.notes { margin-top: .4rem; }
+.notes summary { cursor: pointer; color: var(--muted); }
+.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
+.notes b { color: var(--fg); font-weight: 600; }
+.bad { color: var(--salmon); }
+.count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+</style>
+</head>
+<body class="page">
+
+<div class="topbar">
+  <a class="brand" href="./index.html" title="DNX — the front page"><span class="d">DNX</span></a>
+  <!-- The tool row is built by `toolnav.ts`, so no page can say something different. -->
+  <span id="toolnav"></span>
+  <span class="spacer"></span>
+  <span class="device" id="sourceInfo" hidden></span>
+  <span class="device" id="destinationBadge" hidden></span>
+</div>
+
+<main>
+
+  <!-- 0. Everything that brings data in. -->
+  <section class="section">
+    <h2 data-help="expander/expander-io">In</h2>
+    <!--
+      Source and destination read as one row of two halves, in that order, because that is the
+      order the work happens in. The source half used to offer a file and nothing else while the
+      destination half offered four routes — so a Digitone 1 sitting on the desk had to be
+      exported to disk by hand before this page would look at it.
+    -->
+    <div class="bar">
+      <span class="lbl">Source</span>
+      <label class="btn filebtn">From file…<input type="file" id="sourceFile" accept=".dnprj"></label>
+      <button class="btn" id="connectSource">Connect a Digitone 1…</button>
+      <button class="btn" id="browseSource" disabled>Browse its +Drive</button>
+      <select id="sourceProjects" hidden title="Projects stored on the Digitone 1, by slot"></select>
+      <button class="btn" id="openSource" hidden disabled>Open slot</button>
+      <span class="sep"></span>
+      <span class="lbl">Destination</span>
+      <button class="btn" id="fromBlank">Blank</button>
+      <label class="btn filebtn">From file…<input type="file" id="templateFile" accept=".dn2prj"></label>
+      <button class="btn" id="connect">Connect a Digitone II…</button>
+      <button class="btn" id="fromDevice" disabled>Read its project</button>
+      <!--
+        The mirror of the Digitone 1's row, with one difference that has to be visible: a project
+        browsed off the +Drive can be merged into and exported, and never written back. A write goes
+        to the instrument's ACTIVE project, so edits made to slot 47 would land in slot 3.
+      -->
+      <button class="btn" id="browseDestination" disabled>Browse its +Drive</button>
+      <select id="destinationProjects" hidden title="Projects stored on the Digitone II, by slot"></select>
+      <button class="btn" id="openDestination" hidden disabled>Open slot</button>
+    </div>
+  </section>
+
+  <!-- 1. The source, in the same grid every tool uses. -->
+  <section class="section">
+    <h2>Digitone 1 <span class="count" id="sourceSub"></span></h2>
+    <p class="hint" id="sourceEmpty">Load a Digitone 1 project to begin.</p>
+    <div class="tabs" id="sourceTabs" hidden></div>
+    <div class="grid" id="sourceGrid" hidden></div>
+  </section>
+
+  <!-- 2. What to do with it, between the two explorers and following the scroll. -->
+  <section class="section between">
+    <div class="bar">
+      <label><input type="radio" name="mode" id="modeSelect" value="select" checked> Selected patterns</label>
+      <label><input type="radio" name="mode" id="modeWhole" value="whole"> Whole project</label>
+      <span class="sep"></span>
+      <!--
+        Unticked by default, because the default is to keep what the musician arranged. Selecting
+        A1, A9, A10 and dropping on A1 lands them on A1, A9, A10 — the gaps are usually where the
+        variations sit relative to the main idea. Tick this when the job is the opposite one:
+        gathering scattered sketches into a block.
+      -->
+      <label title="Pack the selection one after another from the drop, instead of keeping the gaps between them"><input type="checkbox" id="contiguous"> Contiguous</label>
+      <span class="sep"></span>
+      <label><input type="checkbox" id="compact"> Compact</label>
+      <label><input type="checkbox" id="freeMidi"> Freed MIDI</label>
+      <label><input type="checkbox" id="aggregate"> Aggregate by name</label>
+      <label><input type="checkbox" id="rules"> Percussion low</label>
+      <span class="spacer"></span>
+      <button class="btn primary" id="applyMerge" disabled>Apply</button>
+      <button class="btn" id="undoApply" disabled>Undo</button>
+    </div>
+  </section>
+
+  <!-- 3. The destination, stacked below the source so a drag is a straight movement down. -->
+  <section class="section">
+    <h2>Digitone II <span class="count" id="destinationInfo">— no destination yet</span></h2>
+    <div class="tabs" id="destinationTabs" hidden></div>
+    <div class="grid" id="destinationGrid" hidden></div>
+    <div class="legend" id="legend" hidden>
+      <span><i class="sw occupied"></i>occupied</span>
+      <span><i class="sw sel"></i>selected</span>
+      <!-- The legend has to name the preview, or an italic amber cell is just an odd-looking cell. -->
+      <span><i class="sw pending"></i>about to land &mdash; press Apply to write it</span>
+      <span>drag from the Digitone 1 grid onto a slot here</span>
+      <span>shift = range, ctrl = add</span>
+    </div>
+  </section>
+
+  <!--
+    4. Where every sound went. The most important data on the page, so it is full width and sits
+    directly under the destination it describes.
+
+    The plan panel lives here too, at the end, rather than up in the options strip: what a merge
+    would do to the pool and to the locks only means anything beside the allocation it comes from.
+  -->
+  <section class="section assign">
+    <h2 data-help="expander/expander-options">Sounds on tracks <span class="count" id="reportScope"></span></h2>
+    <div id="plan"><p class="hint">Load a project to see how its sounds would be laid out.</p></div>
+    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
+  </section>
+
+  <!-- 5. Everything that takes data out. -->
+  <section class="section">
+    <h2 data-help="expander/expander-out">Out</h2>
+    <div class="bar">
+      <span class="lbl">Name</span>
+      <input type="text" id="destinationName" size="16" placeholder="keep existing">
+      <span class="spacer"></span>
+      <button class="btn primary" id="exportDestination" disabled>Export .dn2prj</button>
+      <button class="btn danger" data-writes-device id="writeDevice" disabled>Write to instrument</button>
+    </div>
+  </section>
+
+</main>
+
+<div class="status" id="status"></div>
+
+<script type="module" src="./dist/web/src/expander/main.js"></script>
+</body>
+</html>
