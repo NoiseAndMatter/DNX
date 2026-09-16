@@ -14,11 +14,28 @@
  * | voices | 8 | 16 |
  * | machines | FM TONE only | four |
  * | pattern length | not found: each track carries its own | `+0x14`, with a per-track mode |
- * | note length | byte read, meaning unknown | captured 2026-09-06 |
+ * | note length | the same byte, see below | captured 2026-09-06 |
  *
- * Two of those rows decide what this producer may say, and both are said through the subject
- * rather than worked around: `gateLengthKnown` is **false**, and `masterLength` is derived from
- * the track lengths rather than read from a field nobody has found.
+ * The pattern-length row decides what this producer may say, and it is said through the subject
+ * rather than worked around: `masterLength` is derived from the track lengths rather than read
+ * from a field nobody has found, and `patternTimingKnown` is false so nothing reports the
+ * Digitone II's RESET for a field that has not been located here.
+ *
+ * ## The note length is the Digitone II's, and that was settled by Elektron
+ *
+ * This producer shipped with every gate set to 1 and `gateLengthKnown: false`, because the
+ * Digitone 1's note-length table had never been captured. The owner's suggestion settled it
+ * without a capture: **compare a Digitone 1 project with the Digitone II project Elektron's own
+ * importer made from it.** The corpus holds fifteen such pairs.
+ *
+ * Across them, **4,705 per-trig note lengths and 17,406 per-track defaults are byte-identical**,
+ * with no exceptions in a genuine pair. 104 of the 128 possible values appear, and every one is
+ * in the table `noteLengthSteps` measured on a Digitone II on 2026-09-06.
+ *
+ * So Elektron's importer copies the byte, which means Elektron treats it as the same quantity on
+ * both machines. That is one inference short of a measurement — it would be wrong only if the
+ * importer silently changed the length of every note it ever imported — and it is the reason the
+ * gate is now read rather than a placeholder.
  */
 
 import {
@@ -27,6 +44,7 @@ import {
   type Dn1Sound, type Dn1Track,
 } from "../../src/project/dn1.js";
 import { MACHINE } from "../../src/project/machine.js";
+import { NOTE_LENGTH_NONE, noteLengthSteps } from "../../src/project/dn2pattern.js";
 import type { Device } from "../../src/librarian/device.js";
 import { patternName } from "../../src/sheet/naming.js";
 import { PatternSubjectError } from "./patternsubject.js";
@@ -52,6 +70,11 @@ function accentThreshold(defaults: readonly number[]): number {
 /** A track's default velocity, from its settings block. */
 function defaultVelocityOf(track: Dn1Track): number {
   return track.settings[DN1_TRACK.settingsVelocityOffset] ?? DEVICE_DEFAULT_VELOCITY;
+}
+
+/** A track's default note length, from its settings block. */
+function defaultNoteLengthOf(track: Dn1Track): number {
+  return track.settings[DN1_TRACK.settingsNoteLengthOffset] ?? NOTE_LENGTH_NONE;
 }
 
 /**
@@ -132,12 +155,12 @@ export function dn1PatternSubject(
           notes: notesOf(trig.note as number, trig.chord),
           velocity: trig.velocity ?? defaultVelocity,
           /*
-           * **1, because the Digitone 1's note-length byte has never been captured.**
-           * `docs/dn1-project-format.md` lists the value-to-duration table as UNKNOWN, and the
-           * subject says so through `gateLengthKnown` below. This is the same placeholder the
-           * Digitone II producer carried until its own table was measured on 2026-09-06.
+           * **The Digitone II's table, because Elektron's importer says the byte is the same.**
+           * See the module note. A trig with no length of its own inherits the track's, which is
+           * the common case: `0xFF` is the most frequent value on both machines.
            */
-          length: 1,
+          length: noteLengthSteps(trig.noteLength ?? NOTE_LENGTH_NONE)
+            ?? noteLengthSteps(defaultNoteLengthOf(track)) ?? 1,
           microTiming: trig.microTiming,
           // The code is read; what it means is not. See `AnalysisTrig.conditional`.
           ...(trig.trigCondition === undefined ? {} : { conditional: true }),
@@ -198,7 +221,7 @@ export function dn1PatternSubject(
     patternTimingKnown: false,
     voiceBudget: VOICES,
     defaultVelocity: accentThreshold(pattern.tracks.map(defaultVelocityOf)),
-    gateLengthKnown: false,
+    gateLengthKnown: true,
     tracks,
   };
 }

@@ -185,7 +185,7 @@ test("the overview's model chart names what is Digitone II only, as the code gat
     /Open device, reading the loaded project \| no: use Browse \+Drive \| yes/,
     /a pattern's 16 tracks \| no \| yes/,
     /songs \| no \| yes/,
-    /Insights \| yes, except voice pressure \| yes/,
+    /Insights \| yes \| yes/,
     /kits \| no: none on its \+Drive \| yes/,
   ]) {
     assert.match(chart, row);

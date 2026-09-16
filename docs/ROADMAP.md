@@ -2257,11 +2257,18 @@ chart changed to make it work.
 
 **What the Digitone 1 does not get, and why each is a fact about the format rather than a shortcut:**
 
-- **No gate length.** `docs/dn1-project-format.md` lists the note-length table as UNKNOWN, so the
-  subject sets `gateLengthKnown: false` and the **Voice pressure** card prints why it is empty
-  instead of drawing itself from placeholder ones. This is the first consumer of that flag — until
-  now every subject said `true` and nothing read it. The Digitone II's table was captured on
-  2026-09-06; one equivalent capture on a Digitone 1 turns this card on.
+
+- **The gate was unknown for a day, and the owner's idea settled it without a capture.** The note
+  length shipped as a placeholder with `gateLengthKnown: false`, and the **Voice pressure** card
+  printed why it was empty — the first consumer that flag ever had. Rather than book hardware time,
+  the owner proposed an inter-device comparison, and the corpus already held the strong form of it:
+  fifteen **matched pairs**, each a Digitone 1 project beside the Digitone II project *Elektron's
+  own importer* made from it. **4,705 per-trig note lengths and 17,406 per-track defaults are
+  byte-identical, with no exceptions**, across 104 of the 128 possible values, every one of them in
+  the table measured on a Digitone II on 2026-09-06. Elektron treats the byte as the same quantity
+  on both machines, so DNX reads it. `docs/dn1-project-format.md` §4.3a has the evidence and states
+  the one inference it rests on. **The standing lesson: reach for an inter-device comparison before
+  booking a capture.**
 - **No speed multiplier.** `+0x0D` is SPECULATIVE: six values seen against seven settings on the
   instrument, and which is which is a guess. `undefined` is the subject's existing word for that.
 - **No master length, no RESET, no CHANGE.** The Digitone II keeps all three in the pattern record.

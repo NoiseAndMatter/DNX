@@ -12,12 +12,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { DN1_PROJECTS, NO_CORPUS, corpusFiles, requireCorpusFile } from "./corpus.js";
+import {
+  DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, corpusFiles, requireCorpusFile,
+} from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { DN1_DEVICE, DN2_DEVICE } from "../src/librarian/device.js";
 import { MACHINE } from "../src/project/machine.js";
 import { readPattern } from "../src/project/dn1.js";
+import { readDn2Pattern, noteLengthSteps, type Dn2Trig } from "../src/project/dn2pattern.js";
+import { DN2_LAYOUT } from "../src/project/dn2image.js";
 import { dn1PatternSubject } from "../web/src/dn1subject.js";
 import { PatternSubjectError } from "../web/src/patternsubject.js";
 import { playing, trackLabel } from "../web/src/analysis/model.js";
@@ -57,19 +61,78 @@ test("the subject carries the Digitone 1's eight voices, not the Digitone II's s
     assert.equal(subject.voiceBudget, 8);
   });
 
-test("no gate is claimed, because the note-length byte has never been captured",
+test("the gate is the Digitone II's table, and a trig with none inherits its track's",
   { skip: NO_CORPUS }, () => {
     /*
-     * The Digitone II's table was measured against the instrument on 2026-09-06; the Digitone 1's
-     * is listed UNKNOWN in `docs/dn1-project-format.md`. Until somebody reads known note lengths
-     * back off a Digitone 1, every gate here is a placeholder and the subject has to say so, or
-     * the voice pressure card draws a fabricated number that looks exactly like a measured one.
+     * Read rather than placeheld since 2026-09-16, on the evidence in the test below. `0xFF` is
+     * the most common value on both machines, so the inheritance is the common path and not an
+     * edge case.
      */
-    const subject = dn1PatternSubject(imageOf(PROJECT), DN1_DEVICE, 0);
-    assert.equal(subject.gateLengthKnown, false);
-    for (const track of subject.tracks) {
-      for (const trig of track.trigs) assert.equal(trig.length, 1);
+    const image = imageOf(PROJECT);
+    const subject = dn1PatternSubject(image, DN1_DEVICE, 0);
+    assert.equal(subject.gateLengthKnown, true);
+
+    const pattern = readPattern(image, 0);
+    let inherited = 0;
+    let own = 0;
+    for (const track of pattern.tracks) {
+      const out = subject.tracks[track.index]!;
+      const fallback = noteLengthSteps(track.settings[0x04]!) ?? 1;
+      for (const trig of track.trigs) {
+        if (!trig.hasNote || trig.note === undefined) continue;
+        const drawn = [...out.trigs, ...(out.dormant ?? [])].find((g) => g.step === trig.step);
+        if (!drawn) continue;
+        if (trig.noteLength === undefined) {
+          assert.equal(drawn.length, fallback, "a trig with no length takes the track's");
+          inherited += 1;
+        } else {
+          assert.equal(drawn.length, noteLengthSteps(trig.noteLength) ?? 1);
+          own += 1;
+        }
+      }
     }
+    assert.ok(inherited + own > 0, "no note trigs to check");
+  });
+
+test("Elektron's own importer says the note-length byte means the same on both machines",
+  { skip: NO_CORPUS }, () => {
+    /*
+     * **The evidence for reading a Digitone 1 gate at all**, and the owner's idea rather than
+     * mine: compare a Digitone 1 project with the Digitone II project *Elektron's importer* made
+     * from it. Comparing DNX's own conversion would have been circular.
+     *
+     * One pair here, the largest; the full sweep over all fifteen pairs — 4,705 per-trig lengths
+     * and 17,406 per-track defaults, no exceptions — is recorded in
+     * `docs/dn1-project-format.md` §4.3a. This guards the claim without decoding thirty images.
+     *
+     * DN1 synth track N maps to DN2 track N, verified across nine matched pairs.
+     */
+    const dn1 = imageOf("001 PRESETS.dnprj");
+    const dn2 = decodeProjectImage(parseProject(new Uint8Array(
+      readFileSync(requireCorpusFile(DN2_PROJECTS, "017 PRESETS.dn2prj")),
+    )).payload.raw).image;
+
+    let compared = 0;
+    for (let slot = 0; slot < 128; slot++) {
+      const a = readPattern(dn1, slot);
+      const b = readDn2Pattern(dn2, slot, DN2_LAYOUT);
+      for (const track of a.tracks) {
+        const dest = b.tracks[track.index];
+        if (!dest) continue;
+        assert.equal(track.settings[0x04], dest.settings.defaultNoteLength,
+          `${slot} T${track.index + 1}: the track default differs`);
+        for (const trig of track.trigs) {
+          if (!trig.hasNote || trig.note === undefined) continue;
+          const other: Dn2Trig | undefined =
+            dest.trigs.find((g: Dn2Trig) => g.step === trig.step && g.hasNote);
+          if (!other || other.notes[0] !== trig.note) continue;
+          assert.equal(trig.noteLength, other.noteLength,
+            `${slot} T${track.index + 1} step ${trig.step}: the note length differs`);
+          compared += 1;
+        }
+      }
+    }
+    assert.ok(compared > 1000, `expected the PRESETS pair to line up, compared ${compared}`);
   });
 
 test("no speed multiplier is claimed either", { skip: NO_CORPUS }, () => {
