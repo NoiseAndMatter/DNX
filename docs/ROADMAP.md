@@ -2239,7 +2239,39 @@ The probe is for instrument debugging, and most people never need it.
 Asked for by the owner: a Digitone / Digitone II feature chart in the help. It is the overview's
 *A Digitone and a Digitone II* section. Each "no" is a gate in the code and was seen on a
 Digitone 1 in the 2026-09-15 release run; `test/helppages.test.ts` pins those rows, so removing a gate
-means editing the chart. Insights for a Digitone 1 is queued as parity work.
+means editing the chart. Insights for a Digitone 1 was the parity work that followed; see §16.
+
+## 16. Insights for a Digitone 1 — BUILT 2026-09-16
+
+The owner, on the Digitone 1 release report: *"We need to bring parity here. Analysis also needs to
+support DN1."* `web/src/dn1subject.ts` is the second producer, and the rule §11 states held: not one
+chart changed to make it work.
+
+- **The manager's Insights toggle asks for a project and an instrument**, where it used to ask for a
+  Digitone II. The panel picks the producer by `device.kind`.
+- **`AnalysisTrack.label`**, new, and `trackLabel` alongside it. A Digitone 1 has four synth tracks
+  and four MIDI tracks the instrument calls **A** to **D**; every chart printed `T` and the number,
+  which would have put "T5" on screen for a track no Digitone 1 has ever called that. `PeriodGroup`
+  carries the labels for the same reason — a chart handed a group has no way back to the track.
+- **Eight voices, 64 steps, FM TONE.**
+
+**What the Digitone 1 does not get, and why each is a fact about the format rather than a shortcut:**
+
+- **No gate length.** `docs/dn1-project-format.md` lists the note-length table as UNKNOWN, so the
+  subject sets `gateLengthKnown: false` and the **Voice pressure** card prints why it is empty
+  instead of drawing itself from placeholder ones. This is the first consumer of that flag — until
+  now every subject said `true` and nothing read it. The Digitone II's table was captured on
+  2026-09-06; one equivalent capture on a Digitone 1 turns this card on.
+- **No speed multiplier.** `+0x0D` is SPECULATIVE: six values seen against seven settings on the
+  instrument, and which is which is a guess. `undefined` is the subject's existing word for that.
+- **No master length, no RESET, no CHANGE.** The Digitone II keeps all three in the pattern record.
+  Nothing length-shaped has been identified in the Digitone 1's, so `masterLength` is the longest
+  track pass and `perTrackLengths` describes whether the stored lengths actually differ. If the
+  SCALE byte turns up later this becomes a read and nothing above it changes.
+
+`test/dn1subject.test.ts` runs the producer over all 53 Digitone 1 projects and their 6,784 pattern
+records, checking that every length, tempo and window is drawable — the sweep that found the
+Digitone II's zero-length patterns.
 
 ## 5. A device analytics view — IDEA, 2026-07-31
 
