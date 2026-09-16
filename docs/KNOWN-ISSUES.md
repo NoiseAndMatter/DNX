@@ -485,6 +485,26 @@ itself.
 
 > **"Not available" is a claim about the world. Make sure it is one you can support.**
 
+## Whole-project expansion kept part of the destination, and its report and export said the wrong things — FIXED 2026-09-15
+
+Found in the Digitone 1 release run, expanding MORNING_JAM (Digitone 1, +Drive slot 2) into COREVAULT
+(stock 1.11 Digitone II, +Drive slot 2). Three findings, all marked Fix.
+
+**The destination was not replaced** (EXP-WHOLE-OVER-CONTENT). `convertProject` writes a pattern's first
+eight tracks and touches tracks 9 to 16 only when it promotes a sound onto them, so COREVAULT's own
+tracks 9 to 16 survived: A2 went from 30 trigs to 110, and A3, empty in the source, kept 111 trigs as
+UNTITLED. Nothing asked first. Whole mode now blanks every pattern and kit record before converting
+(`replaceDestination` in `planDeviceExpand`), and asks through the offer button, naming the patterns that
+hold trigs, before replacing a destination with content.
+
+**The report compared the result with itself** (EXP-DEVICE-PLAN-AFTER-APPLY). After Apply it read "0
+slot(s) differ from the device, about 0.0 MB to send". The destination now keeps the image it was opened
+with; the plan counts changes against that and, separately, what is left to apply.
+
+**The export carried the blank template's manifest** (EXP-EXPORT-MANIFEST): Payload EMPTY, FirmwareVersion
+1.10E, around a 1.11-sized image. A destination now keeps the project it came from, and export builds from
+it, naming the payload after the project it holds.
+
 ## Exports that never arrived were Chrome holding them — NOT A DEFECT 2026-09-15
 
 The release test of 2026-09-14 and its retest reported project exports that said "Exported" and
