@@ -1,0 +1,71 @@
+# Publish DNX to GitHub Pages.
+#
+# DNX is a static page that does all its work in the browser, so "deploying" is copying `web/`
+# somewhere it can be fetched. There is no server, and adding one would falsify the sentence the
+# front page makes: nothing leaves this machine.
+#
+# **The site is built here rather than committed.** `web/dist/` is the TypeScript compiled for the
+# browser and is in `.gitignore` — a build output in the repository is a second copy of the source
+# that drifts from it. So the runner builds, and what it uploads is `web/` with `dist/` inside it.
+#
+# `scripts/version.mjs` runs as part of `build:web` and reads `git`, which is why the checkout
+# needs a commit to look at. It writes the version the front page shows, so a deployed page names
+# the exact commit it was built from — the whole point of the string.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  # So a broken deployment can be retried without an empty commit.
+  workflow_dispatch:
+
+# **Deploy, never write to the repository.** Pages needs its own two, and `contents` stays read.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a newer one waits rather than cancelling: a half-finished deploy
+# that is cancelled can leave the site on neither version.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The same pin `verify.yml` uses. Two workflows disagreeing about Node is a difference
+          # that shows up as "works in CI, broken on the site".
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # **The site is only published if the suite passes.** A green page served from a red commit
+      # is how somebody downloads a build nobody checked.
+      - run: npm run verify
+
+      - run: npm run build:web
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          # The site root. Every path inside the pages is relative, so it serves correctly from
+          # `/DNX/` without a base href.
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
