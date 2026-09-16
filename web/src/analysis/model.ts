@@ -124,6 +124,24 @@ export interface AnalysisTrack {
    */
   trigs: AnalysisTrig[];
   /**
+   * Extra semitone offsets every note on this track is *also* sounded at.
+   *
+   * **This is the arpeggiator, named for what it does to pitch rather than for what it is.** A
+   * track with the arp engaged does not play the note written on a trig; it plays that note at
+   * each of these offsets in turn, so the pitch content and the key fit are both wrong without
+   * them. `[0]` and `undefined` both mean the written note, unchanged.
+   *
+   * Offsets rather than an arp object because **nothing under `analysis/` may learn what a device
+   * is.** A producer reads its own format and hands over the consequence. That also makes the
+   * field honest about its own limits: the order the offsets are played in is not here, because
+   * order does not change which pitches sound.
+   *
+   * Read it through `sounded`, never directly. Only the pitch readers consult it — the voice
+   * budget deliberately does not, because sounding a chord one note at a time changes how many
+   * voices are held and nobody has measured the arp's timing.
+   */
+  arpIntervals?: readonly number[];
+  /**
    * Trigs stored on steps past the end of the track, which the sequencer never reaches.
    *
    * Shortening a track on a Digitone II keeps whatever was written on the pages it drops. Lengthen
@@ -220,6 +238,16 @@ export interface AnalysisSubject {
    * True for synthetic data, which knows its own gates because it made them up on purpose.
    */
   gateLengthKnown: boolean;
+  /**
+   * True when this producer can read whether a track's arpeggiator is on.
+   *
+   * **False is not "no arp", it is "we cannot see one".** A Digitone 1 has an arpeggiator and its
+   * sound object has never been decoded for it, so a DN1 pattern whose arp is engaged sounds
+   * pitches this analysis cannot know about. Reported rather than glossed, on the same principle
+   * as `patternTimingKnown`: a key fitted to notes the instrument does not play is worse than one
+   * that says what it could not see.
+   */
+  arpKnown: boolean;
   tracks: AnalysisTrack[];
 }
 
@@ -826,6 +854,31 @@ export function voicesPerStep(tracks: readonly AnalysisTrack[], windowSteps: num
 }
 
 /** One pitch class, with who sounds it. */
+/**
+ * Every note a trig actually sounds, which is not always what is written on it.
+ *
+ * Without an arp this is `trig.notes`, and the array is handed back as it stands rather than
+ * copied — the readers below only iterate it.
+ *
+ * With one, each written note is sounded at each of the track's offsets, so a two-note trig on a
+ * track with three live arp offsets sounds six. Duplicates are kept: two written notes a fifth
+ * apart, arped at 0 and +7, really do strike the middle pitch twice, and a pitch histogram that
+ * collapsed them would under-report it.
+ *
+ * **Only pitch reads this.** `voicesPerStep` and `holdersAt` do not, and the reason is not an
+ * oversight: an arp spreads a chord out in time rather than stacking it, so it changes the voice
+ * count in a direction that cannot be computed without the arp's timing, and `SPD`'s units have
+ * never been measured. Counting six voices where the instrument holds one or two would be a
+ * fabricated number wearing a chart.
+ */
+export function sounded(track: AnalysisTrack, trig: AnalysisTrig): readonly number[] {
+  const arp = track.arpIntervals;
+  if (arp === undefined || arp.length === 0) return trig.notes;
+  const out: number[] = [];
+  for (const note of trig.notes) for (const step of arp) out.push(note + step);
+  return out;
+}
+
 export interface PitchCell {
   name: string;
   total: number;
@@ -844,7 +897,7 @@ export function pitchByPreset(tracks: readonly AnalysisTrack[]): PitchCell[] {
     for (const g of t.trigs) {
       const preset = presetOf(t, g);
       const machine = t.machine ?? -1;
-      for (const note of g.notes) {
+      for (const note of sounded(t, g)) {
         const cell = out[pitchClass(note)]!;
         cell.total++;
         cell.byMachine[machine] = (cell.byMachine[machine] ?? 0) + 1;
@@ -1031,8 +1084,14 @@ export function fitKey(counts: readonly number[]): KeyFit {
  * count as harmonic is a live question, and changing it is a behaviour change, not an extraction.
  */
 export function harmonic(tracks: readonly AnalysisTrack[]): AnalysisTrack[] {
+  /*
+   * **Through `sounded`, because an arp makes a one-note track harmonic.** A bass line holding a
+   * single pitch, arped across a root, a fifth and an octave-and-a-third, moves through three
+   * pitch classes; reading the written note alone would drop it from the harmonic set and take its
+   * pitches out of the key fit with it.
+   */
   return tracks.filter(
-    (t) => new Set(t.trigs.map((g) => pitchClass(g.notes[0] ?? 0))).size > 1,
+    (t) => new Set(t.trigs.flatMap((g) => sounded(t, g).map((n) => pitchClass(n)))).size > 1,
   );
 }
 
@@ -1055,7 +1114,7 @@ export function pitchWindows(
       for (let rep = 0; rep * stride < total; rep++) {
         for (const g of t.trigs) {
           const s = Math.round(rep * stride + masterOffset(t, g.step));
-          if (s >= at && s < at + win) for (const note of g.notes) counts[pitchClass(note)]!++;
+          if (s >= at && s < at + win) for (const note of sounded(t, g)) counts[pitchClass(note)]!++;
         }
       }
     }
@@ -1193,7 +1252,7 @@ export function trackWindows(
         for (const g of row.track.trigs) {
           const st = Math.round(rep * stride + masterOffset(row.track, g.step));
           if (st < at || st >= at + win) continue;
-          for (const n of g.notes) counts.set(n, (counts.get(n) ?? 0) + 1);
+          for (const n of sounded(row.track, g)) counts.set(n, (counts.get(n) ?? 0) + 1);
         }
       }
       const stack = [...counts.keys()].sort((a, b) => a - b);

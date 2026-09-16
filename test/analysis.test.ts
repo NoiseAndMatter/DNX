@@ -171,7 +171,7 @@ test("a track with nothing on it is not a row on any chart", () => {
   const subject: AnalysisSubject = {
     label: "x", tempo: 120, masterLength: 16, perTrackLengths: false, voiceBudget: 16,
     defaultVelocity: 100,
-    gateLengthKnown: true, patternTimingKnown: true,
+    gateLengthKnown: true, patternTimingKnown: true, arpKnown: true,
     tracks: [track({ number: 1, trigs: [trig(0, [60])] }), track({ number: 2 })],
   };
   assert.deepEqual(playing(subject).map((t) => t.number), [1]);
@@ -534,7 +534,7 @@ function subject(over: Partial<AnalysisSubject> = {}): AnalysisSubject {
   return {
     label: "A1", tempo: 120, masterLength: 16, perTrackLengths: false, voiceBudget: 16,
   defaultVelocity: 100,
-    gateLengthKnown: false, patternTimingKnown: true,
+    gateLengthKnown: false, patternTimingKnown: true, arpKnown: true,
     tracks: [track({ trigs: [trig(0, [60])] })], ...over,
   };
 }
