@@ -21,9 +21,22 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
-## Unreleased
+## 0.9.0-beta.3 — 2026-09-16
 
 ### Fixed
+
+- **A backup now says what it could not read.** DNX asks the instrument what is on its +Drive
+  rather than assuming from the model, which is right — but it only knows how to read projects,
+  soundbanks and kits, so a firmware adding a fourth directory would have been discovered and then
+  passed over in silence. The run would report success while being incomplete, and the omission
+  would surface at restore time. Any directory DNX cannot read is now named on screen and recorded
+  in the manifest. Empty for every instrument that exists today, which is the point.
+
+- **The README no longer says DNX backs up the whole instrument.** It copies the **+Drive**.
+  Settings that live outside it, like LED brightness or MIDI port configuration, are not reachable
+  over this protocol and are not in a backup.
+
+### Fixed earlier, released here
 
 - **Two tables described the eight LFO controls and disagreed about three of them.** Neither could
   have been right: each carried a single word for two independent facts, so `SPD` and `DEP`, which

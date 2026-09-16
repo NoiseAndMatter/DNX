@@ -173,11 +173,25 @@ registerBackup(async (report) => {
         failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
       : "";
     const kinds = backup.manifest.contents.join(", ");
+    /*
+     * **Said out loud rather than left to the manifest.** The drive is listed rather than assumed,
+     * so a firmware adding a directory is discovered; but the reader handles three, and a backup
+     * that passes over a fourth in silence reports success while being incomplete. Nobody reads a
+     * manifest until they are restoring, which is the worst moment to find out.
+     */
+    const missed = backup.manifest.skipped ?? [];
+    const unread = missed.length
+      ? ` The +Drive also holds ${missed.join(", ")}, which DNX cannot read — this backup does ` +
+        `not contain ${missed.length === 1 ? "it" : "them"}.`
+      : "";
     report.say(
       `Saved ${whereSaved(saved)} — ${backup.manifest.entries.length} items (${kinds}), ` +
-        `${describeBytes(bytes.length)}.${lost}`,
+        `${describeBytes(bytes.length)}.${lost}${unread}`,
     );
-    status(`Backup saved to ${whereSaved(saved)}`, failed.length ? "warn" : savedTone(saved));
+    status(
+      missed.length ? `Backup saved, but not everything on the +Drive` : `Backup saved to ${whereSaved(saved)}`,
+      failed.length || missed.length ? "warn" : savedTone(saved),
+    );
   } catch (error) {
     report.say(`Backup stopped: ${String(error)}`);
     status(`Backup stopped: ${String(error)}`, "error");

@@ -6,7 +6,7 @@
 **→ [noiseandmatter.github.io/DNX](https://noiseandmatter.github.io/DNX/)**
 
 Expand a Digitone 1 sketch onto a Digitone II's sixteen tracks. Move patterns between slots,
-banks and projects. Browse and rename presets on the +Drive. Back the whole instrument up. Read
+banks and projects. Browse and rename presets on the +Drive. Back the whole +Drive up. Read
 what a pattern actually plays.
 
 Nothing is installed and nothing is uploaded. The page talks to the instrument over Web MIDI and
@@ -33,7 +33,11 @@ sound, voice pressure against the device's budget, pitch content and a key fit. 
 **Library** — browse the +Drive's 2,048 presets with their tags, search them, rename one on the
 instrument, and drag presets into a project's sound pool.
 
-**Backup** — every project and soundbank on the +Drive into one `.dnx` file, with a manifest.
+**Backup** — every project, soundbank and kit on the +Drive into one `.dnx` file, with a manifest.
+It copies the **+Drive**, not the instrument: settings that live outside the drive, like LED
+brightness or MIDI port configuration, are not in it and DNX cannot reach them. If a future
+firmware puts something new on the drive, the backup says what it could not read rather than
+passing over it.
 
 **Probe** — for when something is wrong. Ask an instrument what it is, what firmware it runs and
 which messages it answers; capture whatever it sends. It only ever sends messages classified as
