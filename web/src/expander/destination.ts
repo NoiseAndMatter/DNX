@@ -42,6 +42,8 @@
  * is a type parameter instead: `main.ts` supplies the real one and keeps its type safety.
  */
 
+import type { LoadedProject } from "../project.js";
+
 export type Origin = "blank" | "file" | "device" | "drive";
 
 /** A destination as it stands, including every merge applied so far. */
@@ -63,6 +65,22 @@ export interface Opened<Handle = unknown> {
    * it needs to know what actually went in — and nothing else records that.
    */
   merged: number[];
+  /**
+   * The image as it was opened, before any apply. Set by `fill` when not given.
+   *
+   * What the plan's report counts against, so a project that has been applied to still says how
+   * far it has moved from what was opened rather than comparing itself with itself.
+   */
+  baseline?: Uint8Array;
+  /**
+   * The project file this destination came from, when there is one: a picked file, the blank
+   * template, or a +Drive read whose instrument gave its firmware.
+   *
+   * Export builds the file from it, so a +Drive project exports under its own manifest (its
+   * firmware, its container header) rather than the blank template's. Found 2026-09-15: COREVAULT
+   * off a stock 1.11 Digitone II exported as Payload EMPTY, FirmwareVersion 1.10E.
+   */
+  project?: LoadedProject;
 }
 
 export class Destination<Handle = unknown> {
@@ -95,7 +113,7 @@ export class Destination<Handle = unknown> {
 
   /** Adopt a destination, however it arrived. Discards any undo step: it belonged to the old one. */
   fill(next: Opened<Handle>): void {
-    this.#open = next;
+    this.#open = { ...next, baseline: next.baseline ?? next.image };
     this.#previous = undefined;
     this.onChange();
   }

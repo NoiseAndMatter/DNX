@@ -77,3 +77,18 @@ test("nothing recomputes the plan without repainting", () => {
       "can go stale while the plan moves on",
   );
 });
+
+test("export builds from the destination's own project before any donor", () => {
+  // COREVAULT off a stock 1.11 Digitone II exported with the blank template's manifest (EMPTY, 1.10E).
+  const exporting = bodyOf("exportDestination");
+  const own = exporting.indexOf("destination.open.project");
+  const donor = exporting.indexOf("loadDonor(");
+  assert.ok(own !== -1 && donor !== -1 && own < donor, "the destination's project must be tried first");
+  assert.match(exporting, /Payload: base/, "the payload is named after the project it holds");
+});
+
+test("the plan is given the destination as opened, and the consent from its offer", () => {
+  const replan = bodyOf("replanForDevice");
+  assert.match(replan, /baseline: destination\.open\.baseline/);
+  assert.match(replan, /planWhole\(\{[\s\S]*overrides,/);
+});
