@@ -2331,6 +2331,66 @@ refusing every machine but FM TONE and discarding the third LFO. That is the num
 Doing 3 without 1 and 2 would be a dialog in front of a guess, which is the thing this project does
 not do.
 
+## 18. The front page — BUILT 2026-09-16
+
+The owner: *"integrate this bootup/startup screen to the app: It should serve as landing page and it
+should mention at the end of the animation the version of the tool and give a link to the repo"*,
+and then: *"maybe that landing page could also offer to setup some basic settings … Once those
+settings are persisted, if the user starts the tool again they are not asked and we just show a
+reminder of where the settings can be changed."*
+
+**A page, not a splash, and the renderer decided it.** Its reveal is seconds but its idle never
+ends — `resolve()` is documented as *"Idle remains animated"*. Something built to stay on screen
+was given a screen. `index.html` is the front page; the expander moved to `expander.html` and keeps
+its position in the tool row. The brand in the top bar is now a link home, because there is a home.
+
+### The three states a visit can be in
+
+| | reveal | the card says |
+|---|---|---|
+| nothing stored about a previous run | **7,000 ms** | choose the DNX folder |
+| been here before | **3,500 ms** | where files go, and to change it in Settings |
+| asked to skip it | none | the reminder only |
+
+Both lengths are the owner's, chosen on a tuning bench built for the purpose. So are
+`idleGlitch: 0.89`, `glow: 0.86`, `seed: 26`, `maxDpr: 2.5`, `fps: 60`; `test/frontpage.test.ts`
+pins them, because a later reader tidying "odd" constants toward the renderer's defaults would be
+undoing a decision rather than fixing a mistake.
+
+**"Nothing stored about a previous run" is one question, asked once.** It decides the length *and*
+whether to offer the folder, so the two cannot disagree — and a cleared browser is a first run
+again, which is right: somebody who wiped their site data also lost the folder they chose.
+
+**The setup card reads the browser, never a flag.** A directory handle's permission can be
+withdrawn by Chrome, and a `setupDone` flag would mean a revoked folder is never offered again
+while every file quietly goes back to downloads. `folderState()` asks what is true now.
+
+### Chromium only, said out loud
+
+The owner's decision. `browsercheck.ts` asks for `requestMIDIAccess` and `showDirectoryPicker`
+rather than reading the user agent, which has lied by design for twenty years. **Web MIDI is what
+decides**: without the picker, files download and DNX still works; without MIDI there is no
+instrument and three of the four tools have nothing to talk to. Firefox and Safari implement
+neither.
+
+### The version string
+
+`scripts/version.mjs` writes `web/src/version.ts` from `package.json` and `git`, before every
+`build:web` and every `verify`. It is gitignored: it would change on every commit and dirty the
+tree on every dev build. The page shows `v0.9.0-beta.1 · 11f8a9c`, with `+` when the tree had
+uncommitted changes.
+
+**0.9 and not 1.0**, agreed with the owner: DNX still refuses things it will eventually do — the
+loaded project, Digitone II to Digitone 1 presets, the arpeggiator — and 1.0 invites a reader to
+take those refusals for bugs. The beta lands when the repository is made public.
+
+### The renderer
+
+`web/src/landing/dnxloader.ts`, unmodified from the commissioned bundle, which is kept whole with
+its provenance and checksums at `dn_sysex/00_References/dnx-startup-screen/`. **One file of the
+53 MB is the runtime**: it draws the ASCII itself, with no images, fonts or network. It typechecked
+under this repository's strict configuration as it arrived.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop

@@ -29,7 +29,7 @@ const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "../web");
 
 /** Which page each tool's row is drawn on, so a missing container is caught per page. */
 const PAGES: [string, string][] = [
-  ["expander", "index.html"],
+  ["expander", "expander.html"],
   ["manager", "manager.html"],
   ["probe", "probe.html"],
 ];
@@ -133,7 +133,9 @@ test("Settings offers the switch, hidden is the default, and Clear resets it", (
   assert.match(settings, /"Hide the probe"/);
   assert.match(settings, /toggle\("Hide the probe", readHideProbe\(\), writeHideProbe\)/);
   assert.match(settings, /input\.checked = readHideProbe\(\)/, "the switch must follow Clear while the sheet is open");
-  assert.match(settings, /local: \[MOTION_KEY, "dnx-hide-probe"\]/, "Clear must reach the preference");
+  // Membership rather than the whole list: the list grows, and pinning its exact contents made
+  // adding the boot-screen preference look like a regression in the probe's switch.
+  assert.match(settings, /local: \[[^\]]*"dnx-hide-probe"/, "Clear must reach the preference");
   assert.match(visibility, /HIDE_PROBE_KEY = "dnx-hide-probe"/);
   assert.match(visibility, /!== "false"/, "absent must mean hidden");
 });

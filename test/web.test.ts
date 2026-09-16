@@ -135,7 +135,8 @@ function reachableFiles(entry: string): string[] {
 }
 
 const PAGES: [string, string, string][] = [
-  ["expander", resolve(HERE, "../web/src/expander/main.ts"), resolve(HERE, "../web/index.html")],
+  ["landing", resolve(HERE, "../web/src/landing/main.ts"), resolve(HERE, "../web/index.html")],
+  ["expander", resolve(HERE, "../web/src/expander/main.ts"), resolve(HERE, "../web/expander.html")],
   ["manager", resolve(HERE, "../web/src/manager/main.ts"), resolve(HERE, "../web/manager.html")],
   ["library", resolve(HERE, "../web/src/library/main.ts"), resolve(HERE, "../web/library.html")],
   ["probe", resolve(HERE, "../web/src/probe/main.ts"), resolve(HERE, "../web/probe.html")],
@@ -426,11 +427,21 @@ test("only toolnav.css describes the bar, so it cannot differ between pages", ()
  * the answer is a `?` and a `<template>`, and the template is exempt.
  *
  * 120 characters is roughly a sentence. The longest paragraph on any other page is 81.
+ *
+ * **The landing page is exempt, and it is the only page that can be.** The rule exists because
+ * prose taxed a *working area* — the probe's results window was below the fold before a byte
+ * arrived. The landing page has no working area to tax: explaining what DNX is, and that it
+ * writes to nothing until you say so, is the entire job of the page. A reader arriving from a
+ * public repository has nowhere else to be told. The fence stays around the four tools, where the
+ * pressure that produced the 1,109-character paragraph still lives.
  */
 const PROSE_LIMIT = 120;
 
+/** Pages whose subject is the prose. See the note above; this list must not grow. */
+const EXPLAINS_ITSELF = new Set(["landing"]);
+
 for (const [name, , html] of PAGES) {
-  test(`the ${name} does not explain itself in its own layout`, () => {
+  test(`the ${name} does not explain itself in its own layout`, { skip: EXPLAINS_ITSELF.has(name) }, () => {
     const source = readFileSync(html, "utf8")
       // Where the explaining is supposed to happen, and comments are for us, not for the layout.
       .replace(/<template[\s\S]*?<\/template>/g, "")

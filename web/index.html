@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DNX — expander</title>
+<title>DNX</title>
 <link rel="stylesheet" href="./dnx.css">
 <link rel="stylesheet" href="./toolnav.css">
 <!-- Classic, not a module: it has to still be standing when the module is not. -->
@@ -12,162 +12,141 @@
 <script src="./arrival.js"></script>
 <style>
 /*
- * Page-specific layout only. Cells, tabs, buttons, panels and colours come from `dnx.css`.
+ * The landing page.
  *
- * The page reads top to bottom in the order the work happens: what you bring in, the source, how it
- * should be expanded, where it is going, what that does to the sounds, and how to get it out.
+ * **A page rather than a splash**, and the renderer is why: its reveal is a few seconds but its
+ * idle never ends — `resolve()` is documented as "Idle remains animated". Something built to stay
+ * on screen should be given a screen, not torn down mid-idle.
  *
- * **Nothing here is sized to the viewport**, which was the previous version's whole problem — it
- * borrowed the manager's app shell, a two-column grid fitted to the window, while using markup that
- * shell had never styled. A flowing page cannot come apart at a width nobody tested.
+ * So the animation is the top of a page that also does the one piece of setup worth doing before
+ * anybody connects an instrument, and says which version they are running. Everything below the
+ * canvas is visible at rest, without scrolling, on a laptop.
  */
+.land {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.6rem 1.2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 
-/* The options strip sits between the two explorers and follows you down, because it is what you
-   reach for while looking at either. `sticky` degrades to ordinary flow when the viewport is too
-   short, which is the behaviour we want rather than a rule to guard. */
-.between { position: sticky; top: 0; z-index: 5; }
+/* The screen. Sized by ratio so it never pushes the rest of the page out of the first view. */
+.land-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 6;
+  min-height: 150px;
+  max-height: 46vh;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0b1314;
+  overflow: hidden;
+}
+.land-screen > canvas { display: block; width: 100%; height: 100%; }
 
-/* The assignment table is the most important thing on the page, so it gets the full width. */
-.assign .cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.1rem; }
-@media (max-width: 62rem) { .assign .cols { grid-template-columns: minmax(0, 1fr); } }
+/*
+ * The identity line, under the animation: what this is, which version, and the source.
+ * **The source link is a licence term** — see `sourceLink` in `toolnav.ts` — so it is here as
+ * well as in the tool row, because this is the page a stranger arrives on.
+ */
+.land-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; }
+.land-id h1 { margin: 0; font-size: 1.15rem; letter-spacing: .02em; }
+.land-ver {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: .78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.land-id a { margin-left: auto; }
 
-.plan ul { margin: .3rem 0; padding-left: 1.1rem; }
+.land-say { margin: 0; max-width: 62ch; color: var(--muted); }
+.land-say b { color: var(--fg); font-weight: 600; }
 
-/* The plan panel closes the assignment section, separated from the table above it. It used to sit
-   in the sticky strip, where a merge reporting every conversion note grew taller than the page and
-   drew the rest of the tool underneath it — hence the folded notes below, and nothing here that can
-   grow without bound. */
-#devicePlan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
-.notes { margin-top: .4rem; }
-.notes summary { cursor: pointer; color: var(--muted); }
-.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
-.notes b { color: var(--fg); font-weight: 600; }
-.bad { color: var(--salmon); }
-.count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+/* One card for whatever this visit needs: the folder offer, or the reminder. */
+.land-setup {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: .9rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem .9rem;
+}
+.land-setup[data-first="true"] { border-color: var(--acc, #4c8c7d); }
+/* `display: flex` above would otherwise render this while it is still `hidden`. */
+.land-setup[hidden] { display: none; }
+.land-setup p { margin: 0; flex: 1 1 24rem; min-width: 0; }
+.land-setup .land-where { font-family: var(--mono, ui-monospace, monospace); color: var(--fg); }
+
+.land-tools { display: flex; flex-wrap: wrap; gap: .7rem; }
+.land-tool {
+  flex: 1 1 13rem;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: .7rem .85rem;
+  text-decoration: none;
+  color: inherit;
+}
+.land-tool:hover { border-color: var(--acc, #4c8c7d); }
+.land-tool b { display: block; font-size: .95rem; }
+.land-tool span { display: block; color: var(--muted); font-size: .84rem; margin-top: .15rem; }
+
+/* A browser that cannot run this is told before anything else on the page. */
+.land-stop {
+  border: 2px solid var(--crit, #b03b2e);
+  border-radius: 3px;
+  padding: .9rem 1rem;
+  margin: 0;
+}
+.land-note { color: var(--muted); font-size: .86em; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The renderer honours this itself and shows the settled logo. Nothing here needs to move. */
+  .land-screen { transition: none; }
+}
 </style>
 </head>
-<body class="page">
+<body class="app">
 
 <div class="topbar">
   <span class="brand"><span class="d">DNX</span></span>
   <!-- The tool row is built by `toolnav.ts`, so no page can say something different. -->
   <span id="toolnav"></span>
   <span class="spacer"></span>
-  <span class="device" id="sourceInfo" hidden></span>
-  <span class="device" id="destinationBadge" hidden></span>
 </div>
 
-<main>
+<main class="land">
+  <p class="land-stop" id="unsupported" hidden></p>
 
-  <!-- 0. Everything that brings data in. -->
-  <section class="section">
-    <h2 data-help="expander/expander-io">In</h2>
-    <!--
-      Source and destination read as one row of two halves, in that order, because that is the
-      order the work happens in. The source half used to offer a file and nothing else while the
-      destination half offered four routes — so a Digitone 1 sitting on the desk had to be
-      exported to disk by hand before this page would look at it.
-    -->
-    <div class="bar">
-      <span class="lbl">Source</span>
-      <label class="btn filebtn">From file…<input type="file" id="sourceFile" accept=".dnprj"></label>
-      <button class="btn" id="connectSource">Connect a Digitone 1…</button>
-      <button class="btn" id="browseSource" disabled>Browse its +Drive</button>
-      <select id="sourceProjects" hidden title="Projects stored on the Digitone 1, by slot"></select>
-      <button class="btn" id="openSource" hidden disabled>Open slot</button>
-      <span class="sep"></span>
-      <span class="lbl">Destination</span>
-      <button class="btn" id="fromBlank">Blank</button>
-      <label class="btn filebtn">From file…<input type="file" id="templateFile" accept=".dn2prj"></label>
-      <button class="btn" id="connect">Connect a Digitone II…</button>
-      <button class="btn" id="fromDevice" disabled>Read its project</button>
-      <!--
-        The mirror of the Digitone 1's row, with one difference that has to be visible: a project
-        browsed off the +Drive can be merged into and exported, and never written back. A write goes
-        to the instrument's ACTIVE project, so edits made to slot 47 would land in slot 3.
-      -->
-      <button class="btn" id="browseDestination" disabled>Browse its +Drive</button>
-      <select id="destinationProjects" hidden title="Projects stored on the Digitone II, by slot"></select>
-      <button class="btn" id="openDestination" hidden disabled>Open slot</button>
-    </div>
-  </section>
+  <div class="land-screen"><canvas id="boot" aria-label="DNX starting up"></canvas></div>
 
-  <!-- 1. The source, in the same grid every tool uses. -->
-  <section class="section">
-    <h2>Digitone 1 <span class="count" id="sourceSub"></span></h2>
-    <p class="hint" id="sourceEmpty">Load a Digitone 1 project to begin.</p>
-    <div class="tabs" id="sourceTabs" hidden></div>
-    <div class="grid" id="sourceGrid" hidden></div>
-  </section>
+  <div class="land-id">
+    <h1>DNX</h1>
+    <span class="land-ver" id="version">—</span>
+    <a href="https://github.com/NoiseAndMatter/DNX" rel="noopener">source</a>
+  </div>
 
-  <!-- 2. What to do with it, between the two explorers and following the scroll. -->
-  <section class="section between">
-    <div class="bar">
-      <label><input type="radio" name="mode" id="modeSelect" value="select" checked> Selected patterns</label>
-      <label><input type="radio" name="mode" id="modeWhole" value="whole"> Whole project</label>
-      <span class="sep"></span>
-      <!--
-        Unticked by default, because the default is to keep what the musician arranged. Selecting
-        A1, A9, A10 and dropping on A1 lands them on A1, A9, A10 — the gaps are usually where the
-        variations sit relative to the main idea. Tick this when the job is the opposite one:
-        gathering scattered sketches into a block.
-      -->
-      <label title="Pack the selection one after another from the drop, instead of keeping the gaps between them"><input type="checkbox" id="contiguous"> Contiguous</label>
-      <span class="sep"></span>
-      <label><input type="checkbox" id="compact"> Compact</label>
-      <label><input type="checkbox" id="freeMidi"> Freed MIDI</label>
-      <label><input type="checkbox" id="aggregate"> Aggregate by name</label>
-      <label><input type="checkbox" id="rules"> Percussion low</label>
-      <span class="spacer"></span>
-      <button class="btn primary" id="applyMerge" disabled>Apply</button>
-      <button class="btn" id="undoApply" disabled>Undo</button>
-    </div>
-  </section>
+  <p class="land-say">A tool for Elektron Digitone projects: expand a Digitone 1 project onto a
+    Digitone II, move patterns about, browse the +Drive library, and back the whole thing up.
+    <b>Nothing leaves this machine</b>, and <b>nothing is written to an instrument until you turn
+    WRITE on</b>.</p>
 
-  <!-- 3. The destination, stacked below the source so a drag is a straight movement down. -->
-  <section class="section">
-    <h2>Digitone II <span class="count" id="destinationInfo">— no destination yet</span></h2>
-    <div class="tabs" id="destinationTabs" hidden></div>
-    <div class="grid" id="destinationGrid" hidden></div>
-    <div class="legend" id="legend" hidden>
-      <span><i class="sw occupied"></i>occupied</span>
-      <span><i class="sw sel"></i>selected</span>
-      <!-- The legend has to name the preview, or an italic amber cell is just an odd-looking cell. -->
-      <span><i class="sw pending"></i>about to land &mdash; press Apply to write it</span>
-      <span>drag from the Digitone 1 grid onto a slot here</span>
-      <span>shift = range, ctrl = add</span>
-    </div>
-  </section>
+  <div class="land-setup" id="setup" hidden></div>
 
-  <!--
-    4. Where every sound went. The most important data on the page, so it is full width and sits
-    directly under the destination it describes.
+  <nav class="land-tools" aria-label="Tools">
+    <a class="land-tool" href="./expander.html"><b>Expander</b>
+      <span>A Digitone 1 project onto a Digitone II</span></a>
+    <a class="land-tool" href="./manager.html"><b>Manager</b>
+      <span>Patterns, songs, the +Drive, and Insights</span></a>
+    <a class="land-tool" href="./library.html"><b>Library</b>
+      <span>Presets, tags, and a project's sound pool</span></a>
+  </nav>
 
-    The plan panel lives here too, at the end, rather than up in the options strip: what a merge
-    would do to the pool and to the locks only means anything beside the allocation it comes from.
-  -->
-  <section class="section assign">
-    <h2 data-help="expander/expander-options">Sounds on tracks <span class="count" id="reportScope"></span></h2>
-    <div id="plan"><p class="hint">Load a project to see how its sounds would be laid out.</p></div>
-    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
-  </section>
-
-  <!-- 5. Everything that takes data out. -->
-  <section class="section">
-    <h2 data-help="expander/expander-out">Out</h2>
-    <div class="bar">
-      <span class="lbl">Name</span>
-      <input type="text" id="destinationName" size="16" placeholder="keep existing">
-      <span class="spacer"></span>
-      <button class="btn primary" id="exportDestination" disabled>Export .dn2prj</button>
-      <button class="btn danger" data-writes-device id="writeDevice" disabled>Write to instrument</button>
-    </div>
-  </section>
-
+  <p class="land-note" id="skiprow"></p>
 </main>
 
-<div class="status" id="status"></div>
-
-<script type="module" src="./dist/web/src/expander/main.js"></script>
+<script type="module" src="dist/web/src/landing/main.js"></script>
 </body>
 </html>
