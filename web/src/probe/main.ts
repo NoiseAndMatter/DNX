@@ -29,6 +29,7 @@
  * dependency until there is something for it to do over MIDI.
  */
 
+import { noteReply } from "../othertraffic.js";
 import {
   type DirEntry,
   Code,
@@ -686,6 +687,17 @@ async function startListening(): Promise<void> {
     const data = new Uint8Array(event.data);
     capture.add(data);
     lastAt = Date.now();
+
+    /*
+     * **Listen is where another application is most visible**, because it is the one mode that
+     * hears a port nobody here is driving. The other pages count replies inside
+     * `awaitApiFrame`, which only runs while DNX is waiting for one of its own; a probe sitting
+     * idle on a shared port would see Transfer's whole conversation and say nothing.
+     */
+    matchApiFrame(data, (frame) => {
+      noteReply(frame.respId);
+      return false;
+    });
 
     // A read drives its own narration and owns the results area while it runs, so re-rendering
     // the capture on every message would tear down the progress it is drawing. The bytes are
