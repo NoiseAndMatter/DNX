@@ -110,7 +110,7 @@ moves nothing else.
 | **Manager:** Open device, reading the loaded project | no: use Browse +Drive | yes |
 | **Manager:** a pattern's 16 tracks | no | yes |
 | **Manager:** songs | no | yes |
-| **Manager:** Insights | no | yes |
+| **Manager:** Insights | yes | yes |
 | **Library:** browse presets, search, tags, rename | yes | yes |
 | **Library:** machine column | no: one FM engine | yes |
 | **Library:** kits | no: none on its +Drive | yes |
@@ -118,7 +118,11 @@ moves nothing else.
 | **Backup** | projects and sounds | projects, sounds and kits |
 | **Probe** | yes | yes |
 
-With both instruments connected, the manager, the library and the backup ask which one to use.`,
+With both instruments connected, the manager, the library and the backup ask which one to use.
+
+One difference inside Insights: a Digitone II pattern carries a **RESET** and a **CHANGE** setting
+and a Digitone 1's does not, or not anywhere DNX has found. Those two tiles read **?** rather than
+repeating the Digitone II's answer.`,
       },
       {
         heading: "What DNX will not do",
@@ -257,7 +261,12 @@ it did.`,
     key: "insights",
     title: "Insights",
     intro: `**Insights** analyses what a pattern actually plays. Select one or more patterns in the
-grid and press *Insights*. Selecting more than one compares them.`,
+grid and press *Insights*. Selecting more than one compares them.
+
+It reads both instruments. A Digitone 1 pattern has four synth tracks and four MIDI tracks named
+**A** to **D**, eight voices rather than sixteen, and 64 steps rather than 128, and Insights draws
+it on those terms. The only thing it cannot tell you about a Digitone 1 is whether the pattern
+resets: that setting has not been found in its file, so those tiles read **?** instead of guessing.`,
     sections: [
       {
         id: "cycle",

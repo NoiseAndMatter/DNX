@@ -2239,7 +2239,46 @@ The probe is for instrument debugging, and most people never need it.
 Asked for by the owner: a Digitone / Digitone II feature chart in the help. It is the overview's
 *A Digitone and a Digitone II* section. Each "no" is a gate in the code and was seen on a
 Digitone 1 in the 2026-09-15 release run; `test/helppages.test.ts` pins those rows, so removing a gate
-means editing the chart. Insights for a Digitone 1 is queued as parity work.
+means editing the chart. Insights for a Digitone 1 was the parity work that followed; see §16.
+
+## 16. Insights for a Digitone 1 — BUILT 2026-09-16
+
+The owner, on the Digitone 1 release report: *"We need to bring parity here. Analysis also needs to
+support DN1."* `web/src/dn1subject.ts` is the second producer, and the rule §11 states held: not one
+chart changed to make it work.
+
+- **The manager's Insights toggle asks for a project and an instrument**, where it used to ask for a
+  Digitone II. The panel picks the producer by `device.kind`.
+- **`AnalysisTrack.label`**, new, and `trackLabel` alongside it. A Digitone 1 has four synth tracks
+  and four MIDI tracks the instrument calls **A** to **D**; every chart printed `T` and the number,
+  which would have put "T5" on screen for a track no Digitone 1 has ever called that. `PeriodGroup`
+  carries the labels for the same reason — a chart handed a group has no way back to the track.
+- **Eight voices, 64 steps, FM TONE.**
+
+**What the Digitone 1 does not get, and why each is a fact about the format rather than a shortcut:**
+
+
+- **The gate was unknown for a day, and the owner's idea settled it without a capture.** The note
+  length shipped as a placeholder with `gateLengthKnown: false`, and the **Voice pressure** card
+  printed why it was empty — the first consumer that flag ever had. Rather than book hardware time,
+  the owner proposed an inter-device comparison, and the corpus already held the strong form of it:
+  fifteen **matched pairs**, each a Digitone 1 project beside the Digitone II project *Elektron's
+  own importer* made from it. **4,705 per-trig note lengths and 17,406 per-track defaults are
+  byte-identical, with no exceptions**, across 104 of the 128 possible values, every one of them in
+  the table measured on a Digitone II on 2026-09-06. Elektron treats the byte as the same quantity
+  on both machines, so DNX reads it. `docs/dn1-project-format.md` §4.3a has the evidence and states
+  the one inference it rests on. **The standing lesson: reach for an inter-device comparison before
+  booking a capture.**
+- **No speed multiplier.** `+0x0D` is SPECULATIVE: six values seen against seven settings on the
+  instrument, and which is which is a guess. `undefined` is the subject's existing word for that.
+- **No master length, no RESET, no CHANGE.** The Digitone II keeps all three in the pattern record.
+  Nothing length-shaped has been identified in the Digitone 1's, so `masterLength` is the longest
+  track pass and `perTrackLengths` describes whether the stored lengths actually differ. If the
+  SCALE byte turns up later this becomes a read and nothing above it changes.
+
+`test/dn1subject.test.ts` runs the producer over all 53 Digitone 1 projects and their 6,784 pattern
+records, checking that every length, tempo and window is drawable — the sweep that found the
+Digitone II's zero-length patterns.
 
 ## 5. A device analytics view — IDEA, 2026-07-31
 

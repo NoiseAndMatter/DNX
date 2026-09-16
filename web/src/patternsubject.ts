@@ -16,6 +16,9 @@
  * The DN1 keeps its patterns in a different shape and its trigs are read by a different reader.
  * Pointing this at a DN1 image would walk DN2 offsets over DN1 bytes and produce charts of
  * confident nonsense, which is worse than no charts.
+ *
+ * A Digitone 1 project is read by `dn1subject.ts`, the second producer, which is what the rule
+ * above looks like in practice: it was written without changing a single chart.
  */
 
 import { auditPool } from "../../src/librarian/poolaudit.js";
@@ -87,9 +90,9 @@ export function patternSubject(
 ): AnalysisSubject {
   if (device.kind !== "dn2") {
     throw new PatternSubjectError(
-      `analysis reads Digitone II patterns, and this is a ${device.name}. The DN1's trigs come out ` +
-        `of a different reader with a different shape, and running this over its bytes would draw ` +
-        `charts of something that is not there.`,
+      `this reads Digitone II patterns, and this is a ${device.name}. A Digitone 1's trigs come ` +
+        `out of a different reader with a different shape, and running this ` +
+        `over its bytes would draw charts of something that is not there.`,
     );
   }
 
@@ -252,6 +255,8 @@ export function patternSubject(
       ? Math.max(...pattern.tracks.map((t) => lengthOf(t.length)))
       : pattern.length,
     perTrackLengths: pattern.perTrackScale,
+    // Both fields below are read from the record, so an undefined one is the setting being off.
+    patternTimingKnown: true,
     voiceBudget: VOICES[device.kind] ?? 16,
     defaultVelocity: accentThreshold(pattern.tracks.map((t) => t.settings.defaultVelocity)),
     /*

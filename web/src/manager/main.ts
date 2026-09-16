@@ -122,6 +122,7 @@ import { registerBackup } from "../settings.js";
 import { backupDevice } from "../backup.js";
 import { backupFileName, packBackup } from "../dnxfile.js";
 import { renderInsights, type InsightsRefusal } from "./insights.js";
+import { dn1PatternSubject } from "../dn1subject.js";
 import { patternSubject } from "../patternsubject.js";
 import { type AnalysisSubject } from "../analysis/model.js";
 
@@ -450,7 +451,9 @@ function insightsSubjectSlots(): number[] {
 function renderInsightsPanel(): void {
   const host = $("insightsPanel");
   const { device, session } = state;
-  const usable = !!session && device?.kind === "dn2";
+  // Both families have a producer. The panel asks for a project and an instrument, not for a
+  // Digitone II — which is what it asked for until the Digitone 1's producer was written.
+  const usable = !!session && device !== undefined;
 
   /*
    * **Wanting the mode and being in it are different things.**
@@ -483,9 +486,8 @@ function renderInsightsPanel(): void {
   /*
    * **Read per slot, so one unreadable pattern cannot take the selection down with it.**
    *
-   * `patternSubject` refuses a Digitone 1 pattern and a storage version this project does not read,
-   * and a range selected with shift can easily contain one — `017 PRESETS` is version 2 in all 128
-   * of its records. Catching around the whole loop would have thrown away seven readable patterns
+   * Both producers refuse a storage version this project does not read, and a range selected with
+   * shift can easily contain one — `017 PRESETS` is version 2 in all 128 of its records. Catching around the whole loop would have thrown away seven readable patterns
    * because the eighth was refused. The refusals are handed on and named in the panel rather than
    * quietly skipped.
    */
@@ -493,7 +495,11 @@ function renderInsightsPanel(): void {
   const refusals: InsightsRefusal[] = [];
   for (const slot of slots) {
     try {
-      subjects.push(patternSubject(session.image, device, slot));
+      subjects.push(
+        device.kind === "dn1"
+          ? dn1PatternSubject(session.image, device, slot)
+          : patternSubject(session.image, device, slot),
+      );
     } catch (error) {
       /*
        * The reader's refusals lead with the pattern's own name, and the panel prints that name

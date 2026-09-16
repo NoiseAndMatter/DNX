@@ -29,7 +29,7 @@ import {
   masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
   overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds,
-  trackWindows, voicesPerStep,
+  trackLabel, trackWindows, voicesPerStep,
   type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
 import {
@@ -526,7 +526,7 @@ export function renderInsights(
         keeps whatever was written on the pages it drops; raise its LEN again and
         ${dormantTotal === 1 ? "it comes" : "they come"} back.</p>
       <p class="why" style="margin-top:.35rem">${dormant.map((d) =>
-        `<b>T${d.track.number}</b> is ${d.track.length} steps and holds
+        `<b>${trackLabel(d.track)}</b> is ${d.track.length} steps and holds
          ${d.steps.length} on step${d.steps.length === 1 ? "" : "s"}
          ${listOf(d.steps.slice(0, 8).map(String))}${d.steps.length > 8 ? " and more" : ""} —
          <b>LEN ${d.reachAt}</b> reaches ${d.steps.length === 1 ? "it" : "the last of them"}` +
@@ -545,7 +545,9 @@ export function renderInsights(
           <span class="v">${subject.masterLength}</span><span class="u">steps</span>
           <span class="note">${clock(stepsToSeconds(subject.masterLength, subject.tempo))} ·
             ${barsOf(subject.masterLength)}${subject.perTrackLengths
-              ? " · no master length in PER TRACK" : ""}</span></div>
+              ? (subject.patternTimingKnown
+                ? " · no master length in PER TRACK"
+                : " · the tracks carry different lengths") : ""}</span></div>
         <div class="tile ${cut ? "flag" : ""}"><span class="k">Repeats every</span>
           <span class="v">${cycle.toLocaleString()}</span><span class="u">steps</span>
           <span class="note">${clock(cycleSec)} · ${bars} bar${bars === 1 ? "" : "s"}${cut
@@ -559,9 +561,9 @@ export function renderInsights(
       <div class="ctrl" style="margin-top:.9rem">
         <label for="i-mode">Dots show</label>
         <select id="i-mode">
-          <option value="velocity">Velocity — accents ringed</option>
+          <option value="velocity">Velocity — accents ringed</option>${subject.gateLengthKnown ? `
           <option value="length">Note length — how long each gate holds</option>
-          <option value="overlap">Overlapping notes</option>
+          <option value="overlap">Overlapping notes</option>` : ""}
           <option value="locks">Preset locks</option>
         </select>
       </div>
@@ -599,12 +601,15 @@ export function renderInsights(
                all back. The counts are against the ${polymeter.toLocaleString()}-step polymeter, so
                a track showing more repeats than the pattern can reach is one the reset interrupts.`
             : `Nothing realigns until every track has wrapped together —
-               <b>${cycle.toLocaleString()} steps, ${clock(cycleSec)}</b>. This pattern sets no
-               RESET, so the polymeter runs to the end.`}</figcaption>
+               <b>${cycle.toLocaleString()} steps, ${clock(cycleSec)}</b>. ${
+                 subject.patternTimingKnown
+                   ? "This pattern sets no RESET, so the polymeter runs to the end."
+                   : "Whether anything resets the tracks before then is not readable here."}`
+          }</figcaption>
           <div class="chart" id="i-realign"></div>
         </figure>`}
       ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
-        live.map((t) => [`T${t.number}`, t.preset, t.length,
+        live.map((t) => [`${trackLabel(t)}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
           machineLabel(t.machine), t.trigs.length, polymeter / t.length]))}
     `, "insights/cycle") +
@@ -612,17 +617,21 @@ export function renderInsights(
     card("Polymeter and the reset", `
       <div class="tiles">
         <div class="tile"><span class="k">Pattern reset</span>
-          <span class="v">${subject.resetSteps ?? "INF"}</span>
+          <span class="v">${!subject.patternTimingKnown ? "?" : subject.resetSteps ?? "INF"}</span>
           <span class="u">${subject.resetSteps === undefined ? "" : "steps"}</span>
-          <span class="note">${subject.resetSteps === undefined
-            ? "tracks are never pulled back to step one"
-            : `every track restarts here · ${barsOf(subject.resetSteps)}`}</span></div>
+          <span class="note">${!subject.patternTimingKnown
+            ? "not a field this reader has found on a Digitone 1"
+            : subject.resetSteps === undefined
+              ? "tracks are never pulled back to step one"
+              : `every track restarts here · ${barsOf(subject.resetSteps)}`}</span></div>
         <div class="tile"><span class="k">Hands over after</span>
-          <span class="v">${subject.changeSteps ?? "—"}</span>
+          <span class="v">${!subject.patternTimingKnown ? "?" : subject.changeSteps ?? "—"}</span>
           <span class="u">${subject.changeSteps === undefined ? "" : "steps"}</span>
-          <span class="note">${subject.changeSteps === undefined
-            ? "CHANGE is off; a cued pattern arrives at the end of the pattern"
-            : `a cued pattern takes over here`}</span></div>
+          <span class="note">${!subject.patternTimingKnown
+            ? "nor is this one"
+            : subject.changeSteps === undefined
+              ? "CHANGE is off; a cued pattern arrives at the end of the pattern"
+              : `a cued pattern takes over here`}</span></div>
         <div class="tile"><span class="k">Polymeter</span>
           <span class="v">${bounded ? reach.total.toLocaleString() : "&gt; 1M"}</span>
           <span class="u">steps</span>
@@ -637,7 +646,16 @@ export function renderInsights(
             : "the whole polymeter is heard"}</span></div>
       </div>
 
-      ${subject.resetSteps === undefined ? `
+      ${!subject.patternTimingKnown ? `
+        <div class="inferred" style="margin-top:.9rem">
+          <span class="h">Whether this pattern resets is not something DNX can read yet</span>
+          <p class="why">A Digitone II keeps PATTERN <b>RESET</b> and <b>CHANGE</b> in the pattern
+            record, at offsets that were captured against the instrument. Nothing of that shape has
+            been identified in a Digitone 1's, so the two tiles above say <b>?</b> rather than
+            repeating the Digitone II's answer. The polymeter below is arithmetic on the track
+            lengths and is correct either way — but if this pattern does reset, it comes round
+            sooner than <b>${reach.total.toLocaleString()} steps</b>.</p>
+        </div>` : subject.resetSteps === undefined ? `
         <div class="inferred" style="margin-top:.9rem">
           <span class="h">No reset — the polymeter runs to the end</span>
           <p class="why">Nothing pulls the tracks back, so this pattern really does take
@@ -678,7 +696,7 @@ export function renderInsights(
         <div class="inferred">
           <span class="h">What the reset interrupts</span>
           <p class="why">${cuts.map((c) =>
-            `<b>T${c.track.number}</b> is ${c.track.length} steps: ${c.passes} complete
+            `<b>${trackLabel(c.track)}</b> is ${c.track.length} steps: ${c.passes} complete
              pass${c.passes === 1 ? "" : "es"}, then <b>${c.cutAfter} of ${c.track.length}
              steps</b> before it is pulled back` +
             (c.lost
@@ -711,7 +729,10 @@ export function renderInsights(
           <p class="why"><b>All ${live.length} tracks align after
             ${reach.total.toLocaleString()} steps — ${barsOf(reach.total)}</b>
             (${clock(stepsToSeconds(reach.total, subject.tempo))} at ${subject.tempo} BPM)${
-            subject.resetSteps === undefined
+            !subject.patternTimingKnown
+              ? `, if nothing pulls them back first. A Digitone 1's reset, if it has one, is not a
+                 field DNX can read.`
+              : subject.resetSteps === undefined
               ? `, and with RESET at INF the pattern is allowed to get there.`
               : reach.reachable < reach.total
                 ? `. <b>It never gets there</b>: RESET restarts every track after
@@ -739,6 +760,7 @@ export function renderInsights(
               answer is not in any one of them.</p>`}
         </div>
 
+        ${!subject.patternTimingKnown ? "" : `
         <div class="inferred">
           <span class="h">Setting a reset that lets the polyrhythm finish</span>
           <p class="why">${alreadyWhole
@@ -773,11 +795,12 @@ export function renderInsights(
             Letting a polymeter run its full length is one musical choice and cutting it on a bar
             line is another — this says what each costs, not which to pick.</p>
         </div>`}
+        <!-- Advice about a control DNX cannot read is advice about nothing. -->`}
       ${table(["Track", "Length", "Speed", "Period", "Passes before reset", "Cut after", "Notes lost"],
         live.map((t) => {
           const hit = cuts.find((c) => c.track === t);
           const period = masterPeriod(t);
-          return [`T${t.number}`, t.length, speedLabel(t.speed ?? 1), period,
+          return [`${trackLabel(t)}`, t.length, speedLabel(t.speed ?? 1), period,
             // Divides by the period, not the length: the reset counts master steps. This column
             // was still using the raw length after the rest of the file moved to the master clock.
             subject.resetSteps === undefined ? "—" : Math.floor(subject.resetSteps / period),
@@ -863,7 +886,7 @@ export function renderInsights(
           .map(([p, n]) => `${p} x${n}`).join(", ")]))}
     `, "insights/pitch") +
 
-    card("Voice pressure", `
+    (subject.gateLengthKnown ? card("Voice pressure", `
       <div class="tiles">
         <div class="tile ${peak > subject.voiceBudget ? "flag" : ""}">
           <span class="k">Peak voices</span><span class="v">${peak}</span>
@@ -903,15 +926,37 @@ export function renderInsights(
       ${table(["Track", "Preset", "Trigs", "Longest gate", "Overlapping pairs"],
         live.map((t) => {
           const longest = Math.max(...t.trigs.map((g) => g.length), 0);
-          return [`T${t.number}`, t.preset, t.trigs.length,
+          return [`${trackLabel(t)}`, t.preset, t.trigs.length,
             longest === Infinity ? "INF" : Number(longest.toFixed(3)),
             overlappingNotes(t).length || "—"];
         }))}
-    `));
+    `)
+      /*
+       * **Not drawn when the gate is not known, rather than drawn from a placeholder.**
+       *
+       * Every number in that card — peak voices, overlapping pairs, longest gate, the area chart —
+       * is a function of how long each note holds. A Digitone 1 project stores a note-length byte
+       * whose meaning has never been captured, so its producer sets every gate to 1 and says so
+       * through `gateLengthKnown`. Drawing the card from those ones would put a fabricated voice
+       * count under a heading that looks exactly like the measured one on a Digitone II, which is
+       * the single failure this whole surface is arranged to avoid.
+       */
+      : card("Voice pressure", `
+      <div class="inferred">
+        <span class="h">Not drawn for a Digitone 1, because the gate length is not known</span>
+        <p class="why">Peak voices, overlapping notes and the longest gate all depend on how long
+          each note holds. The Digitone 1 stores a note length on every trig and
+          <b>the mapping from that byte to a duration has never been captured</b> — the Digitone
+          II's was measured against the instrument on 2026-09-06 and its equivalent is drawn.
+          Rather than assume the two machines agree, this card stays empty until somebody sets a
+          few known note lengths on a Digitone 1 and reads the bytes back.</p>
+      </div>
+    `)));
 
   drawOverview();
-  mount(document.getElementById("i-voices")!, (w) =>
-    voiceArea(voices, subject.voiceBudget, w));
+  // The host only exists when the card above drew itself; see the comment there.
+  const voicesHost = document.getElementById("i-voices");
+  if (voicesHost) mount(voicesHost, (w) => voiceArea(voices, subject.voiceBudget, w));
   mount(document.getElementById("i-phase")!, (w) =>
     phaseStrip(live, windowSteps, controls.phase, subject.defaultVelocity, w));
   if (subject.resetSteps !== undefined) {
