@@ -21,6 +21,16 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## Unreleased
+
+### Fixed
+
+- **`inspect` no longer calls an ordinary Digitone II sound file suspect.** Its table of
+  product/dump-type combinations listed two while the captures held ten, so reading a perfectly
+  normal Sound dump printed *"unconfirmed product/type combination"*. All five dump types are
+  confirmed on both instruments, and a test now walks the captures and fails on any combination
+  nobody has written down.
+
 ## 0.9.0-beta.2 — 2026-09-16
 
 ### Added

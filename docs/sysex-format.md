@@ -32,18 +32,33 @@ Note this is a different ID space from Elektron's "Transfer" protocol (header by
 
 ### Dump types
 
-| Type | Byte | Status |
-|---|---|---|
-| Pattern+Kit | `0x50` | confirmed on DN2 |
-| Pattern | `0x51` | unconfirmed — follows the documented Digitakt table |
-| Kit | `0x52` | unconfirmed |
-| Sound | `0x53` | confirmed on DN1 |
-| ProjectSettings | `0x54` | unconfirmed |
+**All five are confirmed on both instruments, counted from real captures.** `0x53` is the same
+message on each; only the object inside differs in size.
 
-`src/sysex/devices.ts` tracks which combinations are confirmed, and `inspect` flags
-anything unrecognised. Checking the type byte matters: `digitools` omits that check, so
-it will happily decode a pattern dump as a sound and re-emit it with the type byte
-overwritten.
+| Type | Byte | Digitone captures | Digitone II captures |
+|---|---|---|---|
+| Pattern+Kit | `0x50` | 516 | 1,032 |
+| Pattern | `0x51` | 1 | 1 |
+| Kit | `0x52` | 1 | 2 |
+| Sound | `0x53` | 818 · 302-byte object | 1,008 · 359-byte object |
+| ProjectSettings | `0x54` | 5 | 9 |
+
+Four further Digitone types appear in captures and nothing has named them: `0x58`, `0x59`, `0x5a`
+and `0x5b`. They are recorded as `UNNAMED_DN1_TYPES` rather than guessed at.
+
+> **This table was wrong until 2026-09-16, and the error escaped the repository.** It credited
+> `0x53` to the Digitone alone and marked four Digitone II types unconfirmed, while the corpus held
+> 1,008 Digitone II Sound dumps. `inspect` therefore told anyone reading an ordinary Digitone II
+> sound file that it carried an "unconfirmed product/type combination", and a reader who trusted
+> that went looking for a Digitone-format variant of a file that was already correct.
+>
+> The lesson is not "check more carefully". It is that **a table of what has been observed cannot
+> be maintained by hand**. `test/dumptypes.test.ts` now walks every capture and fails on any
+> combination not written down — and it caught three the first correction had still missed.
+
+`src/sysex/devices.ts` holds the same table in code, and `inspect` flags anything unrecognised.
+Checking the type byte matters: `digitools` omits that check, so it will happily decode a pattern
+dump as a sound and re-emit it with the type byte overwritten.
 
 ### Checksum and length
 
