@@ -130,8 +130,9 @@ function fitToPool(preset: Uint8Array, device: Device): FittedPreset {
   // because "359 is not 302" tells a person nothing they can act on.
   if (device.kind === "dn1" && preset.length === DN2_SOUND_SIZE) {
     throw new PoolWriteError(
-      `that is a Digitone II preset and this is a Digitone 1 project. Nothing converts a DN2 ` +
-        `sound back to a DN1 — the DN2 has machines and parameters the DN1 has no field for.`,
+      `that is a Digitone II preset and this is a Digitone 1 project. A Digitone II preset only ` +
+        `has a Digitone 1 equivalent when its machine is FM TONE, and even then the Digitone II's ` +
+        `third LFO has no field on the Digitone 1. DNX does not convert in this direction.`,
     );
   }
 

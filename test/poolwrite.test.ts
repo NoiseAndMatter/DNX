@@ -141,7 +141,7 @@ test("a Digitone II preset is refused by a Digitone 1 pool, with the reason", { 
     () => planAddPreset(dn1, deviceFor(dn1), preset("FROM A DN2")),
     (error: Error) => {
       assert.ok(error instanceof PoolWriteError);
-      assert.match(error.message, /Nothing converts a DN2 sound back to a DN1/);
+      assert.match(error.message, /DNX does not convert in this direction/);
       return true;
     },
   );

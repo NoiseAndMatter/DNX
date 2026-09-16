@@ -299,6 +299,29 @@ The help's Safeguards page now has a section telling people to close both applic
 It does not page. Asking for the rest was one of the three wrong turns on 2026-09-06, and a directory
 larger than one reply has not been seen once the port was DNX's own.
 
+## A preset dropped into a pool was named after the listing, not itself — FIXED 2026-09-16
+
+Reported from hardware, Digitone 1: rename `/soundbanks/H/3`, then drop that slot into a project's
+pool, and the line said the preset's old name. Marked Fix on the Digitone 1 release report.
+
+**The pool got the right preset all along.** Retested on the instrument on 2026-09-16: rename
+RELTEST H3C to RELTEST H3D at 23:47:27, drop it into free pool slot 37 at 23:47:58, and the status
+line read "RELTEST H3C → slot 37" while pool slot 37 itself read **RELTEST H3D**. The undo entry was
+wrong in the same way. `addToPool` reads the object off the instrument on every drop and hands those
+bytes to `applyAddPreset`, so the data was never stale; both sentences named `bank.entries`, the
+listing taken when Browse ran, which `renameSelected` updated the table's row from without touching.
+They now come from `preview.name` and `plan.name`, which are read out of the object itself, and a
+rename updates the listing behind the table as well as the row in it.
+
+**What it was not.** The release run guessed at the raw storage form going stale, because the rename
+and the backup read the stored form and saw the new name. A build that read every library object in
+stored form was tried on the instrument on 2026-09-16 and reported the old name exactly as before,
+which is what ruled that out. A refresh appeared to cure it only because re-listing the bank rebuilt
+`bank.entries`.
+
+> **A wrong name in a sentence is not proof of a wrong byte anywhere else. Check what landed, not
+> what the report says landed.**
+
 ## The probe's slot write had no backup of its destination — FIXED 2026-09-08
 
 `writeToChosenSlot` on the probe page carried four of the five safe-write rules: it judged the
