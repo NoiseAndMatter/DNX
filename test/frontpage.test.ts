@@ -106,3 +106,32 @@ test("the version shown is generated, never typed into a page", () => {
     assert.match(pkg.scripts[script]!, /scripts\/version\.mjs/, `${script} writes it first`);
   }
 });
+
+test("the lockfile carries the same version as package.json", () => {
+  /*
+   * **They had already drifted once**: `package.json` read 0.9.0-beta.1 while the lockfile still
+   * said 0.1.0, because bumping one is a hand edit and the other is only rewritten by npm. Nothing
+   * failed loudly, which is why it sat there — so this is the thing that fails instead.
+   */
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
+  const lock = JSON.parse(readFileSync(join(ROOT, "package-lock.json"), "utf8")) as {
+    version: string; packages: Record<string, { version?: string }>;
+  };
+  assert.equal(lock.version, pkg.version, "run `npm install --package-lock-only` after a bump");
+  assert.equal(lock.packages[""]?.version, pkg.version, "the root package entry too");
+});
+
+test("the version in package.json has an entry in the changelog", () => {
+  /*
+   * **A version that moves with nothing to read is just a different number.** DNX updates the
+   * moment a change reaches main and nobody is asked to install anything, so the changelog is the
+   * only way somebody who used it last week can tell what is different. Bumping without writing
+   * the entry is the failure this catches, and it catches it in the pull request that bumped.
+   */
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
+  const log = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8");
+  assert.ok(
+    log.includes(`## ${pkg.version} `),
+    `CHANGELOG.md has no heading for ${pkg.version}`,
+  );
+});
