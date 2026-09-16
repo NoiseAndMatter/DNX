@@ -1,6 +1,6 @@
 {
   "name": "dnx",
-  "version": "0.1.0",
+  "version": "0.9.0-beta.1",
   "description": "Read, write and convert Elektron Digitone and Digitone II project files, and talk to the instruments over WebMIDI",
   "license": "AGPL-3.0-or-later",
   "repository": {
@@ -13,7 +13,7 @@
     "diff": "tsx src/cli/diff.ts",
     "test": "tsx --test test/*.test.ts",
     "test:nocorpus": "tsx test/nocorpus.ts",
-    "verify": "npm test && npm run test:nocorpus && npm run typecheck && tsc -p tsconfig.web.json --noEmit",
+    "verify": "node scripts/version.mjs && npm test && npm run test:nocorpus && npm run typecheck && tsc -p tsconfig.web.json --noEmit",
     "typecheck": "tsc --noEmit",
     "project": "tsx src/cli/project.ts",
     "plan": "tsx src/cli/plan.ts",
@@ -30,7 +30,7 @@
     "tags": "tsx src/cli/tags.ts",
     "convert": "tsx src/cli/convert.ts",
     "sheet": "tsx src/cli/sheet.ts",
-    "build:web": "tsc -p tsconfig.web.json",
+    "build:web": "node scripts/version.mjs && tsc -p tsconfig.web.json",
     "web": "npm run build:web && tsx src/cli/serve.ts",
     "projectdiff": "tsx src/cli/projectdiff.ts"
   },

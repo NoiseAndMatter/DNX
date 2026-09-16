@@ -55,13 +55,25 @@ import { PREFERENCES_CHANGED, readHideProbe } from "./probevisibility.js";
  * musical ones, and the row is meant to read as an order of work.
  */
 export const TOOLS = [
-  { id: "expander", href: "index.html", label: "expander" },
+  { id: "expander", href: "expander.html", label: "expander" },
   { id: "manager", href: "manager.html", label: "manager" },
   { id: "library", href: "library.html", label: "library" },
   { id: "probe", href: "probe.html", label: "probe" },
 ] as const;
 
 export type ToolId = (typeof TOOLS)[number]["id"];
+
+/**
+ * What page the row is being drawn on.
+ *
+ * `"landing"` is the site root, which is **not a tool** — it is where the tools are listed. The row
+ * still appears there so a reader can go straight on, with nothing marked as the current page and
+ * no arrow or digit counted from it. Everything below compares against `current` by equality, so a
+ * value that matches no tool falls out correctly: `visibleTools` shows the ordinary set,
+ * `findIndex` gives `-1`, and `stepFrom(-1, 1)` lands on the first tool, which is where somebody
+ * pressing right from the front page should go.
+ */
+export type PageId = ToolId | "landing";
 
 /**
  * Where the row is now, or a thrown error naming what it was asked about.
@@ -101,7 +113,7 @@ export function stepFrom(at: number, direction: 1 | -1, length: number = TOOLS.l
  * The probe only when it is not hidden, **or when it is the page you are on**: a row that does not
  * name the page it sits on is a row you cannot find your way back through.
  */
-export function visibleTools(current: ToolId, hideProbe: boolean): (typeof TOOLS)[number][] {
+export function visibleTools(current: PageId, hideProbe: boolean): (typeof TOOLS)[number][] {
   return TOOLS.filter((tool) => tool.id !== "probe" || !hideProbe || current === "probe");
 }
 
@@ -123,7 +135,7 @@ const SLIDE_MS = 220;
  * different things on different pages — which is the failure this project has already had with
  * `escapeHtml` and with the grid.
  */
-export function renderToolNav(container: HTMLElement, current: ToolId): void {
+export function renderToolNav(container: HTMLElement, current: PageId): void {
   const nav = document.createElement("nav");
   nav.className = "toolnav";
   nav.setAttribute("aria-label", "Tools");
@@ -218,8 +230,9 @@ function sourceLink(): HTMLAnchorElement {
 }
 
 /** Navigate to a tool, remembering which way the page should appear to move. */
-function goTo(tool: ToolId, current: ToolId): void {
-  const from = indexOfTool(current);
+function goTo(tool: ToolId, current: PageId): void {
+  // From the landing page every tool is to the right, because the landing page is before them all.
+  const from = current === "landing" ? -1 : indexOfTool(current);
   const to = indexOfTool(tool);
   if (to === from) return;
   try {
@@ -231,7 +244,7 @@ function goTo(tool: ToolId, current: ToolId): void {
   location.href = TOOLS[to]!.href;
 }
 
-function wireShortcuts(current: ToolId): void {
+function wireShortcuts(current: PageId): void {
   window.addEventListener("keydown", (event) => {
     if (!event.ctrlKey || !event.altKey || event.shiftKey || event.metaKey) return;
 
