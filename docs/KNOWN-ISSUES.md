@@ -5,6 +5,35 @@ converter.
 
 ---
 
+## Voice pressure counted a retrigger as a second voice — FIXED 2026-09-16
+
+Insights reported that `002 MORNING_JAM` A1 peaks at **20 voices on a machine that has 8**. The
+owner, who wrote the pattern, did not believe it, and was right.
+
+Track T3 plays **note 60 thirteen times**, each inheriting a 64-step gate on a 62-step track. Every
+strike still had twelve predecessors inside its gate, and `voicesPerStep` added a voice for each:
+that one track supplied 14 of the peak. A synth track struck again on the same pitch **retriggers
+that voice** rather than sounding a fourteenth. The pattern is a drone being re-struck, which is
+exactly what it looks like on the instrument.
+
+A second fault in the same function: **MIDI tracks counted against the voice budget**, though a
+MIDI track sounds nothing on the instrument.
+
+Both are fixed, and `holdersAt` follows the same two rules, because a list of who is holding a
+voice that disagrees with the number beside it is worse than either alone.
+
+**What it was worth, across the 425 Digitone II corpus patterns that play something:** 185 reported
+the wrong peak, and of the 34 reported as over budget only **3** really are. `MORNING_JAM` on the
+Digitone II — Elektron's own import of the project above — goes 19 to 5, which is the Digitone 1
+finding reproduced independently on the other machine.
+
+**It is still a ceiling, and now says so.** Two different pitches overlapping on one track are
+counted as two voices. A monophonic track cannot sound both, but mono/poly and portamento live on
+the preset's SETUP page and no capture has covered them, so the honest reading is an upper bound.
+
+> **A number that surprises the owner about their own music is a bug in the reader until proven
+> otherwise. They have years of use; the reader has hours of code.**
+
 ## Track SPEED was ignored, so 60 patterns had the wrong polymeter — FIXED 2026-09-05
 
 A track's length is not its period. SPEED is a multiple of the pattern's tempo — Elektron's manual:
