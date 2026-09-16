@@ -234,9 +234,9 @@ re-exported through `grid.ts`. **A pure thing inside a DOM module is a pure thin
 
 **The six colliding names were resolved by convention rather than by renaming.** Every one of those
 tests covers the *domain* module, and the alternative — `librarianhardwaretest.test.ts` — is worse
-to read than what it replaces. `CLAUDE.md` now states the rule: the unprefixed name means the domain
-module, a `cli` prefix would mean the command, and the commands are covered collectively by
-`clismoke.test.ts` so no per-command file is expected.
+to read than what it replaces. **The rule: an unprefixed name means the domain module**, a `cli`
+prefix would mean the command, and the commands are covered collectively by `clismoke.test.ts` so
+no per-command file is expected.
 
 **Observed and left alone:** `test/rename.test.ts` carries literal `NUL` and `BEL` bytes as test
 data, so tools report it as binary. The data is deliberate and the tests pass; escaping it is
