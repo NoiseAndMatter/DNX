@@ -173,14 +173,41 @@ representable, which is why zero can act as a terminator.
 ### 4.3 Per-step locks
 
 - **Velocity** `0x080`: `0xFF` = inherit, otherwise 1..127. 100 is by far the most common.
-- **Note length** `0x0C0`: `0xFF` = inherit. **INFERRED** to be length because it sits
-  alongside the other trig fields and its track default (`0x0E` at settings `+4`) matches
-  the DN1's default note length; the value-to-musical-length table is **UNKNOWN**.
+- **Note length** `0x0C0`: `0xFF` = inherit. **The table is the Digitone II's** — see
+  *The note-length table, settled by Elektron's importer* below.
 - **Micro timing** `0x100`: signed, 0 = none. **VERIFIED** every non-zero value in the
   corpus (41 distinct) lies in −23..+23, which is exactly the DN1's micro-timing range of
   ±23/384 of a note.
 - **Trig condition** `0x140`: `0xFF` = unconditional; 35 distinct codes observed, spanning 5..64. The
   code-to-condition table (`%`, `FILL`, `PRE`, `NEI`, `A:B`) is **UNKNOWN**.
+
+### 4.3a The note-length table, settled by Elektron's importer — 2026-09-16
+
+The value-to-duration table was **UNKNOWN** here until the owner suggested an inter-device
+comparison instead of a capture. The corpus holds **matched pairs**: a Digitone 1 project and the
+Digitone II project *Elektron's own importer* produced from it. DNX's own converter would have been
+circular; Elektron's is an independent authority.
+
+Pairing on the project name stored inside the image, and mapping DN1 synth track N to DN2 track N
+and DN1 MIDI track N to DN2 track 4+N:
+
+| | Compared | Identical |
+|---|---|---|
+| per-trig note length `0x0C0` | 4,705 | **4,705** |
+| per-track default `+0x04` | 17,406 | **17,406** |
+
+Fifteen pairs, no exceptions. (A sixteenth apparent mismatch is `045 AMBZ.dnprj`, a *different*
+project that happens to share the name `AMBZ` with `003 AMBZ.dnprj` and so paired with the wrong
+file; it has 69 trigs where the real pair has 71.)
+
+**104 of the 128 possible values appear**, and every one of them is in the table `noteLengthSteps`
+measured against a Digitone II on 2026-09-06 (`dn2-pattern-format.md` §3.3): the fine band of
+sixteenths below 30, the coarser bands above it, and `127` = INF.
+
+**What this is, exactly.** Elektron's importer copies the byte, so Elektron treats it as the same
+quantity on both machines. It stops one inference short of a measurement: it would be wrong only if
+the importer silently changed the duration of every note it has ever imported. That is the basis on
+which `web/src/dn1subject.ts` reads a real gate and Insights draws voice pressure for a Digitone 1.
 
 ### 4.4 Sound locks
 

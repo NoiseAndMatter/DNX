@@ -90,6 +90,15 @@ export interface AnalysisTrig {
 export interface AnalysisTrack {
   /** 1-based, as the instrument numbers them. */
   number: number;
+  /**
+   * What the instrument calls this track, when that is not `T` and the number.
+   *
+   * A Digitone II numbers all sixteen of its tracks T1 to T16. A Digitone 1 has four synth tracks
+   * T1 to T4 and four MIDI tracks it calls **A to D**, so printing its MIDI track A as "T5" would
+   * put a name on screen that the instrument never shows. `number` stays the ordinal, because
+   * grouping and sorting need one; this is what a reader sees. Read it through `trackLabel`.
+   */
+  label?: string;
   /** Track length in steps. */
   length: number;
   /**
@@ -183,6 +192,18 @@ export interface AnalysisSubject {
    * plays infinitely and the next cued pattern will never play."*
    */
   changeSteps?: number;
+  /**
+   * Whether `resetSteps` and `changeSteps` are answers rather than silence.
+   *
+   * **They are both "undefined means off" fields, and that reading is only safe when the record
+   * has been searched.** A Digitone II pattern carries RESET at `+0x14` and CHANGE at `+0x16`, so
+   * an undefined one there really does mean INF and off. Nothing length-shaped has been identified
+   * in a Digitone 1's pattern record, so the same undefined means *not found*, and printing "INF —
+   * tracks are never pulled back" from it would state a setting nobody has read.
+   *
+   * False makes the reset card say that instead of drawing the Digitone II's answer.
+   */
+  patternTimingKnown: boolean;
   /** 16 on a Digitone II, 8 on a Digitone 1. A device property, not a file field. */
   voiceBudget: number;
   /** Above this a trig reads as an accent. */
@@ -508,6 +529,13 @@ export interface PeriodGroup {
   /** The track lengths in this group, for a label. Usually one; two only when speeds differ. */
   lengths: number[];
   tracks: number[];
+  /**
+   * What to print for each of `tracks`, in the same order.
+   *
+   * Carried rather than derived because a chart given a group has no way back to the track it came
+   * from, and `T` plus the number is wrong on a Digitone 1's MIDI tracks. See `AnalysisTrack.label`.
+   */
+  labels: string[];
 }
 
 /**
@@ -526,9 +554,10 @@ export function periodGroups(tracks: readonly AnalysisTrack[]): PeriodGroup[] {
   for (const t of tracks) {
     if (t.length < 1) continue;
     const period = masterPeriod(t);
-    const group = by.get(period) ?? { period, lengths: [], tracks: [] };
+    const group = by.get(period) ?? { period, lengths: [], tracks: [], labels: [] };
     if (!group.lengths.includes(t.length)) group.lengths.push(t.length);
     group.tracks.push(t.number);
+    group.labels.push(trackLabel(t));
     by.set(period, group);
   }
   return [...by.values()].sort((a, b) => a.period - b.period);
@@ -548,6 +577,16 @@ export function periodSources(group: PeriodGroup): { length: number; speed: numb
   return group.lengths
     .map((length) => ({ length, speed: Number((length / group.period).toFixed(4)) }))
     .sort((x, y) => x.length - y.length);
+}
+
+/**
+ * What to print for a track: the name the instrument gives it, or `T` and its number.
+ *
+ * One function rather than the same conditional at twenty call sites, and the reason a chart never
+ * writes `T${track.number}` directly.
+ */
+export function trackLabel(track: Pick<AnalysisTrack, "number" | "label">): string {
+  return track.label ?? `T${track.number}`;
 }
 
 /** Renders a speed the way the instrument writes it: `3/2x`, `1/2x`, `2x`. */

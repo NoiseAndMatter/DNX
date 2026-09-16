@@ -124,6 +124,20 @@ export const TRACK = {
   soundLockOffset: 0x380,
   settingsOffset: 0x3c0,
   settingsSize: 16,
+  /**
+   * Within the settings block: the track's default velocity. Default 100.
+   *
+   * INFERRED, like the two below it: see `docs/dn1-project-format.md` §4.5. A trig with no
+   * velocity of its own sounds at this, which is what makes it worth reading.
+   */
+  settingsVelocityOffset: 0x03,
+  /**
+   * Within the settings block: the track's default note length. Default 14.
+   *
+   * The byte means what the Digitone II's means — see the note-length section of
+   * `docs/dn1-project-format.md` — so `noteLengthSteps` in `dn2pattern.ts` reads it.
+   */
+  settingsNoteLengthOffset: 0x04,
   /** Within the settings block: track length in steps. Default 16. */
   settingsLengthOffset: 0x0c,
   /** Within the settings block: speed / scale multiplier index. Default 2. */

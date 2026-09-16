@@ -54,7 +54,7 @@ import {
   MACHINE_ORDER, MICRO_MAX, NOTE_NAMES, barsOf, clock, gateLabel, machineLabel, masterOffset,
   masterPeriod,
   microFraction, noteName,
-  overlappingNotes, periodSources, pitchClass, presetOf, speedLabel,
+  overlappingNotes, periodSources, pitchClass, presetOf, speedLabel, trackLabel,
   type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
   type TrackRow,
 } from "./model.js";
@@ -216,7 +216,7 @@ export function phaseStrip(
       // The restart tick. A hairline, full height — weight comes from contrast, not thickness.
       out += `<line x1="${x0 + .5}" y1="${y}" x2="${x0 + .5}" y2="${y + rowH}"
         stroke="${fill}" stroke-width="${W.limit}" opacity=".9"
-        ${tip(`T${t.number} — ${t.preset}`,
+        ${tip(`${trackLabel(t)} — ${t.preset}`,
           `restarts at step ${Math.round(start) + 1} · every ${stride} master steps` +
           (t.speed !== undefined && t.speed !== 1 ? ` · ${t.length} steps at ${t.speed}x` : ""))}/>`;
 
@@ -250,7 +250,7 @@ export function phaseStrip(
           const bw = Math.max(2.5, Math.min(g.length * stepW - 1.5, right - bx)) || (right - bx);
           out += `<rect x="${bx}" y="${cy - 2.5}" width="${bw}" height="5"
             rx="2.5" fill="${fill}" opacity=".85"
-            ${tip(`T${t.number} step ${g.step + 1}`,
+            ${tip(`${trackLabel(t)} step ${g.step + 1}`,
               `${NOTE_NAMES[rootPc]} · length ${gateLabel(g.length)}`)}/>`;
           continue;
         } else if (mode === "locks") {
@@ -273,13 +273,13 @@ export function phaseStrip(
         }
         out += extra;
         out += `<circle cx="${cxp}" cy="${cy}" r="${r}" fill="${fill}" opacity="${op}"
-          ${tip(`T${t.number} step ${g.step + 1}${accented ? " — accent" : ""}`,
+          ${tip(`${trackLabel(t)} step ${g.step + 1}${accented ? " — accent" : ""}`,
             `${presetOf(t, g)} · ${NOTE_NAMES[rootPc]} · vel ${g.velocity}`
             + (g.lockPreset !== undefined ? " · preset lock" : ""))}/>`;
       }
     }
     out += `<text x="${padL - 6}" y="${cy + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${t.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
     out += `<text x="${padL + plot + 8}" y="${cy + 3.5}" font-size="${T.value}"
       fill="var(--ink3)">${t.length} steps${
         t.speed !== undefined && t.speed !== 1 ? ` @${t.speed}x` : ""}</text>`;
@@ -322,11 +322,11 @@ export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: 
     const culprit = i === 0 && !flat;
     out += `<rect x="${padL}" y="${y}" width="${bw}" height="${rowH}" rx="2"
       fill="var(${culprit ? "--s2" : "--q4"})"
-      ${tip(`T${t.number} — ${t.preset}`,
+      ${tip(`${trackLabel(t)} — ${t.preset}`,
         `${t.length} steps${t.speed !== undefined && t.speed !== 1 ? ` at ${t.speed}x` : ""} · ` +
         `repeats ${reps}x per cycle`)}/>`;
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${t.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
     out += `<text x="${padL + bw + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${culprit ? "--s2" : "--ink2"})">${reps}&#215;
       <tspan fill="var(--ink3)">· ${t.length} steps${
@@ -557,13 +557,13 @@ export function voiceLanes(
         for (let k = at; k < end; k++) if (series[k]! > budget) guilty = true;
         out += `<rect x="${x(at)}" y="${y + 1}" width="${Math.max(2, x(end) - x(at) - 1)}"
           height="${rowH - 2}" rx="2" fill="${fill}" opacity="${guilty ? 1 : .42}"
-          ${tip(`T${t.number} — ${t.preset}`,
+          ${tip(`${trackLabel(t)} — ${t.preset}`,
             `step ${at + 1}, holds ${gateLabel(g.length)}`
             + (guilty ? " · sounding during an overrun" : ""))}/>`;
       }
     }
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${t.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
   });
   return svg(w, h, "Which tracks are holding a voice at each step", out);
 }
@@ -607,11 +607,11 @@ export function densityBars(
       const bw = (value / max) * plot;
       out += `<rect x="${cx}" y="${y}" width="${Math.max(1, bw - 2)}" height="${rowH}" rx="2"
         fill="var(${part.cssVar})"
-        ${tip(`T${r.track.number} — ${part.name}`, `${value}`)}/>`;
+        ${tip(`${trackLabel(r.track)} — ${part.name}`, `${value}`)}/>`;
       cx += bw;
     }
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${r.track.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(r.track)}</text>`;
     out += `<text x="${cx + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(--ink2)">${total}
       <tspan fill="var(--ink3)">· ${escapeHtml(r.track.preset)}</tspan></text>`;
@@ -835,7 +835,7 @@ export function trackTimeline(
       // One target for the whole stack: the chord is a property of the group, not of a bar in it.
       out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw)}" height="${rowH}"
         fill="transparent" ${tip(
-          `T${row.track.number} ${escapeHtml(row.track.preset)} · bar ${Math.floor(c.at / 16) + 1}`,
+          `${trackLabel(row.track)} ${escapeHtml(row.track.preset)} · bar ${Math.floor(c.at / 16) + 1}`,
           c.stack.map((n) => noteName(n)).join(" ")
           + (c.chord
             ? ` &mdash; <b>${escapeHtml(c.chord.name)}</b>`
@@ -843,7 +843,7 @@ export function trackTimeline(
             : ""))}/>`;
     });
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${row.track.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(row.track)}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(--ink3)">${escapeHtml(row.track.preset)}</text>`;
   });
@@ -938,7 +938,7 @@ export function resetRuler(
       const to = Math.min(from + period, resetSteps);
       out += `<rect x="${x(from) + 1.5}" y="${y + 2}" width="${Math.max(1, x(to) - x(from) - 3)}"
         height="${rowH - 4}" rx="1.5" fill="var(--q${pass % 2 ? 3 : 4})" opacity=".62"
-        ${tip(`T${track.number} — pass ${pass + 1} of ${passes}`,
+        ${tip(`${trackLabel(track)} — pass ${pass + 1} of ${passes}`,
           `master steps ${Math.round(from) + 1}–${Math.round(to)} · complete`)}/>`;
     }
     if (remainder) {
@@ -951,7 +951,7 @@ export function resetRuler(
         width="${Math.max(1.5, x(from + remainder) - x(from) - 3)}" height="${rowH - 4}" rx="1.5"
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
-        ${tip(`T${track.number} — cut`,
+        ${tip(`${trackLabel(track)} — cut`,
           `pass ${passes + 1} gets ${remainder} of its ${period} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
@@ -968,7 +968,7 @@ export function resetRuler(
       }
     }
     out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">T${track.number}</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${trackLabel(track)}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
         ? `cut after ${remainder} of ${period}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
@@ -1063,7 +1063,7 @@ export function alignmentGrid(
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 30 : 18)}" text-anchor="middle"
       font-size="${T.label}" fill="var(--ink2)">${col.period} steps</text>`;
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 18 : 6)}" text-anchor="middle"
-      font-size="${T.value}" fill="var(--ink3)">${col.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+      font-size="${T.value}" fill="var(--ink3)">${col.labels.join(" ")}</text>`;
     if (anySpeed && sources[j]!.length) {
       out += `<text x="${x + cellW / 2}" y="${padT - 6}" text-anchor="middle"
         font-size="${T.value}" fill="var(--ink)">${sources[j]!
@@ -1081,7 +1081,7 @@ export function alignmentGrid(
         : "";
       out += `<text x="${padL - 8}" y="${y + cellH / 2 + 12}" text-anchor="end"
         font-size="${T.value}" fill="var(${from ? "--ink" : "--ink3"})">${
-          from || row.tracks.map((n2) => `T${n2}`).join(" ")}</text>`;
+          from || row.labels.join(" ")}</text>`;
     }
 
     groups.forEach((col, j) => {
@@ -1110,7 +1110,7 @@ export function alignmentGrid(
         ${tip(self ? `${row.period} master steps — on its own`
               : `${row.period} and ${col.period} master steps`,
           self
-            ? `T${row.tracks.join(", T")} comes round every ${steps} steps · ${bars(steps)}`
+            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${bars(steps)}`
             : `back in phase every ${steps} steps · ${bars(steps)}`)}/>`;
       out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
         text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
