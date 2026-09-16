@@ -4,7 +4,7 @@ What changed, for somebody who used DNX last week and wants to know what is diff
 
 DNX is a page, so it updates the moment a change reaches `main` and nobody is asked to install
 anything. That is convenient and it hides things: the same version number can be two different
-builds a fortnight apart. Two habits keep it honest.
+builds a fortnight apart. Three habits keep it honest.
 
 **The version moves when a user could notice.** A new tool, a chart that reads differently, a
 refusal that stops refusing. Documentation, tests, build plumbing and repository tidying do not
@@ -16,6 +16,11 @@ some later release commit that has to remember why.
 through the `report` button carries the short commit alongside the version, and that is the part
 that names the exact code somebody was running. The version tells you roughly what you have; the
 commit tells the author exactly.
+
+**A change worth reading about but not worth a number goes under `Unreleased`.** A fix nobody was
+waiting for still deserves a line, and holding the entry hostage to a version bump is how a
+changelog ends up with gaps. The next release that does earn a bump renames that heading to its
+version and dates it, so nothing has to be reconstructed later from commit messages.
 
 Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and stays a beta until
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
