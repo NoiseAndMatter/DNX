@@ -2280,6 +2280,57 @@ chart changed to make it work.
 records, checking that every length, tempo and window is drawable — the sweep that found the
 Digitone II's zero-length patterns.
 
+## 17. Digitone II presets on a Digitone 1 — REFUSED 2026-09-16, and what proving it would take
+
+The owner, on the Digitone 1 release report: *"a DN2 preset is only compatible with DN1 if it is FM
+Tone. And on top of that the extra 3rd LFO in DN2 would be lost. We need a way to communicate this."*
+Asked which they wanted, they chose **refuse for now, plan the conversion**.
+
+### Shipped: the refusal says the rule, not "not yet"
+
+- The library's refusal when a Digitone 1 project is opened used to end *"the Digitone 1's preset
+  locks are read elsewhere and are not joined up yet"*, which reads as **come back later**. It now
+  says the rule: a Digitone 1 preset converts into a Digitone II project and nothing converts back.
+- `fitToPool` in `poolwrite.ts` already carries the owner's facts, corrected in PR #27.
+- Help → Library gains *Presets travel one way*.
+
+### The plan, with the cost measured rather than guessed
+
+`soundmap.ts` derived the forward map from Elektron's own nine converted projects: 368 distinct
+(DN1, DN2) sound pairs, 208 direct byte copies, 25 selector fields, the rest DN2 defaults. Measured
+against that table on 2026-09-16:
+
+| | |
+|---|---|
+| DN1 sound bytes | 302 |
+| with exactly one Digitone II byte carrying them | **208** |
+| plus the 16-byte name and the scalar sources | 226 |
+| no Digitone II source at all | 76 |
+| …of those, constant across 1,920 real Digitone 1 sounds | 53 |
+| …of those, **varying, so real state with no source** | **23** |
+
+The forward map is **injective**: no DN1 offset is carried by more than one DN2 byte, and the shared
+selector table has **zero collisions read backwards**. So the inverse of the mapped part is
+mechanical, and the 53 constants can be filled from the constant. What cannot be filled is the 23:
+offsets `42`, `44`, `286`, and a stride-3 run at `192`, `195`, … `249`. That run is 20 offsets at
+every third byte, which looks like an array of three-byte records whose first byte is DN1-only —
+worth identifying before anything else, because it may be one control rather than twenty.
+
+**So a conversion is possible and would be a guess at 23 bytes of a 302-byte sound**, on top of
+refusing every machine but FM TONE and discarding the third LFO. That is the number to weigh.
+
+### What would have to happen first
+
+1. **Name the 23.** Until they are identified, nobody can say whether a wrong value there is
+   inaudible or ruins the preset. The stride-3 run is the place to start.
+2. **Decide the fill.** A Digitone 1 default for each, or the value from the preset already in the
+   destination slot. Neither is the user's sound; both have to be said out loud.
+3. **Then the warning and the acknowledgement** the owner asked for, in front of a conversion that
+   states what it is about to invent.
+
+Doing 3 without 1 and 2 would be a dialog in front of a guess, which is the thing this project does
+not do.
+
 ## 5. A device analytics view — IDEA, 2026-07-31
 
 **Not planned yet, and deliberately recorded before it is.** Raised while designing the drag-and-drop

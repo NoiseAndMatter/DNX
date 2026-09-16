@@ -196,12 +196,20 @@ async function loadProject(file: File): Promise<void> {
 function adopt(loaded: LoadedProject, label: string): void {
   const device = deviceFor(loaded.image);
 
-  // Refused rather than shown wrongly: the audit walks Digitone II patterns, and DN2 offsets over
-  // DN1 bytes would produce names and counts that are all invented.
+  /*
+   * Refused rather than shown wrongly: the audit walks Digitone II patterns, and DN2 offsets over
+   * DN1 bytes would produce names and counts that are all invented.
+   *
+   * **The second sentence is the one people need.** The first says the audit is not built yet,
+   * which reads as "come back later" — and the owner asked for the actual rule to be said out
+   * loud: presets travel from a Digitone 1 to a Digitone II and not back. Saying only "not joined
+   * up yet" would leave somebody waiting for a feature that is not coming in that direction.
+   */
   if (device.kind !== "dn2") {
     throw new DeviceSourceError(
-      `${label} is a ${device.name} project. The pool audit reads Digitone II patterns; the ` +
-        `Digitone 1's preset locks are read elsewhere and are not joined up yet.`,
+      `${label} is a ${device.name} project, and the pool audit reads Digitone II patterns. ` +
+        `Presets also travel one way: a Digitone 1 preset converts into a Digitone II project, ` +
+        `and nothing converts back. See Help → Library.`,
     );
   }
 
