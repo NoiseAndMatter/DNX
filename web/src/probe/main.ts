@@ -177,18 +177,39 @@ let lastProductId: number | undefined;
  */
 const ports = new PortPicker($<HTMLSelectElement>("input"), $<HTMLSelectElement>("output"));
 
-function renderPorts(): void {
-  if (!access) return;
-  const { inputs, outputs } = ports.render(access);
+/** The last counts `ports.render()` reported, so a select's `change` handler can re-check them. */
+let lastPortCounts = { inputs: 0, outputs: 0, needsChoice: false };
 
-  $<HTMLButtonElement>("probe").disabled = inputs === 0 || outputs === 0;
-  $<HTMLButtonElement>("listen").disabled = inputs === 0;
+/**
+ * Enable or disable Probe and Listen, and say why, from the last render and the selects' current
+ * values.
+ *
+ * Separate from `renderPorts` because it also runs on a plain `change` event, which does not
+ * refill the selects: rebuilding their options on every choice would fight the click that is
+ * making the choice.
+ */
+function updateControls(): void {
+  const { inputs, outputs, needsChoice } = lastPortCounts;
+  const chosenBoth =
+    $<HTMLSelectElement>("input").value !== "" && $<HTMLSelectElement>("output").value !== "";
+  const blocked = needsChoice && !chosenBoth;
+
+  $<HTMLButtonElement>("probe").disabled = inputs === 0 || outputs === 0 || blocked;
+  $<HTMLButtonElement>("listen").disabled = inputs === 0 || blocked;
   status(
     inputs === 0 || outputs === 0
       ? "No MIDI ports. Connect the device and press Rescan."
-      : `${inputs} input(s), ${outputs} output(s). Pick the pair and probe.`,
+      : blocked
+        ? "Two or more instruments are connected. Choose the input and output pair, then probe."
+        : `${inputs} input(s), ${outputs} output(s). Pick the pair and probe.`,
     inputs === 0 ? "warn" : "info",
   );
+}
+
+function renderPorts(): void {
+  if (!access) return;
+  lastPortCounts = ports.render(access);
+  updateControls();
 }
 
 /**
@@ -211,6 +232,12 @@ function isChromium(): boolean {
 /** Run the probe against one input/output pair. */
 async function probe(): Promise<void> {
   if (!access) return;
+  if ($<HTMLSelectElement>("input").value === "" || $<HTMLSelectElement>("output").value === "") {
+    // The button is disabled in this state, but a stale click already queued, or a call from
+    // somewhere other than the button, must not send to whichever port happens to be first.
+    status("Two or more instruments are connected. Choose the input and output pair, then probe.", "warn");
+    return;
+  }
   const input = ports.input(access);
   const output = ports.output(access);
   if (!input || !output) {
@@ -545,6 +572,9 @@ async function connect(): Promise<void> {
 for (const id of ["input", "output"] as const) {
   $<HTMLSelectElement>(id).addEventListener("change", (event) => {
     ports.remember(id, (event.target as HTMLSelectElement).value);
+    // Re-checked here, not only from `renderPorts`: this is the moment the second half of a choice
+    // arrives, and Probe and Listen must come off hold the instant both selects hold a real port.
+    updateControls();
   });
 }
 
