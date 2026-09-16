@@ -954,3 +954,22 @@ test("the holders listed at a step are the ones the count counted", () => {
   assert.equal(at.length, voicesPerStep([drone, midi], 8)[6]);
   assert.deepEqual(at.map((h) => h.track.number), [3]);
 });
+
+test("the same pitch struck twice is a retrigger, not an overlap", () => {
+  /*
+   * A glide travels between two pitches; a voice restarting on the same one has nowhere to go.
+   * `002 MORNING_JAM` A1 reported 20 overlapping pairs, nearly all of them one drone against
+   * itself, in a card whose whole subject is the geometry of a glide.
+   */
+  const drone = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [60], { length: 6 })],
+  });
+  assert.deepEqual(overlappingNotes(drone), []);
+
+  const moving = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [67], { length: 6 })],
+  });
+  assert.equal(overlappingNotes(moving).length, 1);
+});

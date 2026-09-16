@@ -896,16 +896,26 @@ export interface OverlapPair {
  *
  * So this reports an overlap and says so. Calling these glides would assert two settings nothing
  * here can read.
+ *
+ * ## The same pitch twice is a retrigger, not an overlap
+ *
+ * **2026-09-16, alongside the voice-count fix.** A track that strikes note 60 again while its
+ * previous 60 is still inside its gate has not stacked two notes: the voice restarts, and there is
+ * nothing for a glide to travel between. `002 MORNING_JAM` A1 reported 20 overlapping pairs, of
+ * which the great majority were one drone against itself. A pair is only interesting here when the
+ * two notes differ.
  */
 export function overlappingNotes(track: AnalysisTrack): OverlapPair[] {
   const sorted = [...track.trigs].sort((x, y) => x.step - y.step);
   const pairs: OverlapPair[] = [];
+  const differ = (a: AnalysisTrig, b: AnalysisTrig) => (a.notes[0] ?? 0) !== (b.notes[0] ?? 0);
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = sorted[i]!, b = sorted[i + 1]!;
-    if (a.step + a.length > b.step) pairs.push({ a, b });
+    if (a.step + a.length > b.step && differ(a, b)) pairs.push({ a, b });
   }
   const last = sorted.at(-1), first = sorted[0];
-  if (last && first && last !== first && last.step + last.length > track.length + first.step) {
+  if (last && first && last !== first && differ(last, first)
+      && last.step + last.length > track.length + first.step) {
     pairs.push({ a: last, b: first, wrap: true });
   }
   return pairs;

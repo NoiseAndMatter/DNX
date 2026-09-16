@@ -22,6 +22,10 @@ MIDI track sounds nothing on the instrument.
 Both are fixed, and `holdersAt` follows the same two rules, because a list of who is holding a
 voice that disagrees with the number beside it is worse than either alone.
 
+`overlappingNotes` had the same fault with worse consequences for its own subject: it reported the
+drone against itself twenty times in a card whose entire point is the geometry of a **glide**, and
+a glide travels between two pitches. A retrigger of the same pitch is no longer an overlap.
+
 **What it was worth, across the 425 Digitone II corpus patterns that play something:** 185 reported
 the wrong peak, and of the 34 reported as over budget only **3** really are. `MORNING_JAM` on the
 Digitone II — Elektron's own import of the project above — goes 19 to 5, which is the Digitone 1
