@@ -1057,8 +1057,12 @@ LFO 3    34    42   50   58   66   74   82   90
 ```
 
 Every byte that moved in the LFO tracks lands on this rule, and nothing lands off it. **The fourth
-slot of each group of eight is unused**, so there is room for a fourth LFO here too — the same
-spare capacity the lock table shows.
+slot of each group of eight is unused**, and the lock table has a matching unused lane.
+
+**That is alignment, not a reservation**, and the two holes are not independent evidence for one.
+Both layers round three LFOs up to four, which is what padding does every time. The firmware's
+inverse lock map folds every id in the spare lane onto the no-lock sentinel, so nothing in OS 1.11
+can address a fourth LFO. `src/project/plockparams.ts` records the measurement.
 
 Note the lock table interleaves the same three LFOs as `4 * slot + lfo`. Both layers interleave
 rather than block, at different strides, so neither can be derived from the other.

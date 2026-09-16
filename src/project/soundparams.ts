@@ -30,6 +30,8 @@
  * mode first.
  */
 
+import { LFO_SLOTS } from "./lfoslots.js";
+
 /** How to read a control's stored byte. */
 export type SoundEncoding =
   | "unipolar"
@@ -67,23 +69,25 @@ export interface SoundParameter {
 export const LFO_BASE = 30;
 export const LFO_PARAMETER_STRIDE = 8;
 export const LFO_STRIDE = 2;
-const LFO_PARAMETERS = ["SPD", "MULT", "FADE", "DEST", "WAVE", "SPH", "MODE", "DEP"] as const;
-/** `SPD`, `FADE` and `DEP` are the ones observed carrying a sign or a fine byte. */
-const LFO_ENCODING: Record<string, SoundEncoding> = {
-  SPD: "bipolar", MULT: "enum", FADE: "bipolar", DEST: "enum",
-  WAVE: "enum", SPH: "unipolar", MODE: "enum", DEP: "fine",
-};
-
+/**
+ * The slots themselves live in `lfoslots.ts`, because the lock table needs the same eight facts
+ * and describing them twice is how this file and `plockparams.ts` came to disagree about three of
+ * them. This one contributes the offsets; that one contributes the ids.
+ *
+ * `encoding` collapses two independent facts into one word, which is the flaw that caused the
+ * drift. A slot carrying both a sign and a fine byte reports `fine` here, because that is what a
+ * reader has to handle first to get the value out at all. `LFO_SLOTS` is where the whole truth is.
+ */
 function lfoParameters(): SoundParameter[] {
   const out: SoundParameter[] = [];
-  for (let p = 0; p < LFO_PARAMETERS.length; p++) {
+  for (let p = 0; p < LFO_SLOTS.length; p++) {
     for (let lfo = 0; lfo < 3; lfo++) {
-      const name = LFO_PARAMETERS[p]!;
+      const slot = LFO_SLOTS[p]!;
       out.push({
         offset: LFO_BASE + LFO_PARAMETER_STRIDE * p + LFO_STRIDE * lfo,
         page: `MOD ${lfo + 1}`,
-        name,
-        encoding: LFO_ENCODING[name]!,
+        name: slot.name,
+        encoding: slot.fine ? "fine" : slot.polarity,
       });
     }
   }

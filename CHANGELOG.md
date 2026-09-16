@@ -25,6 +25,12 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
 
 ### Fixed
 
+- **Two tables described the eight LFO controls and disagreed about three of them.** Neither could
+  have been right: each carried a single word for two independent facts, so `SPD` and `DEP`, which
+  are bipolar *and* carry a fine byte, had nowhere to say so, and `FADE` and `MULT` were classified
+  by falling through a ternary's default branch. The eight slots are now described once in
+  `lfoslots.ts`, measured across 53,248 sound records, and a test recounts them.
+
 - **`inspect` no longer calls an ordinary Digitone II sound file suspect.** Its table of
   product/dump-type combinations listed two while the captures held ten, so reading a perfectly
   normal Sound dump printed *"unconfirmed product/type combination"*. All five dump types are

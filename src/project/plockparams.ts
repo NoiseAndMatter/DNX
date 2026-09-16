@@ -14,8 +14,16 @@
  * selected machine and have their own, machine-relative ids — see `machineplock.ts`.
  */
 
-/** How the coarse byte should be read. See `lockvalue.ts`. */
-export type PlockKind = "unipolar" | "bipolar" | "enum" | "fine";
+import { LFO_SLOTS } from "./lfoslots.js";
+
+/**
+ * How the coarse byte should be read. See `lockvalue.ts`.
+ *
+ * **`fine` used to be a fourth value here and that was the bug.** Resolution is independent of
+ * polarity: `SPD` and `DEP` are bipolar *and* carry a fine byte, and one word could not say so.
+ * `lfoslots.ts` records how two tables describing these controls came to disagree.
+ */
+export type PlockKind = "unipolar" | "bipolar" | "enum";
 
 export interface PlockParameter {
   id: number;
@@ -24,6 +32,13 @@ export interface PlockParameter {
   /** The abbreviation the device shows. */
   name: string;
   kind: PlockKind;
+  /**
+   * True when a fine byte sits beside the coarse one.
+   *
+   * Only the LFO slots have been measured for this. Absent elsewhere means unmeasured rather than
+   * known-absent, which is why it is optional rather than defaulted to false.
+   */
+  fine?: boolean;
   /** True when the id was not observed directly — see each entry's note. */
   inferred?: boolean;
 }
@@ -37,25 +52,43 @@ export interface PlockParameter {
  *     MULT 5  6  7      WAVE 17 18 19      DEP  29 30 31
  *     FADE 9 10 11      SPH  21 22 23
  *
- * Verified on all 24 observed ids with no exceptions. Note that `4 * slot + 0` — ids 4, 8, 12,
- * 16, 20, 24, 28 and id 0 — is never used by the three LFOs, so the layout has room for a
- * fourth. Whether that is reserved space or belongs to something else is UNKNOWN.
+ * Verified on all 24 observed ids with no exceptions, and **independently confirmed from the
+ * firmware's own translation table**: the forward map at `0x401fcf20` in OS 1.11 carries slots
+ * 1..8 to 1, 5, 9, 13, 17, 21, 25, 29 and slots 9..16 to 2, 6, 10, 14, 18, 22, 26, 30. Two
+ * methods with no shared assumption, same rule.
+ *
+ * **The lane at `4 * slot + 0` — ids 0, 4, 8, 12, 16, 20, 24, 28 — is padding, not reserved
+ * space.** It was tempting to read it as room for a fourth LFO, and the sound object has a
+ * matching unused fourth slot in each group of eight, which looked like corroboration. It is not:
+ * both layers round three up to four, which is what alignment does every time, so the two
+ * observations are one convention seen twice rather than two sources agreeing.
+ *
+ * Settled by measurement rather than by argument. The firmware's inverse map at `0x401fd0b0`
+ * folds **every** lane-0 id onto slot 0, the same no-lock sentinel as the known gaps at 65, 100
+ * and 104. Nothing in OS 1.11 can address a fourth LFO's locks. Read from the image by the
+ * firmware session on 2026-09-16; corroborated from that side rather than measured here.
  */
 export const LFO_STRIDE = 4;
-const LFO_SLOTS = ["SPD", "MULT", "FADE", "DEST", "WAVE", "SPH", "MODE", "DEP"] as const;
-/** `SPD` and `DEP` carry a fine byte; the rest were all observed with fine = 0. */
-const LFO_FINE = new Set(["SPD", "DEP"]);
 
+/**
+ * The eight slots come from `lfoslots.ts`, shared with `soundparams.ts`.
+ *
+ * They were described separately once, and the ternary that used to stand here classified `FADE`
+ * and `MULT` by falling through to its default branch: it asserted `unipolar` for a bipolar
+ * control and for a 24-value enumeration, because nobody had written a case for either. This file
+ * now contributes the ids and nothing else.
+ */
 function lfoParameters(): PlockParameter[] {
   const out: PlockParameter[] = [];
   for (let slot = 0; slot < LFO_SLOTS.length; slot++) {
     for (let lfo = 1; lfo <= 3; lfo++) {
-      const name = LFO_SLOTS[slot]!;
+      const { name, polarity, fine } = LFO_SLOTS[slot]!;
       out.push({
         id: LFO_STRIDE * slot + lfo,
         page: `MOD ${lfo} (LFO ${lfo})`,
         name,
-        kind: LFO_FINE.has(name) ? "fine" : name === "WAVE" || name === "MODE" || name === "DEST" ? "enum" : "unipolar",
+        kind: polarity,
+        ...(fine ? { fine: true } : {}),
       });
     }
   }
