@@ -34,10 +34,14 @@ sound, voice pressure against the device's budget, pitch content and a key fit. 
 instrument, and drag presets into a project's sound pool.
 
 **Backup** — every project, soundbank and kit on the +Drive into one `.dnx` file, with a manifest.
-It copies the **+Drive**, not the instrument: settings that live outside the drive, like LED
-brightness or MIDI port configuration, are not in it and DNX cannot reach them. If a future
-firmware puts something new on the drive, the backup says what it could not read rather than
-passing over it.
+It copies the **+Drive**, not the instrument. **The instrument's global settings are not in it and
+no tool can put them there**: MIDI configuration, sync, audio routing and personalisation live in
+the machine rather than in a project, and the instrument offers no way to send them. Restore onto
+a replacement or a reset unit and you get your patterns, presets and project settings back, with
+those left at whatever the target already had.
+
+If a future firmware puts something new on the drive, the backup says what it could not read
+rather than passing over it.
 
 **Probe** — for when something is wrong. Ask an instrument what it is, what firmware it runs and
 which messages it answers; capture whatever it sends. It only ever sends messages classified as
