@@ -128,9 +128,9 @@ test("both tables now say the same thing about every slot", () => {
 test("FADE is the only bipolar slot without a fine byte", () => {
   /*
    * Pinned because it is the fact that separates `FADE` from `DEP`, which are otherwise the same
-   * kind of control. It was briefly offered as an explanation for `FADE`'s odd widget and that
-   * explanation is falsified — `ENV` on the filter page has the identical encoding and draws an
-   * ordinary knob. The measurement stands; the inference drawn from it does not.
+   * kind of control, and because the two-fact split in `lfoslots.ts` exists precisely so this
+   * distinction can be stated at all. Nothing about the instrument's interface follows from it;
+   * `lfoslots.ts` records why that was tried and why it does not work.
    */
   const unique = LFO_SLOTS.filter((s) => s.polarity === "bipolar" && !s.fine);
   assert.deepEqual(unique.map((s) => s.name), ["FADE"]);

@@ -80,20 +80,24 @@ export function lfoSlot(name: string): LfoSlot | undefined {
 }
 
 /**
- * **`FADE` is the only bipolar slot without a fine byte.** That much is measured and holds.
+ * **`FADE` is the only bipolar slot without a fine byte.** Measured, and it is what separates
+ * `FADE` from `DEP`, which are otherwise the same kind of control.
  *
- * It was briefly a lead for something else and **that lead is dead**, recorded here because a
- * falsified hypothesis left lying around gets picked up again by the next reader.
+ * Nothing follows from it about the interface, and this note exists to stop that being tried
+ * again. The firmware session and I spent a while on why `FADE` draws a glyph the other LFO
+ * controls do not, on the assumption that the glyph was computed from something. **It is not.**
+ * Per the instrument's owner, the glyphs are design work: the bowtie fills toward the side you
+ * turn the knob and moves its centre line with it, which is about making a control legible while
+ * you use it, not about how the value is stored.
  *
- * The firmware session is hunting why `FADE` draws a widget the other LFO controls do not, and no
- * predicate naming its parameter ids has ever been found. Since this combination is unique to
- * `FADE` on the page, the widget might have been selected from the value encoding, which would
- * explain the absent predicate. **It is not.** `ENV` on the filter page carries the identical
- * encoding — maximum 127, default 64, no fine byte — and draws an ordinary bipolar knob, as do
- * `GAIN`, `DEC` and `REL`. Three identical encodings, three different widgets, so the encoding is
- * not doing the selecting.
+ * So a widget is **assigned** to a parameter by a person, and there was never a rule to find.
+ * `ENV`, `GAIN`, `DEC` and `REL` on the filter page carry the same encoding as `FADE` and draw an
+ * ordinary knob; three encodings alike and three glyphs unalike is what design produces, not an
+ * anomaly needing explanation. Even "every fine parameter draws a plain knob", which survived one
+ * round longer, is a coincidence of the current design rather than a constraint — a future
+ * firmware could give a fine parameter a custom glyph with nothing in the data changing.
  *
- * What survives is the one-way half: every *fine* parameter checked draws a plain knob. The
- * converse fails.
+ * The residue worth keeping is about the code, not the data: both selection mechanisms found in
+ * OS 1.11 are **explicit id lists**, which is what assignment looks like once it reaches a
+ * compiler.
  */
-export const BIPOLAR_WITHOUT_FINE = LFO_SLOTS.filter((s) => s.polarity === "bipolar" && !s.fine);
