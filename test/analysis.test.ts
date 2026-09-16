@@ -900,3 +900,76 @@ test("a gate is monotonic across the whole range, with no gaps or reversals", ()
   }
   assert.equal(noteLengthSteps(127), Infinity);
 });
+
+/* ---- voices: the two rules that make the count a ceiling rather than a fiction ---------- */
+
+test("a retrigger of the same pitch on one track is one voice, not two", () => {
+  /*
+   * **Found on hardware, 2026-09-16, because the owner disbelieved the number.** `002 MORNING_JAM`
+   * A1 reported a peak of 20 voices on an 8-voice machine. Its T3 plays note 60 thirteen times,
+   * each inheriting a 64-step gate on a 62-step track, and every strike was counted on top of the
+   * twelve before it: that one track supplied 14 of the peak. A synth voice struck again on the
+   * same pitch restarts; it does not become a second voice.
+   */
+  const drone = track({ length: 4, trigs: [trig(0, [60], { length: 16 })] });
+  assert.deepEqual(voicesPerStep([drone], 8), [1, 1, 1, 1, 1, 1, 1, 1]);
+
+  // And within one pass, too: two trigs on the same pitch whose gates overlap.
+  const restruck = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [60], { length: 6 })],
+  });
+  assert.deepEqual(voicesPerStep([restruck], 8), [1, 1, 1, 1, 1, 1, 1, 1]);
+});
+
+test("two different pitches overlapping on one track still count two", () => {
+  /*
+   * The documented ceiling. A monophonic track cannot sound both either, but mono/poly and
+   * portamento live on the preset's SETUP page and no capture has covered them — so this is one
+   * too many for a mono track and exactly right for a poly one, which is why the card calls it a
+   * bound rather than a count.
+   */
+  const two = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [67], { length: 6 })],
+  });
+  assert.deepEqual(voicesPerStep([two], 8), [1, 1, 2, 2, 2, 2, 1, 1]);
+});
+
+test("a MIDI track spends no voices, because it sounds nothing on the instrument", () => {
+  const midi = track({ number: 5, machine: MACHINE.midi, length: 4, trigs: [trig(0, [60, 64])] });
+  const synth = track({ number: 1, length: 4, trigs: [trig(0, [60])] });
+  assert.deepEqual(voicesPerStep([midi], 4), [0, 0, 0, 0]);
+  assert.deepEqual(voicesPerStep([midi, synth], 4), [1, 0, 0, 0]);
+});
+
+test("the holders listed at a step are the ones the count counted", () => {
+  // A list that disagrees with the number beside it is worse than either alone.
+  const drone = track({
+    number: 3, length: 8,
+    trigs: [trig(0, [60], { length: 8 }), trig(4, [60], { length: 8 })],
+  });
+  const midi = track({ number: 5, machine: MACHINE.midi, length: 8, trigs: [trig(0, [72])] });
+  const at = holdersAt([drone, midi], 8, 6);
+  assert.equal(at.length, voicesPerStep([drone, midi], 8)[6]);
+  assert.deepEqual(at.map((h) => h.track.number), [3]);
+});
+
+test("the same pitch struck twice is a retrigger, not an overlap", () => {
+  /*
+   * A glide travels between two pitches; a voice restarting on the same one has nowhere to go.
+   * `002 MORNING_JAM` A1 reported 20 overlapping pairs, nearly all of them one drone against
+   * itself, in a card whose whole subject is the geometry of a glide.
+   */
+  const drone = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [60], { length: 6 })],
+  });
+  assert.deepEqual(overlappingNotes(drone), []);
+
+  const moving = track({
+    length: 8,
+    trigs: [trig(0, [60], { length: 6 }), trig(2, [67], { length: 6 })],
+  });
+  assert.equal(overlappingNotes(moving).length, 1);
+});

@@ -755,22 +755,70 @@ export function barsOf(steps: number): string {
 }
 
 /**
- * Voices held by a gate at each step of a window.
+ * Voices held by a gate at each step of a window. **An upper bound, and it says so.**
  *
- * A chord trig spends one voice **per note**. Tracks repeat into the window at their own length,
- * which is what makes a short track able to push the total over the budget on its own.
+ * A chord trig spends one voice per note, and tracks repeat into the window at their own length,
+ * which is what lets a short track push the total over the budget on its own.
+ *
+ * ## A retrigger of the same pitch is one voice, not two
+ *
+ * **Found on hardware, 2026-09-16, by the owner disbelieving the number.** `002 MORNING_JAM` A1
+ * reported a peak of 20 voices on a machine that has 8. Its track T3 plays **note 60 thirteen
+ * times**, each inheriting a 64-step gate on a 62-step track, so every strike still had twelve
+ * predecessors "sounding" and this counted all thirteen: T3 alone supplied 14 of the peak.
+ *
+ * A synth track struck again on the same pitch **retriggers that voice**. So an onset ends the
+ * previous gate on the same track and pitch, whatever its stored length said. Counting it that way
+ * took that pattern from 20 to 6, inside its budget, and the pattern is a drone being re-struck —
+ * exactly what the owner wrote.
+ *
+ * ## Two different pitches on one track still stack, and that is the bound
+ *
+ * A monophonic track cannot sound two pitches at once either, but whether a track is mono and
+ * whether portamento is on live on the preset's SETUP page, which no capture has covered — the
+ * overlap card already says so. Until one does, two pitches overlapping on one track are counted
+ * as two voices, which is right for a polyphonic track and one too many for a mono one. That is
+ * why this is documented as a ceiling rather than a count.
+ *
+ * ## MIDI tracks spend no voices
+ *
+ * A MIDI track sends notes to something else and sounds nothing on the instrument, so its notes
+ * are not in the budget. They were, which inflated every pattern that plays one.
  */
 export function voicesPerStep(tracks: readonly AnalysisTrack[], windowSteps: number): number[] {
   const held = new Array<number>(windowSteps).fill(0);
   for (const t of tracks) {
+    if (t.machine === MACHINE.midi) continue;
     // On the master clock: a track at 3/2x fits its pass into two thirds of the steps. A length
     // below 1 would never advance `rep * stride` to the window; see `cycleSteps`.
     const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
+
+    /*
+     * Every onset this track makes inside the window, in time order, so a later one on the same
+     * pitch can cut the one before it short.
+     */
+    const onsets: { at: number; notes: readonly number[]; length: number }[] = [];
     for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
         const at = Math.round(rep * stride + masterOffset(t, g.step));
-        if (at >= windowSteps) continue;
-        for (let k = 0; k < g.length && at + k < windowSteps; k++) held[at + k]! += g.notes.length;
+        if (at < windowSteps) onsets.push({ at, notes: g.notes, length: g.length });
+      }
+    }
+    onsets.sort((a, b) => a.at - b.at);
+
+    // `ends` is per pitch, so a retrigger overwrites rather than adds. An INF gate runs to the
+    // end of the window, which is as far as anything here can see.
+    const ends = new Map<number, number>();
+    const add = (from: number, to: number) => {
+      for (let s = Math.max(0, from); s < Math.min(to, windowSteps); s++) held[s]! += 1;
+    };
+    for (let i = 0; i < onsets.length; i++) {
+      const onset = onsets[i]!;
+      for (const note of onset.notes) {
+        const stop = Math.min(windowSteps, onset.at + onset.length);
+        const next = onsets.slice(i + 1).find((o) => o.at > onset.at && o.notes.includes(note));
+        ends.set(note, next === undefined ? stop : Math.min(stop, next.at));
+        add(onset.at, ends.get(note)!);
       }
     }
   }
@@ -848,16 +896,26 @@ export interface OverlapPair {
  *
  * So this reports an overlap and says so. Calling these glides would assert two settings nothing
  * here can read.
+ *
+ * ## The same pitch twice is a retrigger, not an overlap
+ *
+ * **2026-09-16, alongside the voice-count fix.** A track that strikes note 60 again while its
+ * previous 60 is still inside its gate has not stacked two notes: the voice restarts, and there is
+ * nothing for a glide to travel between. `002 MORNING_JAM` A1 reported 20 overlapping pairs, of
+ * which the great majority were one drone against itself. A pair is only interesting here when the
+ * two notes differ.
  */
 export function overlappingNotes(track: AnalysisTrack): OverlapPair[] {
   const sorted = [...track.trigs].sort((x, y) => x.step - y.step);
   const pairs: OverlapPair[] = [];
+  const differ = (a: AnalysisTrig, b: AnalysisTrig) => (a.notes[0] ?? 0) !== (b.notes[0] ?? 0);
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = sorted[i]!, b = sorted[i + 1]!;
-    if (a.step + a.length > b.step) pairs.push({ a, b });
+    if (a.step + a.length > b.step && differ(a, b)) pairs.push({ a, b });
   }
   const last = sorted.at(-1), first = sorted[0];
-  if (last && first && last !== first && last.step + last.length > track.length + first.step) {
+  if (last && first && last !== first && differ(last, first)
+      && last.step + last.length > track.length + first.step) {
     pairs.push({ a: last, b: first, wrap: true });
   }
   return pairs;
@@ -869,16 +927,28 @@ export function holdersAt(
 ): { track: AnalysisTrack; note: string; velocity: number }[] {
   const out: { track: AnalysisTrack; note: string; velocity: number }[] = [];
   for (const t of tracks) {
+    // The same two rules `voicesPerStep` counts by, because a list that does not match the number
+    // beside it is worse than either alone: no MIDI track, and a retrigger replaces rather than
+    // joins its predecessor.
+    if (t.machine === MACHINE.midi) continue;
     // On the master clock: a track at 3/2x fits its pass into two thirds of the steps. A length
     // below 1 would never advance `rep * stride` to the window; see `cycleSteps`.
     const stride = t.length >= 1 ? masterPeriod(t) : windowSteps;
+    const onsets: { at: number; trig: AnalysisTrig }[] = [];
     for (let rep = 0; rep * stride < windowSteps; rep++) {
       for (const g of t.trigs) {
         const at = Math.round(rep * stride + masterOffset(t, g.step));
-        if (at <= step && step < at + g.length && at < windowSteps) {
-          out.push({ track: t, note: noteName(g.notes[0] ?? 0), velocity: g.velocity });
-        }
+        if (at < windowSteps) onsets.push({ at, trig: g });
       }
+    }
+    for (const { at, trig: g } of onsets) {
+      if (at > step || step >= at + g.length) continue;
+      const note = g.notes[0] ?? 0;
+      const restruck = onsets.some(
+        (o) => o.at > at && o.at <= step && (o.trig.notes[0] ?? 0) === note,
+      );
+      if (restruck) continue;
+      out.push({ track: t, note: noteName(note), velocity: g.velocity });
     }
   }
   return out;
