@@ -75,6 +75,19 @@ export interface BackupManifest {
    */
   contents: string[];
   /**
+   * Directories the instrument's +Drive holds that this backup does not know how to read.
+   *
+   * **Empty for every instrument known today, and that is the point.** The drive is listed rather
+   * than assumed from the product id, so a firmware adding a fourth directory is discovered — but
+   * the reader only handles three, and without this field it would pass over the fourth in silence
+   * and still report success. The omission would then surface at restore time, which is the worst
+   * moment to learn that a backup was incomplete.
+   *
+   * Absent in files written before DNX recorded it, so a reader must treat missing as unknown
+   * rather than as none.
+   */
+  skipped?: string[];
+  /**
    * The form every file was read in.
    *
    * Recorded because a raw-form backup cannot be restored, and a restore should say so plainly

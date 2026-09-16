@@ -19,6 +19,7 @@ import { parseProject } from "../src/node/projectfile.js";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, requireCorpusFile } from "./corpus.js";
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function manifest(over: Partial<BackupManifest> = {}): BackupManifest {
   return {
@@ -201,4 +202,36 @@ test("the copy taken before a write is not named for one family", () => {
   assert.doesNotMatch(source, /replace\(\/\\\.payload\$\/, "\.dn2prj"\)/,
     "the extension must come from the payload, not a literal");
   assert.match(source, /projectExtensionFor\(backup\.bytes\)/);
+});
+
+test("a +Drive directory DNX cannot read is named, not passed over", () => {
+  /*
+   * **The gap this closes.** `driveKinds` asks the instrument what is on its drive rather than
+   * deciding from the product id, which is right — it is what stopped a Digitone 1 backup dying
+   * on `/kits`. But the reader handles three names, so a firmware adding a fourth would have been
+   * discovered and then quietly skipped: the run would finish, report success, and be missing
+   * something nobody could name until they tried to restore.
+   *
+   * The source is checked rather than a run mocked, because the failure being guarded against is
+   * an omission, and a mock that does not know about the fourth directory cannot demonstrate one.
+   */
+  const source = readFileSync(join(ROOT, "web/src/backup.ts"), "utf8");
+  assert.match(source, /const HANDLED = new Set\(\[/, "the handled set is explicit");
+  assert.match(source, /!HANDLED\.has\(name\)/, "and everything else is collected as skipped");
+  assert.match(source, /skipped: rest\.skipped/, "and reaches the manifest");
+
+  const manifest = readFileSync(join(ROOT, "web/src/dnxfile.ts"), "utf8");
+  assert.match(manifest, /skipped\?: string\[\]/, "optional, because older files predate it");
+
+  const ui = readFileSync(join(ROOT, "web/src/manager/main.ts"), "utf8");
+  assert.match(ui, /manifest\.skipped/, "and the page says so rather than leaving it to the file");
+  assert.match(ui, /cannot read/, "in words, not a field name");
+});
+
+test("the README does not claim the whole instrument is backed up", () => {
+  // It copies the +Drive. Settings that live off it — LED brightness, MIDI port config — are not
+  // reachable over this protocol at all, and a backup that implied otherwise would be a promise.
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+  assert.doesNotMatch(readme, /Back the whole instrument up/);
+  assert.match(readme, /It copies the \*\*\+Drive\*\*, not the instrument/);
 });

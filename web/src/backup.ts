@@ -177,12 +177,33 @@ async function driveKinds(transport: ApiTransport): Promise<Set<string>> {
  * Projects first, because they are the thing somebody is most afraid of losing and a backup that
  * is interrupted should have them. Sounds and kits follow.
  */
+/**
+ * The +Drive directories this backup knows how to read.
+ *
+ * Anything else on the drive is reported rather than ignored — see `skipped` below.
+ */
+const HANDLED = new Set(["projects", "soundbanks", "kits"]);
+
 async function everything(
   transport: ApiTransport, kinds: readonly string[], sound: string,
-): Promise<{ items: DriveItem[]; contents: string[] }> {
+): Promise<{ items: DriveItem[]; contents: string[]; skipped: string[] }> {
   const items: DriveItem[] = [];
   const contents: string[] = [];
   const present = await driveKinds(transport);
+
+  /*
+   * **A directory this code has never heard of.**
+   *
+   * `driveKinds` asks the instrument what is on its drive rather than deciding from the product
+   * id, which is right and is what stopped a Digitone 1 backup dying on `/kits`. But everything
+   * below handles three names, so a fourth would have been found and then quietly passed over: the
+   * backup would finish, report success, and be missing something nobody could name.
+   *
+   * A backup that is silently incomplete is the worst kind, because the omission surfaces at
+   * restore time. So an unhandled directory is carried into the manifest and said out loud. DNX
+   * still cannot read it — that would need the format — but the reader learns it exists.
+   */
+  const skipped = [...present].filter((name) => !HANDLED.has(name)).sort();
 
   if (kinds.includes("soundbanks") && present.has("soundbanks")) {
     let any = false;
@@ -219,7 +240,7 @@ async function everything(
     if (any) contents.push("kits");
   }
 
-  return { items, contents };
+  return { items, contents, skipped };
 }
 
 /** A single path segment a file system will accept. */
@@ -382,6 +403,9 @@ export async function backupDevice(
           ...(device.firmwareVersion === undefined ? {} : { firmwareVersion: device.firmwareVersion }),
         },
         contents,
+        // Empty for every instrument known today. Present so a restore can tell "nothing else was
+        // there" from "something else was there and this file does not have it".
+        skipped: rest.skipped,
         form: "stored",
         entries,
       },
