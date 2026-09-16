@@ -424,6 +424,11 @@ export function renderInsights(
 
   const tonal = harmonic(live);
   /*
+   * Tracks whose arp sounds something beyond the written note. An arp switched on with every
+   * offset at zero strikes the same pitch and changes nothing here, so it is left out.
+   */
+  const arped = live.filter((t) => (t.arpIntervals ?? []).some((n) => n !== 0));
+  /*
    * **Windowed over what can be drawn, not over what the arithmetic returned.** A pattern whose
    * tracks never come round has a saturated cycle, and asking for a window per bar of a million
    * steps is 62,500 windows — eight minutes of work, or a frozen tab. `PRESETS` `FUCHSIA` is one:
@@ -877,9 +882,14 @@ export function renderInsights(
             <b>Read the margin, not the score.</b> A relative minor shares six of seven notes with
             its major, so most patterns score high on two keys at once and the margin is what
             separates them. The device stores no key. ${tonal.length} of ${live.length} playing
-            tracks fed this fit; the rest sound one pitch class each and would swamp it. The
-            <b>arpeggiator</b> transposes, and nothing decodes its settings, so a track using one is
-            read short here.</p>
+            tracks fed this fit; the rest sound one pitch class each and would swamp it.${
+            !subject.arpKnown ? `
+            The <b>arpeggiator</b> transposes, and a Digitone 1 sound object has never been decoded
+            for it, so a track using one is read short here.` : arped.length === 0 ? "" : `
+            ${arped.length === 1 ? "One track has" : `${arped.length} tracks have`} an
+            <b>arpeggiator</b> sounding notes that are not written on its trigs, and those are
+            counted here too. An arp at the octave adds no new pitch class and still adds weight,
+            because the instrument really does strike those notes.`}</p>
         </div>`}
       ${table(["Pitch class", "Notes", "Presets"], pitch.filter((c) => c.total).map((c) =>
         [c.name, c.total, Object.entries(c.byPreset).sort((a, b) => b[1] - a[1])

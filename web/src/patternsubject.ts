@@ -25,7 +25,8 @@ import { auditPool } from "../../src/librarian/poolaudit.js";
 import { MACHINE } from "../../src/project/machine.js";
 import { summariseKitTracks } from "../../src/librarian/tracksummary.js";
 import type { Device } from "../../src/librarian/device.js";
-import { DN2_LAYOUT, kitRecord } from "../../src/project/dn2image.js";
+import { DN2_KIT, DN2_LAYOUT, kitRecord } from "../../src/project/dn2image.js";
+import { arpIntervals, readArp } from "../../src/project/arp.js";
 import {
   NOTE_LENGTH_NONE, noteLengthSteps, readDn2Pattern,
   RECORD_VERSION as DN2_RECORD_VERSION,
@@ -136,7 +137,23 @@ export function patternSubject(
     );
   }
 
-  const kit = summariseKitTracks(kitRecord(image, index, DN2_LAYOUT));
+  const kitRaw = kitRecord(image, index, DN2_LAYOUT);
+  const kit = summariseKitTracks(kitRaw);
+
+  /**
+   * The arp offsets a track sounds its notes at, or `[]` for a track that plays them as written.
+   *
+   * Read off the kit's own sound record rather than through `summariseKitTracks`, which is
+   * explicit that it answers what a *librarian* needs and not what a sound is doing. A kit holds
+   * sixteen complete sound objects, one per track, so the arp for a pattern's track is already in
+   * any project DNX has open: no device, no preset lookup, no second read.
+   */
+  const arpFor = (track: number): { arpIntervals?: readonly number[] } => {
+    const at = DN2_KIT.soundOffset + track * DN2_KIT.soundSize;
+    const steps = arpIntervals(readArp(kitRaw.subarray(at, at + DN2_KIT.soundSize)));
+    // Omitted rather than empty, so a track playing as written carries no field at all.
+    return steps.length ? { arpIntervals: steps } : {};
+  };
 
   /*
    * **The pool is read for this pattern alone.** `auditPool` walks every pattern by default, which
@@ -231,6 +248,12 @@ export function patternSubject(
       machine: half?.midi ? MACHINE.midi : half?.machineValue,
       preset: half?.presetName || "—",
       trigs,
+      /*
+       * **A MIDI track is left alone.** The arp lives in the sound object, and a MIDI track's
+       * notes go out of the port to whatever is listening; arping them here would claim to know
+       * what another instrument does with them.
+       */
+      ...(half?.midi ? {} : arpFor(track.index)),
       ...(dormant.length ? { dormant } : {}),
     };
   });
@@ -257,6 +280,7 @@ export function patternSubject(
     perTrackLengths: pattern.perTrackScale,
     // Both fields below are read from the record, so an undefined one is the setting being off.
     patternTimingKnown: true,
+    arpKnown: true,
     voiceBudget: VOICES[device.kind] ?? 16,
     defaultVelocity: accentThreshold(pattern.tracks.map((t) => t.settings.defaultVelocity)),
     /*

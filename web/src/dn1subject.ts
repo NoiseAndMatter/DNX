@@ -219,6 +219,16 @@ export function dn1PatternSubject(
     masterLength: Math.max(...lengths),
     perTrackLengths: new Set(lengths).size > 1,
     patternTimingKnown: false,
+    /*
+     * **The Digitone 1 has an arpeggiator and this producer cannot see it.** The Digitone II's
+     * arp was solved on hardware in 2026-09 and sits at a known offset in its 359-byte sound
+     * object; a Digitone 1 sound object is 302 bytes and nobody has captured the equivalent. So a
+     * DN1 pattern with the arp engaged sounds pitches that are not in its trigs, and the key fit
+     * and pitch content are read from the written notes alone.
+     *
+     * Said rather than glossed. The same capture on a connected Digitone 1 would close it.
+     */
+    arpKnown: false,
     voiceBudget: VOICES,
     defaultVelocity: accentThreshold(pattern.tracks.map(defaultVelocityOf)),
     gateLengthKnown: true,
