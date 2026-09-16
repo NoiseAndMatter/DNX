@@ -113,59 +113,52 @@ is what lets a page, a command and a test exercise the same code.
 
 ```mermaid
 flowchart TD
-  subgraph B["In your browser · no server, no account, nothing uploaded"]
-    P["<b>pages</b><br/>expander · manager · library · probe"]
-    W["<b>web/src</b><br/>page shell · device link · settings"]
-    A["<b>web/src/analysis</b><br/>Insights: cycle · voices · pitch · key"]
+  subgraph FE["front ends"]
+    direction LR
+    P["<b>pages</b> · in your browser<br/>expander · manager · library · probe"]
+    C["<b>src/cli</b> · in a terminal<br/>convert · copy · rearrange · diff · sheet"]
   end
 
-  C["<b>src/cli</b><br/>convert · copy · rearrange · diff · sheet"]
+  A["<b>web/src/analysis</b><br/>Insights: cycle · voices<br/>pitch · key"]
 
-  subgraph S["src/ · platform-free: no DOM, no Web MIDI, no filesystem"]
-    L["<b>librarian</b><br/>slots · banks · safe moves"]
-    X["<b>expand</b><br/>Digitone 1 → Digitone II"]
-    D["<b>device</b><br/>+Drive API · read-back · safe write"]
+  subgraph CORE["src/ · platform-free"]
+    direction TB
+    OPS["<b>expand</b> · <b>librarian</b> · <b>device</b><br/>Digitone 1 to Digitone II · slots and banks · +Drive protocol"]
     J["<b>project</b><br/>container · LZ4 · CRC · patterns · kits · sounds"]
     Y["<b>sysex</b><br/>8-in-7 codec"]
+    OPS --> J --> Y
   end
 
   I(["Digitone · Digitone II"])
 
-  P --> W
   P --> A
-  P --> X
-  W --> D
-  W --> L
-  C --> L
-  C --> X
-  C --> J
-  A --> J
-  L --> J
-  X --> J
-  D --> J
-  D --> Y
-  J --> Y
-  W -. "Web MIDI" .-> I
+  P --> OPS
+  C --> OPS
+  Y -. "over Web MIDI, carried by the browser" .-> I
 ```
 
-**Every arrow points down and none point back.** `src/` imports nothing outside `src/`, and no page
-imports another page's folder. That is checked rather than hoped for: the rule and what breaking it
-has already cost are in [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md).
+**Every solid arrow is a real import, every one points down, and none point back.** `src/` imports
+nothing outside `src/`, and no page imports another page's folder. That is checked rather than
+hoped for: the rule and what breaking it has already cost are in
+[`docs/PRINCIPLES.md`](docs/PRINCIPLES.md). The dotted line is the only thing that is not an
+import; it is the instrument.
 
-A few consequences worth knowing before reading the code:
+`expand`, `librarian` and `device` are drawn as one tier because they sit at the same depth, not
+because they are one module. A few consequences worth knowing before reading the code:
 
 - **`sysex` is the floor.** Everything an instrument says arrives through the 8-in-7 codec, and
   everything written to one leaves through it.
 - **`project` is where the format knowledge lives**, and it is the most depended-on module in the
-  repository. `docs/` documents what it knows and marks each claim with its confidence.
-- **`device` speaks the protocol; the browser carries it.** `src/device` composes and parses every
-  +Drive message and owns the safeguards — the copy taken before a write, the read-back comparison,
-  the fresh listing a destination is checked against — but it never touches a port. It asks for a
-  transport, and `web/src` supplies one backed by Web MIDI. That is what lets the whole write path
-  be tested without an instrument plugged in.
+  repository. `docs/` records what it knows and marks each claim with its confidence.
+- **`device` speaks the protocol; the browser carries it.** `device` composes and parses every
+  +Drive message and owns the safeguards — the copy taken before a write, the read-back
+  comparison, the fresh listing a destination is checked against — but it never touches a port. It
+  asks for a transport and the browser supplies one backed by Web MIDI, which is what lets the
+  whole write path be tested with nothing plugged in.
 - **`analysis` describes patterns, not instruments.** Charts never learn what a Digitone is. Each
-  device gets a *producer* that reads its own format and hands over a common shape, which is why
-  Insights works on both without the charts knowing there are two.
+  device gets a *producer* in `web/src` that reads its own format through `project` and hands the
+  charts a common shape, which is why Insights works on both without the charts knowing there are
+  two.
 
 ## Running it yourself
 
