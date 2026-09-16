@@ -30,6 +30,13 @@
  * `SPD` is the one that does not announce itself that way: it rests at **112**, which is `+48`
  * read as bipolar and is the factory default speed. Its polarity is inherited from
  * `soundparams.ts`, which had it before this file existed, rather than re-derived here.
+ *
+ * **The `fine` column is independently confirmed from the firmware.** OS 1.11 carries a
+ * fine-resolution flag at `+0x14` of each parameter record, and reading it for these eight
+ * reproduces the corpus count exactly: `SPD` and `DEP` set, `FADE` clear. Two methods with
+ * nothing in common — 159,744 readings of what instruments wrote, against a flag in the firmware
+ * that decides it — reaching the same answer. Read from the image by the firmware session on
+ * 2026-09-16.
  */
 
 /** What a stored byte means. Separate from resolution: a control can be bipolar *and* fine. */
@@ -73,12 +80,20 @@ export function lfoSlot(name: string): LfoSlot | undefined {
 }
 
 /**
- * **`FADE` is the only bipolar slot without a fine byte**, which is worth knowing beyond this file.
+ * **`FADE` is the only bipolar slot without a fine byte.** That much is measured and holds.
  *
- * The firmware session was hunting a predicate that names `FADE`'s parameter ids, to explain why
- * it draws a widget the other controls do not. Four scans found none. This combination being
- * unique to `FADE` on the page raises the possibility that the widget is chosen from the value
- * encoding rather than from an id, in which case no such predicate exists. Recorded as a lead,
- * not a finding: nobody has confirmed it.
+ * It was briefly a lead for something else and **that lead is dead**, recorded here because a
+ * falsified hypothesis left lying around gets picked up again by the next reader.
+ *
+ * The firmware session is hunting why `FADE` draws a widget the other LFO controls do not, and no
+ * predicate naming its parameter ids has ever been found. Since this combination is unique to
+ * `FADE` on the page, the widget might have been selected from the value encoding, which would
+ * explain the absent predicate. **It is not.** `ENV` on the filter page carries the identical
+ * encoding — maximum 127, default 64, no fine byte — and draws an ordinary bipolar knob, as do
+ * `GAIN`, `DEC` and `REL`. Three identical encodings, three different widgets, so the encoding is
+ * not doing the selecting.
+ *
+ * What survives is the one-way half: every *fine* parameter checked draws a plain knob. The
+ * converse fails.
  */
 export const BIPOLAR_WITHOUT_FINE = LFO_SLOTS.filter((s) => s.polarity === "bipolar" && !s.fine);

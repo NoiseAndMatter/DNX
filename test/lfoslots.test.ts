@@ -127,9 +127,10 @@ test("both tables now say the same thing about every slot", () => {
 
 test("FADE is the only bipolar slot without a fine byte", () => {
   /*
-   * Pinned because something outside this repository is reasoning from it: the firmware session is
-   * asking why `FADE` draws a widget the other controls do not, and no predicate naming its ids
-   * has been found in four scans. If this uniqueness ever stops holding, that lead dies with it.
+   * Pinned because it is the fact that separates `FADE` from `DEP`, which are otherwise the same
+   * kind of control. It was briefly offered as an explanation for `FADE`'s odd widget and that
+   * explanation is falsified — `ENV` on the filter page has the identical encoding and draws an
+   * ordinary knob. The measurement stands; the inference drawn from it does not.
    */
   const unique = LFO_SLOTS.filter((s) => s.polarity === "bipolar" && !s.fine);
   assert.deepEqual(unique.map((s) => s.name), ["FADE"]);
