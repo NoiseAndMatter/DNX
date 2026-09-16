@@ -956,7 +956,6 @@ async function loadKit(index: number, pattern: number): Promise<void> {
   // function and `applyLoadKit` is one — the seam was already the right shape, which is why this is
   // a closure and not a redesign. The plan is captured on the way past for the sentence below.
   let plan: ReturnType<typeof applyLoadKit>["plan"] | undefined;
-  const kitName = plan?.name || bank.entries.find((e) => e.index === index)?.name || "kit";
   session.apply(tag(`load kit ${bank.bank}${index} into ${patternName(pattern)}`), (current) => {
     const result = applyLoadKit(current, projectDevice, body, { pattern });
     plan = result.plan;
@@ -968,7 +967,7 @@ async function loadKit(index: number, pattern: number): Promise<void> {
   applied.add(pattern);
   render();
   status(
-    `${plan.name || bank.entries.find((e) => e.index === index)?.name || "kit"} → ` +
+    `${plan.name || "kit"} → ` +
       `${patternName(pattern)}. ${plan.changedTracks.length} track(s) changed. ` +
       `Export the project to keep this — nothing has been written to the instrument.`,
     "ok",
@@ -990,7 +989,6 @@ async function addToPool(index: number, slot: number): Promise<void> {
     return;
   }
 
-  const entry = bank.entries.find((e) => e.index === index);
   status(`Reading ${bank.path}/${index}…`);
   // **This is the line the drag was failing on.** A DN2 preset's stored body is 364 bytes and a
   // pool slot is 359, so `poolwrite` refused it — correctly, since writing 364 would have run into
@@ -1031,7 +1029,14 @@ async function addToPool(index: number, slot: number): Promise<void> {
   }
 
   let plan: ReturnType<typeof applyAddPreset>["plan"] | undefined;
-  session.apply(tag(`add ${entry?.name || "a preset"} to pool slot ${slot}`), (current) => {
+  /*
+   * **Named after the preset that was read, not the listing row.** This used to name the bank
+   * listing's entry, taken when Browse ran, which a rename since then leaves behind. Dropping a
+   * preset seconds after renaming it therefore added the right preset under its old name, here and
+   * in the undo entry, which read as the wrong preset having been added (Digitone 1, 2026-09-15). `preview` and `plan` both carry
+   * the name out of the bytes that were just read off the instrument.
+   */
+  session.apply(tag(`add ${preview.name || "a preset"} to pool slot ${slot}`), (current) => {
     const result = applyAddPreset(current, projectDevice, body, { slot, confirmOverwrite: true });
     plan = result.plan;
     return result.image;
@@ -1044,7 +1049,7 @@ async function addToPool(index: number, slot: number): Promise<void> {
   // rather than the same object, and that is worth one clause of a sentence.
   const converted = plan.converted ? `Converted from a ${plan.converted.from} preset. ` : "";
   status(
-    `${converted}${entry?.name || "preset"} → slot ${plan.slot}. ${plan.freeAfter} free. ` +
+    `${converted}${plan.name || "preset"} → slot ${plan.slot}. ${plan.freeAfter} free. ` +
       `Export the project to keep this — nothing has been written to the instrument.`,
     "ok",
   );
@@ -1261,6 +1266,11 @@ async function renameSelected(): Promise<void> {
   if (result.committed && result.listedAs !== undefined) {
     const renamed = state.rows.find((r) => r.index === row.index);
     if (renamed) renamed.name = result.listedAs;
+    // The listing behind the table, too. Everything that names a slot without reading it — a kit
+    // drop's fallback, a hover — reads this, and leaving it behind is what made a renamed preset
+    // look like the old one everywhere except the table.
+    const listed = state.bank?.entries.find((e) => e.index === row.index);
+    if (listed) listed.name = result.listedAs;
     renderTable();
   }
 }
