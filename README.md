@@ -247,7 +247,7 @@ filled in for a healthy evolution of these tools and their relation with people.
 
 That said, this tool would not have been possible in the same amount of time and effort without the
 use of LLMs. And now it is yours. You can use it, you can modify it, you can do whatever you want
-with it. It is a present from me to you.
+with it (inside the license limits). It is a present from me to you.
 
 If you think that anything in its conception goes against your core values, it is ok to turn
 around, and not look back. But as it stands this tool doesn't force anyone to use it.
