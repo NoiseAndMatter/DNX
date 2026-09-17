@@ -227,6 +227,35 @@ code was not read.
 If you want to build something closed on top of this, ask. A separate licence is available and the
 copyright is in one pair of hands, so it is a conversation rather than a legal project.
 
+## Author's note
+
+This project started as a simple exercise to port my DN1 projects into the DN2. But by the time I
+got the expander working, with all the data dumps, captures and classifications, suddenly other
+features were at hand.
+
+That and the support of existing projects like elk-herd made me realise that I could close the gap
+that we suffered as DN users: a proper device manager.
+
+So I started designing the tools, the flows, user journeys, mapping all that to data that was
+required, highlighting and closing any gaps... it was a long process, but I wanted to do it as well
+as I could.
+
+Of course, during all this process, I used LLMs, as I do in my day job. I would love to be able to
+derive attributions from the code written or touched by the LLMs, but as of today, vendors don't
+offer that layer in their inference output. I really think it is a gap and is one necessary to be
+filled in for a healthy evolution of these tools and their relation with people.
+
+That said, this tool would not have been possible in the same amount of time and effort without the
+use of LLMs. And now it is yours. You can use it, you can modify it, you can do whatever you want
+with it. It is a present from me to you.
+
+If you think that anything in its conception goes against your core values, it is ok to turn
+around, and not look back. But as it stands this tool doesn't force anyone to use it.
+
+Be kind, plant at least one big tree, enjoy life, and make nice free things other people can enjoy.
+
+Angel.
+
 ---
 
 DNX is an independent project. It is **not affiliated with, endorsed by or supported by
