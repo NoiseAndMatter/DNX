@@ -27,6 +27,7 @@ import { DN1_LAYOUT } from "../src/project/dn2image.js";
 import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
 import { type Entry, StorageCode } from "../src/device/storage.js";
 import { type ApiTransport } from "../src/device/storagesession.js";
+import { probeWrite } from "./probesource.js";
 import {
   CONTAINER_BANK_OFFSET,
   CONTAINER_SLOT_OFFSET,
@@ -784,30 +785,12 @@ test("every read of a file the writer touches asks for the stored form", () => {
   }
 });
 
-/**
- * The probe's two writes, read out of their own source.
+/*
+ * The probe's two writes, read out of their own source by `probesource.ts`.
  *
  * They are exempt from `safeWriteRecords` for the reason recorded beside the exemption above, so
- * nothing structural makes them follow its sequence. This is what does. Both are entirely DOM and
- * MIDI, so the properties are checked by reading the functions rather than by running them.
+ * nothing structural makes them follow its sequence. This is what does.
  */
-function probeWrite(name: string): string {
-  const source = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe", "main.ts"), "utf8");
-
-  const start = source.indexOf(`async function ${name}(`);
-  assert.ok(start > 0, `${name} has been renamed; this fence no longer guards anything`);
-
-  // Matched rather than searched for: the file is CRLF on this machine and LF in CI, and
-  // `indexOf("\n}\n")` quietly returns -1 on the first of those, which `slice` then reads as "one
-  // byte from the end" and hands back most of the file. A fence measuring the wrong region passes
-  // for reasons that have nothing to do with the code it names.
-  const end = /\r?\n\}\r?\n/.exec(source.slice(start));
-  assert.ok(end, `${name} has no closing brace at column 0`);
-  const body = source.slice(start, start + end.index);
-  assert.ok(body.length < 12_000, `${name}'s body came out at ${body.length} bytes; the slice is wrong`);
-  return body;
-}
 
 for (const name of ["writeToChosenSlot", "writeBack"]) {
   test(`the probe's ${name} copies what it overwrites before it sends anything`, () => {
