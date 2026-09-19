@@ -32,8 +32,8 @@
  */
 
 import { buildZip, type ZipEntry } from "./zip.js";
-import { type ProjectManifest, parsePayload } from "../../src/project/container.js";
-import { isDn1Payload, productTypesFor } from "../../src/device/drive.js";
+import { parsePayload } from "../../src/project/container.js";
+import { isDn1Payload, manifestFor } from "../../src/device/drive.js";
 
 /** The format this file writes. Bumped when a reader would get it wrong, never for new fields. */
 export const DNX_VERSION = 1;
@@ -97,35 +97,10 @@ export interface BackupManifest {
   entries: BackupEntry[];
 }
 
-export interface BackupProgress {
-  /** Slots finished, out of `total`. */
-  done: number;
-  total: number;
-  /** The slot being read now. */
-  name: string;
-  bytes: number;
-}
-
-export interface BackupOptions {
-  /** Which slots to read. Omitted means every occupied one. */
-  slots?: readonly number[];
-  onProgress?: (progress: BackupProgress) => void;
-  /** Cooperative cancellation, checked between slots rather than mid-file. */
-  shouldStop?: () => boolean;
-}
-
 export interface DeviceBackup {
   manifest: BackupManifest;
   /** Every file read, in manifest order, so a caller can zip them or save them loose. */
   files: { path: string; bytes: Uint8Array }[];
-}
-
-/** A file name that survives a zip, a file system and a round trip through either. */
-function safeName(slot: number, name: string): string {
-  const trimmed = name.replace(/[^\x20-\x7e]/g, "").replace(/[\\/:*?"<>|]/g, "-").trim();
-  // The slot leads, because it is what addresses the project and what the instrument's own screen
-  // shows. Two projects on one +Drive may share a name; two cannot share a slot.
-  return `projects/${String(slot).padStart(3, "0")} ${trimmed || "UNNAMED"}.dn2prj`;
 }
 
 /**
@@ -153,15 +128,7 @@ function safeName(slot: number, name: string): string {
  * instead of guessing.
  */
 export function projectFile(name: string, firmwareVersion: string, payload: Uint8Array): Promise<Uint8Array> {
-  const manifest: ProjectManifest = {
-    FormatVersion: "1.0",
-    // **Read off the payload, not assumed.** This wrote `[]` for every project, so a Digitone 1
-    // project's copy carried a Digitone II manifest under a Digitone II name (found 2026-09-15).
-    ProductType: productTypesFor(parsePayload(payload)),
-    Payload: name,
-    FileType: "Project",
-    FirmwareVersion: firmwareVersion,
-  };
+  const manifest = manifestFor(parsePayload(payload), name, firmwareVersion);
   return buildZip([
     { name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, undefined, 2)) },
     { name, data: payload },
