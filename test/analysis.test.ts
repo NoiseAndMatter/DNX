@@ -8,8 +8,8 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -23,6 +23,7 @@ import {
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
 import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
+import { browserGlobalsIn, code, importGraph, repoPath } from "./importgraph.js";
 import { noteLengthSteps } from "../src/project/dn2pattern.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -744,36 +745,8 @@ test("the microtiming chart draws nothing past what the sequencer can do", () =>
 
 /* ---- the boundary that makes all of the above possible --------------------------------- */
 
-/**
- * Every local module reachable from `entry`, as repo-relative paths.
- *
- * Deliberately not shared with the walk in `web.test.ts`: that one collects the *bare* specifiers
- * a page reaches, to prove nothing drags Node into the browser. This one collects the local files,
- * to prove `analysis/` stays pure. Same traversal, opposite question, and merging them would make
- * one function that answers neither clearly.
- */
-function localGraph(entry: string): string[] {
-  const seen = new Set<string>();
-  const queue = [entry];
-  while (queue.length) {
-    const file = queue.pop()!;
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-    const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/gm)) {
-      const specifier = match[1]!;
-      if (specifier.startsWith(".")) queue.push(join(dirname(file), specifier.replace(/\.js$/, ".ts")));
-    }
-  }
-  return [...seen].map((f) => relative(resolve(HERE, ".."), f).replaceAll("\\", "/"));
-}
-
-/** Source with comments removed, so prose about `document` is not read as a use of it. */
-function code(file: string): string {
-  return readFileSync(file, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/^\s*\/\/.*$/gm, " ");
-}
+/** Every local module reachable from `entry`, as repo-relative paths. */
+const localGraph = (entry: string): string[] => importGraph(entry).files.map(repoPath);
 
 const PURE = ["charts", "compare", "model"] as const;
 
@@ -798,28 +771,12 @@ for (const name of PURE) {
      * `selection.ts` is not part of `grid.ts`. Every test above this line exists because these
      * functions can run without a browser, and this is what keeps that true.
      *
-     * `mount.ts` is the deliberate exception and is not in this list.
-     *
-     * **The pattern is an access, not a word.** Matching the bare name flagged
-     * `"5 notes in this window"` — a tooltip string, in a module that touches nothing — and a
-     * chart's whole subject is a *window* of steps, so the word is unavoidable in this vocabulary.
-     * A global is only useful if something is read off it or constructed from it, so that is what
-     * is looked for. Comments are stripped first regardless, because prose says `document` too.
+     * `mount.ts` is the deliberate exception and is not in this list. The patterns, and why they
+     * match an access rather than a word, are `BROWSER_ONLY` in `importgraph.ts`.
      */
-    const BROWSER_ONLY: [RegExp, string][] = [
-      [/\bdocument\s*[.[]/, "document"],
-      [/\bwindow\s*[.[]/, "window"],
-      [/\blocalStorage\s*[.[]/, "localStorage"],
-      [/\bnew\s+ResizeObserver\b/, "ResizeObserver"],
-      [/\bHTML[A-Za-z]*Element\b/, "an HTML element type"],
-      [/\bdocument\b\s*[),;]/, "document"],
-    ];
     const offenders: string[] = [];
     for (const file of localGraph(entry)) {
-      const source = code(resolve(HERE, "..", file));
-      for (const [pattern, api] of BROWSER_ONLY) {
-        if (pattern.test(source)) offenders.push(`${file} uses ${api}`);
-      }
+      for (const api of browserGlobalsIn(code(resolve(HERE, "..", file)))) offenders.push(`${file} uses ${api}`);
     }
     assert.deepEqual(offenders, [],
       `analysis/${name}.ts must stay renderable without a browser:\n  ${offenders.join("\n  ")}`);
@@ -835,12 +792,8 @@ test("the browser-API check would actually catch one", () => {
    * `mount.ts` is the known-positive: it exists to touch the document, so the same patterns run
    * over it must fire. If this fails, the checks above are worthless whatever they report.
    */
-  const source = code(resolve(HERE, "../web/src/analysis/mount.ts"));
-  const found = [
-    [/\bdocument\s*[.[]/, "document"],
-    [/\bnew\s+ResizeObserver\b/, "ResizeObserver"],
-    [/\bHTML[A-Za-z]*Element\b/, "an HTML element type"],
-  ].filter(([pattern]) => (pattern as RegExp).test(source)).map(([, api]) => api);
+  const found = browserGlobalsIn(code(resolve(HERE, "../web/src/analysis/mount.ts")))
+    .filter((api) => ["document", "ResizeObserver", "an HTML element type"].includes(api));
   assert.deepEqual(found, ["document", "ResizeObserver", "an HTML element type"],
     "mount.ts is meant to use the DOM; if these do not fire, the purity checks prove nothing");
 });

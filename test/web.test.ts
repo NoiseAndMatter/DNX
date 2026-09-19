@@ -12,6 +12,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { importGraph } from "./importgraph.js";
 import { NO_CORPUS, corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
@@ -29,36 +30,9 @@ const ENTRIES: [string, string][] = [
   ["probe", resolve(HERE, "../web/src/probe/main.ts")],
 ];
 
-/** Every module reachable from the entry point, following relative imports. */
-function importGraph(entry: string): string[] {
-  const seen = new Set<string>();
-  const queue = [entry];
-  const external: string[] = [];
-
-  while (queue.length) {
-    const file = queue.pop()!;
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-
-    // Import and export statements only. A looser pattern picks up prose in doc comments —
-    // "distinguish copied from ..." reads as an import to a naive regex.
-    const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/gm)) {
-      const specifier = match[1]!;
-      if (!specifier.startsWith(".")) {
-        external.push(`${file} -> ${specifier}`);
-        continue;
-      }
-      queue.push(join(dirname(file), specifier.replace(/\.js$/, ".ts")));
-    }
-  }
-
-  return external;
-}
-
 for (const [name, entry] of ENTRIES) {
   test(`nothing the ${name} page imports depends on Node`, () => {
-    const external = importGraph(entry);
+    const { external } = importGraph(entry);
     assert.deepEqual(
       external,
       [],
@@ -117,22 +91,8 @@ test("the three Node-only modules are where the config says they are", () => {
   }
 });
 
-/** Every module reachable from an entry point, as file paths — the graph, not just its edges. */
-function reachableFiles(entry: string): string[] {
-  const seen = new Set<string>();
-  const queue = [entry];
-  while (queue.length) {
-    const file = queue.pop()!;
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-    const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/^\s*(?:import|export)[^;]*?from\s+"([^"]+)"/gm)) {
-      const specifier = match[1]!;
-      if (specifier.startsWith(".")) queue.push(join(dirname(file), specifier.replace(/\.js$/, ".ts")));
-    }
-  }
-  return [...seen];
-}
+/** Every module reachable from an entry point, as file paths: the graph, not just its edges. */
+const reachableFiles = (entry: string): string[] => importGraph(entry).files;
 
 const PAGES: [string, string, string][] = [
   ["landing", resolve(HERE, "../web/src/landing/main.ts"), resolve(HERE, "../web/index.html")],
