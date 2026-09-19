@@ -1,0 +1,32 @@
+<svg width="900" height="114" viewBox="0 0 900 114" role="img"
+    aria-label="Repetitions each track makes before the pattern realigns"><rect x="30" y="0" width="742" height="14" rx="2"
+      fill="var(--s2)"
+       data-tip-t="A — EXT SYNTH" data-tip-b="7 steps · repeats 48x per cycle"/><text x="24" y="10.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">A</text><text x="778" y="10.5" font-size="9"
+      fill="var(--s2)">48&#215;
+      <tspan fill="var(--ink3)">· 7 steps</tspan></text><rect x="30" y="19" width="716.4057998930522" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T2 — BASS" data-tip-b="12 steps at 1.5x · repeats 42x per cycle"/><text x="24" y="29.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T2</text><text x="752.4057998930522" y="29.5" font-size="9"
+      fill="var(--ink2)">42&#215;
+      <tspan fill="var(--ink3)">· 12 steps @1.5x</tspan></text><rect x="30" y="38" width="638.6895796894155" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T6 — &lt;b&gt;&amp;" data-tip-b="12 steps · repeats 28x per cycle"/><text x="24" y="48.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T6</text><text x="674.6895796894155" y="48.5" font-size="9"
+      fill="var(--ink2)">28&#215;
+      <tspan fill="var(--ink3)">· 12 steps</tspan></text><rect x="30" y="57" width="583.5490439337793" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T1 — KICK" data-tip-b="16 steps · repeats 21x per cycle"/><text x="24" y="67.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T1</text><text x="619.5490439337793" y="67.5" font-size="9"
+      fill="var(--ink2)">21&#215;
+      <tspan fill="var(--ink3)">· 16 steps</tspan></text><rect x="30" y="76" width="583.5490439337793" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T3 — PAD" data-tip-b="16 steps · repeats 21x per cycle"/><text x="24" y="86.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T3</text><text x="619.5490439337793" y="86.5" font-size="9"
+      fill="var(--ink2)">21&#215;
+      <tspan fill="var(--ink3)">· 16 steps</tspan></text><rect x="30" y="95" width="554.0027082850912" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T4 — LEAD" data-tip-b="14 steps at 0.75x · repeats 18x per cycle"/><text x="24" y="105.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T4</text><text x="590.0027082850912" y="105.5" font-size="9"
+      fill="var(--ink2)">18&#215;
+      <tspan fill="var(--ink3)">· 14 steps @0.75x</tspan></text></svg>

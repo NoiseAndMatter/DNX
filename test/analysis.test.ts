@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ import {
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
 import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
-import { browserGlobalsIn, code, importGraph, repoPath } from "./importgraph.js";
+import { browserGlobalsIn, code, importGraph, repoPath, specifiersOf } from "./importgraph.js";
 import { noteLengthSteps } from "../src/project/dn2pattern.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -748,7 +748,58 @@ test("the microtiming chart draws nothing past what the sequencer can do", () =>
 /** Every local module reachable from `entry`, as repo-relative paths. */
 const localGraph = (entry: string): string[] => importGraph(entry).files.map(repoPath);
 
-const PURE = ["charts", "compare", "model"] as const;
+/**
+ * Every file under `charts/`, as `charts/<name>`.
+ *
+ * Listed from the folder rather than by hand, and checked on its own rather than only through
+ * `charts.ts`: a chart file the barrel forgot to re-export would otherwise never be walked, and
+ * would be exactly the file nobody noticed reaching for `document`.
+ */
+const CHART_FILES = readdirSync(resolve(HERE, "../web/src/analysis/charts"))
+  .filter((f) => f.endsWith(".ts"))
+  .map((f) => `charts/${f.slice(0, -3)}`)
+  .sort();
+
+const PURE = ["charts", "compare", "model", ...CHART_FILES];
+
+/** Files in `charts/` that the barrel's import graph does not reach. */
+function unreachedChartFiles(files: readonly string[], graph: readonly string[]): string[] {
+  return files.filter((f) => !graph.includes(`web/src/analysis/${f}.ts`));
+}
+
+/** Imports inside `charts/` that break its shape: a chart file reaching another, or the barrel. */
+function chartFolderViolations(file: string, specifiers: readonly string[]): string[] {
+  const shared = ["./theme.js", "./svg.js", "./legend.js"];
+  return specifiers
+    .filter((s) => s.startsWith(".") && s !== "../model.js" && !s.startsWith("../../../../src/"))
+    .filter((s) => s === "../charts.js" || !shared.includes(s))
+    .map((s) => `${file} -> ${s}`);
+}
+
+test("the charts folder is found, and every file in it is reached from charts.ts", () => {
+  // A walk that found no files would pass every check below by finding nothing.
+  for (const name of ["theme", "svg", "legend", "rhythm", "cycle", "reset", "voices", "pitch"]) {
+    assert.ok(CHART_FILES.includes(`charts/${name}`), `charts/${name}.ts is missing from the listing`);
+  }
+  const graph = localGraph(resolve(HERE, "../web/src/analysis/charts.ts"));
+  assert.deepEqual(unreachedChartFiles(CHART_FILES, graph), [],
+    "charts.ts must re-export every file in charts/, or callers cannot reach it");
+  // Known-positive: a file the barrel does not name is reported.
+  assert.deepEqual(unreachedChartFiles(["charts/forgotten"], graph), ["charts/forgotten"]);
+});
+
+test("a chart file imports only the model and the shared chart files", () => {
+  /*
+   * Chart files never import each other and nothing in the folder imports the barrel. Either
+   * would make the split a tangle again, and a file importing `../charts.js` is a cycle.
+   */
+  const found = CHART_FILES.flatMap((f) =>
+    chartFolderViolations(f, specifiersOf(resolve(HERE, `../web/src/analysis/${f}.ts`))));
+  assert.deepEqual(found, []);
+  // Known-positive: both shapes are caught.
+  assert.deepEqual(chartFolderViolations("charts/pitch", ["./rhythm.js", "../charts.js", "./svg.js"]),
+    ["charts/pitch -> ./rhythm.js", "charts/pitch -> ../charts.js"]);
+});
 
 for (const name of PURE) {
   const entry = resolve(HERE, `../web/src/analysis/${name}.ts`);
