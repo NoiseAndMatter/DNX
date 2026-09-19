@@ -52,108 +52,19 @@ const align = (a: number, b: number): number =>
   a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 import {
   MACHINE_ORDER, MICRO_MAX, NOTE_NAMES, barsOf, clock, gateLabel, machineLabel, masterOffset,
-  masterPeriod,
-  microFraction, noteName,
-  overlappingNotes, periodSources, pitchClass, presetOf, speedLabel, trackLabel,
-  type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell, type PitchWindow,
-  type TrackRow,
+  masterPeriod, microFraction, noteName, overlappingNotes, periodSources, pitchClass, presetOf,
+  speedLabel, trackLabel, type AnalysisTrack, type MicroBuckets, type PeriodGroup, type PitchCell,
+  type PitchWindow, type TrackRow,
 } from "./model.js";
+import { T, W, GRID_OP, machineVar, rampBand, rampIsLight, pcHue } from "./charts/theme.js";
+import { tip, svg, clip } from "./charts/svg.js";
 
-/** Chart type sizes, in real pixels. */
-export const T = {
-  tick: 10,     // axis and scale numbers
-  label: 10,    // series and category names
-  value: 9,     // numbers printed against a mark
-  flag: 10,     // the one call-out per chart
-} as const;
-
-/** Stroke weights. `series` was 2 and was the single biggest cause of the heaviness. */
-export const W = {
-  series: 1.25,
-  limit: 1,
-  axis: 1,
-  grid: 1,
-} as const;
-
-/** Gridlines carry at low opacity rather than at low weight. */
-export const GRID_OP = 0.55;
+export { T, W, GRID_OP, machineVar, rampBand, rampIsLight, pcHue } from "./charts/theme.js";
+export { TIP_SELECTOR } from "./charts/svg.js";
+export { rampLegend, legend, pcLegend, table } from "./charts/legend.js";
 
 /** What a dot on the phase strip encodes. */
 export type PhaseMode = "velocity" | "length" | "locks" | "overlap";
-
-/**
- * Elements carrying these attributes get the shared tooltip. Exported so `mount.ts` and these
- * charts cannot disagree about the name.
- */
-export const TIP_SELECTOR = "[data-tip-t]";
-
-/**
- * Attach the shared tooltip to a mark.
- *
- * **`body` may carry markup, and the escaping is a deliberate round trip.** What is written here is
- * escaped into an attribute; the browser decodes it once when `mount.ts` reads `dataset.tipB`; that
- * result is set as `innerHTML`, so any tags the caller put in render. A *value* interpolated into
- * `body` must therefore be escaped by the caller first — it then survives two decodes as text and
- * cannot become markup, which is why a preset named `<b>` prints as `<b>` rather than emboldening
- * the tooltip.
- */
-const tip = (title: string, body: string) =>
-  ` data-tip-t="${escapeHtml(title)}" data-tip-b="${escapeHtml(body)}"`;
-
-const svg = (w: number, h: number, label: string, body: string) =>
-  `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
-    aria-label="${escapeHtml(label)}">${body}</svg>`;
-
-/**
- * A machine's series colour.
- *
- * Five machines against an eight-slot categorical palette, which is why the pitch histogram stacks
- * by machine and not by track: sixteen tracks cannot be coloured, and five can. A machine this
- * project cannot name gets the muted ink rather than a sixth hue, so "unknown" never looks like a
- * category of its own.
- */
-export function machineVar(machine: number | undefined): string {
-  const at = machine === undefined ? -1 : MACHINE_ORDER.indexOf(machine);
-  return at === -1 ? "--ink3" : `--s${at + 1}`;
-}
-
-/**
- * Which step of the six-value sequential ramp a wait falls on.
- *
- * **Exported so the grid and the prose under it can agree.** A colour that appears in a chart and
- * nowhere else is a colour the reader has to hold in their head; the same number written in a
- * sentence should carry the same swatch. Logarithmic, because alignments span 2 bars to 124 in the
- * same pattern and a linear ramp would put every one of them except the worst in the first band.
- */
-export function rampBand(steps: number, worst: number): number {
-  if (!(worst > 1) || !(steps > 0)) return 0;
-  return Math.min(5, Math.max(0, Math.floor((Math.log(steps) / Math.log(worst)) * 5.99)));
-}
-
-/** True when `--q<band+1>` is light enough that dark ink reads better on it. */
-export function rampIsLight(band: number): boolean {
-  return band >= 3;
-}
-
-/**
- * The ramp itself, with its two ends named.
- *
- * A sequential scale without a key is a decoration. This says what the colour means in the same
- * units the cells use, and it is the thing that was missing when the grid read as "true to the data
- * and very hard to interpret".
- */
-export function rampLegend(soonest: number, longest: number): string {
-  const swatches = [0, 1, 2, 3, 4, 5].map((band) =>
-    `<span class="sw" style="background:var(--q${band + 1});width:22px;border-radius:0"></span>`).join("");
-  return `<div class="legend"><span class="item">
-      <span style="color:var(--ink3)">back in phase sooner</span>
-      <span style="display:inline-flex">${swatches}</span>
-      <span style="color:var(--ink3)">later</span>
-    </span><span class="item" style="color:var(--ink3)">${soonest} → ${longest} steps</span></div>`;
-}
-
-/** The hue wheel for pitch class — see `trackTimeline` for why twelve hues are allowed here. */
-export const pcHue = (pc: number) => `hsl(${pc * 30} 52% 56%)`;
 
 /**
  * Phase strip: where each track restarts, and what it plays, across the pattern you can see.
@@ -433,10 +344,6 @@ export function cycleBars(rows: readonly CycleBar[], w: number): string {
   return svg(w, h, "How long each selected pattern runs before it repeats", out);
 }
 
-/** Fit a name to the gutter. The tooltip carries the whole thing, so nothing is lost. */
-const clip = (text: string, max: number) =>
-  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-
 /**
  * Voice pressure over the pattern, as a step area against the device's budget.
  *
@@ -686,6 +593,7 @@ export function pitchBars(cells: readonly PitchCell[], w: number): string {
  * holds most of the trigs and flattened every deviation into a stub. It is stated in the caption
  * instead, which is the honest way to drop a bar rather than quietly rescaling around it.
  */
+
 /** Keep a bucket edge inside what the sequencer offers. See `MICRO_MAX`. */
 const clampMicro = (t: number) => Math.max(-MICRO_MAX, Math.min(MICRO_MAX, t));
 
@@ -1010,6 +918,7 @@ export function resetRuler(
  * colour with the cell: light ink on the pale end of a six-step ramp is unreadable, which is what
  * the first version of this shipped with.
  */
+
 /**
  * Steps as bars, and it says `1 bar` rather than `1 bars`.
  *
@@ -1122,36 +1031,4 @@ export function alignmentGrid(
     });
   });
   return svg(w, h, "When each pair of track lengths comes back into phase", out);
-}
-
-/* ---- legends and the table view ------------------------------------------------------- */
-
-/** A swatch-and-label legend. Each item is `[label, css custom property]`. */
-export function legend(items: readonly (readonly [string, string])[]): string {
-  return `<div class="legend">` + items.map(([label, v]) =>
-    `<span class="item"><span class="sw" style="background:var(${v})"></span>
-     <span>${escapeHtml(label)}</span></span>`).join("") + `</div>`;
-}
-
-/** The chromatic wheel as a legend, so the hue mapping is stated rather than guessed. */
-export function pcLegend(): string {
-  return `<div class="legend">` + NOTE_NAMES.map((n, pc) =>
-    `<span class="item"><span class="sw" style="background:${pcHue(pc)};height:3px;width:14px">
-     </span><span>${n}</span></span>`).join("") + `</div>`;
-}
-
-/**
- * The same numbers as a table, folded away.
- *
- * Every chart here is an encoding of something countable, and a reader who wants the count should
- * not have to hover twelve marks to get it.
- */
-export function table(
-  head: readonly string[], rows: readonly (readonly (string | number)[])[],
-): string {
-  return `<details class="tabular"><summary>Table view</summary><table>
-    <thead><tr>${head.map((x) => `<th>${escapeHtml(x)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r) =>
-      `<tr>${r.map((c) => `<td>${escapeHtml(String(c))}</td>`).join("")}</tr>`).join("")}
-    </tbody></table></details>`;
 }
