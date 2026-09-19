@@ -1,0 +1,12 @@
+<svg width="900" height="38" viewBox="0 0 900 38" role="img"
+    aria-label="Repetitions each track makes before the pattern realigns"><rect x="30" y="0" width="742" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T1 — KICK" data-tip-b="16 steps · repeats 1x per cycle"/><text x="24" y="10.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T1</text><text x="778" y="10.5" font-size="9"
+      fill="var(--ink2)">1&#215;
+      <tspan fill="var(--ink3)">· 16 steps</tspan></text><rect x="30" y="19" width="742" height="14" rx="2"
+      fill="var(--q4)"
+       data-tip-t="T3 — PAD" data-tip-b="16 steps · repeats 1x per cycle"/><text x="24" y="29.5" text-anchor="end"
+      font-size="10" fill="var(--ink2)">T3</text><text x="778" y="29.5" font-size="9"
+      fill="var(--ink2)">1&#215;
+      <tspan fill="var(--ink3)">· 16 steps</tspan></text></svg>

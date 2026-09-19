@@ -1,0 +1,20 @@
+<svg width="900" height="115" viewBox="0 0 900 115" role="img"
+    aria-label="How long each selected pattern runs before it repeats"><text x="4" y="11.5" font-size="10" fill="var(--s3)">&#9656;</text><text x="114" y="11.5" text-anchor="end" font-size="10"
+      fill="var(--ink)">A1 · GOLDEN</text><rect x="122" y="0" width="311" height="16" rx="2" fill="var(--crit)"
+       data-tip-t="A1 · GOLDEN" data-tip-b="64 steps · 4 bars · 0:08.0 · RESET cuts a 336-step polymeter · 3 notes never sound"/><text x="439" y="11.5" font-size="9" fill="var(--ink2)">4 bars
+      <tspan fill="var(--ink3)">· 0:08.0</tspan><tspan fill="var(--ink3)"> · of 21 bars</tspan></text><text x="114" y="34.5" text-anchor="end" font-size="10"
+      fill="var(--ink2)">A2</text><rect x="122" y="23" width="233.25" height="16" rx="2" fill="var(--q4)"
+       data-tip-t="A2" data-tip-b="48 steps · 3 bars · 0:06.0"/><text x="361.25" y="34.5" font-size="9" fill="var(--ink2)">3 bars
+      <tspan fill="var(--ink3)">· 0:06.0</tspan></text><text x="114" y="57.5" text-anchor="end" font-size="10"
+      fill="var(--ink2)">A3 · CUT BUT NOT…</text><rect x="122" y="46" width="622" height="16" rx="2" fill="var(--q4)"
+       data-tip-t="A3 · CUT BUT NOTHING LOST" data-tip-b="128 steps · 8 bars · 0:16.0 · RESET cuts a 896-step polymeter"/><text x="750" y="57.5" font-size="9" fill="var(--ink2)">8 bars
+      <tspan fill="var(--ink3)">· 0:16.0</tspan><tspan fill="var(--ink3)"> · of 56 bars</tspan></text><text x="114" y="80.5" text-anchor="end" font-size="10"
+      fill="var(--ink2)">A4 · SIXTEEN COP…</text><rect x="122" y="69" width="622" height="16" rx="2" fill="var(--q4)"
+       data-tip-t="A4 · SIXTEEN COPRIME LENGTHS" data-tip-b="960 steps · 60 bars · 2:00.0"/><rect x="748 " y="69" width="4" height="16" rx="1"
+          fill="var(--q4)" opacity="0.5"/><rect x="755 " y="69" width="4" height="16" rx="1"
+          fill="var(--q4)" opacity="0.36"/><rect x="762 " y="69" width="4" height="16" rx="1"
+          fill="var(--q4)" opacity="0.21999999999999997"/><text x="774" y="80.5" font-size="9" fill="var(--ink2)">&gt; 1M steps
+      <tspan fill="var(--ink3)">· 2:00.0</tspan></text><text x="114" y="103.5" text-anchor="end" font-size="10"
+      fill="var(--ink2)">A5</text><rect x="122" y="92" width="116.625" height="16" rx="2" fill="var(--q4)"
+       data-tip-t="A5" data-tip-b="24 steps · 1.5 bars · 0:03.2"/><text x="244.625" y="103.5" font-size="9" fill="var(--ink2)">1.5 bars
+      <tspan fill="var(--ink3)">· 0:03.2</tspan></text></svg>
