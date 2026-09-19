@@ -57,7 +57,12 @@ export const DN1_PROJECT_SOUND_VERSION = 5;
 /** Version field value of a sound object stored in a DN2 project (kit slots and pool). */
 export const DN2_PROJECT_SOUND_VERSION = 2;
 
-/** Byte offset of the 16-byte sound name. Same on both families. */
+/**
+ * Byte offset of the 16-byte sound name inside a sound object.
+ *
+ * A sound object is `BEEFBACE` (4) + u32be version (4) + 4 unidentified bytes + name.
+ * Same on both families and on SysEx sound dumps.
+ */
 export const SOUND_NAME_OFFSET = 12;
 export const SOUND_NAME_SIZE = 16;
 

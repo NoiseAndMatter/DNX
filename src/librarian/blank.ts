@@ -73,8 +73,8 @@ export function blankPatternKit(
 
   // An untouched kit has no name on either family. Clearing it rather than trusting the
   // captured bytes means the capture slot's name can never leak into every cleared slot.
-  const { nameOffset: nameAt, nameSize: KIT_NAME_SIZE } = device.spec.kit;
-  kit.fill(0, nameAt, nameAt + KIT_NAME_SIZE);
+  const { nameOffset: nameAt, nameSize } = device.spec.kit;
+  kit.fill(0, nameAt, nameAt + nameSize);
 
   return { pattern, kit };
 }

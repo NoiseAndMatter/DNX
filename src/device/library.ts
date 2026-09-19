@@ -51,9 +51,6 @@ import { type ApiFrame, RESPONSE_BIT } from "./api.js";
 /** The two library collections, named the way the manual names them. */
 export type LibraryKind = "preset" | "kit";
 
-/** Bank letters. Both collections use `A`–`H`; a kit bank also answers to its index. */
-export const BANKS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
-
 export const LIBRARY_ROOT: Record<LibraryKind, string> = {
   preset: "/soundbanks",
   kit: "/kits",

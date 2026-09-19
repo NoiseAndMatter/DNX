@@ -10,7 +10,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BANK_SIZE, countOccupiedIn, patternSlotView } from "../web/src/slotview.js";
+import { countOccupiedIn, patternSlotView } from "../web/src/slotview.js";
+import { PATTERNS_PER_BANK } from "../src/project/naming.js";
 import type { Device } from "../src/librarian/device.js";
 
 /** A device that reports exactly what a test asks it to, and nothing else. */
@@ -106,5 +107,5 @@ test("the last bank stops at the device's pattern count", () => {
 });
 
 test("a bank is sixteen slots on both families", () => {
-  assert.equal(BANK_SIZE, 16);
+  assert.equal(PATTERNS_PER_BANK, 16);
 });

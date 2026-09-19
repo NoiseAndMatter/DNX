@@ -26,8 +26,8 @@
  */
 
 import { auditPool, describePoolAudit, type PoolAudit } from "../../../src/librarian/poolaudit.js";
+import { BANKS } from "../../../src/project/naming.js";
 import {
-  BANKS,
   type LibraryBank,
   type LibraryKind,
   listLibraryBank,

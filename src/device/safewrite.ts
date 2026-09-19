@@ -96,6 +96,7 @@ import { type ChunkChecksum, refuseUnlessEmpty, writeStoredFile } from "./storag
 import { STORED_FORM, WRITE_CHUNK_SIZE } from "./storage.js";
 import { type Entry } from "./storage.js";
 import { type WritePermit } from "./writepermit.js";
+import { CONTAINER_SLOT_OFFSET } from "../project/container.js";
 
 /**
  * The permit, minted once, here, and never handed out.
@@ -485,16 +486,9 @@ export interface SafeFileWriteResult {
   verified: boolean;
 }
 
-/**
- * The byte a Digitone II stamps itself.
- *
- * `/kits/A/1` written verbatim into `/kits/A/38` reads back differing in exactly one byte of
- * 10,795: container offset 24, `0x00` → `0x25`, which is 37 for slot 38. It is the container's own
- * zero-based slot index — the same idea as `slotIndexOffset` in a pattern record — and **the
- * instrument writes it**, so a byte-exact comparison has to expect it or call every correct write a
- * corruption. Measured 2026-08-13; see `storagewrite.ts`.
- */
-export const CONTAINER_SLOT_OFFSET = 24;
+// `CONTAINER_SLOT_OFFSET`, the other byte the instrument stamps, is part of the container header and
+// is defined in `project/container.ts`. Re-exported here beside `CONTAINER_BANK_OFFSET`.
+export { CONTAINER_SLOT_OFFSET };
 
 /**
  * The container's zero-based **bank** index, which the instrument also writes for itself.

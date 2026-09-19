@@ -116,7 +116,7 @@ export interface DeviceSpec {
  * A DN2 kit record opens `BEEFBACE` + u32be version, so 8. A DN1's has no magic — just the u32be
  * version — so 4. Both were already written down in `blank.ts`; they are written here instead.
  */
-const KIT_NAME_SIZE = 16;
+export const KIT_NAME_SIZE = 16;
 
 export const DN1_SPEC: DeviceSpec = {
   kind: "dn1",

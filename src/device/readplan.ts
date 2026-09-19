@@ -74,10 +74,8 @@
 import { patternName } from "../project/naming.js";
 import { ProductId } from "../sysex/devices.js";
 import { POOL_SOUND_COUNT } from "../project/soundmap.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "../project/dn2image.js";
 import { RequestCode, responseFor } from "./dumprequest.js";
-
-/** Pattern slots on both families: 8 banks of 16. */
-export const PATTERN_COUNT = 128;
 
 /**
  * How many sounds `0x63` will answer for, by family. **[verified]** on hardware, both machines.
@@ -164,9 +162,10 @@ export function planProjectRead(dumpProductId: number, options: ReadPlanOptions 
   }
 
   const steps: ReadStep[] = [];
+  const { patternCount } = dumpProductId === ProductId.DN1 ? DN1_LAYOUT : DN2_LAYOUT;
 
   if (options.patterns ?? false) {
-    for (let i = 0; i < PATTERN_COUNT; i++) {
+    for (let i = 0; i < patternCount; i++) {
       steps.push({
         code: RequestCode.PatternKit,
         objNr: i,

@@ -94,8 +94,8 @@ import {
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
+import { CONTAINER_SLOT_OFFSET } from "../../../src/project/container.js";
 import {
-  CONTAINER_SLOT_OFFSET,
   buildRecordBackup,
   safeWriteFile,
 } from "../../../src/device/safewrite.js";

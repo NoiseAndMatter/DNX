@@ -9,13 +9,8 @@
  * Produces a plain model. Rendering is `render.ts`'s job.
  */
 
-import {
-  DN2_KIT,
-  SOUND_NAME_OFFSET,
-  SOUND_NAME_SIZE,
-  kitRecord,
-  trackLevel,
-} from "../project/dn2image.js";
+import { DN2_KIT, kitRecord, trackLevel } from "../project/dn2image.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { readPattern, readSoundPool, type Dn1Pattern } from "../project/dn1.js";
 import { readDn2Pattern, readMidiTrackMask, type Dn2Pattern } from "../project/dn2pattern.js";
 import { stepName, stepsByPage } from "../project/naming.js";

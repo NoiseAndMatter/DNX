@@ -27,9 +27,9 @@ import { basename } from "node:path";
 import { type ImageLayout, kitRecord, patternRecord } from "../project/dn2image.js";
 import { deviceFor } from "../librarian/device.js";
 import { rleEncode, toBase64 } from "../librarian/rle.js";
+import { KIT_NAME_SIZE } from "../project/spec.js";
 
 const KIT_NAME_AT = 8;
-const KIT_NAME_SIZE = 16;
 
 
 /** The bytes that legitimately vary between two blanks in the same project. */

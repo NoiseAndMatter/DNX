@@ -39,6 +39,8 @@
 
 import { SYNTH_TRACK_COUNT, readKit, readPattern } from "../project/dn1.js";
 import { crc32ZeroInit } from "../project/checksum.js";
+import { DN1_LAYOUT } from "../project/dn2image.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 
 /**
  * CRC-32 of a 302-byte DN1 project sound holding the factory init patch, with its name field
@@ -48,16 +50,11 @@ import { crc32ZeroInit } from "../project/checksum.js";
  */
 export const DN1_INIT_SOUND_FINGERPRINT = 0x7081f2f9;
 
-/** Sound object name field: 16 bytes at +0x0C, which differs per track and is not hashed. */
-const NAME_OFFSET = 12;
-const NAME_SIZE = 16;
-
-const PATTERN_COUNT = 128;
-
 /** Fingerprint a sound object ignoring its name, so all four init variants agree. */
 export function soundFingerprint(data: Uint8Array): number {
   const withoutName = Uint8Array.from(data);
-  withoutName.fill(0, NAME_OFFSET, NAME_OFFSET + NAME_SIZE);
+  // The name differs per track and is not hashed.
+  withoutName.fill(0, SOUND_NAME_OFFSET, SOUND_NAME_OFFSET + SOUND_NAME_SIZE);
   return crc32ZeroInit(withoutName) >>> 0;
 }
 
@@ -69,7 +66,7 @@ export function soundFingerprint(data: Uint8Array): number {
  */
 export function findUnusedSynthTracks(image: Uint8Array): number[] {
   const trigCounts = new Array<number>(SYNTH_TRACK_COUNT).fill(0);
-  for (let p = 0; p < PATTERN_COUNT; p++) {
+  for (let p = 0; p < DN1_LAYOUT.patternCount; p++) {
     const pattern = readPattern(image, p);
     for (let track = 0; track < SYNTH_TRACK_COUNT; track++) {
       trigCounts[track]! += pattern.tracks[track]?.trigs.length ?? 0;
@@ -81,7 +78,7 @@ export function findUnusedSynthTracks(image: Uint8Array): number[] {
 
   // One pass over the kits, dropping candidates as they disqualify themselves, rather than
   // 128 kit reads per track.
-  for (let k = 0; k < PATTERN_COUNT && candidates.size > 0; k++) {
+  for (let k = 0; k < DN1_LAYOUT.patternCount && candidates.size > 0; k++) {
     const kit = readKit(image, k);
     for (const track of [...candidates]) {
       const sound = kit.sounds[track];

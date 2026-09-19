@@ -22,7 +22,7 @@
  */
 
 import type { Device } from "../../src/librarian/device.js";
-import { patternName } from "../../src/project/naming.js";
+import { PATTERNS_PER_BANK, patternName } from "../../src/project/naming.js";
 
 /** One cell, already reduced to what it displays. */
 export interface SlotView {
@@ -55,9 +55,6 @@ export interface SlotView {
    */
   supported: boolean;
 }
-
-/** How many slots a bank holds on both families. */
-export const BANK_SIZE = 16;
 
 /**
  * How one pattern slot reads.
@@ -102,8 +99,8 @@ export function countOccupiedIn(
   image: Uint8Array,
   live?: ReadonlySet<number>,
 ): number {
-  const from = bank * BANK_SIZE;
-  const to = Math.min(from + BANK_SIZE, device.patternCount);
+  const from = bank * PATTERNS_PER_BANK;
+  const to = Math.min(from + PATTERNS_PER_BANK, device.patternCount);
   let n = 0;
   for (let index = from; index < to; index++) {
     if (live ? live.has(index) : device.summarise(image, index).occupied) n++;

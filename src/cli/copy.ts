@@ -15,12 +15,7 @@ import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "../project/dn1.js";
 import { applyPatternCopy, freePoolSlots, planPatternCopy } from "../librarian/copy.js";
-
-
-/** Bank letter and 1-based position, the way the device labels patterns. */
-function label(index: number): string {
-  return `${String.fromCharCode(65 + Math.floor(index / 16))}${(index % 16) + 1}`;
-}
+import { patternName } from "../project/naming.js";
 
 function main(): void {
   const { arg, flag } = cliArgs();
@@ -50,11 +45,11 @@ function main(): void {
   const plan = planPatternCopy(src.image, pattern, dst.image, slot);
 
   console.log(
-    `\n${basename(fromPath)} "${readProjectName(src.image)}" pattern ${label(pattern)} ` +
+    `\n${basename(fromPath)} "${readProjectName(src.image)}" pattern ${patternName(pattern)} ` +
       `"${plan.sourceName}"`,
   );
   console.log(
-    `  -> ${basename(toPath)} "${readProjectName(dst.image)}" slot ${label(slot)} ` +
+    `  -> ${basename(toPath)} "${readProjectName(dst.image)}" slot ${patternName(slot)} ` +
       `"${plan.destinationName}"`,
   );
 

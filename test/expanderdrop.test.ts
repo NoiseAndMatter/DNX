@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { DN2_LAYOUT } from "../src/project/dn2image.js";
 import {
-  DN2_PATTERN_COUNT,
   allSlots,
   describeSlots,
   landingFits,
@@ -47,17 +47,17 @@ test("nothing selected previews nothing", () => {
 test("a landing that runs past the end does not fit, and one slot is enough", () => {
   // The merge refuses the whole landing rather than trimming it, so a single overflowing slot has
   // to disqualify all of them. A hint that offered the rest would promise what Apply will not do.
-  const overflowing = { selection: [0, 1], landing: DN2_PATTERN_COUNT - 1, mode: "contiguous" as const };
+  const overflowing = { selection: [0, 1], landing: DN2_LAYOUT.patternCount - 1, mode: "contiguous" as const };
   assert.equal(landingFits(overflowing), false);
   assert.deepEqual(allSlots(overflowing), [127, 128], "unfiltered, or the overflow is invisible");
 
-  assert.equal(landingFits({ ...overflowing, landing: DN2_PATTERN_COUNT - 2 }), true);
+  assert.equal(landingFits({ ...overflowing, landing: DN2_LAYOUT.patternCount - 2 }), true);
 });
 
 test("the preview drops out-of-range slots rather than clamping them", () => {
   // Absence is the signal. Clamping would draw two patterns into the last cell and claim the drop
   // was fine; leaving the cell unmarked is what makes the overflow visible before Apply.
-  const map = pendingSources({ selection: [0, 1], landing: DN2_PATTERN_COUNT - 1, mode: "contiguous" });
+  const map = pendingSources({ selection: [0, 1], landing: DN2_LAYOUT.patternCount - 1, mode: "contiguous" });
   assert.deepEqual([...map.keys()], [127]);
   assert.deepEqual(landingSlots({ selection: [0, 1], landing: 127, mode: "contiguous" }), [127]);
 });

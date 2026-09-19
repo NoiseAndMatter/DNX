@@ -105,7 +105,8 @@ import {
 } from "./dragrules.js";
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
-import { BANKS, GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
+import { GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
+import { BANKS } from "../../../src/project/naming.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
