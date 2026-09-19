@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": []
+  },
+  // The future platform-free core, checked with no DOM and no Node. The only host globals it may
+  // use are declared in types/core-host.d.ts. `test/layers.test.ts` checks the same boundary
+  // from the import side.
+  "include": [
+    "types/core-host.d.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    // These stay in DNX when the core is extracted.
+    "src/node/**/*.ts",
+    "src/cli/**/*.ts",
+    "src/sheet/**/*.ts",
+    // Research and hardware-test tooling that lives in core's folders until it is moved out.
+    "src/librarian/hardwaretest.ts",
+    "src/librarian/trackhardwaretest.ts",
+    "src/device/usbcapture.ts",
+    "src/device/apiprobe.ts"
+  ]
+}
