@@ -23,6 +23,13 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
 
 ## Unreleased
 
+### Fixed
+
+- **The Probe's Write back and Write to slot now check the WRITE switch themselves.** Until now
+  only the greyed button stood between them and the instrument, so a button that failed to grey
+  out would have written with WRITE off. Both now refuse in code before the slot is even read, and
+  say that nothing was sent. With WRITE armed they behave exactly as before.
+
 ### Changed
 
 - **The backup now says why the instrument's global settings are missing, not just that they are.**

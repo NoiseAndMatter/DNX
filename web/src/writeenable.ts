@@ -15,8 +15,8 @@
  * ## Two layers, on purpose, and it is the same shape as `WritePermit`
  *
  * `requireWriteEnabled()` is the gate that matters. It sits at the three places in `web/src/` that
- * call a safe-write function, and it throws before any of them sends a byte. **A button that
- * somebody forgot to disable still cannot write.**
+ * call a safe-write function and in the probe's two direct dump writes, and it throws before any
+ * of them sends a byte. **A button that somebody forgot to disable still cannot write.**
  *
  * The visual half is the affordance: gated controls go flat and stop accepting clicks. That is what
  * a person actually experiences, and it is the half that is easy to get wrong, because every page

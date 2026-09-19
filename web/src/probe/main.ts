@@ -1087,6 +1087,21 @@ async function writeBack(): Promise<void> {
   const slot = patternName(candidate.objNr);
   const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
 
+  // Nothing reaches an instrument until somebody arms the switch, and the disabled button is not
+  // what enforces that. Checked before the pre-write read, so a control the page forgot to gate
+  // is refused before the device is asked anything. See `writeenable.ts`.
+  try {
+    requireWriteEnabled();
+  } catch (error) {
+    verdictCard("Write refused: writing is switched off", [
+      ["Slot", slot],
+      ["Reason", String(error)],
+      ["Device", "untouched"],
+    ]);
+    status(`Not written: ${String(error)}`, "warn");
+    return;
+  }
+
   /*
    * **Is it still a null round trip?** The capture is what the slot held when it was read, and the
    * confirmation used to promise the bytes were identical to what the device just sent. That stops
@@ -1371,6 +1386,22 @@ async function writeToChosenSlot(): Promise<void> {
   const device = productId === ProductId.DN1 ? DN1_DEVICE : DN2_DEVICE;
   const from = patternName(sourceObj);
   const to = patternName(destination);
+
+  // Nothing reaches an instrument until somebody arms the switch, and the disabled button is not
+  // what enforces that. Checked before the pre-write read, so a control the page forgot to gate
+  // is refused before the device is asked anything. See `writeenable.ts`.
+  try {
+    requireWriteEnabled();
+  } catch (error) {
+    verdictCard("Write refused: writing is switched off", [
+      ["From", from],
+      ["To", to],
+      ["Reason", String(error)],
+      ["Device", "untouched"],
+    ]);
+    status(`Not written: ${String(error)}`, "warn");
+    return;
+  }
 
   status(`Asking for ${to} before touching it…`);
   const before = await awaitPatternKit(output, productId, destination);

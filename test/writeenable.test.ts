@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   WriteDisabled, isWriteEnabled, requireWriteEnabled, setWriteEnabled,
 } from "../web/src/writeenable.js";
+import { probeFunctionNames, probeWrite } from "./probesource.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
@@ -83,6 +84,40 @@ test("every path that writes to an instrument passes the gate", () => {
   const ungated = writers.filter((f) => !/\brequireWriteEnabled\s*\(/.test(readFileSync(f, "utf8")));
   assert.deepEqual(ungated.map((f) => f.replace(WEB, "web")), [],
     "these send bytes to an instrument without checking whether writing is switched on");
+});
+
+test("every function in the probe that sends a write passes the gate itself", () => {
+  /*
+   * **Per function, because the file-level check above cannot see inside the probe.** The probe
+   * has three writes: the +Drive write through `safeWriteFile`, and `writeBack` and
+   * `writeToChosenSlot`, which build a dump and hand it straight to `output.send`. The scan above
+   * found the one gate call in the file and passed, while the other two were stopped only by their
+   * greyed buttons.
+   *
+   * A function writes if it calls a safe-write function or sends anything other than a request.
+   * The requests are the reads: `dumpRequest(...)`, and the `bytes` forwarders handed to readers.
+   */
+  // Every send spreads one expression into an array. A send of any other shape counts as a write,
+  // so a new way of sending cannot slip past by not looking like the old ones. An empty
+  // `output.send()` is prose in a comment.
+  const sent = (body: string): string[] =>
+    [...body.matchAll(/\boutput\.send\((?!\))(\[\.\.\.([^\]]*)\]\))?/g)].map((m) => m[2] ?? "?");
+  const sendsWrite = (body: string): boolean =>
+    /\bsafeWrite(Records|File)\s*\(/.test(body) ||
+    sent(body).some((what) => what !== "bytes" && !/Request\(/.test(what));
+
+  const writers = probeFunctionNames().filter((name) => sendsWrite(probeWrite(name, 20_000)));
+  assert.deepEqual(writers.sort(), ["readThenWrite", "writeBack", "writeToChosenSlot"],
+    "the set of probe functions that write has changed; check the new one is gated and update this list");
+
+  for (const name of writers) {
+    const body = probeWrite(name, 20_000);
+    // A statement on its own line, so a comment naming the gate does not count as calling it.
+    const gate = /^\s*requireWriteEnabled\(\);/m.exec(body)?.index ?? -1;
+    assert.ok(gate > 0, `${name} sends a write without calling requireWriteEnabled()`);
+    const send = body.search(/\bsafeWrite(Records|File)\s*\(|\boutput\.send\(\[\.\.\.message\]\)/);
+    assert.ok(send > 0 && gate < send, `${name} checks the switch only after it has started writing`);
+  }
 });
 
 test("every control that writes is marked, and every dangerous one has been considered", () => {
