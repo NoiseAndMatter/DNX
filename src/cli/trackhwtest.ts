@@ -32,7 +32,7 @@ import { buildProjectFile } from "../node/projectfile.js";
 import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
 import { readDn2Pattern } from "../project/dn2pattern.js";
 import { describePlock } from "../project/plockparams.js";
-import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
+import { hhmm, patternIndex, patternName } from "../project/naming.js";
 import {
   type ExportRow,
   type ExportSpec,

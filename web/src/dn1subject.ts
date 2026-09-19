@@ -46,7 +46,7 @@ import {
 import { MACHINE } from "../../src/project/machine.js";
 import { NOTE_LENGTH_NONE, noteLengthSteps } from "../../src/project/dn2pattern.js";
 import type { Device } from "../../src/librarian/device.js";
-import { patternName } from "../../src/sheet/naming.js";
+import { patternName } from "../../src/project/naming.js";
 import { PatternSubjectError } from "./patternsubject.js";
 import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
 

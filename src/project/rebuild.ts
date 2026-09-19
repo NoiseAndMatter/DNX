@@ -73,7 +73,7 @@
 
 import { type SysExMessage } from "../sysex/container.js";
 import { ProductId } from "../sysex/devices.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "./naming.js";
 import { type ImageLayout, DN1_LAYOUT, DN2_LAYOUT, PROJECT_ID_OFFSET, mintProjectId, writeProjectId } from "./dn2image.js";
 import { DN1_POOL_OFFSET, DN2_POOL_OFFSET, POOL_SOUND_COUNT } from "./soundmap.js";
 

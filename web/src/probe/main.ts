@@ -76,7 +76,7 @@ import {
   writeToSlot,
 } from "../../../src/device/dumpwrite.js";
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
-import { patternIndex, patternName } from "../../../src/sheet/naming.js";
+import { patternIndex, patternName } from "../../../src/project/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
 import {
   type Entry,

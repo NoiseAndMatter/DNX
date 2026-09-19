@@ -105,18 +105,6 @@ const FILES = [...tsFiles(join(ROOT, "src")), ...tsFiles(join(ROOT, "web", "src"
  * Every violation today. Delete a line when its import goes; never add one.
  */
 const KNOWN = [
-  // Core reaching into src/sheet for the naming helpers. Goes when naming.ts moves to
-  // src/project/ (item 4 of the refactor plan).
-  "src/device/capture.ts -> ../sheet/naming.js",
-  "src/device/deviceproject.ts -> ../sheet/naming.js",
-  "src/device/readplan.ts -> ../sheet/naming.js",
-  "src/device/safewrite.ts -> ../sheet/naming.js",
-  "src/expand/deviceexpand.ts -> ../sheet/naming.js",
-  "src/expand/landing.ts -> ../sheet/naming.js",
-  "src/expand/merge.ts -> ../sheet/naming.js",
-  "src/librarian/rename.ts -> ../sheet/naming.js",
-  "src/project/rebuild.ts -> ../sheet/naming.js",
-
   // A module every page shares, reaching into the landing page's folder.
   "web/src/settings.ts -> ./landing/seen.js",
 ];

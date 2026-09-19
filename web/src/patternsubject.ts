@@ -31,7 +31,7 @@ import {
   NOTE_LENGTH_NONE, noteLengthSteps, readDn2Pattern,
   RECORD_VERSION as DN2_RECORD_VERSION,
 } from "../../src/project/dn2pattern.js";
-import { patternName } from "../../src/sheet/naming.js";
+import { patternName } from "../../src/project/naming.js";
 import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
 
 export class PatternSubjectError extends Error {}

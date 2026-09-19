@@ -79,7 +79,7 @@
  */
 
 import { type ImageLayout } from "../project/dn2image.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { buildMessage } from "../sysex/container.js";
 import { PRODUCT_NAMES } from "../sysex/devices.js";
 import { patternKitRecord } from "../project/dn2image.js";

@@ -54,7 +54,7 @@ import {
   SOUND_NAME_OFFSET,
   SOUND_NAME_SIZE,
 } from "../project/soundmap.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { DN2_DEVICE } from "../librarian/device.js";
 
 /** No lock on this step. */

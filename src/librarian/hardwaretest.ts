@@ -36,7 +36,7 @@
  * audio: a step that moved the right bytes to the wrong slot fails visibly.
  */
 
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { type Device } from "./device.js";
 import { type Shuffle, clear, copyMany, moveMany, swap } from "./shuffle.js";
 

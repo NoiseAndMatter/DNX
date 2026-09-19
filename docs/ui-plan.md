@@ -227,7 +227,7 @@ chosen by us.
 **Never modify the project that was opened.** Always a new file, always stamped.
 
 **One naming vocabulary.** Patterns as the device shows them (`A1`, `B12`), steps as page and step
-(`p2·7`), never a trig number above 16. `src/sheet/naming.ts` already implements this and the UI
+(`p2·7`), never a trig number above 16. `src/project/naming.ts` already implements this and the UI
 must import it rather than reimplement it — divergence between the hardware sheets and the screen
 would be its own bug.
 

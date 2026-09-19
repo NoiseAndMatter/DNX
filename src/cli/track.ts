@@ -33,7 +33,7 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, fail } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { patternIndex, patternName } from "../sheet/naming.js";
+import { patternIndex, patternName } from "../project/naming.js";
 import { OpenError, openProject } from "../node/open.js";
 import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "../librarian/shuffle.js";
 import {

@@ -22,7 +22,7 @@
  */
 
 import type { Device } from "../../src/librarian/device.js";
-import { patternName } from "../../src/sheet/naming.js";
+import { patternName } from "../../src/project/naming.js";
 
 /** One cell, already reduced to what it displays. */
 export interface SlotView {

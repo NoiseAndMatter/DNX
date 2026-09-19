@@ -18,7 +18,7 @@ import {
 } from "../project/dn2image.js";
 import { readPattern, readSoundPool, type Dn1Pattern } from "../project/dn1.js";
 import { readDn2Pattern, readMidiTrackMask, type Dn2Pattern } from "../project/dn2pattern.js";
-import { stepName, stepsByPage } from "./naming.js";
+import { stepName, stepsByPage } from "../project/naming.js";
 
 /** DN2 tracks 9-16, which no Elektron import ever populates. Expansion is what fills them. */
 const FIRST_EXPANDED_TRACK = 8;

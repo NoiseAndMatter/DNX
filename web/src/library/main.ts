@@ -45,7 +45,7 @@ import {
   readPatternKitName,
 } from "../../../src/librarian/kitwrite.js";
 import { summariseTracks } from "../../../src/librarian/tracksummary.js";
-import { patternName } from "../../../src/sheet/naming.js";
+import { patternName } from "../../../src/project/naming.js";
 import { patternSlotView } from "../slotview.js";
 import { buildProjectBlob } from "../project.js";
 import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";

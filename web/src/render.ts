@@ -6,7 +6,7 @@
  * through the same helpers the hardware test sheet uses.
  */
 
-import { patternName } from "../../src/sheet/naming.js";
+import { patternName } from "../../src/project/naming.js";
 import { escapeHtml } from "../../src/sheet/html.js";
 import type { ExpansionPlan } from "../../src/expand/types.js";
 

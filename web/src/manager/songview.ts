@@ -31,7 +31,7 @@
  */
 
 import { type Song, type SongRow, LABELS, LIMITS, mutedTracks } from "../../../src/project/dn2song.js";
-import { patternName } from "../../../src/sheet/naming.js";
+import { patternName } from "../../../src/project/naming.js";
 
 /**
  * The drag controller, reduced to what a song row needs.

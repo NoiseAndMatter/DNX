@@ -41,7 +41,7 @@
 
 import { type SysExMessage, parseMessage } from "../sysex/container.js";
 import { ProductId } from "../sysex/devices.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { type ImageLayout } from "../project/dn2image.js";
 import { kitRecord, patternKitRecord, patternRecord } from "../project/dn2image.js";
 import {

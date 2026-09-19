@@ -24,7 +24,7 @@
  */
 
 import { type LandingMode, landingSlotsFor } from "../../../src/expand/landing.js";
-import { patternName } from "../../../src/sheet/naming.js";
+import { patternName } from "../../../src/project/naming.js";
 
 /** How many patterns a Digitone II holds. The bound a landing has to fit inside. */
 export const DN2_PATTERN_COUNT = 128;

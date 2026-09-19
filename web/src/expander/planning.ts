@@ -55,7 +55,7 @@ import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/devi
 import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
 import { readProjectName } from "../../../src/project/dn1.js";
 import { deviceFor } from "../../../src/librarian/device.js";
-import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
+import { patternName, stampedProjectName as stampedName } from "../../../src/project/naming.js";
 // **From `src/`, not from `../dom.js`.** `dom.ts` only re-exports this, and importing it here
 // would pull `HTMLElement` and `Blob` into anything that imports planning — which is how a Node
 // test of this module would start failing `tsc` on types it never asked for. That has happened

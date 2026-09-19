@@ -24,7 +24,7 @@ import { mintProjectId, writeProjectId } from "../project/dn2image.js";
 import { findTemplate, templateSearchPaths } from "../node/open.js";
 import { convertProject } from "../expand/convert.js";
 import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
-import { stampedProjectName } from "../sheet/naming.js";
+import { stampedProjectName } from "../project/naming.js";
 
 
 /**

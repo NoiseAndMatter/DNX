@@ -109,7 +109,7 @@ somewhere bounded. A panel that can grow without bound will, and it will take th
 ## 10. Vocabulary follows the hardware
 
 A **track** is a sequence plus a preset, because that is what the device shows. Positions are named
-as the device names them — `A1`, `B12`, `H16` — through `src/sheet/naming.ts`, never as raw indices
+as the device names them — `A1`, `B12`, `H16` — through `src/project/naming.ts`, never as raw indices
 in anything a person reads. One name per concept, across CLI, page and docs.
 
 ---

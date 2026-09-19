@@ -43,7 +43,7 @@ import {
   renderDescribed,
   reportScope,
 } from "./planning.js";
-import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
+import { patternName, stampedProjectName as stampedName } from "../../../src/project/naming.js";
 import {
   GridDrag,
   bankSlots,

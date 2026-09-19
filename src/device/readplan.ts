@@ -71,7 +71,7 @@
  * that suits both is either too slow to fail or too quick to succeed.
  */
 
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { ProductId } from "../sysex/devices.js";
 import { POOL_SOUND_COUNT } from "../project/soundmap.js";
 import { RequestCode, responseFor } from "./dumprequest.js";
