@@ -21,6 +21,17 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## Unreleased
+
+### Changed
+
+- **The backup now says why the instrument's global settings are missing, not just that they are.**
+  MIDI configuration, sync, audio routing and brightness live in the machine rather than in a
+  project, and **two independent routes both fail to reach them**: the +Drive root holds only
+  projects, soundbanks and kits, and Elektron's SysEx SEND menu offers only PROJECT, PATTERN and
+  PRESETS. Restore onto a replacement unit and those stay at whatever the target already had. The
+  limit is the instrument's, not DNX's, and the README now says so.
+
 ## 0.9.0-beta.3 — 2026-09-16
 
 ### Fixed

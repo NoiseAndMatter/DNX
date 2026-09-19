@@ -901,6 +901,40 @@ conversion exists.
 > by a different route, and this time the wrong number had already been written into a constant's
 > doc comment as though it were general.
 
+### The instrument's global settings are reachable by neither protocol
+
+**Not a gap in DNX. A gap in what the instrument offers**, and worth stating because a backup tool
+that stays quiet about it is making a promise it cannot keep.
+
+Global settings — `MIDI CONFIG` and its sync and port options, `AUDIO ROUTING`, `PERSONALIZE`,
+LED brightness — live in the machine rather than in a project. Two independent routes reach the
+instrument and **neither carries them**:
+
+- **The +Drive filesystem**, which this document describes. Its root was listed on hardware: a
+  Digitone II holds `projects`, `soundbanks` and `kits`, a Digitone the first two. No settings
+  among them.
+- **The classic SysEx dump protocol.** Elektron's manual, §13.5.1 SYSEX SEND, offers three kinds:
+  PROJECT, PATTERN, PRESETS. `PROJECT` sends *"the active project (settings, patterns, presets in
+  the pool)"* — so it carries **project-scoped** settings, which a project file already has, and
+  not the machine's own.
+
+These two are genuine corroboration rather than one convention seen twice: a filesystem listing
+read off the device and a dump-type menu documented by the manufacturer have nothing in common.
+
+**Where they are stored is unknown.** The firmware session notes that the board carries a Winbond
+25Q128JV — 16 MB SPI NOR, separate from the eMMC holding the +Drive — and that machine-global,
+project-independent state is what such a part is usually for. **That is a reading of a parts list,
+not a measurement**, and nobody has looked.
+
+### The Digitone II does not need arming to receive
+
+Elektron's manual, §13.5.2: *"Digitone II is continuously listening for SysEx data so you can at
+any time send backed up projects or patterns to the device."*
+
+So a sender does not put the instrument into a receive mode first. Useful for anything scripted,
+and worth knowing for the opposite reason too: there is no menu state standing between a stray
+SysEx message and the instrument acting on it.
+
 ### Banks are addressed by number here, and by letter under `/soundbanks`
 
 `/kits/1` works. `/soundbanks/A` and `/soundbanks/H` work. **Neither form has been tried against

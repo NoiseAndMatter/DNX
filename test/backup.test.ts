@@ -229,9 +229,16 @@ test("a +Drive directory DNX cannot read is named, not passed over", () => {
 });
 
 test("the README does not claim the whole instrument is backed up", () => {
-  // It copies the +Drive. Settings that live off it — LED brightness, MIDI port config — are not
-  // reachable over this protocol at all, and a backup that implied otherwise would be a promise.
+  /*
+   * It copies the +Drive. The instrument's global settings — MIDI configuration, sync, audio
+   * routing, brightness — live in the machine, and **two independent routes both fail to reach
+   * them**: the +Drive root holds only projects, soundbanks and kits, and Elektron's SysEx SEND
+   * menu offers only PROJECT, PATTERN and PRESETS. A backup tool quiet about that is making a
+   * promise it cannot keep, and the person finds out when they restore onto a replacement unit.
+   */
   const readme = readFileSync(join(ROOT, "README.md"), "utf8");
   assert.doesNotMatch(readme, /Back the whole instrument up/);
   assert.match(readme, /It copies the \*\*\+Drive\*\*, not the instrument/);
+  assert.match(readme, /no tool can put them there/,
+    "and says the limit is the instrument's, not DNX's");
 });
