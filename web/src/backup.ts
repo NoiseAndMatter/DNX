@@ -63,6 +63,7 @@
 
 import { STORED_FORM, wholeListing } from "../../src/device/storage.js";
 import { fileLengthFromHead } from "../../src/project/container.js";
+import { BANKS } from "../../src/project/naming.js";
 import { readStoredFile } from "../../src/device/storagesession.js";
 import type { DriveProject } from "../../src/device/drive.js";
 import { projectPath } from "./driveslot.js";
@@ -131,9 +132,6 @@ function safeName(slot: number, name: string, extension: string): string {
   // shows. Two projects on one +Drive may share a name; two cannot share a slot.
   return `projects/${String(slot).padStart(3, "0")} ${trimmed || "UNNAMED"}${extension}`;
 }
-
-/** The banks a soundbank or kit directory holds, and what is in each. */
-const BANKS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
 
 /** One readable thing on the +Drive, wherever it lives. */
 interface DriveItem {

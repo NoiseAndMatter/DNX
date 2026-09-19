@@ -44,7 +44,7 @@
 import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout } from "../project/dn2image.js";
 import { SYNTH_TRACK_COUNT, TRACK, trackRecord } from "../project/dn1.js";
 import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { type ConversionReport, convertProject } from "./convert.js";
 import type { ExpansionPlan } from "./types.js";
 import { blankPatternKit } from "../librarian/blank.js";

@@ -76,7 +76,7 @@ import {
   writeToSlot,
 } from "../../../src/device/dumpwrite.js";
 import { parseMessage, rebuildMessage, splitMessages } from "../../../src/sysex/container.js";
-import { patternIndex, patternName } from "../../../src/sheet/naming.js";
+import { patternIndex, patternName } from "../../../src/project/naming.js";
 import { codesUnderTest, describeReply, probeRequest } from "../../../src/device/probecodes.js";
 import {
   type Entry,
@@ -94,8 +94,8 @@ import {
   informationRequest,
 } from "../../../src/device/apiprobe.js";
 import { type ApiTransport, readStoredFile } from "../../../src/device/storagesession.js";
+import { CONTAINER_SLOT_OFFSET } from "../../../src/project/container.js";
 import {
-  CONTAINER_SLOT_OFFSET,
   buildRecordBackup,
   safeWriteFile,
 } from "../../../src/device/safewrite.js";

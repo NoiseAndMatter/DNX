@@ -6,12 +6,16 @@
  * while standing at the hardware, so every position leaves this module already translated.
  */
 
-const BANKS = "ABCDEFGH";
+/**
+ * Bank letters, `A` to `H`. Pattern banks and the +Drive's preset and kit banks all use these
+ * eight, so there is one list for all of them.
+ */
+export const BANKS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
 
 /** Steps per page on the Digitone II, and therefore the highest step number ever shown. */
 export const STEPS_PER_PAGE = 16;
 
-/** Patterns per bank. 8 banks x 16 = the 128-slot array. */
+/** Patterns per bank, on both families. 8 banks x 16 = the 128-slot array. */
 export const PATTERNS_PER_BANK = 16;
 
 /** Pattern index 0..127 as the device labels it: `A1`..`H16`. */
@@ -30,7 +34,7 @@ export function patternIndex(name: string): number | undefined {
   const match = /^([A-Ha-h])\s*(\d{1,2})$/.exec(name.trim());
   if (!match) return undefined;
 
-  const bank = BANKS.indexOf(match[1]!.toUpperCase());
+  const bank = (BANKS as readonly string[]).indexOf(match[1]!.toUpperCase());
   const position = Number(match[2]);
   if (bank < 0 || position < 1 || position > PATTERNS_PER_BANK) return undefined;
 

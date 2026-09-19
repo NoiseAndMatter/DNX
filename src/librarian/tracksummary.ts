@@ -14,12 +14,11 @@
 import {
   DN2_KIT,
   DN2_LAYOUT,
-  SOUND_NAME_OFFSET,
-  SOUND_NAME_SIZE,
   kitRecord,
   patternRecord,
   trackLevel,
 } from "../project/dn2image.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import {
   KIT_MIDI_MASK_OFFSET,
   LOCK_TABLE,

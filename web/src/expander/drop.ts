@@ -24,10 +24,8 @@
  */
 
 import { type LandingMode, landingSlotsFor } from "../../../src/expand/landing.js";
-import { patternName } from "../../../src/sheet/naming.js";
-
-/** How many patterns a Digitone II holds. The bound a landing has to fit inside. */
-export const DN2_PATTERN_COUNT = 128;
+import { patternName } from "../../../src/project/naming.js";
+import { DN2_LAYOUT } from "../../../src/project/dn2image.js";
 
 export interface Landing {
   /** Chosen source patterns, **in click order** — that order is the landing order. */
@@ -48,7 +46,7 @@ export function pendingSources({
   selection,
   landing,
   mode,
-  patternCount = DN2_PATTERN_COUNT,
+  patternCount = DN2_LAYOUT.patternCount,
 }: Landing): Map<number, number> {
   const pending = new Map<number, number>();
   if (selection.length === 0) return pending;
@@ -80,7 +78,7 @@ export function allSlots({ selection, landing, mode }: Landing): number[] {
  * them, and that is the point.
  */
 export function landingFits(landing: Landing): boolean {
-  const limit = landing.patternCount ?? DN2_PATTERN_COUNT;
+  const limit = landing.patternCount ?? DN2_LAYOUT.patternCount;
   return allSlots(landing).every((slot) => slot < limit);
 }
 
@@ -89,7 +87,7 @@ export function landingSlots({
   selection,
   landing,
   mode,
-  patternCount = DN2_PATTERN_COUNT,
+  patternCount = DN2_LAYOUT.patternCount,
 }: Landing): number[] {
   if (selection.length === 0) return [];
   return landingSlotsFor(selection, landing, mode).filter((slot) => slot < patternCount);

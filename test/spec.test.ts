@@ -23,7 +23,6 @@ import {
   POOL_SOUND_COUNT,
 } from "../src/project/soundmap.js";
 import { SOUND_SIZE as DN1_SOUND_SIZE_FROM_DN1 } from "../src/project/dn1.js";
-import { POOL_SLOTS } from "../src/librarian/copy.js";
 import { KIT_NAME_OFFSET } from "../src/librarian/kitwrite.js";
 
 test("a device reports the spec it is built from", () => {
@@ -55,11 +54,6 @@ test("the sound size agrees wherever it is named", () => {
   assert.equal(DN2_SPEC.sound.size, DN2_SOUND_SIZE);
   assert.equal(DN1_SPEC.sound.size, 302);
   assert.equal(DN2_SPEC.sound.size, 359);
-});
-
-test("the pool count agrees wherever it is named", () => {
-  // `POOL_SOUND_COUNT` and `POOL_SLOTS` are the same 128 in two modules.
-  assert.equal(POOL_SOUND_COUNT, POOL_SLOTS);
 });
 
 test("a kit's name has one address", () => {

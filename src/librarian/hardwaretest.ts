@@ -36,7 +36,7 @@
  * audio: a step that moved the right bytes to the wrong slot fails visibly.
  */
 
-import { patternName } from "../sheet/naming.js";
+import { patternIndex, patternName } from "../project/naming.js";
 import { type Device } from "./device.js";
 import { type Shuffle, clear, copyMany, moveMany, swap } from "./shuffle.js";
 
@@ -79,7 +79,9 @@ export function inspectedSlots(step: TestStep): number[] {
 
 /** Slot index from a bank letter and a 1-based position, `bank("C", 1)` = C1. */
 function bank(letter: string, position: number): number {
-  return (letter.charCodeAt(0) - 65) * 16 + (position - 1);
+  const index = patternIndex(`${letter}${position}`);
+  if (index === undefined) throw new Error(`not a pattern slot: ${letter}${position}`);
+  return index;
 }
 
 /**

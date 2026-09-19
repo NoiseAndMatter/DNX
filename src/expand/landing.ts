@@ -41,7 +41,7 @@
  * both of which would quietly put a pattern somewhere nobody chose.
  */
 
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 
 export type LandingMode = "relative" | "contiguous";
 

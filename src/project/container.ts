@@ -54,6 +54,17 @@ export const OBJECT_MAGIC = Uint8Array.of(0xbe, 0xef, 0xba, 0xce);
 /** Difference between payload length and the stored length field. Constant in all files seen. */
 export const LENGTH_BIAS = 43;
 
+/**
+ * Where the container header holds its own zero-based slot index. The `0x18` in the layout above.
+ *
+ * **A Digitone II stamps this byte itself.** `/kits/A/1` written verbatim into `/kits/A/38` reads
+ * back differing in exactly one byte of 10,795: container offset 24, `0x00` → `0x25`, which is 37
+ * for slot 38. It is the same idea as `slotIndexOffset` in a pattern record, and because the
+ * instrument writes it, a byte-exact comparison has to expect it or call every correct write a
+ * corruption. Measured 2026-08-13; see `device/storagewrite.ts` and `device/safewrite.ts`.
+ */
+export const CONTAINER_SLOT_OFFSET = 0x18;
+
 /** Where the container header repeats the body length, as a big-endian u32. */
 const HEAD_LENGTH_OFFSET = 25;
 
@@ -179,7 +190,7 @@ export function parsePayload(raw: Uint8Array): ProjectPayload {
     kind: raw[8]!,
     formatVersion: new TextDecoder("latin1").decode(raw.subarray(9, 13)),
     objectVersion: view.getUint32(0x14, true),
-    slot: view.getUint16(0x18, true),
+    slot: view.getUint16(CONTAINER_SLOT_OFFSET, true),
     checkField: view.getUint32(raw.length - 12, false),
     storedLength: view.getUint32(raw.length - 8, false),
     computedLength: raw.length - LENGTH_BIAS,

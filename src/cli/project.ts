@@ -12,7 +12,7 @@ import { decodeProjectImage } from "../project/dn2codec.js";
 import { readSavedPosition } from "../project/position.js";
 import { parseProject } from "../node/projectfile.js";
 import { deviceFor } from "../librarian/device.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 
 function ascii(bytes: Uint8Array): string {
   return [...bytes].map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");

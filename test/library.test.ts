@@ -17,8 +17,8 @@ import { test } from "node:test";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 import { decodeMessage } from "../src/device/api.js";
 import { parseListing } from "../src/device/storage.js";
+import { BANKS } from "../src/project/naming.js";
 import {
-  BANKS,
   BANK_SIZE,
   LIBRARY_ROOT,
   bankPath,

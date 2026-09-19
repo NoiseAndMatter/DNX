@@ -52,6 +52,7 @@ import {
 import {
   DN2_POOL_OFFSET,
   DN2_SOUND_SIZE,
+  POOL_SOUND_COUNT,
   convertDn1SoundToDn2Detailed,
   type ConversionWarning as SoundWarning,
 } from "../project/soundmap.js";
@@ -84,7 +85,6 @@ import type { ExpansionPlan } from "./types.js";
 
 /** DN1 kit sound slots, and therefore the DN2 slots they occupy. */
 const DN1_KIT_SOUNDS = SYNTH_TRACK_COUNT;
-const POOL_SLOTS = 128;
 /** Every DN1 project has four synth tracks then four MIDI tracks. */
 const DN1_MIDI_MASK = 0x00f0;
 /** ...which land on DN2 tracks 5-8, i.e. kit sound slots 4-7. */
@@ -708,7 +708,7 @@ function writeSoundPool(
   const pool = readSoundPool(dn1Image);
   const base = DN2_LAYOUT.tailBase + DN2_POOL_OFFSET;
 
-  for (let slot = 0; slot < POOL_SLOTS; slot++) {
+  for (let slot = 0; slot < POOL_SOUND_COUNT; slot++) {
     const source = pool[slot];
     if (!source) continue;
     const { sound, warnings } = convertDn1SoundToDn2Detailed(source.data);

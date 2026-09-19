@@ -32,8 +32,6 @@ import {
 } from "../project/dn1.js";
 import { DN1_LAYOUT } from "../project/dn2image.js";
 
-export const PATTERN_COUNT = 128;
-export const POOL_SLOTS = 128;
 /** Value stored in a per-step sound-lock byte when the step uses the track's own sound. */
 const NO_LOCK = 0xff;
 
@@ -102,8 +100,8 @@ function lockedSounds(image: Uint8Array, index: number): Map<number, number> {
 }
 
 function assertIndex(index: number, what: string): void {
-  if (!Number.isInteger(index) || index < 0 || index >= PATTERN_COUNT) {
-    throw new LibrarianError(`${what} must be an integer in 0..${PATTERN_COUNT - 1}, got ${index}`);
+  if (!Number.isInteger(index) || index < 0 || index >= DN1_LAYOUT.patternCount) {
+    throw new LibrarianError(`${what} must be an integer in 0..${DN1_LAYOUT.patternCount - 1}, got ${index}`);
   }
 }
 

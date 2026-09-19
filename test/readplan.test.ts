@@ -5,7 +5,6 @@ import { DN1_LAYOUT, DN2_LAYOUT, DN1_KIT, DN2_KIT } from "../src/project/dn2imag
 import { POOL_SOUND_COUNT } from "../src/project/soundmap.js";
 import { RequestCode } from "../src/device/dumprequest.js";
 import {
-  PATTERN_COUNT,
   RESPONSE_SIZES,
   planBytes,
   planProjectRead,
@@ -16,7 +15,7 @@ import {
 
 test("a whole Digitone II project is 128 patterns, 128 pool sounds and one settings record", () => {
   const plan = planProjectRead(ProductId.DN2);
-  assert.equal(plan.length, PATTERN_COUNT + POOL_SOUND_COUNT + 1);
+  assert.equal(plan.length, DN2_LAYOUT.patternCount + POOL_SOUND_COUNT + 1);
 
   const counted = (code: number): number => plan.filter((s) => s.code === code).length;
   assert.equal(counted(RequestCode.PatternKit), 128);
@@ -29,7 +28,7 @@ test("a Digitone 1 is asked for four sounds, because four is all it answers", ()
   // for 4..127. Asking for 128 returned nothing and cost 124 timeouts — over six minutes.
   const plan = planProjectRead(ProductId.DN1);
   assert.equal(plan.filter((s) => s.code === RequestCode.Sound).length, 4);
-  assert.equal(plan.length, PATTERN_COUNT + 4 + 1, "133 objects, which is what the device sent");
+  assert.equal(plan.length, DN1_LAYOUT.patternCount + 4 + 1, "133 objects, which is what the device sent");
   assert.equal(soundRequestCount(ProductId.DN1), 4);
   assert.equal(soundRequestCount(ProductId.DN2), POOL_SOUND_COUNT);
 });

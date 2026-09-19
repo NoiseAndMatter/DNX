@@ -40,7 +40,7 @@
  */
 
 import { patternRecord } from "../project/dn2image.js";
-import { patternName } from "../sheet/naming.js";
+import { patternName } from "../project/naming.js";
 import { type Device } from "./device.js";
 
 /** The name field is 16 bytes on both families, and the corpus uses all 16. */

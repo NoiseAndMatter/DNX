@@ -31,8 +31,9 @@ import { type DropAction, type DropModifiers } from "./dropaction.js";
 // The view-model lives apart from the renderer: what a slot *says* is shared with anything that
 // reasons about slots, while drawing it needs a DOM. Re-exported because callers import both from
 // here and there is no reason to make them learn a second path.
-import { BANK_SIZE, type SlotView } from "./slotview.js";
-export { BANK_SIZE, type SlotView };
+import { type SlotView } from "./slotview.js";
+export { type SlotView };
+import { BANKS, PATTERNS_PER_BANK } from "../../src/project/naming.js";
 
 /** Where a drag came from. `grid` identifies which grid, so a cross-grid drop can be judged. */
 export interface DragFrom {
@@ -247,13 +248,9 @@ function clear(cell: HTMLElement): void {
 
 // --- banks ---------------------------------------------------------------------------------------
 
-/** `A`…`H`. Both families number their patterns in banks of sixteen. */
-export const BANKS = "ABCDEFGH";
-
-
 /** How many banks a device of this many patterns has. */
 export function bankCount(patternCount: number): number {
-  return Math.ceil(patternCount / BANK_SIZE);
+  return Math.ceil(patternCount / PATTERNS_PER_BANK);
 }
 
 /**
@@ -299,8 +296,8 @@ export function bankSlots(
   patternCount: number,
   view: (index: number) => Omit<SlotView, "index">,
 ): SlotView[] {
-  const from = bank * BANK_SIZE;
-  const to = Math.min(from + BANK_SIZE, patternCount);
+  const from = bank * PATTERNS_PER_BANK;
+  const to = Math.min(from + PATTERNS_PER_BANK, patternCount);
   const slots: SlotView[] = [];
   for (let index = from; index < to; index++) slots.push({ index, ...view(index) });
   return slots;

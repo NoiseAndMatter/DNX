@@ -43,7 +43,7 @@ import {
   renderDescribed,
   reportScope,
 } from "./planning.js";
-import { patternName, stampedProjectName as stampedName } from "../../../src/sheet/naming.js";
+import { patternName, stampedProjectName as stampedName } from "../../../src/project/naming.js";
 import {
   GridDrag,
   bankSlots,
@@ -61,10 +61,6 @@ import {
   landingSlots,
   pendingSources,
 } from "./drop.js";
-
-/** Both families hold 128 patterns; the constants are named so the grids read as intended. */
-const DN1_PATTERN_COUNT = 128;
-const DN2_PATTERN_COUNT = 128;
 import { ProductId } from "../../../src/sysex/devices.js";
 
 /**
@@ -814,7 +810,7 @@ function renderSource(): void {
 
   const live = new Set(state.plan?.livePatterns ?? []);
   renderBanks(tabs, {
-    patternCount: DN1_PATTERN_COUNT,
+    patternCount: DN1_DEVICE.patternCount,
     current: sourceBank,
     countOccupied: (bank) => countOccupiedIn(bank, DN1_DEVICE, image, live),
     onSelect: (bank) => {
@@ -827,7 +823,7 @@ function renderSource(): void {
     grid,
     // `live` rather than the record: a pattern the plan will not carry reads as empty even when
     // the DN1 has trigs in it, which is the one real difference between the two grids.
-    bankSlots(sourceBank, DN1_PATTERN_COUNT, (index) => patternSlotView(DN1_DEVICE, image, index, live)),
+    bankSlots(sourceBank, DN1_DEVICE.patternCount, (index) => patternSlotView(DN1_DEVICE, image, index, live)),
     {
       selected: selection,
       onClick: (index, event) => {
@@ -889,7 +885,7 @@ function renderDestinationGrid(): void {
 
   const image = open.image;
   renderBanks(tabs, {
-    patternCount: DN2_PATTERN_COUNT,
+    patternCount: DN2_DEVICE.patternCount,
     current: destinationBank,
     countOccupied: (bank) => countOccupiedIn(bank, DN2_DEVICE, image),
     onSelect: (bank) => {
@@ -900,7 +896,7 @@ function renderDestinationGrid(): void {
 
   renderSlots(
     grid,
-    bankSlots(destinationBank, DN2_PATTERN_COUNT, (index) => incomingSlotView(index, image)),
+    bankSlots(destinationBank, DN2_DEVICE.patternCount, (index) => incomingSlotView(index, image)),
     {
       // The landing slot is shown as the opened cell rather than a selection: nothing is selected
       // in this grid, and marking it says "this is where the drop went" without implying it can be

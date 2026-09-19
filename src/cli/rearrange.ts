@@ -12,7 +12,7 @@
  * device-initialised project, never bytes we made up.
  *
  * Works on both families — a `.dnprj` and a `.dn2prj` are the same command. Slots are named
- * the way the device names them, `A1` to `H16`, via `sheet/naming.ts` so the CLI, the
+ * the way the device names them, `A1` to `H16`, via `project/naming.ts` so the CLI, the
  * hardware sheets and the eventual UI cannot drift apart.
  *
  * ## Opening a Digitone 1 sketch as a Digitone II project
@@ -34,7 +34,7 @@ import { writeFileSync } from "node:fs";
 import { cliArgs } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { patternIndex, patternName } from "../sheet/naming.js";
+import { patternIndex, patternName } from "../project/naming.js";
 import { type Device } from "../librarian/device.js";
 import {
   OpenError,

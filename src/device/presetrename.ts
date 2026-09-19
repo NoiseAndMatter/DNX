@@ -26,7 +26,7 @@
  */
 
 import { decodeProjectImage } from "../project/dn2codec.js";
-import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/dn2image.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { buildPayload } from "../project/write.js";
 import { normaliseName } from "../librarian/rename.js";
 import { objectInStoredBody } from "./library.js";

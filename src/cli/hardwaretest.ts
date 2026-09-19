@@ -22,7 +22,7 @@ import { cliArgs, readProjectFile } from "./args.js";
 import { join } from "node:path";
 import { buildProjectFile, } from "../node/projectfile.js";
 import { writeProjectName } from "../project/dn2image.js";
-import { hhmm, patternIndex, patternName } from "../sheet/naming.js";
+import { hhmm, patternIndex, patternName } from "../project/naming.js";
 import { escapeHtml } from "../sheet/html.js";
 import {
   type ExportRow,

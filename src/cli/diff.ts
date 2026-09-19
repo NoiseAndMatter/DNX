@@ -22,7 +22,7 @@ import { PATTERN_PAYLOAD_SIZE, describeOffset } from "../project/locate.js";
 import { parseProject } from "../node/projectfile.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { patternAsSysexPayload } from "../project/dn2image.js";
-import { patternIndex, patternName } from "../sheet/naming.js";
+import { patternIndex, patternName } from "../project/naming.js";
 
 interface Change {
   offset: number;

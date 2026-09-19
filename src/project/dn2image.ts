@@ -19,6 +19,7 @@
  */
 
 import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE } from "./dn2codec.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "./soundmap.js";
 
 /** Layout constants for one device family's decoded project image. */
 export interface ImageLayout {
@@ -159,15 +160,6 @@ export const DN1_KIT = {
   soundSize: 302,
   soundCount: 4,
 } as const;
-
-/**
- * Byte offset of a 16-byte sound name inside a sound object.
- *
- * A sound object is `BEEFBACE` (4) + u32be version (4) + 4 unidentified bytes + name.
- * Same on both families and on SysEx sound dumps.
- */
-export const SOUND_NAME_OFFSET = 12;
-export const SOUND_NAME_SIZE = 16;
 
 /** Slice pattern `index` out of a decoded image. */
 export function patternRecord(image: Uint8Array, index: number, layout = layoutFor(image)): Uint8Array {

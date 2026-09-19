@@ -30,7 +30,7 @@ import { SYSEX_END, SYSEX_START, parseMessage } from "../sysex/container.js";
 import { ELEKTRON_MANUFACTURER_ID, PRODUCT_NAMES } from "../sysex/devices.js";
 import { RESPONSE_BIT, decodeMessage, isApiMessage } from "./api.js";
 import { DUMP_MESSAGES } from "./capabilities.js";
-import { hhmm } from "../sheet/naming.js";
+import { hhmm } from "../project/naming.js";
 
 /** One kind of message seen, and how much of it. */
 export interface CaptureGroup {
