@@ -21,15 +21,21 @@ export {
   MessageIds,
 } from "../../src/device/messageids.js";
 
-/** Every conversation this page has, numbered from here. */
-const ids = new MessageIds();
+/**
+ * Every conversation this page has, numbered from here.
+ *
+ * Exported so code that now takes an allocator as a parameter, like `backupDevice`, is handed
+ * **this** one rather than making its own. A second allocator on one port is exactly the
+ * collision this file exists to prevent.
+ */
+export const pageMessageIds = new MessageIds();
 
 /** Reserve a run of ids no other conversation on this page will use. */
 export function reserveMessageIds(count: number): number {
-  return ids.reserve(count);
+  return pageMessageIds.reserve(count);
 }
 
 /** Reset the page's allocator. **Tests only** — a page never restarts its conversation space. */
 export function resetMessageIdsForTest(): void {
-  ids.reset();
+  pageMessageIds.reset();
 }

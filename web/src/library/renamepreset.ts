@@ -43,7 +43,7 @@ import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { confirmFileWrite } from "../safewriteui.js";
 import { saveFile, whereSaved } from "../dnxfolder.js";
-import { extensionsFor } from "../objectextensions.js";
+import { extensionsFor } from "../../../src/project/objectextensions.js";
 
 export interface RenamePresetOptions {
   device: ConnectedDevice;

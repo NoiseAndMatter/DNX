@@ -21,7 +21,7 @@
  * this codebase has paid for before. The kits branch of a backup names its own files.
  */
 
-import { ProductId } from "../../src/sysex/devices.js";
+import { ProductId } from "../sysex/devices.js";
 
 export interface ObjectExtensions {
   /** A whole project, as `projects/…` in a backup. */

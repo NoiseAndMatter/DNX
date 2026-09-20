@@ -69,7 +69,7 @@ test("the manifest records the form, because a raw backup cannot be restored", (
    */
   assert.equal(manifest().form, "stored");
 
-  const source = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
+  const source = readFileSync(join(ROOT, "src", "device", "backup.ts"), "utf8");
   assert.match(source, /form:\s*STORED_FORM/,
     "every read must ask for the stored form; a raw one produces a backup nobody can restore");
   assert.doesNotMatch(source.slice(source.indexOf("backupDevice")), /form:\s*undefined/);
@@ -115,7 +115,7 @@ test("empty slots are skipped, which is what makes this minutes rather than an h
    * A +Drive has 128 project slots and the instrument this was built against uses 18. The filter is
    * on the name, because that is what a listing gives for an unoccupied slot.
    */
-  const source = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
+  const source = readFileSync(join(ROOT, "src", "device", "backup.ts"), "utf8");
   assert.match(source, /listed\.filter\(\(p\) => p\.name\.trim\(\)\.length > 0\)/);
 });
 
@@ -129,7 +129,7 @@ test("an item that fails is reported, not dropped", () => {
    * receives the record. `backupDevice` needs an instrument, so the property is read out of the
    * source; naming as little of that source as possible is what keeps it about the behaviour.
    */
-  const source = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
+  const source = readFileSync(join(ROOT, "src", "device", "backup.ts"), "utf8");
   assert.match(source, /catch \(error\) \{\s*failed\.push\(/,
     "a failed read must be recorded in the catch, never swallowed");
   assert.match(source, /^\s*failed,\s*$/m, "and handed back to the caller");
@@ -176,7 +176,7 @@ test("no manifest field is invented", () => {
   assert.doesNotMatch(fn, /FirmwareVersion:\s*"/, "a literal firmware would be a guess");
 
   // And the caller must have somewhere to go when the instrument did not answer.
-  const backup = readFileSync(join(WEB, "src", "backup.ts"), "utf8");
+  const backup = readFileSync(join(ROOT, "src", "device", "backup.ts"), "utf8");
   assert.match(backup, /\.payload/,
     "with no firmware there is nothing honest to wrap with, so the bare payload is kept");
 });
@@ -215,12 +215,12 @@ test("a +Drive directory DNX cannot read is named, not passed over", () => {
    * The source is checked rather than a run mocked, because the failure being guarded against is
    * an omission, and a mock that does not know about the fourth directory cannot demonstrate one.
    */
-  const source = readFileSync(join(ROOT, "web/src/backup.ts"), "utf8");
+  const source = readFileSync(join(ROOT, "src/device/backup.ts"), "utf8");
   assert.match(source, /const HANDLED = new Set\(\[/, "the handled set is explicit");
   assert.match(source, /!HANDLED\.has\(name\)/, "and everything else is collected as skipped");
   assert.match(source, /skipped: rest\.skipped/, "and reaches the manifest");
 
-  const manifest = readFileSync(join(ROOT, "web/src/dnxfile.ts"), "utf8");
+  const manifest = readFileSync(join(ROOT, "src/project/dnxfile.ts"), "utf8");
   assert.match(manifest, /skipped\?: string\[\]/, "optional, because older files predate it");
 
   const ui = readFileSync(join(ROOT, "web/src/manager/main.ts"), "utf8");
