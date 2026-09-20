@@ -35,16 +35,6 @@ import {
 } from "../../src/device/safewrite.js";
 import { requireWriteEnabled } from "./writeenable.js";
 import {
-  type ApiFrame,
-  Code,
-  decodeMessage,
-  deviceRequest,
-  isApiMessage,
-  readDeviceResponse,
-  readVersionResponse,
-  versionRequest,
-} from "../../src/device/api.js";
-import {
   type DriveProject,
   imageFrom,
   listProjects,
@@ -53,38 +43,27 @@ import {
 } from "../../src/device/drive.js";
 import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
-import { DeviceLink, WebMidiPort, candidatePairs } from "./devicelink.js";
+import { DeviceLink, type PortPair, candidatePairs } from "./devicelink.js";
 import { type DeviceChoice } from "./devicechoice.js";
-import { DeviceSession } from "../../src/device/session.js";
-import { dumpProductFor } from "../../src/device/dumprequest.js";
+import { type ConnectedDevice, DeviceSourceError, identify } from "../../src/device/identify.js";
 import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
 import { layoutFor } from "../../src/project/dn2image.js";
 import { IDS_FOR, reserveMessageIds } from "./messageids.js";
-
-export class DeviceSourceError extends Error {}
 
 // Re-exported so a page importing "a device" gets its description from the same place. The
 // definition lives in `devicechoice.ts`, which needs no MIDI and therefore no browser.
 export { type DeviceChoice, describeChoice } from "./devicechoice.js";
 
-export interface ConnectedDevice {
-  productId: number;
-  name: string;
-  io: DeviceIo;
-  input: MIDIInput;
-  output: MIDIOutput;
-  /**
-   * The instrument's own firmware string, e.g. `1.10E`. **`undefined` when it did not answer**, and
-   * left that way rather than filled in.
-   *
-   * A project file's manifest carries a `FirmwareVersion`, so exporting anything read off this
-   * device needs it — and a manifest claiming a firmware we made up is precisely the
-   * plausible-looking wrong field this codebase keeps paying for. Absent means absent; the caller
-   * says so instead of writing a guess into a file.
-   */
-  firmwareVersion?: string;
-  close(): void;
-}
+/*
+ * `ConnectedDevice`, `identify` and `DeviceSourceError` live in `src/device/identify.ts` now.
+ * Asking an instrument who it is is the dump protocol and the API disagreeing about product
+ * numbers, which is true on every host. What kept the type here was the two MIDI ports it carried,
+ * and the one caller that read them takes an `ApiTransport` off the device instead.
+ *
+ * Re-exported under their old names from their old module, so no page had to change and
+ * `error instanceof DeviceSourceError` still names exactly one class.
+ */
+export { type ConnectedDevice, DeviceSourceError } from "../../src/device/identify.js";
 
 export interface ConnectOptions {
   /**
@@ -125,7 +104,7 @@ export async function listDevices(): Promise<DeviceChoice[]> {
   for (const pair of candidatePairs(inputs, outputs)) {
     let device: ConnectedDevice;
     try {
-      device = await identify(pair);
+      device = await identifyPair(pair);
     } catch {
       // A pair that does not answer is not an error here. Enumerating is allowed to come up empty,
       // and the caller's own message about that is better than one assembled from several failures.
@@ -198,7 +177,7 @@ export async function connectDevice(options: ConnectOptions = {}): Promise<Conne
   for (const pair of candidates) {
     let device: ConnectedDevice;
     try {
-      device = await identify(pair);
+      device = await identifyPair(pair);
     } catch (error) {
       lastError = error;
       continue;
@@ -227,63 +206,18 @@ export async function connectDevice(options: ConnectOptions = {}): Promise<Conne
     : new DeviceSourceError(`No Digitone answered on any MIDI port pair: ${String(lastError)}`);
 }
 
-/** Open one pair, ask what is behind it, and describe it. Closes itself on every failure. */
-async function identify(pair: { input: MIDIInput; output: MIDIOutput }): Promise<ConnectedDevice> {
-  // Explicitly, because `addEventListener` does not open a MIDI input — only assigning
-  // `onmidimessage` does, and a closed port delivers nothing while looking like a silent device.
-  await Promise.all([pair.input.open(), pair.output.open()]);
-
-  // The port is the whole transport now. It used to be a bare `send` plus a permanent
-  // `midimessage` listener forwarding into core's `deliver` registry, which meant the browser held
-  // a listener for the device's whole life so that core could decide, one reader at a time, where
-  // the bytes went. A reader subscribes for as long as it is reading instead.
-  const io = new WebMidiPort(pair.input, pair.output);
-  const close = (): void => io.close();
-
-  // Ask what it is before anything else. The dump protocol and the API number products
-  // differently, and a request addressed in the wrong space is correctly ignored.
-  const session = new DeviceSession({ send: (bytes) => io.send(bytes) });
-  const stopRelay = io.subscribe((data) => session.receive(data));
-  try {
-    const info = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
-    const productId = dumpProductFor(info.productId);
-    if (productId === undefined) {
-      throw new DeviceSourceError(
-        `${info.deviceName} is not a device this build knows how to address in the dump protocol.`,
-      );
-    }
-    // Asked here because the session is already open and this is the cheapest request there is —
-    // and because the alternative is asking at export time, when the port may have moved on.
-    // **A silence is tolerated**: the connection is not worth failing over a field only the
-    // exporter needs, and `firmwareVersion` staying undefined is a truthful answer.
-    let firmwareVersion: string | undefined;
-    try {
-      firmwareVersion = readVersionResponse((await session.request(Code.Version, versionRequest)).body).version;
-    } catch {
-      firmwareVersion = undefined;
-    }
-
-    return {
-      productId,
-      name: PRODUCT_NAMES[productId] ?? info.deviceName,
-      io,
-      input: pair.input,
-      output: pair.output,
-      ...(firmwareVersion ? { firmwareVersion } : {}),
-      close,
-    };
-  } catch (error) {
-    close();
-    throw error instanceof DeviceSourceError
-      ? error
-      : new DeviceSourceError(
-          `No reply from ${pair.output.name}. Wrong port pair, another application holding it, ` +
-            `or a browser dropping SysEx: ${String(error)}`,
-        );
-  } finally {
-    stopRelay();
-    session.close();
-  }
+/**
+ * Ask one Web MIDI pair who is behind it. Closes itself on every failure.
+ *
+ * All this adds to core's `identify` is the adapter: a `DeviceLink` over the two ports, which
+ * brings the port-name matching's guess together with this page's other-traffic counter. Opening
+ * the ports is the link's job now, under the `ready` rule, rather than an unconditional
+ * `open()` pair here.
+ */
+async function identifyPair(pair: PortPair): Promise<ConnectedDevice> {
+  return await identify(new DeviceLink(pair.input, pair.output), {
+    portName: pair.output.name ?? "the output port",
+  });
 }
 
 export interface DeviceProjectHandle {
@@ -375,16 +309,20 @@ export async function writeBack(
 // --- the +Drive: any project, not just the open one -----------------------------------------------
 
 /**
- * Web MIDI as an `ApiTransport`.
+ * The device's +Drive transport.
  *
- * The correlation itself lives in `devicelink.ts` — one listener per request, matched by message
- * id — because the probe page needed exactly the same thing and had written its own, differing in
- * the part that matters. All this adds is the error the +Drive code expects on silence.
+ * Kept as a function because ten call sites across the library, the backup and the drive-project
+ * workflows read like `apiTransport(device)`, and item 10 of the refactor is where those learn to
+ * take an `ApiTransport` as a parameter instead. Until then this is one field lookup.
+ *
+ * **It used to build a fresh `DeviceLink` per call**, over a second `WebMidiPort` on the same MIDI
+ * input. That was invisible bookkeeping: each call put another `midimessage` listener on the port
+ * and `device.close()` knew about none of them. The correlation is per request, not per link, so
+ * one transport on the link that identified the device carries overlapping conversations exactly
+ * as several links did, and now the close covers them.
  */
 export function apiTransport(device: ConnectedDevice): ApiTransport {
-  return new DeviceLink(device.input, device.output).transport({
-    timeoutError: (msgId, ms) => new DeviceSourceError(`no reply to 0x${msgId.toString(16)} within ${ms}ms`),
-  });
+  return device.api;
 }
 // Message ids come from the page's one allocator. This module used to keep its own band scheme —
 // the same idea the probe also implemented separately — and neither was shared with the library,
