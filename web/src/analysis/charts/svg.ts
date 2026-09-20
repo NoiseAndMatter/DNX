@@ -39,6 +39,19 @@ export const svg = (w: number, h: number, label: string, body: string) =>
   `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img"
     aria-label="${escapeHtml(label)}">${body}</svg>`;
 
+/**
+ * What a chart prints where a count stopped at `POLYMETER_LIMIT` instead of being measured.
+ *
+ * **Two charts on one card were saying it two ways.** `cycleBars` has always printed this; the
+ * alignment grid printed the saturation point itself, "1000000", with "62500 bars" under it, so
+ * the same condition read as a measurement in one chart and as a bound in the other. This is the
+ * wording, because it is the one that says the number is a floor.
+ *
+ * The entity is deliberate: this goes into `<text>` content and into a `tip` body, and the tip's
+ * escaping is a round trip that a caller must pre-escape for. See `tip`.
+ */
+export const OVER_LIMIT = "&gt; 1M steps";
+
 /** Fit a name to the gutter. The tooltip carries the whole thing, so nothing is lost. */
 export const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`;

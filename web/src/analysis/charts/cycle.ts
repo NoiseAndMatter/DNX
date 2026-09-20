@@ -6,7 +6,7 @@
 import { escapeHtml } from "../../../../src/sheet/html.js";
 import { barsOf, clock, repetitions, trackLabel, type AnalysisTrack } from "../model.js";
 import { T } from "./theme.js";
-import { tip, svg, clip, rowLabel } from "./svg.js";
+import { tip, svg, clip, rowLabel, OVER_LIMIT } from "./svg.js";
 
 /**
  * How many times each track repeats before everything lines up again.
@@ -142,7 +142,7 @@ export function cycleBars(rows: readonly CycleBar[], w: number): string {
 
     const at = padL + bw + (r.bounded ? 6 : 30);
     out += `<text x="${at}" y="${mid}" font-size="${T.value}" fill="var(--ink2)">${
-      r.bounded ? barsOf(r.cycle) : "&gt; 1M steps"}
+      r.bounded ? barsOf(r.cycle) : OVER_LIMIT}
       <tspan fill="var(--ink3)">· ${clock(r.seconds)}</tspan>${cut
         ? `<tspan fill="var(--ink3)"> · of ${barsOf(r.polymeter)}</tspan>` : ""}</text>`;
   });

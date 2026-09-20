@@ -4,11 +4,11 @@
  */
 
 import {
-  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, stepsLabel,
-  trackLabel, type AnalysisTrack, type PeriodGroup,
+  POLYMETER_LIMIT, alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel,
+  stepsLabel, trackLabel, type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GROUND, INK_ON_LIGHT, rampBand, rampIsLight } from "./theme.js";
-import { tip, svg, barGrid, barAxis, rowLabel, rowGround } from "./svg.js";
+import { tip, svg, barGrid, barAxis, rowLabel, rowGround, OVER_LIMIT } from "./svg.js";
 
 /**
  * Every track's passes laid against the reset, so an interrupted one can be seen rather than
@@ -226,9 +226,20 @@ export function alignmentGrid(
       const isEverything = everything !== undefined && steps === everything && !self;
       const ink = onLight ? INK_ON_LIGHT : "var(--ink)";
       const inkDim = onLight ? INK_ON_LIGHT : "var(--ink2)";
+      /*
+       * **A count that stopped is not a measurement and is not printed as one.** `alignmentOf`
+       * saturates at `POLYMETER_LIMIT`, and this cell printed that as `1000000` with `62500 bars`
+       * under it, while `cycleBars` says `> 1M steps` for the very same condition — the same card
+       * calling one thing two things. The wording is `cycleBars`', because it is the one that
+       * reads as a floor. The bar count goes with it: it is the same unmeasured number in another
+       * unit, and dropping it leaves one line, which is what the cell is then centred on.
+       */
+      const over = steps >= POLYMETER_LIMIT;
+      const twoLine = roomy && !over;
       // What the cell and its tooltip print. The band above and the outline are decided first,
       // from the full value, so this is a reading of the answer and not a second answer.
-      const shown = stepsLabel(steps);
+      const shown = over ? OVER_LIMIT : stepsLabel(steps);
+      const every = over ? OVER_LIMIT : `${shown} steps · ${barsOf(steps)}`;
       out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
         fill="${self ? GROUND : `var(--q${band + 1})`}"
         stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
@@ -236,11 +247,11 @@ export function alignmentGrid(
         ${tip(self ? `${stepsLabel(row.period)} master steps — on its own`
               : `${stepsLabel(row.period)} and ${stepsLabel(col.period)} master steps`,
           self
-            ? `${row.labels.join(", ")} comes round every ${shown} steps · ${barsOf(steps)}`
-            : `back in phase every ${shown} steps · ${barsOf(steps)}`)}/>`;
-      out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
+            ? `${row.labels.join(", ")} comes round every ${every}`
+            : `back in phase every ${every}`)}/>`;
+      out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (twoLine ? 1 : 3)}"
         text-anchor="middle" font-size="${T.value}" fill="${ink}">${shown}</text>`;
-      if (roomy) {
+      if (twoLine) {
         out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
           font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"
           >${barsOf(steps)}</text>`;

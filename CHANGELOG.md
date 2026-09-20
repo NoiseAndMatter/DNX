@@ -35,6 +35,17 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
   colour of a cell and the outline on the pair that aligns last are still worked out from the
   full value, so what is drawn has not moved, only what is written.
 
+### Changed
+
+- **One wording for a pair that never comes back into phase.** Counting stops at a million steps,
+  about a day of playing, because sixteen coprime lengths have a least common multiple past what
+  a double holds. The pattern comparison has always said *"> 1M steps"* for that. The alignment
+  grid printed the stopping point instead, as *"1000000"* with *"62500 bars"* under it, so one
+  card showed the same fact as a bound in one chart and as a measurement in the other. The grid
+  and its legend now say *"> 1M steps"* too, and the bar count goes with it, being the same
+  uncounted number in another unit. It takes tracks of 127 and 128 steps at 1/8x to see this; no
+  project in the test corpus has any.
+
 ## 0.9.0-beta.5 — 2026-09-20
 
 ### Fixed

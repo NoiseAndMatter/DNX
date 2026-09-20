@@ -6,8 +6,9 @@
  */
 
 import { escapeHtml } from "../../../../src/sheet/html.js";
-import { NOTE_NAMES, stepsLabel } from "../model.js";
+import { NOTE_NAMES, POLYMETER_LIMIT, stepsLabel } from "../model.js";
 import { pcHue } from "./theme.js";
+import { OVER_LIMIT } from "./svg.js";
 
 /**
  * The ramp itself, with its two ends named.
@@ -18,7 +19,7 @@ import { pcHue } from "./theme.js";
  *
  * Both ends go through `stepsLabel` because they are alignment waits: the cells they key are
  * rounded to two places, and a legend printing seventeen digits for the same number is a legend
- * that no longer matches its chart.
+ * that no longer matches its chart. A saturated far end says so the same way the cells do.
  */
 export function rampLegend(soonest: number, longest: number): string {
   const swatches = [0, 1, 2, 3, 4, 5].map((band) =>
@@ -28,7 +29,7 @@ export function rampLegend(soonest: number, longest: number): string {
       <span style="display:inline-flex">${swatches}</span>
       <span style="color:var(--ink3)">later</span>
     </span><span class="item" style="color:var(--ink3)">${stepsLabel(soonest)} → ${
-      stepsLabel(longest)} steps</span></div>`;
+      longest >= POLYMETER_LIMIT ? OVER_LIMIT : `${stepsLabel(longest)} steps`}</span></div>`;
 }
 
 /** A swatch-and-label legend. Each item is `[label, css custom property]`. */
