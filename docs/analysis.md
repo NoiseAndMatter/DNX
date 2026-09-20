@@ -14,12 +14,17 @@ The charts were extracted into modules on 2026-09-05 with no change to what they
 | | |
 |---|---|
 | `web/src/analysis/model.ts` | the input shape, and every derivation. Pure. |
-| `web/src/analysis/charts.ts` | data in, SVG string out. Pure. |
+| `web/src/analysis/charts.ts` | data in, SVG string out. Pure. A barrel: every caller, the mockup and the purity walk find the charts by this path. |
+| `web/src/analysis/charts/` | one file per family, over `theme.ts` (colours, the type scale), `svg.ts` (the wrapper, the tooltip, and the drawing idioms more than one chart needs) and `legend.ts`. |
 | `web/src/analysis/mount.ts` | the only part that touches a document: sizing and the tooltip. |
 | `web/mockups/metrics.html` | synthetic data and a composition of cards. A harness, not a page. |
 
 `test/analysis.test.ts` covers the derivations and asserts the boundary: `charts.ts` and `model.ts`
-reach no page folder and name no browser API. `mount.ts` is the deliberate exception.
+reach no page folder and name no browser API. `mount.ts` is the deliberate exception. It also
+holds the folder's shape to the rule that a chart file imports only the model, `theme`, `svg` and
+`legend`, never another chart and never the barrel. `test/charts.golden.test.ts` renders every
+chart from one synthetic subject into committed fixtures, so a move that changes a byte of markup
+fails rather than passing quietly; `DNX_UPDATE_GOLDEN=1` regenerates them.
 
 ## The input is a subject, never a project
 
