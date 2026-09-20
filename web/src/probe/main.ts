@@ -1629,7 +1629,7 @@ async function listPath(): Promise<void> {
   ];
   verdictCard("Listing…", log);
 
-  const listId = issue(nextListId++);
+  const listId = issue(reserveMessageIds(IDS_FOR.oneMessage));
   const reply = await requestListing(
     linkTo(output),
     listId,
@@ -1742,7 +1742,7 @@ async function askDevice(): Promise<void> {
   const code = Number($<HTMLSelectElement>("askCode").value);
   const key = "";
   const known = INFORMATION_CODES.find((c) => c.code === code);
-  const msgId = issue(nextListId++);
+  const msgId = issue(reserveMessageIds(IDS_FOR.oneMessage));
   const log: [string, string][] = [
     ["Asking", `API 0x${hex2(code)} ${known?.name ?? "?"}${known?.takesKey ? ` "${key}"` : ""}`],
     ["Known", known?.note ?? "—"],
@@ -2143,7 +2143,7 @@ async function readThenWrite(): Promise<void> {
  * "nothing in the way".
  */
 async function listProjectsAt(output: MIDIOutput, path: string): Promise<Entry[]> {
-  const reply = await requestListing(linkTo(output), issue(nextListId++), path, undefined);
+  const reply = await requestListing(linkTo(output), issue(reserveMessageIds(IDS_FOR.oneMessage)), path, undefined);
   if (!reply) throw new Error(`no answer listing ${path} — refusing to treat that as empty`);
   // Whole or refused. A write deciding "nothing in the way" from part of a directory is the
   // one use of a partial listing that costs somebody a project.
@@ -2166,8 +2166,6 @@ function apiTransport(output: MIDIOutput): ApiTransport {
   return linkTo(output).transport({ onSend: issue });
 }
 
-/** Message ids start high, the way elk-herd stays out of Transfer's numbering. */
-let nextListId = 30_000;
 
 
 // --- trying an unidentified request code ---------------------------------------------------------
