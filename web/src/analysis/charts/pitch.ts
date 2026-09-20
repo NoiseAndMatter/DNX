@@ -8,8 +8,8 @@ import {
   MACHINE_ORDER, NOTE_NAMES, machineLabel, noteName, pitchClass, trackLabel, type PitchCell,
   type PitchWindow, type TrackRow,
 } from "../model.js";
-import { T, W, GRID_OP, machineVar, pcHue } from "./theme.js";
-import { tip, svg } from "./svg.js";
+import { T, W, GRID_OP, GROUND, machineVar, pcHue } from "./theme.js";
+import { tip, svg, gridLine, tickLabel, rowLabel, rowGround } from "./svg.js";
 
 /**
  * Pitch-class histogram, stacked by machine, naming the presets on hover.
@@ -97,7 +97,7 @@ export function keyTimeline(windows: readonly PitchWindow[], w: number): string 
       // Absence is a fact too: an empty cell is drawn as the ground, not skipped.
       const step = v === 0 ? null : Math.min(5, Math.floor((v / max) * 5.99));
       out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw - .5)}" height="${rowH - .5}"
-        fill="${step === null ? "#1a1f21" : `var(--q${step + 1})`}"
+        fill="${step === null ? GROUND : `var(--q${step + 1})`}"
         ${tip(`${NOTE_NAMES[pc]} · bar ${Math.floor(win.at / 16) + 1}`,
           `${v} note${v === 1 ? "" : "s"} in this window`)}/>`;
     }
@@ -122,8 +122,7 @@ export function keyTimeline(windows: readonly PitchWindow[], w: number): string 
   const every = Math.max(1, Math.round(windows.length / 10));
   windows.forEach((win, i) => {
     if (i % every) return;
-    out += `<text x="${padL + i * cw + 2}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${Math.floor(win.at / 16) + 1}</text>`;
+    out += tickLabel(padL + i * cw + 2, h - 3, Math.floor(win.at / 16) + 1);
   });
   return svg(w, h, "Pitch classes and the fitted key across the full cycle", out);
 }
@@ -154,7 +153,7 @@ export function trackTimeline(
 
   rows.forEach((row, i) => {
     const y = i * (rowH + gap);
-    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+    out += rowGround(padL, y, plot, rowH);
     row.cells.forEach((c, j) => {
       if (!c.stack.length) return;
       const x = padL + j * cw;
@@ -183,8 +182,7 @@ export function trackTimeline(
               + (c.chord.kind ? ` <span class="r">${escapeHtml(c.chord.kind)}</span>` : "")
             : ""))}/>`;
     });
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(row.track)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(row.track));
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(--ink3)">${escapeHtml(row.track.preset)}</text>`;
   });
@@ -197,12 +195,8 @@ export function trackTimeline(
   const every = stepsPerCell === 16 ? Math.max(1, Math.round(first.cells.length / 10)) : perBar;
   first.cells.forEach((c, j) => {
     if (j % every) return;
-    if (stepsPerCell < 16) {
-      out += `<line x1="${padL + j * cw}" y1="0" x2="${padL + j * cw}" y2="${h - 14}"
-        stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
-    }
-    out += `<text x="${padL + j * cw + 3}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${Math.floor(c.at / 16) + 1}</text>`;
+    if (stepsPerCell < 16) out += gridLine(padL + j * cw, h - 14);
+    out += tickLabel(padL + j * cw + 3, h - 3, Math.floor(c.at / 16) + 1);
   });
   return svg(w, h, "The notes each track plays, stacked low to high", out);
 }

@@ -9,7 +9,7 @@ import {
   pitchClass, presetOf, trackLabel, trigDensity, type AnalysisTrack, type MicroBuckets,
 } from "../model.js";
 import { T, W, GRID_OP, machineVar } from "./theme.js";
-import { tip, svg } from "./svg.js";
+import { tip, svg, barGrid, barAxis, rowLabel, rowGround } from "./svg.js";
 
 /** What a dot on the phase strip encodes. */
 export type PhaseMode = "velocity" | "length" | "locks" | "overlap";
@@ -46,10 +46,7 @@ export function phaseStrip(
   let out = "";
 
   // Bar lines behind everything, so drift is read against the musical grid rather than in a void.
-  for (let bar = 0; bar <= windowSteps / 16; bar++) {
-    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h - 14}"
-      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
-  }
+  out += barGrid(x, windowSteps, h - 14);
 
   tracks.forEach((t, i) => {
     const y = i * (rowH + gap);
@@ -57,7 +54,7 @@ export function phaseStrip(
     const cy = y + rowH / 2;
     // Computed per draw rather than cached on the track: the charts do not own the caller's data.
     const pairs = mode === "overlap" ? overlappingNotes(t) : [];
-    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+    out += rowGround(padL, y, plot, rowH);
 
     /*
      * **A track length of zero would step this loop by zero, forever.** The producer refuses such a
@@ -137,17 +134,13 @@ export function phaseStrip(
             + (g.lockPreset !== undefined ? " · preset lock" : ""))}/>`;
       }
     }
-    out += `<text x="${padL - 6}" y="${cy + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(t));
     out += `<text x="${padL + plot + 8}" y="${cy + 3.5}" font-size="${T.value}"
       fill="var(--ink3)">${t.length} steps${
         t.speed !== undefined && t.speed !== 1 ? ` @${t.speed}x` : ""}</text>`;
   });
 
-  for (let bar = 0; bar < windowSteps / 16; bar++) {
-    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${bar + 1}</text>`;
-  }
+  out += barAxis(x, windowSteps, h - 3);
   return svg(w, h, "Where each track restarts and what it plays", out);
 }
 
@@ -181,8 +174,7 @@ export function densityBars(
         ${tip(`${trackLabel(r.track)} — ${part.name}`, `${value}`)}/>`;
       cx += bw;
     }
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(r.track)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(r.track));
     out += `<text x="${cx + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(--ink2)">${total}
       <tspan fill="var(--ink3)">· ${escapeHtml(r.track.preset)}</tspan></text>`;

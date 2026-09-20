@@ -7,8 +7,8 @@ import {
   alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
   type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
-import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
-import { tip, svg } from "./svg.js";
+import { T, W, GROUND, INK_ON_LIGHT, rampBand, rampIsLight } from "./theme.js";
+import { tip, svg, barGrid, barAxis, rowLabel, rowGround } from "./svg.js";
 
 /**
  * Every track's passes laid against the reset, so an interrupted one can be seen rather than
@@ -66,14 +66,11 @@ export function resetRuler(
 
   // The bar grid behind everything: a reset is nearly always a whole number of bars, and seeing
   // that a track is not is half the point.
-  for (let bar = 0; bar <= resetSteps / 16; bar++) {
-    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h - 14}"
-      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
-  }
+  out += barGrid(x, resetSteps, h - 14);
 
   sorted.forEach(({ track, period, passes, cutAfter: remainder, lost }, i) => {
     const y = i * (rowH + gap);
-    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+    out += rowGround(padL, y, plot, rowH);
 
     for (let pass = 0; pass < passes; pass++) {
       const from = pass * period;
@@ -109,8 +106,7 @@ export function resetRuler(
           fill="${inCut ? "var(--ink)" : "var(--ink2)"}" opacity="${inCut ? 1 : .75}"/>`;
       }
     }
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(track)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(track));
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
         ? `cut after ${steps(remainder)} of ${steps(period)}` +
@@ -126,10 +122,7 @@ export function resetRuler(
   // The reset itself, over everything, in the colour that means "a limit" everywhere else here.
   out += `<line x1="${padL + plot}" y1="0" x2="${padL + plot}" y2="${h - 14}"
     stroke="var(--crit)" stroke-width="${W.limit}" stroke-dasharray="4 3"/>`;
-  for (let bar = 0; bar < resetSteps / 16; bar++) {
-    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${bar + 1}</text>`;
-  }
+  out += barAxis(x, resetSteps, h - 3);
   return svg(w, h, `Each track's passes before the reset at ${resetSteps} steps`, out);
 }
 
@@ -238,10 +231,10 @@ export function alignmentGrid(
       // The pair that only comes round when the whole pattern does. Outlined rather than recoloured
       // so it reads as "this is the one", not as a seventh step of a six-step ramp.
       const isEverything = everything !== undefined && steps === everything && !self;
-      const ink = onLight ? "#0d1418" : "var(--ink)";
-      const inkDim = onLight ? "#0d1418" : "var(--ink2)";
+      const ink = onLight ? INK_ON_LIGHT : "var(--ink)";
+      const inkDim = onLight ? INK_ON_LIGHT : "var(--ink2)";
       out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
-        fill="${self ? "#1a1f21" : `var(--q${band + 1})`}"
+        fill="${self ? GROUND : `var(--q${band + 1})`}"
         stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
         stroke-width="${isEverything ? 2 : 1}"
         ${tip(self ? `${row.period} master steps — on its own`
