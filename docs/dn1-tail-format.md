@@ -136,6 +136,12 @@ boundary below is confirmed on all 53 images by `checkDn1Tail()` in
 
 `252 + 69 + 11,264 + 5 + 312 + 34 + 92 + 43,520 + 4 = 55,552.`
 
+**VERIFIED** From OS 1.43 the region is **56,064** bytes: 512 more, inserted at `0x29C800`
+for the Outbox 8 CV configuration (§5.1). Every row above the song array keeps its offset;
+the songs and the terminator move up by 512. `tailGeometry` in `src/project/dn1tail.ts`
+derives the two that move from the image's own length, so `TAIL` stays one table rather than
+becoming two that can drift apart.
+
 **VERIFIED** The region is one object *body*: it carries no `BE EF BA CE` magic anywhere,
 but its last four bytes are the object terminator `BA CE F0 0C`. This is the same
 convention the kit record uses (`docs/dn1-project-format.md` §8): sub-objects inside a
@@ -331,7 +337,7 @@ Per record, offsets relative to the record start:
 
 | Off | Size | Field | Tag |
 |---|---|---|---|
-| `+0x000` | u32be | record version — `1` in all 53×17 DN1 records (`0` in all DN2 records) | VERIFIED |
+| `+0x000` | u32be | record version — `1` in all 53×17 DN1 records, and in a 1.43 save (`0` in all DN2 records) | VERIFIED |
 | `+0x004` | 18 | zero in all 53×17 | VERIFIED |
 | `+0x016` | **99 × 21** | **song rows** — see below | VERIFIED |
 | `+0x835` | u8 | flag: `0` in 900 of 901 records; `0xFF` in `001 PRESETS` (all 17) and `008 TEST-1` (record 0) | VERIFIED |
@@ -344,6 +350,36 @@ Per record, offsets relative to the record start:
 **INFERRED** 17 records = the DN1's 16 songs plus one extra slot (a scratch/current-song
 buffer is the obvious candidate, but this is **SPECULATIVE**). The DN2 also has exactly
 17, at stride 3,072.
+
+### 5.1 The Outbox 8 CV block — `0x29C800`, 512 bytes, from OS 1.43
+
+**VERIFIED** OS 1.43 puts a 512-byte block exactly where the song array used to start, and
+moves the songs and the terminator along by 512. Read at the old offset, a 1.43 image's first
+"song record" is the tail of this block and its version field reads `0` rather than `1`, which
+is what `checkDn1Tail` catches.
+
+**VERIFIED** 105 of the 512 bytes are non-zero in the measured project, and the shape is
+regular: one 22-byte record repeated **8 times**, then 8 × `3F FF`, plus a lone `08` at `+27`.
+
+```
++01b  08
++060  00 00 3c 00 00 48 03 e8 00 00 00 13 88 00 46 63 00 13 88 00 00 06   x8
++106  3f ff  x8
+```
+
+**INFERRED, from the firmware image** It is `BOB::bobConfigStorage_v0_t`, the Outbox 8 CV
+configuration, initialised by `0x40015b44` with a stride of 22 over 8 items: 304 bytes used of
+the 512. The 8 records are the Outbox's **8 CV outputs**, not the 8 tracks. Its editor,
+`BreakOutBoxEditMenuView`, offers CV ZERO LEVEL, CV MAX LEVEL, INVERT POLARITY, SEND MIDI,
+SUSTAIN, SOSTENUTO, EXPRESSION LEARN, REVERSE DIRECTION, PORT A and PORT B, formatted as
+`%d.%03d`, which reads the defaults off directly: `0x1388` is 5.000 and `0x3E8` is 1.000, so
+5 V maximum and 1 V per octave, and `0x3C`/`0x48` are notes 60 and 72, a C4 to C5 range.
+
+**UNKNOWN** `0x4663`, and the 208 bytes the `_v0_t` suffix suggests a later release will fill.
+
+**No accessor is provided**, for the same reason as the song row and the mixer block. `BOB_CONFIG`
+in `src/project/dn1tail.ts` names the block and its size so the geometry can step over it; the
+bytes round-trip verbatim.
 
 ### Song rows — 99 × 21 bytes at `+0x16`
 
@@ -456,7 +492,7 @@ import {
 const project = parseProject(new Uint8Array(readFileSync("050 JAGGED.dnprj")));
 const { image } = decodeProjectImage(project.payload.raw);
 
-checkDn1Tail(image);          // { ok: true, problems: [] } on all 53 corpus files
+checkDn1Tail(image);          // { ok: true, problems: [] } on all 53, and on a 1.43 save
 readProjectSettings(image);   // tempo, trackMidiChannels[8], lastPatternIndex, ...
 readSongs(image);             // 17 songs, each with tempo and 99 raw 21-byte rows
 isSongTableEmpty(image);      // true on all 53 — the rearrange guard

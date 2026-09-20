@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { buildMessage, parseFile } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
 import { DN1_LAYOUT, DN2_LAYOUT, patternRecord, kitRecord, projectId } from "../src/project/dn2image.js";
+import { DN1_OS143_IMAGE_SIZE } from "../src/project/dn2codec.js";
 import { DN2_POOL_OFFSET, POOL_SOUND_COUNT } from "../src/project/soundmap.js";
 import { SAVED_PATTERN_OFFSET, SAVED_TRACK_OFFSET } from "../src/project/position.js";
 import {
@@ -299,4 +300,52 @@ test("a real 257-message device read rebuilds into a complete image", (t) => {
   const { supplied, total } = coverage(plan);
   assert.equal(supplied, 12_825_984);
   assert.ok(supplied / total > 0.995);
+});
+
+/** A Digitone 1 pattern record at a chosen storage version, and nothing else meaningful. */
+function dn1Pattern(version: number): Uint8Array {
+  const bytes = new Uint8Array(DN1_LAYOUT.patternSize);
+  new DataView(bytes.buffer).setUint32(0, version, false);
+  return bytes;
+}
+
+function dn1PatternCapture(version: number): ReturnType<typeof parseFile> {
+  return parseFile(
+    buildMessage({
+      productId: ProductId.DN1,
+      dumpType: 0x51,
+      objNr: 0,
+      payload: dn1Pattern(version),
+    }),
+  );
+}
+
+test("a Digitone 1 capture and donor from different firmwares are refused", () => {
+  /*
+   * OS 1.43 bumped the record version and moved no field, so the records fit the donor perfectly
+   * and the mistake leaves no trace a size or a checksum would catch. The instrument migrates a
+   * project on load, against the root object version the donor carries, so version-10 records in
+   * a 1.43 donor are never converted.
+   */
+  const old143 = planRebuild(dn1PatternCapture(10));
+  assert.throws(
+    () => applyRebuild(new Uint8Array(DN1_OS143_IMAGE_SIZE), old143),
+    (error: unknown) => error instanceof RebuildError && /storage version 10/.test((error as Error).message),
+  );
+
+  const new142 = planRebuild(dn1PatternCapture(11));
+  assert.throws(
+    () => applyRebuild(new Uint8Array(DN1_LAYOUT.imageSize), new142),
+    (error: unknown) => error instanceof RebuildError && /storage version 11/.test((error as Error).message),
+  );
+});
+
+test("a Digitone 1 capture onto the donor of its own firmware goes through", () => {
+  const image142 = applyRebuild(new Uint8Array(DN1_LAYOUT.imageSize), planRebuild(dn1PatternCapture(10)));
+  assert.equal(image142.length, DN1_LAYOUT.imageSize);
+  assert.deepEqual(verifyRebuild(image142, planRebuild(dn1PatternCapture(10))), []);
+
+  const image143 = applyRebuild(new Uint8Array(DN1_OS143_IMAGE_SIZE), planRebuild(dn1PatternCapture(11)));
+  assert.equal(image143.length, DN1_OS143_IMAGE_SIZE);
+  assert.deepEqual(verifyRebuild(image143, planRebuild(dn1PatternCapture(11))), []);
 });

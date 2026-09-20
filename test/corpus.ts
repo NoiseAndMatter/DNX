@@ -136,5 +136,7 @@ export function corpusFilesRecursive(extension: string, from = CORPUS): string[]
 
 export const DN1_PROJECTS = "01_DN1/01_Projects";
 export const DN1_SOUNDS = "01_DN1/02_Sounds";
+/** One project captured three ways around the OS 1.43 update. See `os143.test.ts`. */
+export const DN1_OS143 = "01_DN1/03_OS143";
 export const DN2_PROJECTS = "02_DN2/01_Projects";
 export const DN2_CAPTURES = "02_DN2/reference_captures";

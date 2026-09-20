@@ -24,6 +24,11 @@
  *
  *   252 + 69 + 11,264 + 5 + 312 + 34 + 92 + 43,520 + 4 = 55,552, exactly.
  *
+ * OS 1.43 inserts 512 bytes at `0x29C800` for the Outbox 8 CV configuration, so in a
+ * 2,782,212-byte image the songs start at `0x29CA00` and the terminator sits at `0x2A7400`.
+ * Everything above the songs keeps its offset. `TAIL` holds the 1.42A numbers and
+ * `tailGeometry` derives the two that move, so one table serves both firmwares.
+ *
  * WHY THIS MODULE EXISTS: a planned "rearrange" mode moves a sound between tracks, and
  * anything in the project that references a track by index has to move with it. The tail
  * contains exactly two such things, and this module exposes one of them plus guards for
@@ -35,7 +40,7 @@
  * `is*Empty` guards let a caller refuse to touch data it cannot safely rewrite.
  */
 
-import { DN1_LAYOUT, type ImageLayout } from "./dn2image.js";
+import { DN1_LAYOUT, type ImageLayout, fitsLayout } from "./dn2image.js";
 
 // --- geometry -------------------------------------------------------------
 
@@ -51,11 +56,15 @@ const TERMINATOR = Uint8Array.of(0xba, 0xce, 0xf0, 0x0c);
  * Every boundary is confirmed on all 53 corpus images by `checkDn1Tail`. The two that
  * pin everything else down are the slot array (1,024 x 11 = 11,264 lands exactly on the
  * CC-record padding) and the song array (17 x 2,560 lands exactly on the terminator).
+ *
+ * `size`, `songOffset` and `terminatorOffset` are the OS 1.42A figures. OS 1.43 adds 512 to each
+ * of the three and nothing else here moves, so `tailGeometry` derives them for a given image
+ * rather than a second table being kept in step with this one.
  */
 export const TAIL = {
   /** Bytes of the tail consumed by the sound pool, i.e. where this region starts. */
   poolBytes: POOL_BYTES,
-  /** Total size of the post-pool region, terminator included. */
+  /** Total size of the post-pool region, terminator included. Before OS 1.43. */
   size: 55_552,
 
   headPadOffset: 0x0000,
@@ -75,12 +84,77 @@ export const TAIL = {
   mixerOffset: 0x2ea0,
   mixerSize: 92,
 
+  /** Before OS 1.43. From 1.43 the Outbox block sits here and the songs start 512 later. */
   songOffset: 0x2efc,
   songSize: 2560,
   songCount: 17,
 
+  /** Before OS 1.43. */
   terminatorOffset: 0xd8fc,
 } as const;
+
+/**
+ * The Outbox 8 CV configuration, `BOB::bobConfigStorage_v0_t`, which OS 1.43 inserted between
+ * the mixer block and the song array.
+ *
+ * Read off a 1.43 save on 2026-09-20 and named from the firmware image, where `0x40015b44`
+ * initialises 8 items at a stride of 22. The 8 records are the Outbox's **8 CV outputs**, not
+ * the 8 tracks. 304 bytes of the 512 are used and the rest is zero, and the type is already
+ * `_v0_t`, so expect the remainder to fill in a later release.
+ *
+ * DNX does not decode it. What DNX needs is that it is there, because everything below it moved.
+ * A project round-trips it the way it round-trips any other region it does not read: verbatim.
+ */
+export const BOB_CONFIG = {
+  /** Post-pool offset: the place the song array starts in a pre-1.43 image, and one definition. */
+  offset: TAIL.songOffset,
+  /** Bytes reserved. 304 are used by 8 x 22-byte CV records plus a small header. */
+  size: 512,
+} as const;
+
+/** The offsets of a Digitone 1 tail that depend on which firmware wrote the image. */
+export interface Dn1TailGeometry {
+  /** Post-pool offset of the Outbox block, absent in an image written before OS 1.43. */
+  bobConfigOffset?: number;
+  /** Post-pool offset of the first song record. */
+  songOffset: number;
+  /** Post-pool offset of the four terminator bytes. */
+  terminatorOffset: number;
+  /** Total size of the post-pool region, terminator included. */
+  size: number;
+}
+
+/**
+ * Where the songs and the terminator sit in this particular image.
+ *
+ * Derived from the image's own length rather than from a firmware flag, because the length is
+ * the thing that has been measured and the container's format string is a build number. The
+ * only growth either Digitone has made to a project is the Outbox block's 512 bytes, so a length
+ * that is neither known size is refused rather than guessed at.
+ */
+export function tailGeometry(
+  image: Uint8Array,
+  layout: ImageLayout = DN1_LAYOUT,
+): Dn1TailGeometry {
+  if (!fitsLayout(image, layout)) {
+    throw new Dn1TailParseError(
+      `Image is ${image.length} bytes, expected ${layout.imageSizes.join(" or ")}`,
+    );
+  }
+  const extra = image.length - layout.imageSize;
+  if (extra !== 0 && extra !== BOB_CONFIG.size) {
+    throw new Dn1TailParseError(
+      `Image is ${extra} bytes longer than the oldest of its family, and the only growth this ` +
+        `module knows how to place is the ${BOB_CONFIG.size}-byte Outbox block`,
+    );
+  }
+  return {
+    ...(extra === 0 ? {} : { bobConfigOffset: BOB_CONFIG.offset }),
+    songOffset: TAIL.songOffset + extra,
+    terminatorOffset: TAIL.terminatorOffset + extra,
+    size: TAIL.size + extra,
+  };
+}
 
 /** Field offsets inside the 69-byte project settings object, relative to its start. */
 export const SETTINGS = {
@@ -112,8 +186,17 @@ export const SONG = {
   tempoOffset: 0x838,
 } as const;
 
-/** Version carried by the settings object in every DN1 image. The DN2 equivalent is 1. */
+/** Version carried by the settings object up to OS 1.42A. The DN2 equivalent is 1. */
 export const SETTINGS_VERSION = 7;
+
+/**
+ * Every settings-object version DNX reads. OS 1.43 saves 8.
+ *
+ * The object did not change. Diffing one project saved on 1.42A against the same project saved
+ * on 1.43 leaves the settings object identical apart from its version field, so the offsets in
+ * `SETTINGS` are read from both.
+ */
+export const SETTINGS_VERSIONS: readonly number[] = [SETTINGS_VERSION, 8];
 
 /** Version carried by every DN1 song record. The DN2 equivalent is 0. */
 export const SONG_VERSION = 1;
@@ -241,12 +324,17 @@ export function tailRegionBase(layout: ImageLayout = DN1_LAYOUT): number {
 }
 
 function requireDn1(image: Uint8Array, layout: ImageLayout): number {
-  if (image.length !== layout.imageSize) {
+  if (!fitsLayout(image, layout)) {
     throw new Dn1TailParseError(
-      `Image is ${image.length} bytes, expected ${layout.imageSize} for this layout`,
+      `Image is ${image.length} bytes, expected ${layout.imageSizes.join(" or ")} for this layout`,
     );
   }
   return tailRegionBase(layout);
+}
+
+/** Absolute image offset of the first song record, which OS 1.43 moved. */
+function songBase(image: Uint8Array, layout: ImageLayout): number {
+  return requireDn1(image, layout) + tailGeometry(image, layout).songOffset;
 }
 
 // --- project settings -----------------------------------------------------
@@ -302,7 +390,7 @@ export function songRecord(
   layout: ImageLayout = DN1_LAYOUT,
 ): Uint8Array {
   assertIndex(index, TAIL.songCount, "song");
-  const at = requireDn1(image, layout) + TAIL.songOffset + index * TAIL.songSize;
+  const at = songBase(image, layout) + index * TAIL.songSize;
   return image.subarray(at, at + TAIL.songSize);
 }
 
@@ -321,7 +409,7 @@ export function readSong(
   }
   return {
     index,
-    offset: requireDn1(image, layout) + TAIL.songOffset + index * TAIL.songSize,
+    offset: songBase(image, layout) + index * TAIL.songSize,
     version: dv.getUint32(SONG.versionOffset, false),
     tempo: dv.getUint16(SONG.tempoOffset, false) / 120,
     flag: record[SONG.flagOffset]!,
@@ -352,7 +440,7 @@ export function readSongs(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT): 
  * Returns true in all 53 corpus projects, including all 9 that have DN2 conversions.
  */
 export function isSongTableEmpty(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT): boolean {
-  const base = requireDn1(image, layout) + TAIL.songOffset;
+  const base = songBase(image, layout);
   for (let s = 0; s < TAIL.songCount; s++) {
     const rowBase = base + s * TAIL.songSize + SONG.rowOffset;
     for (let r = 0; r < SONG.rowCount; r++) {
@@ -417,14 +505,15 @@ export interface Dn1TailCheck {
 export function checkDn1Tail(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT): Dn1TailCheck {
   const problems: string[] = [];
 
-  if (image.length !== layout.imageSize) {
-    problems.push(`image is ${image.length} bytes, expected ${layout.imageSize}`);
+  if (!fitsLayout(image, layout)) {
+    problems.push(`image is ${image.length} bytes, expected ${layout.imageSizes.join(" or ")}`);
     return { ok: false, problems };
   }
 
   const base = tailRegionBase(layout);
-  if (layout.tailSize - POOL_BYTES !== TAIL.size) {
-    problems.push(`post-pool region is ${layout.tailSize - POOL_BYTES} bytes, expected ${TAIL.size}`);
+  const tail = tailGeometry(image, layout);
+  if (image.length - base !== tail.size) {
+    problems.push(`post-pool region is ${image.length - base} bytes, expected ${tail.size}`);
     return { ok: false, problems };
   }
 
@@ -435,8 +524,10 @@ export function checkDn1Tail(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT
   }
 
   const settings = view(image).getUint32(base + TAIL.settingsOffset, false);
-  if (settings !== SETTINGS_VERSION) {
-    problems.push(`settings object version is ${settings}, expected ${SETTINGS_VERSION}`);
+  if (!SETTINGS_VERSIONS.includes(settings)) {
+    problems.push(
+      `settings object version is ${settings}, expected ${SETTINGS_VERSIONS.join(" or ")}`,
+    );
   }
 
   if (!allZero(image, base + 0x2d41, 5)) problems.push(`padding at ${hex(0x2d41)} is not zero`);
@@ -451,7 +542,7 @@ export function checkDn1Tail(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT
   }
 
   for (let s = 0; s < TAIL.songCount; s++) {
-    const at = base + TAIL.songOffset + s * TAIL.songSize;
+    const at = base + tail.songOffset + s * TAIL.songSize;
     const dv = view(image);
     if (dv.getUint32(at + SONG.versionOffset, false) !== SONG_VERSION) {
       problems.push(`song ${s} version is ${dv.getUint32(at + SONG.versionOffset, false)}`);
@@ -467,10 +558,10 @@ export function checkDn1Tail(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT
     }
   }
 
-  if (!equalAt(image, TERMINATOR, base + TAIL.terminatorOffset)) {
-    problems.push(`region does not end with BA CE F0 0C at ${hex(TAIL.terminatorOffset)}`);
+  if (!equalAt(image, TERMINATOR, base + tail.terminatorOffset)) {
+    problems.push(`region does not end with BA CE F0 0C at ${hex(tail.terminatorOffset)}`);
   }
-  if (base + TAIL.terminatorOffset + 4 !== image.length) {
+  if (base + tail.terminatorOffset + 4 !== image.length) {
     problems.push(`terminator is not at the end of the image`);
   }
 

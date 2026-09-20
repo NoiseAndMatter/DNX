@@ -151,12 +151,6 @@ export interface ConvertOptions {
 /** DN2 project and pattern name fields are 16 bytes, NUL-terminated. */
 const NAME_FIELD_SIZE = 16;
 
-function assertImage(image: Uint8Array, expected: number, what: string): void {
-  if (image.length !== expected) {
-    throw new ConversionError(`${what} must be ${expected} bytes, got ${image.length}`);
-  }
-}
-
 /**
  * DN1 step-flag bits we do not understand, which Elektron's importer passes through to the
  * same positions in the DN2 word rather than dropping. Unknown does not mean unwanted.
@@ -729,7 +723,11 @@ export function convertProject(
   template: Uint8Array,
   options: ConvertOptions = {},
 ): { image: Uint8Array; report: ConversionReport } {
-  assertImage(dn1Image, DN1_LAYOUT.imageSize, "DN1 image");
+  if (!fitsLayout(dn1Image, DN1_LAYOUT)) {
+    throw new ConversionError(
+      `DN1 image must be ${DN1_LAYOUT.imageSizes.join(" or ")} bytes, got ${dn1Image.length}`,
+    );
+  }
   if (!fitsLayout(template, DN2_LAYOUT)) {
     throw new ConversionError(
       `DN2 template must be ${DN2_LAYOUT.imageSizes.join(" or ")} bytes, got ${template.length}`,

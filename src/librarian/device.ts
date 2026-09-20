@@ -39,7 +39,7 @@ import {
 } from "../project/dn2image.js";
 import {
   PATTERN as DN1_PATTERN,
-  RECORD_VERSION as DN1_PATTERN_VERSION,
+  RECORD_VERSIONS as DN1_PATTERN_VERSIONS,
   readPattern as readDn1Pattern,
   readProjectName as readDn1ProjectName,
 } from "../project/dn1.js";
@@ -127,8 +127,10 @@ export interface Device {
   kind: DeviceKind;
   name: string;
   layout: ImageLayout;
-  /** The single pattern-record version this family reads and writes. */
+  /** The pattern-record version this family authors. */
   patternVersion: number;
+  /** Every pattern-record version this family can rewrite. What `PatternSummary.supported` means. */
+  writableVersions: readonly number[];
   /** Offset of the slot-index field, relative to the start of a pattern record. */
   slotIndexOffset: number;
   /**
@@ -180,6 +182,7 @@ const DN1: Device = {
   name: DN1_SPEC.name,
   layout: DN1_SPEC.layout,
   patternVersion: DN1_SPEC.pattern.version,
+  writableVersions: DN1_SPEC.pattern.writableVersions,
   slotIndexOffset: DN1_SPEC.pattern.slotIndexOffset,
   patternNameOffset: DN1_SPEC.pattern.nameOffset,
   patternCount: DN1_SPEC.layout.patternCount,
@@ -191,7 +194,7 @@ const DN1: Device = {
   summarise(image, index) {
     const record = patternRecord(image, index, DN1_LAYOUT);
     const version = versionOf(record, DN1_PATTERN.versionOffset);
-    if (version !== DN1_PATTERN_VERSION) {
+    if (!DN1_PATTERN_VERSIONS.includes(version)) {
       return { index, version, supported: false, readable: false };
     }
 
@@ -200,6 +203,13 @@ const DN1: Device = {
     return {
       index,
       version,
+      /*
+       * Both versions are rewritable, where the Digitone II's version 2 is not. OS 1.43 moved no
+       * field: the version byte is the only byte that differs between the two readings of a
+       * pattern record, so bytes put back at these offsets land where the instrument expects them
+       * at either version. What a caller must not do is mix the two in one image, and no mutating
+       * operation can: they all move records inside a single project.
+       */
       supported: true,
       readable: true,
       name: pattern.name,
@@ -220,6 +230,7 @@ const DN2: Device = {
   name: DN2_SPEC.name,
   layout: DN2_SPEC.layout,
   patternVersion: DN2_SPEC.pattern.version,
+  writableVersions: DN2_SPEC.pattern.writableVersions,
   slotIndexOffset: DN2_SPEC.pattern.slotIndexOffset,
   patternNameOffset: DN2_SPEC.pattern.nameOffset,
   patternCount: DN2_SPEC.layout.patternCount,

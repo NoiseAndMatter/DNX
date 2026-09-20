@@ -75,6 +75,8 @@ import { type SysExMessage } from "../sysex/container.js";
 import { ProductId } from "../sysex/devices.js";
 import { patternName } from "./naming.js";
 import { type ImageLayout, DN1_LAYOUT, DN2_LAYOUT, PROJECT_ID_OFFSET, mintProjectId, writeProjectId } from "./dn2image.js";
+import { RECORD_VERSION as DN1_RECORD_VERSION, RECORD_VERSIONS as DN1_RECORD_VERSIONS } from "./dn1.js";
+import { DN1_OS143_IMAGE_SIZE } from "./dn2codec.js";
 import { DN1_POOL_OFFSET, DN2_POOL_OFFSET, POOL_SOUND_COUNT } from "./soundmap.js";
 
 /** Where a family keeps the things a dump carries, relative to `layout.tailBase`. */
@@ -336,6 +338,7 @@ export function applyRebuild(donor: Uint8Array, plan: RebuildPlan): Uint8Array {
         `it is a project from the other family`,
     );
   }
+  if (layout === DN1_LAYOUT) refuseMixedDn1Generations(donor, plan);
 
   const image = Uint8Array.from(donor);
   for (const group of [plan.patterns, plan.kits, plan.sounds, plan.settings]) {
@@ -380,6 +383,45 @@ export function coverage(plan: RebuildPlan): { supplied: number; total: number }
     for (const placed of group) supplied += placed.bytes.length;
   }
   return { supplied, total: plan.placement.layout.imageSize };
+}
+
+/**
+ * Refuse a Digitone 1 capture and donor written by different firmwares.
+ *
+ * OS 1.43 bumps every record version and moves no field, so the records line up perfectly and
+ * the resulting image would assemble, open and be wrong: the instrument migrates a project on
+ * **load**, against the root object version the donor carries, so version-10 records dropped
+ * into a 1.43 donor are never converted, and version-11 records in a 1.42A donor are a version
+ * the older firmware has never seen. Neither shows as a size or a checksum problem.
+ *
+ * The donor's length says which generation it belongs to, because the two firmwares that exist
+ * write the Outbox block and the record version together. The captured records say theirs
+ * outright. A rebuild is a write, so a disagreement is refused rather than reported.
+ */
+function refuseMixedDn1Generations(donor: Uint8Array, plan: RebuildPlan): void {
+  const expected = donor.length === DN1_OS143_IMAGE_SIZE
+    ? DN1_RECORD_VERSIONS[DN1_RECORD_VERSIONS.length - 1]!
+    : DN1_RECORD_VERSION;
+
+  for (const group of [plan.patterns, plan.kits]) {
+    for (const placed of group) {
+      const version = recordVersionOf(placed.bytes);
+      if (version === undefined || version === expected) continue;
+      throw new RebuildError(
+        `${placed.label} is storage version ${version} and this ${donor.length}-byte donor holds ` +
+          `version ${expected} records. The two are the same bytes at the same offsets, so the ` +
+          `image would assemble and load, and the instrument would then skip the migration the ` +
+          `older records need. Rebuild onto a donor saved by the firmware that produced the ` +
+          `capture.`,
+      );
+    }
+  }
+}
+
+/** The bare u32be version at the head of a Digitone 1 pattern or kit record. */
+function recordVersionOf(record: Uint8Array): number | undefined {
+  if (record.length < 4) return undefined;
+  return new DataView(record.buffer, record.byteOffset, 4).getUint32(0, false);
 }
 
 export class RebuildError extends Error {}

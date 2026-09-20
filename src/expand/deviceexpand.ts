@@ -97,9 +97,10 @@ export interface PoolCoverage {
  * caller is being told to go and capture one properly either way.
  */
 export function poolCoverage(dn1Image: Uint8Array): PoolCoverage {
-  if (dn1Image.length !== DN1_LAYOUT.imageSize) {
+  if (!fitsLayout(dn1Image, DN1_LAYOUT)) {
     throw new DeviceExpandRefused(
-      `the source is ${dn1Image.length} bytes, not a Digitone 1 image (${DN1_LAYOUT.imageSize})`,
+      `the source is ${dn1Image.length} bytes, not a Digitone 1 image ` +
+        `(${DN1_LAYOUT.imageSizes.join(" or ")})`,
     );
   }
 

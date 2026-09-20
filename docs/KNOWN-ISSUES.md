@@ -5,6 +5,84 @@ converter.
 
 ---
 
+## Digitone 1 OS 1.43 projects were refused, and 1.42A ones read on 1.43 were refused too — FIXED 2026-09-20
+
+Reported on Elektronauts by an owner who had updated a Digitone 1:
+
+> payload declares 2782212 bytes, format 0104
+
+Two separate problems arrive together, and only the first is the one the message describes.
+
+### 1.43 inserts 512 bytes at the song array
+
+Measured on the owner's instrument, one project saved on both firmwares:
+
+- A project saved by 1.43 is **2,782,212** bytes. 1.42A wrote 2,781,700. The container declares
+  format `0104` where 1.42A declared `0097`, and the payload's root object version moves 12 to 14.
+- **The 512 bytes are inserted, not appended.** The images are identical up to `0x29C800`, which is
+  exactly `TAIL.songOffset`. Then `old[0x29C800 .. 2,781,696]` equals `new[0x29CA00 .. 2,782,208]`
+  byte for byte: the 17 song records and the object terminator move up by 512, and the terminator's
+  old position is zeroed. Patterns, kits and the sound pool keep every offset.
+- The new block is **the Outbox 8 CV configuration**, `BOB::bobConfigStorage_v0_t`. 8 records of 22
+  bytes, one per CV output, plus a small header: 304 bytes used of the 512. The firmware
+  initialises it at `0x40015b44`, and its editor offers CV ZERO LEVEL, CV MAX LEVEL, INVERT
+  POLARITY, SEND MIDI, SUSTAIN, SOSTENUTO, EXPRESSION LEARN, REVERSE DIRECTION, PORT A and PORT B.
+  The defaults read straight off: `0x1388` is 5.000 and `0x3E8` is 1.000, so 5 V maximum and 1 V per
+  octave. `0x4663` is unaccounted for. DNX carries the block and decodes none of it.
+- **Format `0104` is a build string, not a format counter.** The firmware disassembly reads it as
+  the ELE3 build number for 1.43. Nothing in DNX gates on it, and nothing should.
+
+1.43 also bumps every record version without moving a field: pattern records 10 to 11, kit records
+10 to 11, sound objects 5 to 6 in kits and in the pool, the tail's settings object 7 to 8. Across
+the whole 2,359,296-byte pattern array the two saves differ in **128 bytes, one per record, every
+one of them the version field**. It clears the residue after a sound name's NUL, which 1.42A left
+in place, and clears the kit name fields the Digitone 1 has no UI for.
+
+### 1.43 over-reads every project it has not migrated
+
+`0x400ac9d0` on 1.43 memcpys a hardcoded 2,782,212 bytes out of a stored project's buffer with no
+reference to that object's own length. So a project last saved on 1.42A comes back **declaring
+2,782,212** with 512 bytes of slack behind its terminator at 2,781,696, and object version 12.
+Projects are migrated by the ladder at `0x40010a70` when the musician **loads** one, not by the
+update, so on an instrument that has just been updated this is every project on the +Drive.
+
+Confirmed by loading and saving slot 2 on 1.43: the saved file carries object version 14, the
+shift, and the terminator at the new offset.
+
+### The fix: find the end, do not trust the declaration
+
+`DN1_LAYOUT.imageSizes` gains 2,782,212, the way `DN2_LAYOUT` gained 12,890,116 for OS 1.11. That
+alone is not enough, because both candidate ends sit inside what the instrument sends and the
+declared length cannot tell a 1.43 project from a padded 1.42A one.
+
+`imageFrom` in `src/device/drive.ts` therefore locates `BA CE F0 0C` and slices to it. The declared
+length is tried first and shorter candidates after it, longest first, so a project that really is
+the size it says it is is never mistaken for a padded older one. When no candidate carries the
+terminator the read is refused, and the refusal names the three things it can be: a read cut short
+on the port, a firmware this build does not know, or compressed bytes.
+
+**The Digitone II is deliberately left alone.** 1.11 *appended* its 512 bytes past the terminator,
+so a 1.11 image still holds `BA CE F0 0C` at the 1.10E length and ends with something else. The
+marker identifies neither candidate there, and searching for it would truncate every 1.11 project
+to a 1.10E one. `test/os111.test.ts` caught that within minutes of the search being written for
+both families. `FAMILY_IMAGES` in `drive.ts` records the asymmetry per family.
+
+### Still open: whether a Digitone II over-reads the same way
+
+The firmware session found the same shape in DN2 1.11: a migration ladder whose last rung validates
+against 12,890,116, and a stored-slot transfer at `0x4012dae0` passing a hardcoded 12,890,116 to a
+chunked block copy. So a Digitone II project last saved before 1.11 and read on 1.11 should also
+arrive with 512 bytes of slack. **Not measured**, and not guessed at: the code path is there in
+`FAMILY_IMAGES`, switched off for that family, waiting for a measurement rather than a symmetry
+argument. A pre-1.11 project on a 1.11 instrument is the capture that settles it.
+
+`test/os143.test.ts` checks the sizes and the derived tail geometry without a device, then reads
+three captures of one project against the private corpus: as 1.42A stored it, as 1.43 read it
+before migrating, and as 1.43 saved it.
+
+Evidence: `01_DN1/03_OS143/` in the private corpus and
+`99_HardwareTest/dn1-143-2026-09-20/FINDINGS.md`.
+
 ## Elektron Transfer on the same port is now visible — BUILT 2026-09-16
 
 Asked for by the owner: *"we should build an elektron transfer detector so we can show a pop-up to

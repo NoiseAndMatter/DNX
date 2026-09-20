@@ -165,8 +165,8 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
       findings.push({
         severity: "blocker",
         message:
-          `Pattern ${from} is storage version ${source.version}, and we read and write ` +
-          `version ${device.patternVersion} on the ${device.name}. Moving it would mean ` +
+          `Pattern ${from} is storage version ${source.version}, and we rewrite version ` +
+          `${device.writableVersions.join(" or ")} on the ${device.name}. Moving it would mean ` +
           `guessing at offsets that change between versions.`,
       });
     }
@@ -175,7 +175,7 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
         severity: "blocker",
         message:
           `Pattern ${to} is storage version ${destination.version}, not ` +
-          `${device.patternVersion}. Refusing to overwrite a record we cannot read.`,
+          `${device.writableVersions.join(" or ")}. Refusing to overwrite a record we cannot read.`,
       });
     }
 
@@ -350,7 +350,7 @@ export function verifyRearrange(image: Uint8Array, shuffle: Shuffle): VerifyResu
     if (!summary.supported) {
       problems.push(
         `pattern ${to} reads as version ${summary.version} after the write, expected ` +
-          `${device.patternVersion}`,
+          `${device.writableVersions.join(" or ")}`,
       );
       continue;
     }

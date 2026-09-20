@@ -105,33 +105,66 @@ export function storageVersion(payload: Uint8Array): number | undefined {
 }
 
 /**
- * Where a record of a given code keeps its object header, and therefore its version.
+ * Where a record of a given code keeps its version, and whether an object magic precedes it.
  *
  * **Written after the guard turned out to be inert for the record we write most.** A PatternKit is
- * `pattern ++ kit`, and only the kit half opens with `BEEFBACE` — so reading the version from byte
- * 0 returned `undefined` for every patternKit, both sides of the comparison matched as unknown,
- * and the version check silently passed on everything.
+ * `pattern ++ kit`, and on a Digitone II only the kit half opens with `BEEFBACE`. Reading the
+ * version from byte 0 returned `undefined` for every patternKit, both sides of the comparison
+ * matched as unknown, and the version check silently passed on everything.
  *
  * A guard that cannot fail is not a guard. Found by a test that expected a refusal and got a
  * successful write.
+ *
+ * `magic` exists because the second half of that lesson arrived with OS 1.43. A **Digitone 1**
+ * kit record carries a bare u32be version and no magic at all (`dn1.ts`, `DN1_KIT`), so requiring
+ * `BEEFBACE` left the guard inert on that family too, on every code. 1.43 is the first firmware
+ * to move a Digitone 1 record version (pattern and kit, 10 to 11), which is when an inert guard
+ * stops being harmless: a version-10 record written onto a 1.43 instrument is a record the
+ * instrument will not migrate, because migration runs on load against the whole project's
+ * version rather than the record's.
  */
-export function versionOffset(productId: number, code: number): number | undefined {
+export function versionField(
+  productId: number,
+  code: number,
+): { at: number; magic: boolean } | undefined {
   const layout = productId === ProductId.DN1 ? DN1_LAYOUT : productId === ProductId.DN2 ? DN2_LAYOUT : undefined;
   if (!layout) return undefined;
+  const dn1 = productId === ProductId.DN1;
   switch (code) {
-    case WriteCode.PatternKit: return layout.patternSize;
+    // On a Digitone 1 both halves carry the same bare version, so byte 0 serves and needs no
+    // arithmetic. On a Digitone II the pattern half has none and the kit half is magic-headed.
+    case WriteCode.PatternKit:
+      return dn1 ? { at: 0, magic: false } : { at: layout.patternSize, magic: true };
+    case WriteCode.Pattern:
+      // Bare u32be at byte 0 on a Digitone 1. A Digitone II pattern record's version lives in the
+      // same place, but `asVersion3` already owns reading it and nothing here has needed it.
+      return dn1 ? { at: 0, magic: false } : undefined;
     case WriteCode.Kit:
-    case WriteCode.Sound: return 0;
-    // A pattern record and a settings record carry no `BEEFBACE` header on either family, so there
-    // is no version to compare. Returning undefined says so; it does not guess at zero.
-    default: return undefined;
+      return { at: 0, magic: !dn1 };
+    case WriteCode.Sound:
+      // A sound object is a real Elektron object on both families.
+      return { at: 0, magic: true };
+    // A settings record carries no version this module has established on either family.
+    // Returning undefined says so; it does not guess at zero.
+    default:
+      return undefined;
   }
 }
 
 /** The storage version a record of this code declares, or undefined when it declares none. */
 export function versionOf(productId: number, code: number, payload: Uint8Array): number | undefined {
-  const at = versionOffset(productId, code);
-  return at === undefined ? undefined : storageVersion(payload.subarray(at));
+  const field = versionField(productId, code);
+  if (field === undefined) return undefined;
+  const at = payload.subarray(field.at);
+  return field.magic ? storageVersion(at) : bareVersion(at);
+}
+
+/** A u32be version with no object magic in front of it, as both Digitone 1 records carry. */
+function bareVersion(payload: Uint8Array): number | undefined {
+  if (payload.length < 4) return undefined;
+  return (
+    ((payload[0]! << 24) | (payload[1]! << 16) | (payload[2]! << 8) | payload[3]!) >>> 0
+  );
 }
 
 export interface WriteRequest {
@@ -189,8 +222,9 @@ export function dumpWrite(productId: number, request: WriteRequest): Uint8Array 
     );
   }
 
-  // Read from where this record actually keeps its header — see `versionOffset`. Reading byte 0
-  // made the check pass on every patternKit ever written.
+  // Read from where this record actually keeps its version. See `versionField`: reading byte 0
+  // made the check pass on every patternKit ever written, and requiring an object magic made it
+  // pass on every Digitone 1 record.
   const target = versionOf(productId, request.code, request.witness);
   const ours = versionOf(productId, request.code, request.payload);
   if (target !== undefined && ours !== target) {

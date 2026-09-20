@@ -14,14 +14,17 @@
  * Geometry (all verified against the decompressed images of all 53 corpus `.dnprj`
  * files unless marked otherwise — see `docs/dn1-project-format.md` for the evidence):
  *
- *   image                2,781,700 bytes
- *     0x000000  512      header: object magic, u32be version 12, project name
+ *   image                2,781,700 bytes, or 2,782,212 from OS 1.43
+ *     0x000000  512      header: object magic, u32be version 12 (14 from 1.43), project name
  *     0x000200  128 x 18,432   pattern records
  *     0x240200  128 x 2,560    kit records
- *     0x290200  94,212         tail: sound pool + project settings
+ *     0x290200  94,212         tail: sound pool + project settings (94,724 from 1.43)
+ *
+ *   OS 1.43 inserts 512 bytes at the song array and bumps every record version without moving
+ *   a field. Only `dn1tail.ts` sees the insertion; everything below keeps its offset.
  *
  *   pattern record       18,432 bytes
- *     0x0000    u32be    record version, 10 in every one of the 6,784 records
+ *     0x0000    u32be    record version, 10 in every one of the 6,784 records (11 from 1.43)
  *     0x0004    8 x 976  track records (0..3 synth T1-T4, 4..7 MIDI A-D)
  *     0x1E84    80 x 130 parameter-lock records
  *     0x4724    16       pattern name, "UNTITLED" by default
@@ -39,7 +42,7 @@
  *     0x3C0     16           track settings, including length and speed
  *
  *   kit record           2,560 bytes
- *     0x000     u32be    record version, 10 in every one of the 6,784 records
+ *     0x000     u32be    record version, 10 in every one of the 6,784 records (11 from 1.43)
  *     0x004     16       kit name
  *     0x014     4 x u16le  per-synth-track level, 100 by default
  *     0x01C     4 x 302  sound objects, one per synth track
@@ -49,14 +52,14 @@
  *
  *   sound object         302 bytes
  *     +0x000    BE EF BA CE
- *     +0x004    u32be    version, 5 inside a project (a SysEx sound dump carries 2)
+ *     +0x004    u32be    version, 5 inside a project, 6 from 1.43 (a SysEx sound dump carries 2)
  *     +0x008    u32be    tag bitfield
  *     +0x00C    16       name, NUL-terminated, with uncleared residue after the NUL
  *     +0x01C    ...      u16le parameter array
  *     +0x12A    BA CE F0 0C
  */
 
-import { DN1_LAYOUT, type ImageLayout } from "./dn2image.js";
+import { DN1_LAYOUT, type ImageLayout, fitsLayout } from "./dn2image.js";
 
 // --- constants ------------------------------------------------------------
 
@@ -66,11 +69,31 @@ export const OBJECT_MAGIC = Uint8Array.of(0xbe, 0xef, 0xba, 0xce);
 /** Object terminator. The last four bytes of every sound object. */
 export const OBJECT_TERMINATOR = Uint8Array.of(0xba, 0xce, 0xf0, 0x0c);
 
-/** Record version carried by both pattern and kit records. 10 in all 6,784 of each. */
+/** Record version carried by both pattern and kit records up to OS 1.42A. 10 in all 6,784. */
 export const RECORD_VERSION = 10;
 
-/** Version inside a project sound object. A SysEx sound dump carries 2 instead. */
+/**
+ * Every pattern and kit record version DNX reads. OS 1.43 saves 11.
+ *
+ * **The record did not change.** Diffing one project saved on 1.42A against the same project
+ * saved on 1.43, the version field is the only byte that differs in any of the 128 pattern
+ * records: 128 differing bytes across 2,359,296, every one of them at `+0x03`. Kit records go
+ * the same way. So the offsets in `PATTERN`, `TRACK` and `KIT` are read from both versions, and
+ * widening this list is the whole of what 1.43 asks of the record readers.
+ */
+export const RECORD_VERSIONS: readonly number[] = [RECORD_VERSION, 11];
+
+/** Version inside a project sound object up to OS 1.42A. A SysEx sound dump carries 2 instead. */
 export const PROJECT_SOUND_VERSION = 5;
+
+/**
+ * Every project sound-object version DNX reads. OS 1.43 saves 6, in kits and in the pool alike.
+ *
+ * 1.43 also zeroes the residue after a sound name's NUL where 1.42A left bytes of the previous
+ * name behind, and clears the kit name fields the Digitone 1 has no UI for. Nothing in the
+ * object moved, so `readSound` is unchanged.
+ */
+export const PROJECT_SOUND_VERSIONS: readonly number[] = [PROJECT_SOUND_VERSION, 6];
 
 /** Steps in a pattern. Every per-step array in a track record has this many entries. */
 export const STEP_COUNT = 64;
@@ -582,24 +605,25 @@ export interface Dn1ImageCheck {
 /**
  * Assert the documented geometry against an actual image.
  *
- * Every check here passes on all 53 corpus images. It is cheap, and worth running before
- * trusting any offset in this module against an image written by an unseen OS version.
+ * Every check here passes on all 53 corpus images and on the OS 1.43 save of one of them. It is
+ * cheap, and worth running before trusting any offset in this module against an image written by
+ * an unseen OS version.
  */
 export function checkDn1Image(image: Uint8Array, layout: ImageLayout = DN1_LAYOUT): Dn1ImageCheck {
   const problems: string[] = [];
 
-  if (image.length !== layout.imageSize) {
-    problems.push(`image is ${image.length} bytes, expected ${layout.imageSize}`);
+  if (!fitsLayout(image, layout)) {
+    problems.push(`image is ${image.length} bytes, expected ${layout.imageSizes.join(" or ")}`);
     return { ok: false, problems };
   }
   if (!matchesAt(image, OBJECT_MAGIC, 0)) problems.push("image does not start with BE EF BA CE");
 
   for (let i = 0; i < layout.patternCount; i++) {
     const version = view(patternRecord(image, i, layout)).getUint32(PATTERN.versionOffset, false);
-    if (version !== RECORD_VERSION) problems.push(`pattern ${i} has version ${version}`);
+    if (!RECORD_VERSIONS.includes(version)) problems.push(`pattern ${i} has version ${version}`);
 
     const kitVersion = view(kitRecord(image, i, layout)).getUint32(KIT.versionOffset, false);
-    if (kitVersion !== RECORD_VERSION) problems.push(`kit ${i} has version ${kitVersion}`);
+    if (!RECORD_VERSIONS.includes(kitVersion)) problems.push(`kit ${i} has version ${kitVersion}`);
 
     const kitBase = layout.kitBase + i * layout.kitSize;
     for (let s = 0; s < KIT.soundCount; s++) {
