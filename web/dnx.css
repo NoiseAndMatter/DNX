@@ -150,6 +150,10 @@ select option { background: #1b2123; color: var(--fg); }
 .tab[aria-selected="true"] { background: var(--panel-2); color: #fff; border-color: var(--line); }
 .tab .n { color: var(--dim); font-size: .68rem; margin-left: .4rem; }
 .tab[aria-selected="true"] .n { color: var(--teal); }
+/* Listed and empty, which is not the same as not listed yet. An empty bank carries no number,
+   because a row of zeroes is noise, so the dimming is all that separates it from a bank nobody has
+   asked about. The tooltip says which one it is. */
+.tab.empty { opacity: .55; }
 
 /* ---- layout ------------------------------------------------------------------------- */
 /*

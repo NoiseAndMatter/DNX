@@ -23,6 +23,17 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
 
 ## Unreleased
 
+### Added
+
+- **Every bank tab in the Library now carries its count.** Asked for on Elektronauts. Until now
+  only the bank you were looking at had a number on it, because the other seven had never been
+  listed and a zero would have been a claim about an instrument nobody had asked. They are listed
+  now, in the background, once the bank on screen has finished reading its tags. A count is one
+  message a bank, not the 256 reads that knowing what is in it costs, and the numbers are kept for
+  the session so switching bank does not ask again. A bank that has not answered yet still shows
+  nothing, an empty bank is dimmed and says so, and Refresh takes fresh counts for all of them
+  without throwing away a single tag it already read.
+
 ### Fixed
 
 - **The Probe's Write back and Write to slot now check the WRITE switch themselves.** Until now

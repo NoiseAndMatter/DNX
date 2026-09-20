@@ -77,11 +77,15 @@ import { renamePresetOnDrive } from "./renamepreset.js";
 import { NAME_SIZE } from "../../../src/librarian/rename.js";
 import {
   type BankCache,
+  type CacheDecision,
   type SlotFacts,
+  bankCounts,
+  banksToCount,
   cacheKey,
   forget,
   planBankRead,
   remember,
+  rememberListing,
 } from "./bankcache.js";
 import { type TagName } from "../../../src/project/tags.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
@@ -647,54 +651,86 @@ async function browse(options: { force?: boolean } = {}): Promise<void> {
   renderLibrary();
   renderDestination();
 
-  if (plan.toRead.length === 0) {
-    status(
-      `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s), unchanged — ` +
-        `nothing to read again.`,
-      "ok",
-    );
-    return;
-  }
-
   status(
-    `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s). ` +
-      `Reading ${plan.toRead.length} slot(s)…`,
+    plan.toRead.length === 0
+      ? `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s), unchanged. ` +
+          `Nothing to read again.`
+      : `Bank ${bank.bank}: ${bank.used} of ${bank.entries.length} ${kind()}(s). ` +
+          `Reading ${plan.toRead.length} slot(s)…`,
     "ok",
   );
 
-  // Not awaited. See `loadTags`.
-  loadTags(bank, plan.toRead, plan.reuse);
+  // Not awaited. See `startBackgroundWork`.
+  startBackgroundWork(bank, plan, options.force === true);
 }
 
 function renderLibrary(): void {
   const bank = state.bank;
   if (!bank) return;
 
-  const tabs = $("libraryTabs");
-  tabs.hidden = false;
-  tabs.innerHTML = "";
-  for (const letter of BANKS) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "tab";
-    button.setAttribute("role", "tab");
-    button.setAttribute("aria-selected", String(letter === bank.bank));
-    // No count on the other tabs: we have not listed them, and a blank is honest where a zero
-    // would be a claim.
-    button.innerHTML = `${letter}${letter === bank.bank ? `<span class="n">${bank.used}</span>` : ""}`;
-    button.addEventListener("click", () => {
-      state.bankLetter = letter;
-      browse().catch(report);
-    });
-    tabs.append(button);
-  }
-
+  renderBankTabs();
   $("libraryFind").hidden = false;
   $("libraryTags").hidden = false;
   $("libraryGrid").hidden = false;
   $("librarySub").textContent = `— ${bank.path}, ${bank.used} of ${bank.entries.length} used`;
 
   renderTable();
+}
+
+/**
+ * The bank strip: one tab a bank, each carrying what is known about it.
+ *
+ * Drawn on its own, and redrawn as each background listing lands, because the alternative is
+ * rebuilding a 256-row table eight times to change eight numbers.
+ *
+ * ## Three states, and a zero is only one of them
+ *
+ * A bank that has been listed shows its count; a bank that has been listed and is empty shows the
+ * letter dimmed and says so in its tooltip; a bank nobody has listed shows the letter alone. The
+ * middle case is why the number is not simply printed: an unlisted bank with a `0` on it would be
+ * a claim about an instrument nobody has asked. The count used to be on the selected tab only, for
+ * exactly that reason. The answer was to list the others, not to guess at them.
+ *
+ * The letters come from `BANKS` and the totals from each listing, so a Digitone and a Digitone II
+ * need no special case here: a Digitone has no kits at all, and `connect` has already stopped that
+ * collection being chosen.
+ */
+function renderBankTabs(): void {
+  const bank = state.bank;
+  if (!bank) return;
+
+  const counted = bankCounts(banks, kind(), BANKS);
+  const tabs = $("libraryTabs");
+  tabs.hidden = false;
+  tabs.innerHTML = "";
+
+  for (const letter of BANKS) {
+    const selected = letter === bank.bank;
+    // The bank on screen speaks from its own listing, which is newer than anything cached: its tag
+    // read has not finished, so nothing has been stored for it yet.
+    const known = selected
+      ? { used: bank.used, total: bank.entries.length }
+      : counted.get(letter);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tab";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(selected));
+    if (known && known.used === 0) button.classList.add("empty");
+    button.title =
+      known === undefined
+        ? `Bank ${letter} has not been listed yet`
+        : known.used === 0
+          ? `Bank ${letter} is empty`
+          : `Bank ${letter}: ${known.used} of ${known.total} used`;
+    button.innerHTML = `${letter}${known && known.used > 0 ? `<span class="n">${known.used}</span>` : ""}`;
+    button.addEventListener("click", () => {
+      state.bankLetter = letter;
+      browse().catch(report);
+    });
+    tabs.append(button);
+  }
 }
 
 /**
@@ -763,80 +799,160 @@ function schedulePaint(): void {
 }
 
 /**
+ * Everything the instrument is asked for once the table is on screen.
+ *
+ * Two jobs, and they are **one chain on purpose**: this bank's tags first, then the other banks'
+ * counts. Two conversations must not share one instrument, as `State.reading` sets out at length,
+ * and the bank somebody is looking at must not wait behind seven listings for banks nobody has
+ * asked about. Sequencing them costs the counts a few seconds on a cold bank and costs the visible
+ * bank nothing, which is the right way round.
+ *
+ * Published as `state.reading` before anything is awaited, so the next `browse`, or a rename, can
+ * wait for the device to be free. Not awaited here: a bank of 256 is seconds of round trips and
+ * nobody should wait for a tag column to read a name.
+ */
+function startBackgroundWork(bank: LibraryBank, plan: CacheDecision, force: boolean): void {
+  // **Read, not bumped.** `browse` already advanced the run before it spoke to the device, and
+  // bumping again here would abandon this work the moment it started.
+  const run = state.tagRun;
+  const collection = kind();
+
+  const work = (async () => {
+    await loadTags(bank, plan.toRead, plan.reuse, run, collection);
+    await countOtherBanks(run, collection, bank.bank, force);
+  })();
+
+  state.reading = work;
+
+  work.catch(report).finally(() => {
+    // Only the run that owns the slot clears it. An abandoned run finishing late would otherwise
+    // drop the promise its replacement had already published, and the wait that stops two
+    // conversations overlapping would have nothing to wait on.
+    if (state.tagRun === run) state.reading = undefined;
+  });
+}
+
+/**
+ * Put a count on the tabs nobody is looking at, one listing a bank.
+ *
+ * A count is occupancy and occupancy is in the listing, so this is one round trip a bank rather
+ * than the 256 reads that knowing what is in it would cost. `bankcache.ts` has the asymmetry.
+ *
+ * Runs after the visible bank's tag read, never beside it. One bank failing leaves that tab blank
+ * and the rest continue, the same stance `slottags.ts` takes for a slot: one bad listing is not a
+ * bad instrument. They are reported together at the end so seven warnings cannot bury the tag
+ * read's own result, and nothing is said at all when every bank answered, because the numbers on
+ * the tabs are the report.
+ */
+async function countOtherBanks(
+  run: number,
+  collection: LibraryKind,
+  current: string,
+  force: boolean,
+): Promise<void> {
+  const device = state.device;
+  if (!device) return;
+
+  const failed: string[] = [];
+  for (const letter of banksToCount(banks, collection, BANKS, { skip: current, force })) {
+    // Checked before every listing, so switching bank abandons this within one round trip. The
+    // same generation check the tag read makes, for the same reason.
+    if (state.tagRun !== run) return;
+    try {
+      const listed = await listLibraryBank(apiTransport(device), collection, letter, {
+        msgId: reserveMessageIds(IDS_FOR.oneMessage),
+      });
+      if (state.tagRun !== run) return;
+      rememberListing(banks, collection, listed);
+      renderBankTabs();
+    } catch {
+      failed.push(letter);
+    }
+  }
+
+  if (failed.length > 0 && state.tagRun === run) {
+    status(
+      `Bank ${failed.join(", ")} could not be listed, so ${failed.length === 1 ? "that tab has" : "those tabs have"} no count.`,
+      "warn",
+    );
+  }
+}
+
+/**
  * Read every occupied slot's tags, filling the table as they land.
  *
- * Started after the table is already on screen and deliberately not awaited by `browse` — a bank of
- * 256 is seconds of round trips, and nobody should wait for a tag column to read a name.
+ * `run` and `collection` are the caller's, not re-read here: the chain in `startBackgroundWork`
+ * fixed both before the first request went out, and taking them again would let a bank switch land
+ * between the two halves of one conversation.
  */
-function loadTags(bank: LibraryBank, indices: readonly number[], reused: Map<number, SlotFacts>): void {
+async function loadTags(
+  bank: LibraryBank,
+  indices: readonly number[],
+  reused: Map<number, SlotFacts>,
+  run: number,
+  collection: LibraryKind,
+): Promise<void> {
   const device = state.device;
   if (!device) return;
   if (indices.length === 0) return;
 
-  // **Read, not bumped.** `browse` already advanced the run before it spoke to the device, and
-  // bumping again here would abandon this read the moment it started.
-  const run = state.tagRun;
-  const collection = kind();
   // Starts from what the cache vouched for, so a partial re-read still stores the whole bank —
   // otherwise reading one changed slot would forget the 255 that did not change, and the visit
   // after this one would read everything again.
   const learned = new Map(reused);
 
-  const running = readBankTags({
-    transport: apiTransport(device),
-    kind: collection,
-    // A Digitone has one FM engine and no machine byte. See `slotFacts`.
-    machines: device.productId !== ProductId.DN1,
-    bank: bank.bank,
-    indices,
-    msgId: reserveMessageIds(IDS_FOR.wholeBank),
-    keepGoing: () => state.tagRun === run,
-    onSlot: ({ index, tags, machine }) => {
-      const row = state.rows.find((r) => r.index === index);
-      if (!row) return;
-      row.tags = tags;
-      row.machine = machine;
-      learned.set(index, { tags, machine });
-      // A real bar: the slots were counted before the first request went out.
-      progress.at(learned.size - reused.size, indices.length, `Reading ${bank.path}`);
-      // **Coalesced to one repaint a frame.** Painting on every slot rebuilt a 256-row table 256
-      // times over a bank — some 65,000 rows of DOM in six seconds, which is what made the page
-      // feel frozen while it was working perfectly.
-      schedulePaint();
-    },
-  });
-
-  // Published before anything is awaited, so the next `browse` can wait for the device to be free.
-  state.reading = running;
-
-  running
-    .then(({ read, failed }) => {
-      // **Only a run that finished as the current one may store anything.** An abandoned run holds
-      // a `learned` map for a bank nobody is looking at, and writing it under the *current* key is
-      // how a preset bank's tags would end up cached as a kit bank's.
-      if (state.tagRun !== run) return;
-
-      progress.done();
-      state.reading = undefined;
-
-      // **The last paint is not scheduled, it is done.** `requestAnimationFrame` does not fire in a
-      // hidden tab, so a bank that finished loading in the background stayed showing "reading…" on
-      // all 256 rows — measured, with the read demonstrably complete. It would have caught up on
-      // becoming visible, which is exactly the kind of self-healing nobody should have to rely on:
-      // the terminal state of a run has to be painted by the run.
-      renderTable();
-      remember(banks, collection, bank, learned);
-      status(
-        failed === 0
-          ? `${bank.path}: tags read for ${read} slot(s).`
-          : `${bank.path}: tags read for ${read} slot(s); ${failed} could not be read.`,
-        failed === 0 ? "ok" : "warn",
-      );
-    })
-    .catch((error: unknown) => {
-      progress.done();
-      report(error);
+  let outcome: { read: number; failed: number };
+  try {
+    outcome = await readBankTags({
+      transport: apiTransport(device),
+      kind: collection,
+      // A Digitone has one FM engine and no machine byte. See `slotFacts`.
+      machines: device.productId !== ProductId.DN1,
+      bank: bank.bank,
+      indices,
+      msgId: reserveMessageIds(IDS_FOR.wholeBank),
+      keepGoing: () => state.tagRun === run,
+      onSlot: ({ index, tags, machine }) => {
+        const row = state.rows.find((r) => r.index === index);
+        if (!row) return;
+        row.tags = tags;
+        row.machine = machine;
+        learned.set(index, { tags, machine });
+        // A real bar: the slots were counted before the first request went out.
+        progress.at(learned.size - reused.size, indices.length, `Reading ${bank.path}`);
+        // **Coalesced to one repaint a frame.** Painting on every slot rebuilt a 256-row table 256
+        // times over a bank — some 65,000 rows of DOM in six seconds, which is what made the page
+        // feel frozen while it was working perfectly.
+        schedulePaint();
+      },
     });
+  } catch (error) {
+    progress.done();
+    report(error);
+    return;
+  }
+
+  // **Only a run that finished as the current one may store anything.** An abandoned run holds a
+  // `learned` map for a bank nobody is looking at, and writing it under the *current* key is how a
+  // preset bank's tags would end up cached as a kit bank's. The progress bar is left alone too: it
+  // belongs to whichever run replaced this one.
+  if (state.tagRun !== run) return;
+
+  progress.done();
+
+  // **The last paint is not scheduled, it is done.** `requestAnimationFrame` does not fire in a
+  // hidden tab, so a bank that finished loading in the background stayed showing "reading…" on all
+  // 256 rows — measured, with the read demonstrably complete. It would have caught up on becoming
+  // visible, which is exactly the kind of self-healing nobody should have to rely on: the terminal
+  // state of a run has to be painted by the run.
+  renderTable();
+  remember(banks, collection, bank, learned);
+  status(
+    outcome.failed === 0
+      ? `${bank.path}: tags read for ${outcome.read} slot(s).`
+      : `${bank.path}: tags read for ${outcome.read} slot(s); ${outcome.failed} could not be read.`,
+    outcome.failed === 0 ? "ok" : "warn",
+  );
 }
 
 /**
@@ -1159,8 +1275,13 @@ $<HTMLInputElement>("libraryOccupied").addEventListener("change", (event) => {
 });
 
 $("libraryRefresh").addEventListener("click", () => {
-  // Drops only the bank on screen. A refresh of one is not a refresh of all of them — the other
-  // seven are no more suspect than they were a moment ago.
+  // Drops the *tags* of the bank on screen only. A refresh of one is not a refresh of all of them:
+  // the other seven are no more suspect than they were a moment ago, and re-reading their bodies
+  // would be 1,792 round trips nobody asked for.
+  //
+  // Their **counts** are re-listed all the same, because a count is one message and the listing is
+  // the only thing that can notice a preset saved on the front panel. `banksToCount` explains why
+  // that costs the cached tags nothing.
   const bank = state.bank;
   if (!bank) return;
   forget(banks, kind(), bank.bank);
