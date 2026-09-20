@@ -52,17 +52,21 @@ import {
 import { DumpReader, type ReadReport } from "./dumpreader.js";
 import { RESPONSE_SIZES, type ReadStep, planProjectRead } from "./readplan.js";
 import { WriteCode, dumpWrite, settleMsAfter, storageVersion } from "./dumpwrite.js";
+import { type SysexPort } from "./port.js";
 import { type WritePermit } from "./writepermit.js";
 
 /**
- * The transport, reduced to what this needs.
+ * The transport, reduced to what this needs: a `SysexPort` without the closing.
  *
- * `send` puts bytes on the wire; arriving messages are pushed in by the caller through the
- * `receive` handle this hands back. Deliberately not a MIDI port: the browser owns those, and a
- * module that took one could not be tested without hardware.
+ * Written as the port's own methods rather than as a second shape, so any `SysexPort` is already a
+ * `DeviceIo` and a host implements one interface rather than two. Closing is left out because
+ * nothing here opened the port, and a read must not shut a conversation it does not own.
+ *
+ * Arriving messages used to be pushed in by the caller through an exported `deliver`, backed by a
+ * module-level registry keyed on the `DeviceIo`. That is the module-level mutable state core is
+ * not allowed to keep, and it could hold only one listener per port.
  */
-export interface DeviceIo {
-  send(bytes: Uint8Array): void;
+export interface DeviceIo extends Omit<SysexPort, "close" | "ready"> {
   /** Injected so tests need no real clock. */
   wait?(ms: number): Promise<void>;
 }
@@ -108,11 +112,10 @@ export async function readProjectFromDevice(options: ReadProjectOptions): Promis
     onProgress: (result, done, total) => options.onProgress?.(done, total, result.step.label),
   });
 
-  const feed = (data: Uint8Array): void => {
+  const stop = io.subscribe((data) => {
     received.push(Uint8Array.from(data));
     reader.receive(data);
-  };
-  attach(io, feed);
+  });
 
   try {
     const report = await reader.run(planProjectRead(productId));
@@ -127,7 +130,7 @@ export async function readProjectFromDevice(options: ReadProjectOptions): Promis
 
     return { image, report, plan, witness };
   } finally {
-    detach(io);
+    stop();
   }
 }
 
@@ -322,7 +325,7 @@ export async function readBackRecords(
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     });
     const seen: Uint8Array[] = [];
-    attach(io, (data) => {
+    const stop = io.subscribe((data) => {
       seen.push(Uint8Array.from(data));
       reader.receive(data);
     });
@@ -331,7 +334,7 @@ export async function readBackRecords(
       const reply = parse(seen).find((m) => m.dumpType === 0x50 && m.objNr === slot);
       if (reply) out.set(slot, reply.payload);
     } finally {
-      detach(io);
+      stop();
     }
     await wait(settleMsAfter(0, productId));
   }
@@ -346,28 +349,6 @@ export function deviceStorageVersion(witness: Uint8Array, layout: ImageLayout): 
 }
 
 // --- plumbing ------------------------------------------------------------------------------------
-
-/**
- * Where arriving messages go.
- *
- * Module-level and single-slot, because a device has one conversation at a time and two overlapping
- * readers on one port would silently steal each other's replies. Two *devices* get two `DeviceIo`s
- * and two sessions — the multi-device requirement lives there, not here.
- */
-const listeners = new WeakMap<DeviceIo, (data: Uint8Array) => void>();
-
-export function attach(io: DeviceIo, onMessage: (data: Uint8Array) => void): void {
-  listeners.set(io, onMessage);
-}
-
-export function detach(io: DeviceIo): void {
-  listeners.delete(io);
-}
-
-/** Feed a message arriving from the device. The caller's MIDI handler calls this. */
-export function deliver(io: DeviceIo, data: Uint8Array): void {
-  listeners.get(io)?.(data);
-}
 
 function parse(raw: readonly Uint8Array[]): SysExMessage[] {
   const out: SysExMessage[] = [];

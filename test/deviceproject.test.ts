@@ -7,7 +7,6 @@ import {
   type DeviceIo,
   DEFAULT_WRITE_LIMIT,
   WriteTooLarge,
-  deliver,
   readProjectFromDevice,
   writeChangedRecords,
 } from "../src/device/deviceproject.js";
@@ -49,18 +48,25 @@ function imageWithKitHeaders(fill: number, version = 3): Uint8Array {
 function fakeDevice(answer?: (m: ReturnType<typeof parseMessage>) => Uint8Array | undefined) {
   const sent: ReturnType<typeof parseMessage>[] = [];
   const waits: number[] = [];
+  const listeners = new Set<(bytes: Uint8Array) => void>();
   const io: DeviceIo = {
     send: (bytes) => {
       const message = parseMessage(bytes);
       sent.push(message);
       const reply = answer?.(message);
-      if (reply) deliver(io, reply);
+      // Answered from inside `send`, which is the hard case: a synchronous transport delivers
+      // before the caller's send has returned, so the subscription has to be in place already.
+      if (reply) for (const listener of [...listeners]) listener(reply);
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
     },
     wait: async (ms) => {
       waits.push(ms);
     },
   };
-  return { io, sent, waits };
+  return { io, sent, waits, get listenerCount() { return listeners.size; } };
 }
 
 test("a project read off a device becomes an editable image", async () => {
@@ -93,6 +99,29 @@ test("a project read off a device becomes an editable image", async () => {
 
   // And the witness is a record the device produced, which every later write is checked against.
   assert.equal(project.witness.get(0x50)!.length, PATTERN_KIT);
+});
+
+test("a read lets go of the port when it is done", async () => {
+  // What the old `detach` did, now that a read subscribes for itself. A reader that stays
+  // subscribed keeps feeding a finished `DumpReader` from the next conversation on the same port,
+  // and the port has no idea it should stop.
+  const device = fakeDevice((m) =>
+    buildMessage({
+      productId: ProductId.DN2,
+      dumpType: m.dumpType === 0x60 ? 0x50 : m.dumpType === 0x63 ? 0x53 : 0x54,
+      objNr: m.objNr,
+      payload: patternKit(0),
+    }),
+  );
+  assert.equal(device.listenerCount, 0, "nothing should be listening before the read");
+
+  await readProjectFromDevice({
+    productId: ProductId.DN2,
+    io: device.io,
+    donor: new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a),
+  });
+
+  assert.equal(device.listenerCount, 0, "the read outlived itself on the port");
 });
 
 test("only the records that changed are sent", async () => {

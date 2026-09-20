@@ -21,7 +21,7 @@ import { test } from "node:test";
 import { buildMessage, parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
 import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
-import { type DeviceIo, deliver } from "../src/device/deviceproject.js";
+import { type DeviceIo } from "../src/device/deviceproject.js";
 import { RESPONSE_SIZES } from "../src/device/readplan.js";
 import { DN1_LAYOUT } from "../src/project/dn2image.js";
 import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
@@ -91,8 +91,16 @@ function stubDevice(initial: Uint8Array, options: { silent?: number[]; corrupt?:
   const held = new Map<number, Uint8Array>();
   for (let slot = 0; slot < DN2_LAYOUT.patternCount; slot++) held.set(slot, recordOf(initial, slot));
   const sent: ReturnType<typeof parseMessage>[] = [];
+  const listeners = new Set<(bytes: Uint8Array) => void>();
+  const deliver = (bytes: Uint8Array): void => {
+    for (const listener of [...listeners]) listener(bytes);
+  };
 
   const io: DeviceIo = {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
     send: (bytes) => {
       const message = parseMessage(bytes);
       sent.push(message);
@@ -106,7 +114,6 @@ function stubDevice(initial: Uint8Array, options: { silent?: number[]; corrupt?:
       if (message.dumpType === 0x60) {
         if (options.silent?.includes(message.objNr)) return;
         deliver(
-          io,
           buildMessage({
             productId: ProductId.DN2,
             dumpType: 0x50,

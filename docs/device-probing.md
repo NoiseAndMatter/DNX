@@ -490,13 +490,13 @@ command about 52 bytes apart, running `0x400cfca2` (`#HELLO`) to `0x400d095e` (`
 `0x400cf906`. **The line it compares against is a ~32-byte buffer at `fp-192` — local to that
 function's frame**, not a receive buffer owned by a MIDI reader.
 
-Everything it emits is CRLF-terminated: `UNIT IN FACTORY TEST MODE
-`, `WRONG UI CARD
+Everything it emits is CRLF-terminated: `UNIT IN FACTORY TEST MODE
+`, `WRONG UI CARD
 `,
-`UI CARD NOT TESTED
+`UI CARD NOT TESTED
 `. A line terminator accumulated into a small stack buffer is a **byte
 stream**. SysEx is `F0`/`F7`-framed with a 7-bit payload and no concept of a line, and a SysEx
-reader hands over a finished message rather than something you terminate on `
+reader hands over a finished message rather than something you terminate on `
 `.
 
 Inferred from framing and buffer shape, not proven — the reader has not been found, and
@@ -615,9 +615,15 @@ request paths: the write read-back, the pattern-kit read, the link check, the +D
 unknown-code trial and the API transport. Whichever path armed it last received the next matching
 reply, and the other waited out its timeout. Its own comments record paying for that twice.
 
-Correlation now lives in `web/src/devicelink.ts`, shared with the manager's device source, which
-had already solved it: **a listener per request, removed on the way out, matched by message id.**
-Two waits can be in flight without seeing each other's traffic.
+Correlation now lives in `src/device/link.ts`, shared with the manager's device source, which had
+already solved it: **a listener per request, removed on the way out, matched by message id.** Two
+waits can be in flight without seeing each other's traffic.
+
+It moved out of `web/src/devicelink.ts` on 2026-09-20, parameterised on `SysexPort`
+(`src/device/port.ts`): send bytes, subscribe to bytes, close. The Web MIDI adapter and the
+port-name matching stayed in the browser layer. A second host implements those three methods and
+inherits the correlation rather than writing its own, which is what produced the false `0xd3`
+reading in the first place.
 
 ### A silent dependency came out with it
 

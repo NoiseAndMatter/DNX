@@ -24,11 +24,7 @@
  * instrument.
  */
 
-import {
-  type DeviceIo,
-  deliver,
-  readProjectFromDevice,
-} from "../../src/device/deviceproject.js";
+import { type DeviceIo, readProjectFromDevice } from "../../src/device/deviceproject.js";
 import {
   type BackupHook,
   type ConfirmHook,
@@ -57,7 +53,7 @@ import {
 } from "../../src/device/drive.js";
 import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
 import { type ApiTransport } from "../../src/device/storagesession.js";
-import { DeviceLink, candidatePairs } from "./devicelink.js";
+import { DeviceLink, WebMidiPort, candidatePairs } from "./devicelink.js";
 import { type DeviceChoice } from "./devicechoice.js";
 import { DeviceSession } from "../../src/device/session.js";
 import { dumpProductFor } from "../../src/device/dumprequest.js";
@@ -237,20 +233,17 @@ async function identify(pair: { input: MIDIInput; output: MIDIOutput }): Promise
   // `onmidimessage` does, and a closed port delivers nothing while looking like a silent device.
   await Promise.all([pair.input.open(), pair.output.open()]);
 
-  const io: DeviceIo = { send: (bytes) => pair.output.send([...bytes]) };
-  const onMessage = (event: MIDIMessageEvent): void => {
-    if (event.data) deliver(io, new Uint8Array(event.data));
-  };
-  pair.input.addEventListener("midimessage", onMessage);
-  const close = (): void => pair.input.removeEventListener("midimessage", onMessage);
+  // The port is the whole transport now. It used to be a bare `send` plus a permanent
+  // `midimessage` listener forwarding into core's `deliver` registry, which meant the browser held
+  // a listener for the device's whole life so that core could decide, one reader at a time, where
+  // the bytes went. A reader subscribes for as long as it is reading instead.
+  const io = new WebMidiPort(pair.input, pair.output);
+  const close = (): void => io.close();
 
   // Ask what it is before anything else. The dump protocol and the API number products
   // differently, and a request addressed in the wrong space is correctly ignored.
-  const session = new DeviceSession({ send: io.send });
-  const relay = (event: MIDIMessageEvent): void => {
-    if (event.data) session.receive(new Uint8Array(event.data));
-  };
-  pair.input.addEventListener("midimessage", relay);
+  const session = new DeviceSession({ send: (bytes) => io.send(bytes) });
+  const stopRelay = io.subscribe((data) => session.receive(data));
   try {
     const info = readDeviceResponse((await session.request(Code.Device, deviceRequest)).body);
     const productId = dumpProductFor(info.productId);
@@ -288,7 +281,7 @@ async function identify(pair: { input: MIDIInput; output: MIDIOutput }): Promise
             `or a browser dropping SysEx: ${String(error)}`,
         );
   } finally {
-    pair.input.removeEventListener("midimessage", relay);
+    stopRelay();
     session.close();
   }
 }
