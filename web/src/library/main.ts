@@ -54,6 +54,7 @@ import { ProductId } from "../../../src/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
+import { readDriveSlot } from "../drivepicker.js";
 import { describeBytes, progressBar } from "../progress.js";
 import { Session, tag } from "../../../src/librarian/session.js";
 import {
@@ -478,29 +479,11 @@ async function openDriveProject(): Promise<void> {
     await outstanding.catch(() => undefined);
   }
 
-  status(`Reading ${project.name} from slot ${project.index}…`);
-  // **`working`, not a percentage.** A +Drive listing reports a flat allocation (4 MiB on a
-  // Digitone 1, 16 MiB on a Digitone II) rather than the file's size, so there is no honest
-  // denominator here. See `progress.ts`.
-  progress.working(`Reading ${project.name}`);
-  let opened;
-  try {
-    opened = await openDeviceProject(device, project, (chunks, bytes, total) => {
-      if (chunks % 64 !== 0) return;
-      // The container header declares the length, so this is a real bar after the first chunk —
-      // `working` only covers the moment before that. See `fileLengthFromHead`.
-      if (total) progress.at(bytes, total, `Reading ${project.name}`);
-      else progress.working(`Reading ${project.name}`);
-      status(
-        `Reading ${project.name}: ${describeBytes(bytes)}` +
-          (total ? ` of ${describeBytes(total)}` : "") + "…",
-      );
-    });
-  } finally {
-    // In a `finally`, so a read that threw does not leave a bar sweeping over a page that has
-    // given up — which reads as "still working" and is the one thing it must never say wrongly.
-    progress.done();
-  }
+  // The bar, the repaint rate and the stale-listing refusal are `drivepicker.ts` now, shared with
+  // both halves of the expander. What was three copies had drifted: this one repainted every 64
+  // chunks and drew a real bar once the length was known, the expander's repainted every 8 and
+  // never drew one, for the same read of the same file.
+  const opened = await readDriveSlot(device, project, { onStatus: (m) => status(m), progress });
 
   // **No manifest, no project.** The +Drive sends no `manifest.json`; it is rebuilt from the payload
   // and the device's firmware string, and without that string there is no honest one. Refusing is

@@ -34,6 +34,7 @@ import {
   verifyRename,
 } from "../../../src/librarian/rename.js";
 import { clear, copyMany, moveMany, swap, type Shuffle } from "../../../src/librarian/shuffle.js";
+import { applyOperation, planOperation } from "../../../src/librarian/operation.js";
 import { Session, tag } from "../../../src/librarian/session.js";
 import {
   applyTrackMove,
@@ -1199,38 +1200,27 @@ async function run(label: string, shuffle: Shuffle, level: Level = state.level):
 
   // The level comes from the operation, never from what happens to be on screen. See
   // `patternForOperation`, which carries the reasoning and the test.
-  const tracks = patternForOperation(level, state.trackFor);
-  const scope = state.scope;
+  const operation = {
+    tracks: patternForOperation(level, state.trackFor),
+    shuffle,
+    scope: state.scope,
+  };
 
-  // One shape for both levels. `planRearrange` and `planTrackMove` deliberately report the same
-  // fields, so everything below this point — blockers, the confirmation, the warnings — is
-  // written once. That symmetry is why `trackmove.ts` mirrors the plan shape rather than
-  // inventing its own.
-  const plan =
-    tracks === undefined
-      ? planRearrange(session.image, shuffle)
-      : planTrackMove(session.image, device, tracks, shuffle, scope);
-
-  const blockers = plan.findings.filter((f) => f.severity === "blocker");
-  if (blockers.length > 0) {
-    status(blockers.map((f) => f.message).join(" "), "error");
+  const plan = planOperation(session.image, device, operation);
+  if (plan.blockers.length > 0) {
+    status(plan.blockers.map((f) => f.message).join(" "), "error");
     return;
   }
 
   if (plan.destructive.length > 0) {
     // A list, not a paragraph with newlines in it. This is the one dialog in the app where the
     // *detail* is the decision — how many trigs, in which named pattern — and `confirm` could only
-    // render it as run-together text in a system font.
-    const lines = plan.destructive.map((c) =>
-      "slot" in c
-        ? `${patternName(c.slot)}${c.name ? ` "${c.name}"` : ""} — ${c.trigCount} trigs` +
-          (c.replacedBy !== undefined ? `, replaced by ${patternName(c.replacedBy)}` : "")
-        : `${trackName(c.track)} — ${c.trigCount} trigs`,
-    );
+    // render it as run-together text in a system font. The lines themselves are the operation's,
+    // because the slot and track names are the instrument's own.
     const ok = await askConfirm({
       title: "This destroys work that cannot be recovered from the file",
       body: [`${label}. What is listed below is overwritten or emptied:`],
-      list: lines,
+      list: [...plan.destructive],
       confirmLabel: "Destroy it",
       danger: true,
     });
@@ -1240,34 +1230,16 @@ async function run(label: string, shuffle: Shuffle, level: Level = state.level):
     }
   }
 
-  const changed = session.apply(tag(label), (image) => {
-    if (tracks !== undefined) {
-      const result = applyTrackMove(image, device, tracks, shuffle, {
-        confirmOverwrite: true,
-        scope,
-      });
-      const verification = verifyTrackMove(image, result.image, tracks, shuffle, scope);
-      if (!verification.ok) {
-        throw new Error(`verification failed: ${verification.problems.join("; ")}`);
-      }
-      return result.image;
-    }
-    const result = applyRearrange(image, shuffle, { confirmOverwrite: true });
-    if (!result.verification.ok) {
-      throw new Error(`verification failed: ${result.verification.problems.join("; ")}`);
-    }
-    return result.image;
-  });
+  const changed = session.apply(tag(label), (image) => applyOperation(image, device, operation));
 
   if (!changed) {
     status(`${label} changed nothing.`, "warn");
     return;
   }
 
-  const warnings = plan.findings.filter((f) => f.severity === "warning");
   status(
-    `${label}. ${warnings.length ? warnings.map((w) => w.message).join(" ") : "Verified."}`,
-    warnings.length ? "warn" : "ok",
+    `${label}. ${plan.warnings.length ? plan.warnings.map((w) => w.message).join(" ") : "Verified."}`,
+    plan.warnings.length ? "warn" : "ok",
   );
   state.selection = [];
   render();

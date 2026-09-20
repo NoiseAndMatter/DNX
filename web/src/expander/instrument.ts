@@ -39,13 +39,13 @@ import {
   DeviceSourceError,
   connectDevice,
   listDeviceProjects,
-  openDeviceProject,
   readProject,
   writeBack,
 } from "../devicesource.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import { type DriveProject } from "../../../src/device/drive.js";
-import { type Progress, describeBytes } from "../progress.js";
+import { type Progress } from "../progress.js";
+import { projectInSlot, readDriveSlot } from "../drivepicker.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { ProductId } from "../../../src/sysex/devices.js";
 
@@ -119,25 +119,12 @@ export class Instrument {
    */
   async openSlot(index: number): Promise<StoredProject> {
     const connected = this.#required();
-    const project = this.#projects?.find((p) => p.index === index);
-    if (!project) throw new DeviceSourceError("browse the +Drive again — that listing is stale");
+    const project = projectInSlot(this.#projects, index);
 
-    this.hooks.onStatus(`Reading ${project.name} from slot ${project.index}…`);
-    // `working`, not a percentage: a +Drive listing reports a flat allocation (4 MiB on a
-    // Digitone 1, 16 MiB on a Digitone II) rather than the file's size, so there is no honest
-    // denominator. See `progress.ts`.
-    this.hooks.progress.working(`Reading ${project.name}`);
-    let opened;
-    try {
-      opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-        if (chunks % 8 === 0) {
-          this.hooks.progress.working(`Reading ${project.name}`);
-          this.hooks.onStatus(`Reading ${project.name}: ${describeBytes(bytes)}…`);
-        }
-      });
-    } finally {
-      this.hooks.progress.done();
-    }
+    const opened = await readDriveSlot(connected, project, {
+      onStatus: (message) => this.hooks.onStatus(message),
+      progress: this.hooks.progress,
+    });
 
     // Checked after the read, because the listing does not say what family a stored project is —
     // only the payload does. The mirror of the check on the source side, and for the same reason:
