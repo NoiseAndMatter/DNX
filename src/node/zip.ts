@@ -1,13 +1,10 @@
 /**
- * Minimal ZIP writer for project files.
+ * The ZIP codec Node has, handed to the container in `src/archive/zip.ts`.
  *
- * A .dnprj / .dn2prj is a ZIP holding exactly two entries: `manifest.json` and the binary
- * payload. That is all this needs to produce — no directories, no zip64, no reading.
- *
- * Hand-rolled rather than pulled from npm so the eventual browser build carries no
- * Node-only archive dependency. The one Node import here (`zlib`) is swappable for
- * CompressionStream in a browser build — `web/src/zip.ts` is that swap, and `test/web.test.ts`
- * checks the two agree.
+ * `node:zlib` is synchronous, so the library's readers and writers stay synchronous and the forty
+ * call sites that parse a project file on the command line are unchanged. The browser's codec is
+ * asynchronous and lives in `web/src/zip.ts`; both reach the same container code, and
+ * `test/archive.test.ts` holds them to the same bytes field for field.
  *
  * ## Why this is in `src/node/`
  *
@@ -20,73 +17,17 @@
  * `test/web.test.ts` fails if anything outside `src/node/` or `src/cli/` imports a `node:` module.
  */
 
-import { crc32, deflateRawSync } from "node:zlib";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
+import { buildZip as buildZipWith, readZip as readZipWith, type ZipEntry } from "../archive/zip.js";
 
-const LOCAL_HEADER_SIGNATURE = 0x04034b50;
-const CENTRAL_HEADER_SIGNATURE = 0x02014b50;
-const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
-const VERSION = 20;
-const METHOD_DEFLATE = 8;
+export { ZipError, crc32, type ZipEntry } from "../archive/zip.js";
 
-export interface ZipEntry {
-  name: string;
-  data: Uint8Array;
+/** Build a ZIP with one deflated entry per input, in the order given. */
+export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
+  return buildZipWith(entries, (data) => new Uint8Array(deflateRawSync(data)));
 }
 
-export function buildZip(entries: readonly ZipEntry[]): Uint8Array {
-  const locals: Uint8Array[] = [];
-  const centrals: Uint8Array[] = [];
-  let offset = 0;
-
-  for (const entry of entries) {
-    const name = new TextEncoder().encode(entry.name);
-    const deflated = new Uint8Array(deflateRawSync(entry.data));
-    const checksum = crc32(entry.data) >>> 0;
-
-    const local = new Uint8Array(30 + name.length + deflated.length);
-    const lv = new DataView(local.buffer);
-    lv.setUint32(0, LOCAL_HEADER_SIGNATURE, true);
-    lv.setUint16(4, VERSION, true);
-    lv.setUint16(8, METHOD_DEFLATE, true);
-    lv.setUint32(14, checksum, true);
-    lv.setUint32(18, deflated.length, true);
-    lv.setUint32(22, entry.data.length, true);
-    lv.setUint16(26, name.length, true);
-    local.set(name, 30);
-    local.set(deflated, 30 + name.length);
-    locals.push(local);
-
-    const central = new Uint8Array(46 + name.length);
-    const cv = new DataView(central.buffer);
-    cv.setUint32(0, CENTRAL_HEADER_SIGNATURE, true);
-    cv.setUint16(4, VERSION, true);
-    cv.setUint16(6, VERSION, true);
-    cv.setUint16(10, METHOD_DEFLATE, true);
-    cv.setUint32(16, checksum, true);
-    cv.setUint32(20, deflated.length, true);
-    cv.setUint32(24, entry.data.length, true);
-    cv.setUint16(28, name.length, true);
-    cv.setUint32(42, offset, true);
-    central.set(name, 46);
-    centrals.push(central);
-
-    offset += local.length;
-  }
-
-  const centralSize = centrals.reduce((n, c) => n + c.length, 0);
-  const end = new Uint8Array(22);
-  const ev = new DataView(end.buffer);
-  ev.setUint32(0, END_OF_CENTRAL_DIRECTORY_SIGNATURE, true);
-  ev.setUint16(8, entries.length, true);
-  ev.setUint16(10, entries.length, true);
-  ev.setUint32(12, centralSize, true);
-  ev.setUint32(16, offset, true);
-
-  const out = new Uint8Array(offset + centralSize + end.length);
-  let at = 0;
-  for (const chunk of [...locals, ...centrals, end]) {
-    out.set(chunk, at);
-    at += chunk.length;
-  }
-  return out;
+/** Read every entry of a ZIP, decompressing what needs it. */
+export function readZip(file: Uint8Array): Map<string, Uint8Array> {
+  return readZipWith(file, (data) => new Uint8Array(inflateRawSync(data)));
 }
