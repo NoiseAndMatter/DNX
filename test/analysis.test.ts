@@ -17,7 +17,8 @@ import {
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
   POLYMETER_LIMIT, MICRO_MAX, alignmentOf, masterPeriod, microFraction, periodGroups,
   polymeterIsBounded, reachableSteps, dormantTrigs,
-  repeatSteps, resetCuts, resetOptions, resetPasses, trackWindows, voicesPerStep,
+  repeatSteps, repetitions, resetCuts, resetOptions, resetPasses, trackWindows, trigDensity,
+  voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
@@ -550,6 +551,33 @@ test("sixteen near-coprime lengths are legal, and must not overflow or hang", ()
 test("a bounded polymeter says so", () => {
   assert.equal(polymeterIsBounded([track({ number: 1, length: 12 }),
                                    track({ number: 2, length: 16 })]), true);
+});
+
+test("repetitions counts passes on the master clock, and does not round them", () => {
+  // 12 steps at 3/2x is an eight-step pass, so it comes round eight times in 64 and not five and
+  // a third. The unrounded value is what a log scale needs; the chart rounds it for the label.
+  assert.equal(repetitions(track({ length: 12, speed: 1.5 }), 64), 8);
+  assert.equal(repetitions(track({ length: 24 }), 64), 64 / 24);
+});
+
+test("track density counts trigs, accents and preset locks separately", () => {
+  /*
+   * Accent is "above this pattern's default velocity", not above a number chosen here, and
+   * microtiming counts as shaping too. A trig can be both accented and locked and is counted in
+   * both, which is what the stacked bar draws.
+   */
+  const t = track({
+    trigs: [
+      trig(0, [60]),
+      trig(2, [62], { velocity: 120 }),
+      trig(4, [64], { microTiming: -12 }),
+      trig(6, [65], { velocity: 127, lockPreset: "LOCK" }),
+    ],
+  });
+  assert.deepEqual(trigDensity([t], 100).map((r) => [r.trigs, r.accented, r.presetLocks]),
+    [[4, 3, 1]]);
+  // Raise the default and the same trigs stop being accents. Only the microtimed one is left.
+  assert.deepEqual(trigDensity([t], 127).map((r) => r.accented), [1]);
 });
 
 /* ---- charts, where the geometry can go wrong without throwing --------------------------- */

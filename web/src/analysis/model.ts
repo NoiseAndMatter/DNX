@@ -429,6 +429,21 @@ export function repeatSteps(tracks: readonly AnalysisTrack[], resetSteps?: numbe
   return resetSteps === undefined ? cycle : Math.min(cycle, resetSteps);
 }
 
+/**
+ * How many times a track comes round in one cycle.
+ *
+ * On the master clock, so a 12-step track at 3/2x counts its eight-step passes and not its twelve
+ * steps. Rarely a whole number: the track that does not divide the cycle is the one stretching it,
+ * and 2.67 says that where a rounded 3 would hide it.
+ *
+ * Returned unrounded. A caller printing it decides how many places it wants, and a caller scaling
+ * a chart by it needs the exact ratio — rounding first put a bar at a width its own label
+ * contradicted.
+ */
+export function repetitions(track: AnalysisTrack, cycle: number): number {
+  return cycle / masterPeriod(track);
+}
+
 /** A track the reset interrupts, and where. */
 /** One track laid against the reset: the passes it completes, and what the reset takes off it. */
 export interface TrackPasses {
@@ -908,6 +923,45 @@ export function sounded(track: AnalysisTrack, trig: AnalysisTrig): readonly numb
   const out: number[] = [];
   for (const note of trig.notes) for (const step of arp) out.push(note + step);
   return out;
+}
+
+/** What one track puts on the grid, counted three ways. */
+export interface TrackDensity {
+  track: AnalysisTrack;
+  /** Note trigs on the track. */
+  trigs: number;
+  /**
+   * Trigs carrying microtiming or a velocity above the track default.
+   *
+   * **Not parameter locks, and calling them that was wrong.** On a Digitone II both of those live
+   * in the trig slot itself, which is why `plockparams.ts` lists `TRIG 1 VEL` and `TRIG 1 NOTE`
+   * under `NOT_LOCKABLE`. They are per-trig values, not entries in the lock table. The lock table
+   * is a separate reading and is not counted here.
+   */
+  accented: number;
+  /** Trigs that swap the preset for the one locked on them. */
+  presetLocks: number;
+}
+
+/**
+ * How much each track carries: trigs, trigs shaped by microtiming or accent, and preset locks.
+ *
+ * Counting, not drawing, so it belongs here rather than in the bar chart that shows it: the same
+ * three numbers answer "which track is doing the work" in prose, and a second copy of the velocity
+ * comparison is a second place for the default to be read wrong.
+ *
+ * `defaultVelocity` is the pattern's, so "accented" means above what this pattern treats as
+ * normal rather than above a number chosen here.
+ */
+export function trigDensity(
+  tracks: readonly AnalysisTrack[], defaultVelocity: number,
+): TrackDensity[] {
+  return tracks.map((track) => ({
+    track,
+    trigs: track.trigs.length,
+    accented: track.trigs.filter((t) => t.microTiming !== 0 || t.velocity > defaultVelocity).length,
+    presetLocks: track.trigs.filter((t) => t.lockPreset !== undefined).length,
+  }));
 }
 
 export interface PitchCell {

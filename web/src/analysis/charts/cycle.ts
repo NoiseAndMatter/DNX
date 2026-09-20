@@ -4,7 +4,7 @@
  */
 
 import { escapeHtml } from "../../../../src/sheet/html.js";
-import { barsOf, clock, masterPeriod, trackLabel, type AnalysisTrack } from "../model.js";
+import { barsOf, clock, repetitions, trackLabel, type AnalysisTrack } from "../model.js";
 import { T } from "./theme.js";
 import { tip, svg, clip } from "./svg.js";
 
@@ -23,17 +23,18 @@ import { tip, svg, clip } from "./svg.js";
  */
 export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: number): string {
   const rowH = 14, gap = 5, padL = 30, padR = 128;
-  const sorted = [...tracks].sort((a, b) => cycle / masterPeriod(b) - cycle / masterPeriod(a));
+  const sorted = [...tracks].sort((a, b) => repetitions(b, cycle) - repetitions(a, cycle));
   const h = sorted.length * (rowH + gap);
   const plot = w - padL - padR;
-  const max = Math.log(Math.max(...sorted.map((t) => cycle / masterPeriod(t))));
+  const max = Math.log(Math.max(...sorted.map((t) => repetitions(t, cycle))));
   // Every track the same length: `max` is 0, the ratio is 0/0, and there is no culprit to point at
   // because nothing is stretching anything.
   const flat = max === 0;
   let out = "";
   sorted.forEach((t, i) => {
     const y = i * (rowH + gap);
-    const reps = Number((cycle / masterPeriod(t)).toFixed(2));
+    // Two places, as every other fractional number on this page is printed.
+    const reps = Number(repetitions(t, cycle).toFixed(2));
     const bw = flat ? plot : Math.max(2, (Math.log(reps) / max) * plot);
     const culprit = i === 0 && !flat;
     out += `<rect x="${padL}" y="${y}" width="${bw}" height="${rowH}" rx="2"
