@@ -6,7 +6,7 @@
 import {
   POLYMETER_LIMIT, alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel,
   stepsLabel, trackLabel, type AnalysisTrack, type PeriodGroup,
-} from "../model.js";
+} from "../../../../src/analysis/model.js";
 import { T, W, GROUND, INK_ON_LIGHT, rampBand, rampIsLight } from "./theme.js";
 import { tip, svg, barGrid, barAxis, rowLabel, rowGround, OVER_LIMIT } from "./svg.js";
 

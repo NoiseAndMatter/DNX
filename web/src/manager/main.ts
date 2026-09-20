@@ -123,9 +123,9 @@ import { registerBackup } from "../settings.js";
 import { backupDevice } from "../backup.js";
 import { backupFileName, packBackup } from "../dnxfile.js";
 import { renderInsights, type InsightsRefusal } from "./insights.js";
-import { dn1PatternSubject } from "../dn1subject.js";
-import { patternSubject } from "../patternsubject.js";
-import { type AnalysisSubject } from "../analysis/model.js";
+import { dn1PatternSubject } from "../../../src/analysis/dn1subject.js";
+import { patternSubject } from "../../../src/analysis/patternsubject.js";
+import { type AnalysisSubject } from "../../../src/analysis/model.js";
 
 const status = statusBar();
 const progress = progressBar();

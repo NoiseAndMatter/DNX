@@ -28,7 +28,7 @@
  * not part of `grid.ts`.
  */
 
-import { MACHINE, machineName } from "../../../src/project/machine.js";
+import { MACHINE, machineName } from "../project/machine.js";
 
 /** One trig, with everything analysis can currently read off it. */
 export interface AnalysisTrig {

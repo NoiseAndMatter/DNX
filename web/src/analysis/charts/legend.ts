@@ -6,7 +6,7 @@
  */
 
 import { escapeHtml } from "../../../../src/sheet/html.js";
-import { NOTE_NAMES, POLYMETER_LIMIT, stepsLabel } from "../model.js";
+import { NOTE_NAMES, POLYMETER_LIMIT, stepsLabel } from "../../../../src/analysis/model.js";
 import { pcHue } from "./theme.js";
 import { OVER_LIMIT } from "./svg.js";
 

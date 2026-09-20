@@ -36,7 +36,7 @@ import {
   POLYMETER_LIMIT, cycleSteps, fitKey, harmonic, microBuckets, periodGroups, pitchByPreset,
   pitchWindows, playing, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
-} from "../web/src/analysis/model.js";
+} from "../src/analysis/model.js";
 import { MACHINE } from "../src/project/machine.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "charts");

@@ -6,7 +6,7 @@
  * type scale moves every chart together. The tokens themselves live on `.viz`; see `charts.ts`.
  */
 
-import { MACHINE_ORDER } from "../model.js";
+import { MACHINE_ORDER } from "../../../../src/analysis/model.js";
 
 /** Chart type sizes, in real pixels. */
 export const T = {

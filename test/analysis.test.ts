@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -20,9 +20,9 @@ import {
   repeatSteps, repetitions, resetCuts, resetOptions, resetPasses, trackWindows, trigDensity,
   voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
-} from "../web/src/analysis/model.js";
+} from "../src/analysis/model.js";
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
-import { compareSubjects, summariseComparison } from "../web/src/analysis/compare.js";
+import { compareSubjects, summariseComparison } from "../src/analysis/compare.js";
 import { MACHINE } from "../src/project/machine.js";
 import { browserGlobalsIn, code, importGraph, repoPath, specifiersOf } from "./importgraph.js";
 import { noteLengthSteps } from "../src/project/dn2pattern.js";
@@ -859,7 +859,23 @@ const CHART_FILES = readdirSync(resolve(HERE, "../web/src/analysis/charts"))
   .map((f) => `charts/${f.slice(0, -3)}`)
   .sort();
 
-const PURE = ["charts", "compare", "model", ...CHART_FILES];
+/**
+ * Every module these purity tests walk, as a repo path.
+ *
+ * **Paths rather than names, and checked for existence**, because `importGraph` skips a file it
+ * cannot find. When the model and `compare` moved to `src/analysis/` in the core extraction, the
+ * old `web/src/analysis/model.ts` entry did not fail: it walked nothing, found no page folder and
+ * no `document`, and passed. A list that keeps passing after the thing it guards has moved is the
+ * failure this file was written to prevent, so a missing entry is now an error.
+ */
+const PURE: string[] = [
+  "web/src/analysis/charts.ts",
+  "src/analysis/compare.ts",
+  "src/analysis/model.ts",
+  "src/analysis/patternsubject.ts",
+  "src/analysis/dn1subject.ts",
+  ...CHART_FILES.map((f) => `web/src/analysis/${f}.ts`),
+];
 
 /** Files in `charts/` that the barrel's import graph does not reach. */
 function unreachedChartFiles(files: readonly string[], graph: readonly string[]): string[] {
@@ -901,9 +917,14 @@ test("a chart file imports only the model and the shared chart files", () => {
 });
 
 for (const name of PURE) {
-  const entry = resolve(HERE, `../web/src/analysis/${name}.ts`);
+  const entry = resolve(HERE, "..", name);
 
-  test(`analysis/${name}.ts reaches no page's own folder`, () => {
+  test(`${name} is where this list says it is`, () => {
+    assert.ok(existsSync(entry),
+      `${name} does not exist, so every purity test below it would walk nothing and pass`);
+  });
+
+  test(`${name} reaches no page's own folder`, () => {
     /*
      * A page never imports another page's folder, and a module every page shares must not import
      * any of them. Without this the charts could quietly start depending on the manager, and the
@@ -912,10 +933,10 @@ for (const name of PURE) {
     const pageFolders = localGraph(entry).filter((f) =>
       /^web\/src\/(expander|manager|library|probe)\//.test(f));
     assert.deepEqual(pageFolders, [],
-      `analysis/${name}.ts must not reach a page folder, but found:\n  ${pageFolders.join("\n  ")}`);
+      `${name} must not reach a page folder, but found:\n  ${pageFolders.join("\n  ")}`);
   });
 
-  test(`analysis/${name}.ts touches no document`, () => {
+  test(`${name} touches no document`, () => {
     /*
      * **A pure thing inside a DOM module is a pure thing nobody can test** — the same reason
      * `selection.ts` is not part of `grid.ts`. Every test above this line exists because these
