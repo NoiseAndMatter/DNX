@@ -5,7 +5,7 @@
 
 import { gateLabel, masterOffset, masterPeriod, trackLabel, type AnalysisTrack } from "../model.js";
 import { T, W, GRID_OP, machineVar } from "./theme.js";
-import { tip, svg } from "./svg.js";
+import { tip, svg, barGrid, barAxis, rowLabel } from "./svg.js";
 
 /**
  * Voice pressure over the pattern, as a step area against the device's budget.
@@ -68,10 +68,7 @@ export function voiceArea(series: readonly number[], budget: number, w: number):
     out += `<rect x="${x(i)}" y="0" width="${x(i + 1) - x(i)}" height="${plotH}"
       fill="transparent" ${tip(`Step ${i + 1}`, `${v} of ${budget} voices held`)}/>`;
   });
-  for (let bar = 0; bar < n / 16; bar++) {
-    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${bar + 1}</text>`;
-  }
+  out += barAxis(x, n, h - 3);
   return svg(w, h, `Concurrent voices at each step against the ${budget}-voice budget`, out);
 }
 
@@ -107,10 +104,7 @@ export function voiceLanes(
     out += `<rect x="${x(i)}" y="0" width="${Math.max(2.5, stepW)}" height="${h}"
       fill="var(--crit)" opacity=".16"/>`;
   });
-  for (let bar = 0; bar <= windowSteps / 16; bar++) {
-    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h}"
-      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
-  }
+  out += barGrid(x, windowSteps, h);
 
   tracks.forEach((t, i) => {
     const y = i * (rowH + gap);
@@ -132,8 +126,7 @@ export function voiceLanes(
             + (guilty ? " · sounding during an overrun" : ""))}/>`;
       }
     }
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(t));
   });
   return svg(w, h, "Which tracks are holding a voice at each step", out);
 }

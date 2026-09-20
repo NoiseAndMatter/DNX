@@ -21,6 +21,32 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## 0.9.0-beta.6 — 2026-09-20
+
+### Fixed
+
+- **Every number on the Insights page now stops at two places, as the reset ruler already did.**
+  Only the ruler was rounded last time. The alignment grid above it still wrote a period in full
+  in its column heading, in its row label and in every tooltip along that row — a 14-step track
+  at 3/4x appearing as *"18.666666666666668 steps"* — and so did its legend, the sentence naming
+  the closest and furthest pair, and the Table view under them. The Table view on the card above,
+  where `006 GLITCH_EXPLORE` B1 printed a repeat count of *"5.333333333333333"*, is rounded too.
+  Two places everywhere now, the same as the ruler and as the bar counts beside it. Only patterns
+  with a speed other than 1x on some track are affected; every other period is whole already. The
+  colour of a cell and the outline on the pair that aligns last are still worked out from the
+  full value, so what is drawn has not moved, only what is written.
+
+### Changed
+
+- **One wording for a pair that never comes back into phase.** Counting stops at a million steps,
+  about a day of playing, because sixteen coprime lengths have a least common multiple past what
+  a double holds. The pattern comparison has always said *"> 1M steps"* for that. The alignment
+  grid printed the stopping point instead, as *"1000000"* with *"62500 bars"* under it, so one
+  card showed the same fact as a bound in one chart and as a measurement in the other. The grid
+  and its legend now say *"> 1M steps"* too, and the bar count goes with it, being the same
+  uncounted number in another unit. It takes tracks of 127 and 128 steps at 1/8x to see this; no
+  project in the test corpus has any.
+
 ## 0.9.0-beta.5 — 2026-09-20
 
 ### Fixed

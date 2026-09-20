@@ -4,11 +4,11 @@
  */
 
 import {
-  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
-  type AnalysisTrack, type PeriodGroup,
+  POLYMETER_LIMIT, alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel,
+  stepsLabel, trackLabel, type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
-import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
-import { tip, svg } from "./svg.js";
+import { T, W, GROUND, INK_ON_LIGHT, rampBand, rampIsLight } from "./theme.js";
+import { tip, svg, barGrid, barAxis, rowLabel, rowGround, OVER_LIMIT } from "./svg.js";
 
 /**
  * Every track's passes laid against the reset, so an interrupted one can be seen rather than
@@ -51,13 +51,6 @@ export function resetRuler(
     if ((a.cutAfter === 0) !== (b.cutAfter === 0)) return a.cutAfter === 0 ? 1 : -1;
     return a.track.length - b.track.length;
   });
-  /*
-   * **Two places, as everywhere else on this card.** A period is `length / speed`, so 14 steps at
-   * 3/4x is 18.666666666666668 and the row read "cut after 8 of 18.666666666666668" — seventeen
-   * digits of float noise where the reader wants a number they can hold against the two settings
-   * printed underneath. `barsOf` and the repetition count next to it already stop at two.
-   */
-  const steps = (n: number) => Number(n.toFixed(2));
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const x = (step: number) => padL + (step / resetSteps) * plot;
@@ -66,14 +59,11 @@ export function resetRuler(
 
   // The bar grid behind everything: a reset is nearly always a whole number of bars, and seeing
   // that a track is not is half the point.
-  for (let bar = 0; bar <= resetSteps / 16; bar++) {
-    out += `<line x1="${x(bar * 16)}" y1="0" x2="${x(bar * 16)}" y2="${h - 14}"
-      stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
-  }
+  out += barGrid(x, resetSteps, h - 14);
 
   sorted.forEach(({ track, period, passes, cutAfter: remainder, lost }, i) => {
     const y = i * (rowH + gap);
-    out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
+    out += rowGround(padL, y, plot, rowH);
 
     for (let pass = 0; pass < passes; pass++) {
       const from = pass * period;
@@ -94,7 +84,7 @@ export function resetRuler(
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`${trackLabel(track)} — cut`,
-          `pass ${passes + 1} gets ${steps(remainder)} of its ${steps(period)} master steps` +
+          `pass ${passes + 1} gets ${stepsLabel(remainder)} of its ${stepsLabel(period)} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
 
@@ -109,13 +99,12 @@ export function resetRuler(
           fill="${inCut ? "var(--ink)" : "var(--ink2)"}" opacity="${inCut ? 1 : .75}"/>`;
       }
     }
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(track)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(track));
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${steps(remainder)} of ${steps(period)}` +
+        ? `cut after ${stepsLabel(remainder)} of ${stepsLabel(period)}` +
           (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
-        : `${passes} clean \u00d7 ${steps(period)}`}</text>`;
+        : `${passes} clean \u00d7 ${stepsLabel(period)}`}</text>`;
     // What the reader set on the instrument, when it is not the same as the period drawn.
     if (track.speed !== undefined && track.speed !== 1) {
       out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 13}" font-size="${T.tick}"
@@ -126,10 +115,7 @@ export function resetRuler(
   // The reset itself, over everything, in the colour that means "a limit" everywhere else here.
   out += `<line x1="${padL + plot}" y1="0" x2="${padL + plot}" y2="${h - 14}"
     stroke="var(--crit)" stroke-width="${W.limit}" stroke-dasharray="4 3"/>`;
-  for (let bar = 0; bar < resetSteps / 16; bar++) {
-    out += `<text x="${x(bar * 16) + 3}" y="${h - 3}" font-size="${T.tick}"
-      fill="var(--ink3)">${bar + 1}</text>`;
-  }
+  out += barAxis(x, resetSteps, h - 3);
   return svg(w, h, `Each track's passes before the reset at ${resetSteps} steps`, out);
 }
 
@@ -198,7 +184,7 @@ export function alignmentGrid(
   groups.forEach((col, j) => {
     const x = padL + j * (cellW + gap);
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 30 : 18)}" text-anchor="middle"
-      font-size="${T.label}" fill="var(--ink2)">${col.period} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${stepsLabel(col.period)} steps</text>`;
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 18 : 6)}" text-anchor="middle"
       font-size="${T.value}" fill="var(--ink3)">${col.labels.join(" ")}</text>`;
     if (anySpeed && sources[j]!.length) {
@@ -211,7 +197,7 @@ export function alignmentGrid(
   groups.forEach((row, i) => {
     const y = padT + i * (cellH + gap);
     out += `<text x="${padL - 8}" y="${y + cellH / 2 + (roomy ? 1 : 3)}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${row.period} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${stepsLabel(row.period)} steps</text>`;
     if (roomy) {
       const from = sources[i]!.length
         ? sources[i]!.map((s) => `${s.length}@${speedLabel(s.speed)}`).join(" ")
@@ -238,20 +224,34 @@ export function alignmentGrid(
       // The pair that only comes round when the whole pattern does. Outlined rather than recoloured
       // so it reads as "this is the one", not as a seventh step of a six-step ramp.
       const isEverything = everything !== undefined && steps === everything && !self;
-      const ink = onLight ? "#0d1418" : "var(--ink)";
-      const inkDim = onLight ? "#0d1418" : "var(--ink2)";
+      const ink = onLight ? INK_ON_LIGHT : "var(--ink)";
+      const inkDim = onLight ? INK_ON_LIGHT : "var(--ink2)";
+      /*
+       * **A count that stopped is not a measurement and is not printed as one.** `alignmentOf`
+       * saturates at `POLYMETER_LIMIT`, and this cell printed that as `1000000` with `62500 bars`
+       * under it, while `cycleBars` says `> 1M steps` for the very same condition — the same card
+       * calling one thing two things. The wording is `cycleBars`', because it is the one that
+       * reads as a floor. The bar count goes with it: it is the same unmeasured number in another
+       * unit, and dropping it leaves one line, which is what the cell is then centred on.
+       */
+      const over = steps >= POLYMETER_LIMIT;
+      const twoLine = roomy && !over;
+      // What the cell and its tooltip print. The band above and the outline are decided first,
+      // from the full value, so this is a reading of the answer and not a second answer.
+      const shown = over ? OVER_LIMIT : stepsLabel(steps);
+      const every = over ? OVER_LIMIT : `${shown} steps · ${barsOf(steps)}`;
       out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
-        fill="${self ? "#1a1f21" : `var(--q${band + 1})`}"
+        fill="${self ? GROUND : `var(--q${band + 1})`}"
         stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
         stroke-width="${isEverything ? 2 : 1}"
-        ${tip(self ? `${row.period} master steps — on its own`
-              : `${row.period} and ${col.period} master steps`,
+        ${tip(self ? `${stepsLabel(row.period)} master steps — on its own`
+              : `${stepsLabel(row.period)} and ${stepsLabel(col.period)} master steps`,
           self
-            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${barsOf(steps)}`
-            : `back in phase every ${steps} steps · ${barsOf(steps)}`)}/>`;
-      out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
-        text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
-      if (roomy) {
+            ? `${row.labels.join(", ")} comes round every ${every}`
+            : `back in phase every ${every}`)}/>`;
+      out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (twoLine ? 1 : 3)}"
+        text-anchor="middle" font-size="${T.value}" fill="${ink}">${shown}</text>`;
+      if (twoLine) {
         out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
           font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"
           >${barsOf(steps)}</text>`;

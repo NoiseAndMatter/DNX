@@ -6,7 +6,7 @@
 import { escapeHtml } from "../../../../src/sheet/html.js";
 import { barsOf, clock, repetitions, trackLabel, type AnalysisTrack } from "../model.js";
 import { T } from "./theme.js";
-import { tip, svg, clip } from "./svg.js";
+import { tip, svg, clip, rowLabel, OVER_LIMIT } from "./svg.js";
 
 /**
  * How many times each track repeats before everything lines up again.
@@ -42,8 +42,7 @@ export function realignBars(tracks: readonly AnalysisTrack[], cycle: number, w: 
       ${tip(`${trackLabel(t)} — ${t.preset}`,
         `${t.length} steps${t.speed !== undefined && t.speed !== 1 ? ` at ${t.speed}x` : ""} · ` +
         `repeats ${reps}x per cycle`)}/>`;
-    out += `<text x="${padL - 6}" y="${y + rowH / 2 + 3.5}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${trackLabel(t)}</text>`;
+    out += rowLabel(padL, y, rowH, trackLabel(t));
     out += `<text x="${padL + bw + 6}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${culprit ? "--s2" : "--ink2"})">${reps}&#215;
       <tspan fill="var(--ink3)">· ${t.length} steps${
@@ -143,7 +142,7 @@ export function cycleBars(rows: readonly CycleBar[], w: number): string {
 
     const at = padL + bw + (r.bounded ? 6 : 30);
     out += `<text x="${at}" y="${mid}" font-size="${T.value}" fill="var(--ink2)">${
-      r.bounded ? barsOf(r.cycle) : "&gt; 1M steps"}
+      r.bounded ? barsOf(r.cycle) : OVER_LIMIT}
       <tspan fill="var(--ink3)">· ${clock(r.seconds)}</tspan>${cut
         ? `<tspan fill="var(--ink3)"> · of ${barsOf(r.polymeter)}</tspan>` : ""}</text>`;
   });

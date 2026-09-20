@@ -33,8 +33,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import * as charts from "../web/src/analysis/charts.js";
 import {
-  cycleSteps, fitKey, harmonic, microBuckets, periodGroups, pitchByPreset, pitchWindows, playing,
-  trackWindows, voicesPerStep,
+  POLYMETER_LIMIT, cycleSteps, fitKey, harmonic, microBuckets, periodGroups, pitchByPreset,
+  pitchWindows, playing, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { MACHINE } from "../src/project/machine.js";
@@ -158,10 +158,21 @@ const CASES: [string, () => string][] = [
     charts.alignmentGrid(periodGroups(LIVE.filter((t) => t.speed === 1)), W)],
   ["alignmentGrid-narrow.svg", () => charts.alignmentGrid(GROUPS, 300, 168)],
   ["alignmentGrid-empty.svg", () => charts.alignmentGrid([], W)],
+  /*
+   * The saturated pair, which is the one `alignmentOf`'s own doc names: 127 and 128 steps at 1/8x
+   * are periods of 1,016 and 1,024, and their least common multiple in twenty-fourths passes
+   * `POLYMETER_LIMIT`. The cell must say so rather than print the limit as a measurement.
+   */
+  ["alignmentGrid-saturated.svg", () => charts.alignmentGrid([
+    { period: 1016, lengths: [127], tracks: [1], labels: ["T1"] },
+    { period: 1024, lengths: [128], tracks: [2], labels: ["T2"] },
+  ], W)],
 
   ["legend.html", () => charts.legend([["FM TONE", "--s1"], ["<unknown> & more", "--ink3"]])],
   ["pcLegend.html", () => charts.pcLegend()],
   ["rampLegend.html", () => charts.rampLegend(8, 1344)],
+  // The far end of the ramp, when nothing counted it. Same wording as the cell it keys.
+  ["rampLegend-saturated.html", () => charts.rampLegend(8, POLYMETER_LIMIT)],
   ["table.html", () => charts.table(
     ["Track", "Preset", "Notes"],
     [["T1", "KICK", 4], ["T6", "<b>&", 1], ["A", "EXT SYNTH", 2]],

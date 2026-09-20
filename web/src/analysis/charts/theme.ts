@@ -28,6 +28,19 @@ export const W = {
 export const GRID_OP = 0.55;
 
 /**
+ * The two colours the charts write directly rather than through a `.viz` token.
+ *
+ * `GROUND` is the dark well a row of marks is drawn in, and it was a hex literal in five places
+ * across three files. `INK_ON_LIGHT` is the ink the alignment grid switches to on the pale end of
+ * the ramp, measured against `--q4` (`#3a86b4`) rather than guessed; see `rampIsLight`.
+ *
+ * They are not tokens because they are not part of the palette a host restyles: a ground that
+ * followed the page background would put light marks on a light surface.
+ */
+export const GROUND = "#1a1f21";
+export const INK_ON_LIGHT = "#0d1418";
+
+/**
  * A machine's series colour.
  *
  * Five machines against an eight-slot categorical palette, which is why the pitch histogram stacks
