@@ -42,7 +42,11 @@
  */
 
 import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, type ImageLayout } from "./dn2image.js";
-import { PATTERN as DN1_PATTERN, RECORD_VERSION as DN1_PATTERN_VERSION } from "./dn1.js";
+import {
+  PATTERN as DN1_PATTERN,
+  RECORD_VERSION as DN1_PATTERN_VERSION,
+  RECORD_VERSIONS as DN1_PATTERN_VERSIONS,
+} from "./dn1.js";
 import {
   PATTERN as DN2_PATTERN,
   RECORD_VERSION as DN2_PATTERN_VERSION,
@@ -60,8 +64,20 @@ export type DeviceKind = "dn1" | "dn2";
 
 /** Where a pattern record keeps the two fields anything outside the reader needs. */
 export interface PatternSpec {
-  /** The single record version this family reads and writes. */
+  /** The record version this family **authors**: what a blank written by DNX carries. */
   version: number;
+  /**
+   * Every record version this family can **rewrite**, oldest first. What `supported` means.
+   *
+   * Reading is wider than this on both families and is not listed here, because the number a
+   * refusal has to quote is the one it would have had to write.
+   *
+   * One entry on the Digitone II: a version-2 record reads through `asVersion3` and must never go
+   * back, since the normalisation widens every track. Two on the Digitone 1, because OS 1.43
+   * moved no field and a version-11 record is a version-10 record with a different byte at
+   * `+0x03`.
+   */
+  writableVersions: readonly number[];
   /**
    * Where the record states the slot it believes it occupies.
    *
@@ -85,7 +101,12 @@ export interface SoundSpec {
   size: number;
   /** Where the pool begins, relative to `layout.tailBase`. */
   poolOffset: number;
-  /** The object version a sound in *this family's project* carries. */
+  /**
+   * The object version a sound in *this family's project* carries.
+   *
+   * The oldest one. A Digitone 1 sound object reads 5 up to OS 1.42A and 6 from 1.43, with no
+   * change to the object; `PROJECT_SOUND_VERSIONS` in `dn1.ts` holds the pair.
+   */
   projectVersion: number;
 }
 
@@ -124,6 +145,7 @@ export const DN1_SPEC: DeviceSpec = {
   layout: DN1_LAYOUT,
   pattern: {
     version: DN1_PATTERN_VERSION,
+    writableVersions: DN1_PATTERN_VERSIONS,
     slotIndexOffset: DN1_PATTERN.slotIndexOffset,
     nameOffset: DN1_PATTERN.nameOffset,
   },
@@ -144,6 +166,7 @@ export const DN2_SPEC: DeviceSpec = {
   layout: DN2_LAYOUT,
   pattern: {
     version: DN2_PATTERN_VERSION,
+    writableVersions: [DN2_PATTERN_VERSION],
     slotIndexOffset: DN2_PATTERN.slotIndexOffset,
     nameOffset: DN2_PATTERN.nameOffset,
   },

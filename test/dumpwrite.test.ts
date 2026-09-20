@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildMessage, parseMessage } from "../src/sysex/container.js";
 import { ProductId } from "../src/sysex/devices.js";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
 import {
   WriteCode,
   WriteRefused,
@@ -15,6 +15,7 @@ import {
   settleMsAfter,
   storageVersion,
   verifyWrite,
+  versionOf,
   writeToSlot,
 } from "../src/device/dumpwrite.js";
 
@@ -289,4 +290,56 @@ test("two different lengths are drift without a byte count, which would not mean
   assert.equal(drift.same, false);
   assert.equal(drift.at, undefined, "there is no first differing byte between records of two sizes");
   assert.match(drift.reason!, /holds 32 bytes and the capture is 64/);
+});
+
+// --- the Digitone 1, whose records carry a version and no magic ---------------------------------
+
+const DN1_PATTERN_KIT = DN1_LAYOUT.patternSize + DN1_LAYOUT.kitSize;
+
+/** A Digitone 1 record: a bare u32be version at byte 0, with no `BEEFBACE` in front of it. */
+function dn1Record(size: number, version: number, fill = 0x11): Uint8Array {
+  const bytes = new Uint8Array(size).fill(fill);
+  new DataView(bytes.buffer).setUint32(0, version, false);
+  return bytes;
+}
+
+test("a Digitone 1 record declares a version even with no object magic", () => {
+  /*
+   * The guard was inert on this family for as long as it existed. `DN1_KIT` has no magic and
+   * neither does a Digitone 1 pattern record, so requiring `BEEFBACE` made both sides of the
+   * comparison unknown and every write passed. OS 1.43 is the first firmware to move a Digitone 1
+   * record version, which is when that stops being harmless.
+   */
+  assert.equal(versionOf(ProductId.DN1, WriteCode.PatternKit, dn1Record(DN1_PATTERN_KIT, 10)), 10);
+  assert.equal(versionOf(ProductId.DN1, WriteCode.Pattern, dn1Record(DN1_LAYOUT.patternSize, 11)), 11);
+  assert.equal(versionOf(ProductId.DN1, WriteCode.Kit, dn1Record(DN1_LAYOUT.kitSize, 11)), 11);
+});
+
+test("a Digitone 1 write across record versions is refused", () => {
+  assert.throws(
+    () =>
+      dumpWrite(ProductId.DN1, {
+        code: WriteCode.PatternKit,
+        objNr: 0,
+        payload: dn1Record(DN1_PATTERN_KIT, 10),
+        witness: dn1Record(DN1_PATTERN_KIT, 11),
+      }),
+    (error: unknown) =>
+      error instanceof WriteRefused &&
+      /storage version 10 and the device answered with version 11/.test((error as Error).message),
+  );
+});
+
+test("a Digitone 1 write at the device's own version goes through", () => {
+  for (const version of [10, 11]) {
+    const message = parseMessage(
+      dumpWrite(ProductId.DN1, {
+        code: WriteCode.PatternKit,
+        objNr: 3,
+        payload: dn1Record(DN1_PATTERN_KIT, version),
+        witness: dn1Record(DN1_PATTERN_KIT, version),
+      }),
+    );
+    assert.equal(message.payload.length, DN1_PATTERN_KIT);
+  }
 });

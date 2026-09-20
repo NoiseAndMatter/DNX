@@ -39,7 +39,7 @@
  */
 
 import {
-  RECORD_VERSION as DN1_RECORD_VERSION, SYNTH_TRACK_COUNT as DN1_SYNTH_TRACKS,
+  RECORD_VERSIONS as DN1_RECORD_VERSIONS, SYNTH_TRACK_COUNT as DN1_SYNTH_TRACKS,
   TRACK as DN1_TRACK, readKit, readPattern, readSoundPool,
   type Dn1Sound, type Dn1Track,
 } from "../../src/project/dn1.js";
@@ -113,15 +113,17 @@ export function dn1PatternSubject(
    * **The record's version is checked before anything is read out of it**, exactly as the Digitone
    * II producer does and for the same reason: a record at another version keeps its interior
    * somewhere else, so reading one produces plausible numbers that are measurements of nothing.
-   * Every one of the 6,784 pattern records in the corpus is version 10, so this has never fired on
-   * a real file, which is not a reason to leave it out.
+   *
+   * Two versions pass. Every one of the 6,784 pattern records in the 1.42A corpus is version 10,
+   * and OS 1.43 saves 11 without moving a field, so both read at these offsets. A third version
+   * would be a firmware nobody here has measured.
    */
   const summary = device.summarise(image, index);
   if (!summary.readable) {
     throw new PatternSubjectError(
       `${patternName(index)} is a version ${summary.version} pattern record, and this reads ` +
-        `version ${DN1_RECORD_VERSION}. The interior offsets move between versions, so anything ` +
-        `drawn from it would be measured from the wrong bytes.`,
+        `version ${DN1_RECORD_VERSIONS.join(" or ")}. The interior offsets move between ` +
+        `versions, so anything drawn from it would be measured from the wrong bytes.`,
     );
   }
 

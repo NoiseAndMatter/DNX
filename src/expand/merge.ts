@@ -195,7 +195,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
         `DN2 patterns and a DN1 cannot receive them`,
     );
   }
-  if (source.length !== DN1_LAYOUT.imageSize) {
+  if (!fitsLayout(source, DN1_LAYOUT)) {
     throw new MergeRefused(`the source is ${source.length} bytes, not a Digitone 1 image`);
   }
   if (patterns.length === 0) throw new MergeRefused("no patterns selected");

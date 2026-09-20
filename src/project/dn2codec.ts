@@ -46,8 +46,28 @@ export const TRAILER_SIZE = 12;
  */
 export const BLOCK_SIZE = 32768;
 
-/** Decoded image size of a Digitone 1 project. Identical in all 53 DN1 payloads. */
+/** Decoded image size of a Digitone 1 project up to OS 1.42A. Identical in all 53 DN1 payloads. */
 export const DN1_IMAGE_SIZE = 2_781_700;
+
+/**
+ * Decoded image size of a Digitone 1 project saved by **OS 1.43**. Container format `"0104"`.
+ *
+ * 512 bytes longer than 1.42A's, and the 512 are **inserted rather than appended**: they sit at
+ * `TAIL.songOffset` (image offset `0x29C800`), so the header, all 128 patterns, all 128 kits and
+ * the tail up to and including the mixer block keep every offset, while the 17 song records and
+ * the object terminator move up by 512. Measured 2026-09-20 on one project saved on both
+ * firmwares: identical up to `0x29C800`, then `old[0x29C800 .. 2,781,696]` equals
+ * `new[0x29CA00 .. 2,782,208]` byte for byte, and the terminator's old position is zeroed.
+ *
+ * The inserted block is `BOB::bobConfigStorage_v0_t`, the Outbox 8 CV configuration: 8 records of
+ * 22 bytes plus a small header, 304 bytes used of the 512. `dn1tail.ts` names it and steps over
+ * it, and nothing here decodes it. The Digitone II gained the same structure in its OS 1.11,
+ * which is why both families grew by the same 512.
+ *
+ * The container's format string moves `"0097"` to `"0104"`, which the firmware disassembly reads
+ * as the ELE3 build string for 1.43. Nothing gates on it.
+ */
+export const DN1_OS143_IMAGE_SIZE = 2_782_212;
 
 /** Decoded image size of a Digitone II project. Identical in all 9 DN2 payloads. */
 export const DN2_IMAGE_SIZE = 12_889_604;

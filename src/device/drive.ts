@@ -207,16 +207,41 @@ export function projectFor(read: DriveRead, name: string, firmwareVersion: strin
  * > **Proved, not assumed.** The image this returns for `/projects/1` is **byte-for-byte identical**
  * > to the image `decodeProjectImage` produces from `001 PRESETS.dnprj` — 2,781,700 bytes, zero
  * > differences, two entirely independent paths off the same instrument. `test/drive.test.ts`.
+ *
+ * ## The declared length is the buffer's, not the project's
+ *
+ * A Digitone 1 running OS 1.43 hands over a hardcoded 2,782,212 bytes whatever the stored file's
+ * real length, so a project last saved on 1.42A comes back **declaring the newer size** with 512
+ * bytes of meaningless slack after its terminator. The firmware routine that does it
+ * (`0x400ac9d0` on 1.43) memcpys a constant out of the stored object's buffer with no reference
+ * to that object's own length, and the Digitone II's 1.11 equivalent is built the same way.
+ * Projects are migrated when the musician **loads** one, not by the update, so an over-read is
+ * the common case rather than the odd one.
+ *
+ * Both candidate ends sit inside what the instrument sends, so the length cannot settle which
+ * project a Digitone 1 has just handed over. The object terminator can, because 1.43 **inserted**
+ * its 512 bytes at the song array rather than appending them: the terminator moved with the
+ * songs, its old position was zeroed, and it therefore marks exactly one of the two candidates.
+ * So `imageFrom` locates `BACEF00C` and slices to it, and the real version follows from the real
+ * length.
+ *
+ * **The Digitone II is the other shape and is left alone.** 1.11 appended its 512 bytes after
+ * the terminator, so a 1.11 image carries `BACEF00C` at the 1.10E length and ends with something
+ * else. Searching for the marker there would truncate every 1.11 project to a 1.10E one. Whether
+ * a pre-1.11 Digitone II project read on 1.11 arrives padded has not been measured; see
+ * `FAMILY_IMAGES` for where that answer goes when somebody measures it.
  */
 export function imageFrom(payload: ProjectPayload): Uint8Array {
-  const sizes = IMAGE_SIZES[payload.kind];
-  if (sizes === undefined) {
+  const family = FAMILY_IMAGES[payload.kind];
+  if (family === undefined) {
     throw new ListingError(`payload kind ${payload.kind} is neither a Digitone 1 nor a Digitone II`);
   }
-  const expected = payload.storedLength;
-  if (!sizes.includes(expected)) {
-    // Two causes, and the old message knew one. Until OS 1.11 appended 512 bytes, every image of a
-    // family had one size, so a mismatch could only have meant compressed bytes.
+  const { sizes } = family;
+  const declared = payload.storedLength;
+  if (!sizes.includes(declared)) {
+    // Three causes now, and the original message knew one. Until OS 1.11 grew the Digitone II
+    // image, every image of a family had one size, so a mismatch could only have meant compressed
+    // bytes.
     throw new ListingError(
       `payload declares ${payload.storedLength} bytes, format ${payload.formatVersion}, and an ` +
         `uncompressed image of this family is ${sizes.join(" or ")} bytes. Either it is compressed, ` +
@@ -225,25 +250,89 @@ export function imageFrom(payload: ProjectPayload): Uint8Array {
     );
   }
 
-  const image = payload.raw.subarray(PAYLOAD_HEADER, PAYLOAD_HEADER + expected);
-  if (image.length !== expected) {
-    throw new ListingError(`payload holds ${image.length} bytes of image, expected ${expected}`);
+  const body = payload.raw.subarray(PAYLOAD_HEADER, PAYLOAD_HEADER + declared);
+  if (body.length !== declared) {
+    throw new ListingError(`payload holds ${body.length} bytes of image, expected ${declared}`);
   }
-  return image;
+
+  if (!family.terminatorEndsImage) return body;
+
+  const real = endOfImage(body, sizes, declared);
+  if (real === undefined) {
+    throw new ListingError(
+      `payload declares ${declared} bytes, format ${payload.formatVersion}, and none of the ` +
+        `${sizes.join(" or ")} bytes an image of this family can be ends with the object ` +
+        `terminator BA CE F0 0C. A read cut short by another application on the port looks like ` +
+        `this, and so does a firmware this version of DNX does not know. An older project read ` +
+        `on newer firmware does not: the instrument pads it to the newer length and leaves its ` +
+        `terminator where it always was, which is the case this searches for`,
+    );
+  }
+  return body.subarray(0, real);
+}
+
+/**
+ * The length at which this body actually ends, or undefined when no candidate holds.
+ *
+ * The declared length is tried first and the shorter candidates after it, longest first, so a
+ * project that really is the size it says it is never reads as a padded older one. That order is
+ * the conservative one: shortening happens only when the declared end has no terminator and a
+ * shorter one does.
+ */
+function endOfImage(
+  body: Uint8Array,
+  sizes: readonly number[],
+  declared: number,
+): number | undefined {
+  const candidates = [declared, ...sizes.filter((s) => s < declared).sort((a, b) => b - a)];
+  return candidates.find((size) => endsWithTerminator(body, size));
+}
+
+/** Whether the four bytes before `end` are `BA CE F0 0C`. */
+function endsWithTerminator(body: Uint8Array, end: number): boolean {
+  if (end < TERMINATOR.length || end > body.length) return false;
+  return TERMINATOR.every((b, i) => body[end - TERMINATOR.length + i] === b);
 }
 
 /** Bytes before the first object's magic. The image starts where `BEEFBACE` does. */
 const PAYLOAD_HEADER = 31;
 
+/**
+ * Object terminator. The last four bytes of a Digitone 1 image at either of its sizes.
+ *
+ * Checked rather than assumed, and the check is what found the asymmetry between the families:
+ * every corpus image of both ends with these four bytes, and a Digitone II project saved by 1.11
+ * does not.
+ */
+const TERMINATOR = Uint8Array.of(0xba, 0xce, 0xf0, 0x0c);
 
 /** `kind` at payload offset 0x08 — the one byte that says which family a payload belongs to. */
 const DN1_KIND = 9;
 const DN2_KIND = 15;
 const MANIFEST_FORMAT_VERSION = "1.0";
 const DN1_PRODUCT_TYPES = ["24", "30"] as const;
-const IMAGE_SIZES: Record<number, readonly number[]> = {
-  [DN1_KIND]: DN1_LAYOUT.imageSizes,
-  [DN2_KIND]: DN2_LAYOUT.imageSizes,
+/** What an uncompressed image of one family can be, and how its end can be recognised. */
+interface FamilyImages {
+  /** Every uncompressed image size a firmware of this family writes, oldest first. */
+  sizes: readonly number[];
+  /**
+   * Whether the object terminator marks the end of an image of this family, at every size.
+   *
+   * True on the Digitone 1, whose OS 1.43 inserted its 512 bytes at the song array and carried
+   * the terminator along with them. False on the Digitone II, whose OS 1.11 appended its 512
+   * after the terminator: a 1.11 image still holds `BACEF00C` at the 1.10E length, so the marker
+   * appears at both candidates and identifies neither. Measured on the 1.11 SKETCHPAD read.
+   *
+   * A Digitone II read is therefore sliced to what it declares, exactly as before. If a pre-1.11
+   * project read on 1.11 turns out to arrive padded the way a Digitone 1 project does, this is
+   * where the fix goes, and it needs a measurement rather than an argument from symmetry.
+   */
+  terminatorEndsImage: boolean;
+}
+
+const FAMILY_IMAGES: Record<number, FamilyImages> = {
+  [DN1_KIND]: { sizes: DN1_LAYOUT.imageSizes, terminatorEndsImage: true },
+  [DN2_KIND]: { sizes: DN2_LAYOUT.imageSizes, terminatorEndsImage: false },
 };
 
 /** Refuse a reply that is not the one this request asked for. Same check the session makes. */

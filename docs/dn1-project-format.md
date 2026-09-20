@@ -34,12 +34,15 @@ Reverse-engineered from the 53 DN1 projects in `00_Examples/01_DN1/01_Projects/`
 **VERIFIED** `.dnprj` is a ZIP holding `manifest.json` plus one binary entry named by
 `manifest.Payload`. The payload header, footer, CRC and length field are documented in
 [`docs/dn2-format.md` §0](./dn2-format.md#0-file-container); DN1 differs only in the
-device kind byte (`9`), the ASCII format version (`"0097"`), the device signature at
-`0x1A` (`72 2A`) and the root object version (`12`).
+device kind byte (`9`), the ASCII format version (`"0097"`, `"0104"` from OS 1.43), the
+device signature at `0x1A` (`72 2A`) and the root object version (`12`, `14` from 1.43).
+
+**VERIFIED** The format string is the **firmware build number**, read as the ELE3 build
+string in the 1.43 image. It is not a format counter, and nothing in DNX gates on it.
 
 **VERIFIED** All 53 DN1 payloads decompress to exactly **2,781,700** bytes
 (`0x2A7204`), with the LZ4 block chain landing exactly on its zero terminator — no
-slack in any file.
+slack in any file. A project saved by OS 1.43 decompresses to **2,782,212**; see §2.1.
 
 ```ts
 const project = parseProject(new Uint8Array(readFileSync(path)));
@@ -62,10 +65,34 @@ const { image } = decodeProjectImage(project.payload.raw);   // 2_781_700 bytes
 The arithmetic closes exactly: `0x200 + 128 × 18,432 = 0x240200` and
 `0x240200 + 128 × 2,560 = 0x290200`, and `0x290200 + 94,212 = 0x2A7204` = image size.
 
+### 2.1 OS 1.43: 2,782,212 bytes, inserted at the song array
+
+**VERIFIED** on one project saved on both firmwares, 2026-09-20. OS 1.43 inserts 512 bytes
+at `0x29C800` for the Outbox 8 CV configuration. Everything in the table above keeps its
+offset; the 17 song records and the object terminator move up by 512, so the tail grows
+from 94,212 to 94,724 and the terminator lands at `0x2A7400`.
+
+**VERIFIED** 1.43 bumps every record version and moves no field. Pattern records 10 to 11,
+kit records 10 to 11, sound objects 5 to 6 in kits and in the pool, the tail's settings
+object 7 to 8. Across the 2,359,296-byte pattern array the two saves differ in exactly 128
+bytes, one per record, all of them the version field. `RECORD_VERSIONS` and
+`PROJECT_SOUND_VERSIONS` in `src/project/dn1.ts` hold the pairs.
+
+**VERIFIED** 1.43 also clears two things 1.42A left behind: the residue after a sound name's
+NUL (`BD BORING\0SM` becomes `BD BORING\0\0\0`), and the kit name fields, in 21 of the 22
+named kit records of the measured project. The Digitone 1 has no kit-naming UI, so these read
+as leftovers being cleaned.
+
+**VERIFIED** A 1.43 instrument hands the host a hardcoded 2,782,212 bytes for **any** stored
+project, so one last saved on 1.42A arrives declaring the newer size with 512 bytes of slack
+behind its terminator. Projects migrate on load, not on update. `docs/KNOWN-ISSUES.md` has the
+whole account and what DNX does about it.
+
 The strides are not just arithmetic. Independent confirmation:
 
 - Every one of the 128 pattern records begins with u32be `10`, and every one of the 128
-  kit records begins with u32be `10`. 6,784 of each across the corpus, no exception.
+  kit records begins with u32be `10`. 6,784 of each across the corpus, no exception. From
+  OS 1.43 both read `11` instead, at the same offsets.
 - Every kit record has four `BE EF BA CE`-framed sound objects at `+0x1C + 302k`, each
   correctly terminated by `BA CE F0 0C` at `+298`. 27,136 objects checked, all pass.
 - The 128 sound-pool objects in the tail are likewise all correctly framed.

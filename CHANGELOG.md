@@ -21,7 +21,7 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
-## Unreleased
+## 0.9.0-beta.4 — 2026-09-20
 
 ### Added
 
@@ -45,6 +45,25 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
   to come.
 
 ### Fixed
+
+- **DNX reads Digitone 1 projects from OS 1.43, and the ones an updated instrument pads.** 1.43
+  makes a project 512 bytes longer, for the Outbox 8's CV configuration, and DNX knew one size for
+  a Digitone 1 project, so it refused every project on an updated machine with *"payload declares
+  2782212 bytes, format 0104"*. The second problem is the one the message does not describe: a 1.43
+  instrument hands over 2,782,212 bytes for **any** stored project, so one last saved on 1.42A
+  arrives claiming the newer size with 512 bytes of padding on the end. Projects are converted when
+  you load one, not when you update, so on a freshly updated Digitone 1 that is every project on
+  the drive. DNX now finds where a project actually ends rather than believing the length it is
+  handed, which reads both, and a read that is genuinely cut short is still refused and says so.
+
+  What 1.43 changed inside a project is only where the songs sit and a set of version numbers, so
+  patterns, sounds and everything Insights draws read the same on either firmware. The Outbox
+  settings are carried through untouched rather than decoded.
+
+  Nothing changes for the Digitone II. Its own 512-byte growth in OS 1.11 has a different shape,
+  and whether a pre-1.11 project is padded the same way has not been measured on one.
+
+### Fixed earlier, released here
 
 - **The Probe's Write back and Write to slot now check the WRITE switch themselves.** Until now
   only the greyed button stood between them and the instrument, so a button that failed to grey

@@ -18,7 +18,12 @@
  * conversion tractable: both sides are fixed-offset arrays of 128 patterns and 128 kits.
  */
 
-import { DN1_IMAGE_SIZE, DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE } from "./dn2codec.js";
+import {
+  DN1_IMAGE_SIZE,
+  DN1_OS143_IMAGE_SIZE,
+  DN2_IMAGE_SIZE,
+  DN2_OS111_IMAGE_SIZE,
+} from "./dn2codec.js";
 import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "./soundmap.js";
 
 /** Layout constants for one device family's decoded project image. */
@@ -45,7 +50,12 @@ export interface ImageLayout {
   kitSize: number;
   /** Byte offset of the region after the kit array. Contents only partly identified. */
   tailBase: number;
-  /** Size of that trailing region. */
+  /**
+   * Size of that trailing region at `imageSize`. The later sizes in `imageSizes` add to it.
+   *
+   * Both families grew their tail by 512 for the Outbox 8, so a caller sizing the tail of a
+   * particular image works from that image's own length rather than from this.
+   */
   tailSize: number;
 }
 
@@ -68,10 +78,12 @@ export const DN2_LAYOUT: ImageLayout = {
   tailSize: 109_572,
 };
 
-/** Digitone 1, container kind 9, format version "0097". Verified on 53 payloads. */
+/** Digitone 1, container kind 9, format version "0097" or "0104". Verified on 53 payloads. */
 export const DN1_LAYOUT: ImageLayout = {
   imageSize: DN1_IMAGE_SIZE,
-  imageSizes: [DN1_IMAGE_SIZE],
+  // 1.42A, then 1.43. Every offset below is the same in both: 1.43 inserts its 512 bytes at the
+  // song array, past everything this table names. `dn1tail.ts` carries the part that moves.
+  imageSizes: [DN1_IMAGE_SIZE, DN1_OS143_IMAGE_SIZE],
   headerSize: 0x200,
   patternCount: 128,
   patternSize: 18_432, // 0x4800
