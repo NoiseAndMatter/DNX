@@ -677,6 +677,17 @@ export function speedLabel(speed: number): string {
  *
  * Takes **periods**, not lengths — a period may be fractional (a 16-step track at 3/4x runs
  * 21⅓ master steps), so the arithmetic is done in twenty-fourths and scaled back.
+ *
+ * **The one answer, for the grid and for the prose beside it.** The alignment grid carried its own
+ * copy that saturated at `Number.MAX_SAFE_INTEGER` instead of `POLYMETER_LIMIT`, so a pair past
+ * the limit could be drawn as one number and described as another on the same card. Two tracks of
+ * 127 and 128 steps at 1/8x have periods of 1,016 and 1,024 and realign after 130,048 steps: the
+ * old copy printed that, this returns the limit.
+ *
+ * Saturating loses a number a double holds exactly, which is the price. It is the right price
+ * here: `cycleSteps` stops at the same place, so a pattern the page already calls unbounded no
+ * longer has one cell claiming to have measured it, and a caller that wants to say so asks
+ * `polymeterIsBounded` rather than reading the size of the answer.
  */
 export function alignmentOf(a: number, b: number): number {
   if (!(a > 0) || !(b > 0)) return 0;

@@ -4,27 +4,11 @@
  */
 
 import {
-  barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
+  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
   type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
 import { tip, svg } from "./svg.js";
-
-// The one piece of arithmetic this file does. Kept local rather than exported from `model.ts`,
-// because a chart that starts importing derivations is a chart that will start computing them.
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-/** Saturating, for the same reason `model.ts` saturates: sixteen coprime lengths overflow a double. */
-const lcm = (a: number, b: number): number => {
-  const value = (a / gcd(a, b)) * b;
-  return Number.isSafeInteger(value) ? value : Number.MAX_SAFE_INTEGER;
-};
-/**
- * When two **periods** realign. Periods are whole numbers of twenty-fourths — the speeds are 2,
- * 3/2, 1, 3/4, 1/2, 1/4 and 1/8 — so the arithmetic is done there and scaled back rather than
- * asking a float for the least common multiple of 10⅔ and 16.
- */
-const align = (a: number, b: number): number =>
-  a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 
 /**
  * Every track's passes laid against the reset, so an interrupted one can be seen rather than
@@ -155,6 +139,11 @@ export function resetRuler(
  * Colour is the sequential ramp and it is a redundant encoding — the number is in the cell. It is
  * there so a long pairing can be found by scanning rather than by reading every value.
  *
+ * **The number is `alignmentOf`, the same one the prose beside this grid prints.** This chart had
+ * its own copy, which saturated at `Number.MAX_SAFE_INTEGER` where the model saturates at
+ * `POLYMETER_LIMIT`, so a pattern past the limit could be given two different answers on one card.
+ * See `alignmentOf` for what the limit costs and why it is still the number shown.
+ *
  * **The ramp runs light for a long wait, which is the opposite of print convention and right here.**
  * On a dark ground the light end is the prominent one, and the pairs that take a long time to come
  * back into phase are what somebody opened this to find. The cost is that the text has to change
@@ -194,7 +183,8 @@ export function alignmentGrid(
   const roomy = cellW >= 46;
   const cellH = roomy ? 34 : 22;
   const h = padT + n * (cellH + gap) + 16;
-  const worst = Math.max(...groups.flatMap((a) => groups.map((b) => align(a.period, b.period))));
+  const worst = Math.max(
+    ...groups.flatMap((a) => groups.map((b) => alignmentOf(a.period, b.period))));
   let out = "";
 
   groups.forEach((col, j) => {
@@ -225,7 +215,7 @@ export function alignmentGrid(
 
     groups.forEach((col, j) => {
       const x = padL + j * (cellW + gap);
-      const steps = align(row.period, col.period);
+      const steps = alignmentOf(row.period, col.period);
       const self = i === j;
       // Six sequential steps. A pair that is always in phase — one length dividing the other — sits
       // at the bottom of the ramp rather than off it.

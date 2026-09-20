@@ -489,6 +489,26 @@ test("a fractional period still gives an exact alignment", () => {
   assert.equal(alignmentOf(period, 16), 64);
 });
 
+test("the longest reachable pair saturates rather than being measured", () => {
+  /*
+   * **The disagreement the alignment grid used to draw.** The grid had its own least common
+   * multiple saturating at `Number.MAX_SAFE_INTEGER`; this one stops at `POLYMETER_LIMIT`. The
+   * two answers part company at the longest periods a Digitone II can reach: 127 and 128 steps at
+   * 1/8x are 1,016 and 1,024 master steps, and they realign after 130,048 — which the grid
+   * printed and the prose chip beside it did not.
+   *
+   * The model wins, so both now say the limit. No corpus pattern gets near it: the longest
+   * alignment across 425 playing patterns and 1,467 pairs is 18,746 steps, which is why this case
+   * is written out here rather than read off a project.
+   */
+  const slow = (length: number) => masterPeriod(track({ length, speed: 0.125 }));
+  assert.deepEqual([slow(127), slow(128)], [1016, 1024]);
+  assert.equal(alignmentOf(slow(127), slow(128)), POLYMETER_LIMIT);
+  // Just under the limit is still measured, so the saturation is a ceiling and not a rounding.
+  assert.equal(alignmentOf(1024, 32), 1024);
+  assert.equal(alignmentOf(slow(128), slow(120)), 15_360);
+});
+
 /* ---- the reset calculator ---------------------------------------------------------------- */
 
 test("alignment is a property of periods, so tracks are grouped by those", () => {
