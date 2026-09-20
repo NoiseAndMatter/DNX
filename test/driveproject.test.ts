@@ -16,7 +16,7 @@ import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { buildPayload } from "../src/project/write.js";
 import { FORM_FLAG_OFFSET, FORM_STORED, refuseRawForm } from "../src/device/storagewrite.js";
 // The pure half, deliberately not reached through the module that imports Web MIDI.
-import { firstDifference, projectPath } from "../web/src/driveslot.js";
+import { firstDifference, projectPath } from "../src/project/driveslot.js";
 
 test("a slot addresses the path the device resolves", () => {
   // `/projects/1` opens and `/projects/PRESETS` does not: the device turns the last segment into a

@@ -58,7 +58,7 @@
  */
 
 import { type ConnectedDevice, apiTransport } from "./devicesource.js";
-import { firstDifference, projectPath } from "./driveslot.js";
+import { firstDifference, projectPath } from "../../src/project/driveslot.js";
 
 export { firstDifference, projectPath };
 import { type Entry, listRequest, wholeListing } from "../../src/device/storage.js";
