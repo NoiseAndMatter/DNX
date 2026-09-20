@@ -25,6 +25,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
 const CORE = join(HERE, "..", "src");
 
+/** Every `.ts` file under a directory, collected into `into`. */
+function walkTs(dir: string, into: string[]): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkTs(path, into);
+    else if (entry.name.endsWith(".ts")) into.push(path);
+  }
+}
+
 /* ---- the gate ---------------------------------------------------------------------------- */
 
 test("writing is off until somebody says otherwise", () => {
@@ -68,19 +77,26 @@ test("every path that writes to an instrument passes the gate", () => {
    * without going through `safewrite.ts`. That test guards correctness; this one guards consent.
    */
   const files: string[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".ts")) files.push(path);
-    }
-  };
-  walk(join(WEB, "src"));
+  walkTs(join(WEB, "src"), files);
   assert.ok(files.length > 30, `only ${files.length} web modules found; the scan is misdirected`);
 
-  const writers = files.filter((f) => /\bsafeWrite(Records|File)\s*\(/.test(readFileSync(f, "utf8")));
-  assert.ok(writers.length >= 3,
-    `only ${writers.length} modules call a safe-write function; the pattern stopped matching`);
+  const calls = (f: string): boolean =>
+    /\bsafeWrite(Records|File)\s*\(/.test(readFileSync(f, "utf8"));
+  const writers = files.filter(calls);
+
+  /*
+   * **Counted across both layers, not just this one.** The workflows are moving into `src/`
+   * for the shared core, so the number of writers in `web/src` falls on purpose. A fixed
+   * floor here would fail on a correct refactor, and lowering it each time would walk to zero
+   * without anyone noticing the pattern had stopped matching. What must stay true is that the
+   * codebase still has write call sites somewhere, and the test below holds the core ones to
+   * their own rule.
+   */
+  const core: string[] = [];
+  walkTs(CORE, core);
+  const everywhere = writers.length + core.filter(calls).length;
+  assert.ok(everywhere >= 3,
+    `only ${everywhere} modules call a safe-write function anywhere; the pattern stopped matching`);
 
   const ungated = writers.filter((f) => !/\brequireWriteEnabled\s*\(/.test(readFileSync(f, "utf8")));
   assert.deepEqual(ungated.map((f) => f.replace(WEB, "web")), [],
@@ -99,14 +115,7 @@ test("a core module that writes takes the switch from its host and calls it", ()
    * vacuous green this file exists to prevent.
    */
   const files: string[] = [];
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".ts")) files.push(path);
-    }
-  };
-  walk(CORE);
+  walkTs(CORE, files);
 
   // `safewrite.ts` is the primitive itself, not a caller of it.
   const writers = files
