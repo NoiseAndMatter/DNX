@@ -22,9 +22,9 @@ import { MACHINE } from "../src/project/machine.js";
 import { readPattern } from "../src/project/dn1.js";
 import { readDn2Pattern, noteLengthSteps, type Dn2Trig } from "../src/project/dn2pattern.js";
 import { DN2_LAYOUT } from "../src/project/dn2image.js";
-import { dn1PatternSubject } from "../web/src/dn1subject.js";
-import { PatternSubjectError } from "../web/src/patternsubject.js";
-import { playing, trackLabel } from "../web/src/analysis/model.js";
+import { dn1PatternSubject } from "../src/analysis/dn1subject.js";
+import { PatternSubjectError } from "../src/analysis/patternsubject.js";
+import { playing, trackLabel } from "../src/analysis/model.js";
 
 const PROJECT = "002 MORNING_JAM.dnprj";
 

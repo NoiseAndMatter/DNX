@@ -21,18 +21,18 @@
  * above looks like in practice: it was written without changing a single chart.
  */
 
-import { auditPool } from "../../src/librarian/poolaudit.js";
-import { MACHINE } from "../../src/project/machine.js";
-import { summariseKitTracks } from "../../src/librarian/tracksummary.js";
-import type { Device } from "../../src/librarian/device.js";
-import { DN2_KIT, DN2_LAYOUT, kitRecord } from "../../src/project/dn2image.js";
-import { arpIntervals, readArp } from "../../src/project/arp.js";
+import { auditPool } from "../librarian/poolaudit.js";
+import { MACHINE } from "../project/machine.js";
+import { summariseKitTracks } from "../librarian/tracksummary.js";
+import type { Device } from "../librarian/device.js";
+import { DN2_KIT, DN2_LAYOUT, kitRecord } from "../project/dn2image.js";
+import { arpIntervals, readArp } from "../project/arp.js";
 import {
   NOTE_LENGTH_NONE, noteLengthSteps, readDn2Pattern,
   RECORD_VERSION as DN2_RECORD_VERSION,
-} from "../../src/project/dn2pattern.js";
-import { patternName } from "../../src/project/naming.js";
-import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
+} from "../project/dn2pattern.js";
+import { patternName } from "../project/naming.js";
+import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./model.js";
 
 export class PatternSubjectError extends Error {}
 

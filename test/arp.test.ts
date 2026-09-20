@@ -15,7 +15,7 @@ import { ARP, arpIntervals, readArp } from "../src/project/arp.js";
 import {
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig, fitKey, harmonic, pitchByPreset,
   pitchWindows, sounded, voicesPerStep,
-} from "../web/src/analysis/model.js";
+} from "../src/analysis/model.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const CAPTURES = "99_HardwareTest/arp-dn2-2026-09-16";

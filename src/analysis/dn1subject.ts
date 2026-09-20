@@ -42,13 +42,13 @@ import {
   RECORD_VERSIONS as DN1_RECORD_VERSIONS, SYNTH_TRACK_COUNT as DN1_SYNTH_TRACKS,
   TRACK as DN1_TRACK, readKit, readPattern, readSoundPool,
   type Dn1Sound, type Dn1Track,
-} from "../../src/project/dn1.js";
-import { MACHINE } from "../../src/project/machine.js";
-import { NOTE_LENGTH_NONE, noteLengthSteps } from "../../src/project/dn2pattern.js";
-import type { Device } from "../../src/librarian/device.js";
-import { patternName } from "../../src/project/naming.js";
+} from "../project/dn1.js";
+import { MACHINE } from "../project/machine.js";
+import { NOTE_LENGTH_NONE, noteLengthSteps } from "../project/dn2pattern.js";
+import type { Device } from "../librarian/device.js";
+import { patternName } from "../project/naming.js";
 import { PatternSubjectError } from "./patternsubject.js";
-import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./analysis/model.js";
+import type { AnalysisSubject, AnalysisTrack, AnalysisTrig } from "./model.js";
 
 /** Voices a Digitone 1 can sound at once. A property of the machine, not a field in any file. */
 const VOICES = 8;

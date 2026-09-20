@@ -16,11 +16,11 @@ import { decodeProjectImage } from "../src/project/dn2codec.js";
 import { readDn2Pattern } from "../src/project/dn2pattern.js";
 import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../src/librarian/device.js";
 import { noteLengthSteps } from "../src/project/dn2pattern.js";
-import { patternSubject, PatternSubjectError } from "../web/src/patternsubject.js";
+import { patternSubject, PatternSubjectError } from "../src/analysis/patternsubject.js";
 import {
   cycleSteps,
   drawableWindow, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
-} from "../web/src/analysis/model.js";
+} from "../src/analysis/model.js";
 import {
   densityBars, keyTimeline, phaseStrip, pitchBars, realignBars, trackTimeline,
 } from "../web/src/analysis/charts.js";
