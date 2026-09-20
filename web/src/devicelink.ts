@@ -60,7 +60,7 @@ export class WebMidiPort implements SysexPort {
   }
 
   /**
-   * Open the input if it is shut, and say so synchronously when it is not.
+   * Open whichever of the two ports is shut, and say so synchronously when neither is.
    *
    * **A closed input delivers nothing, and looks exactly like a device that never answered.**
    * `addEventListener` does not open a port, so a wait must not be attached to one that cannot
@@ -77,15 +77,25 @@ export class WebMidiPort implements SysexPort {
    * the stall sat before the timer, and that one run resolved with a full-length reply once it
    * cleared. Returning `undefined` here removes the suspect, and removes the await with it.
    *
-   * The genuinely-closed path keeps its own ceiling, because a promise that does not know how to
+   * ## Why the output is opened here too
+   *
+   * `identify` used to open both ports itself, unconditionally, at connect. That was the one call
+   * site left outside this rule, and folding it in is what let `identify` move into core. Web MIDI
+   * says `send()` opens an output implicitly, so dropping the output's open would most likely have
+   * worked, but that is not a reason to remove a call that has always been there on a path nobody
+   * can test without an instrument. Opening it here keeps the old guarantee and gains the ceiling
+   * the old call never had.
+   *
+   * The genuinely-closed path keeps that ceiling, because a promise that does not know how to
    * fail is worse than one that fails fast — the same defect one level down.
    */
   ready(): Promise<void> | undefined {
-    if (this.input.connection === "open") return undefined;
+    const shut = [this.input, this.output].filter((port) => port.connection !== "open");
+    if (shut.length === 0) return undefined;
     return (async () => {
       let ceiling: ReturnType<typeof setTimeout> | undefined;
       const opened = await Promise.race([
-        this.input.open().then(() => true),
+        Promise.all(shut.map((port) => port.open())).then(() => true),
         new Promise<boolean>((resolve) => {
           ceiling = setTimeout(() => resolve(false), OPEN_TIMEOUT_MS);
         }),
@@ -94,9 +104,8 @@ export class WebMidiPort implements SysexPort {
       // wait is exactly the kind of thing this module exists to not do.
       clearTimeout(ceiling);
       if (!opened) {
-        throw new Error(
-          `could not open ${this.input.name ?? "the input port"} within ${OPEN_TIMEOUT_MS}ms`,
-        );
+        const named = shut.map((port) => port.name ?? "an unnamed port").join(" and ");
+        throw new Error(`could not open ${named} within ${OPEN_TIMEOUT_MS}ms`);
       }
     })();
   }

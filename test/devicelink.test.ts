@@ -57,11 +57,32 @@ function fakeInput(options: { connection?: "open" | "closed"; neverOpens?: boole
   };
 }
 
-function fakeOutput() {
+/**
+ * A MIDI output that records what was sent, and opens like a real one.
+ *
+ * `connection` defaults to `"open"` for the same reason the input's does: that is the state every
+ * wait after the first finds the ports in, and re-opening an open port is the bug the `ready`
+ * contract exists for. `identify` is the caller that meets a genuinely shut output.
+ */
+function fakeOutput(options: { connection?: "open" | "closed" } = {}) {
   const sent: number[][] = [];
+  let opened = 0;
+  let connection = options.connection ?? "open";
   return {
-    port: { send: (bytes: number[]) => void sent.push([...bytes]) },
+    port: {
+      get connection() {
+        return connection;
+      },
+      open: async () => {
+        opened++;
+        connection = "open";
+      },
+      send: (bytes: number[]) => void sent.push([...bytes]),
+    },
     sent,
+    get openCalls() {
+      return opened;
+    },
   };
 }
 
@@ -152,12 +173,30 @@ test("an input that is already open is not opened again, and costs no await", as
   // `ready` returning `undefined` rather than a resolved promise is what keeps the async gap out
   // of the wait. The correlation's side of that contract is pinned in `link.test.ts`.
   const input = fakeInput({ connection: "open" });
-  assert.equal(portOver(input, fakeOutput()).ready(), undefined, "an open port must report no work to do");
+  const output = fakeOutput({ connection: "open" });
+  assert.equal(portOver(input, output).ready(), undefined, "an open pair must report no work to do");
 
-  const link = linkOver(input, fakeOutput());
+  const link = linkOver(input, output);
   const result = await link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 5 });
   assert.equal(input.openCalls, 0, "an already-open port must not be re-opened");
+  assert.equal(output.openCalls, 0, "an already-open port must not be re-opened");
   assert.equal(result, undefined, "the wait must still resolve — this is the regression test");
+});
+
+test("a shut output is opened too, because connect used to do it unconditionally", async () => {
+  // `identify` opened both ports itself, outside the `ready` rule, and that unconditional pair of
+  // opens is what kept it in the browser layer. Folding the output in here is what let it move.
+  // Web MIDI opens an output implicitly on `send`, but a call that has always been made is not
+  // dropped on the strength of a spec sentence when the path needs an instrument to test.
+  const input = fakeInput({ connection: "closed" });
+  const output = fakeOutput({ connection: "closed" });
+  const link = linkOver(input, output);
+
+  await link.awaitReply({ send: () => output.port.send([0x01]), match: byTag(0xaa), timeoutMs: 5 });
+
+  assert.equal(input.openCalls, 1, "the input was not opened");
+  assert.equal(output.openCalls, 1, "the output was not opened");
+  assert.deepEqual(output.sent, [[0x01]], "the request went out once the ports were open");
 });
 
 test("an open that never resolves does not hang the wait", async () => {
