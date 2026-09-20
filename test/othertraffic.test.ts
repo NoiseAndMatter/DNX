@@ -90,10 +90,20 @@ test("every API reply is counted where they all pass, not per page", () => {
    * instrument. Counting anywhere else means the page somebody forgets is the page running the
    * read that Transfer truncates.
    */
-  const link = readFileSync(join(ROOT, "web/src/devicelink.ts"), "utf8");
+  const link = readFileSync(join(ROOT, "src/device/link.ts"), "utf8");
   const start = link.indexOf("awaitApiFrame(");
   assert.ok(start > 0, "awaitApiFrame has been renamed; this check no longer guards anything");
-  assert.match(link.slice(start, start + 900), /noteReply\(frame\.respId\)/);
+  assert.match(link.slice(start, start + 900), /noteReply\?\.\(frame\.respId\)/);
+
+  /*
+   * The correlation is platform-free now and may not import a module that draws a warning strip,
+   * so the hook is passed in. Half a guard would pass on a link nobody wired up, which is a
+   * counter that silently counts nothing: the browser layer has to supply it, in the one
+   * constructor every page's link goes through.
+   */
+  const adapter = readFileSync(join(ROOT, "web/src/devicelink.ts"), "utf8");
+  assert.match(adapter, /import \{ noteReply \} from "\.\/othertraffic\.js";/);
+  assert.match(adapter, /super\(new WebMidiPort\(input, output\), \{ noteReply \}\)/);
 });
 
 test("the warning is installed by the tool row, so every page has it", () => {

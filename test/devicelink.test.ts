@@ -1,18 +1,19 @@
 /**
- * Correlating one reply on a port that carries other people's traffic.
+ * Web MIDI as a `SysexPort`, and the port-name guessing beside it.
  *
- * **These tests exist for one bug.** The probe page kept a single module-global `awaitingReply`
- * slot shared by seven independent request paths, and two overlapping reads stole each other's
- * answers — its own comments record paying for that twice. The fix is a listener per request, and
- * "two waits do not interfere" is a property no manual test on hardware would reliably reproduce.
+ * The correlation these ports feed is tested in `link.test.ts`, against a fake port and no browser
+ * at all. What is left here is the half only a browser has: a `midimessage` listener, a port that
+ * has to be opened before it can hear, and the OS naming convention that says which input belongs
+ * with which output.
  *
- * `DeviceLink` takes ports rather than reaching for them, and `awaitReply` takes `send` and `match`
- * as functions, which is what makes all of this testable with no browser and no instrument.
+ * **The opening rules are the ones written in blood.** Both came off hardware: one from a port
+ * that delivered nothing because nobody opened it, one from a write that hung because an
+ * already-open port was opened again.
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DeviceLink, bestPair, candidatePairs, matchApiFrame, sharedPrefix } from "../web/src/devicelink.js";
+import { DeviceLink, WebMidiPort, bestPair, candidatePairs, sharedPrefix } from "../web/src/devicelink.js";
 
 /**
  * A MIDI input that hands out whatever we feed it, and counts its listeners.
@@ -64,7 +65,12 @@ function fakeOutput() {
   };
 }
 
-/** A link over the fakes. The casts are the price of not pulling in a DOM. */
+/** A port over the fakes. The casts are the price of not pulling in a DOM. */
+function portOver(input: ReturnType<typeof fakeInput>, output: ReturnType<typeof fakeOutput>): WebMidiPort {
+  return new WebMidiPort(input.port as unknown as MIDIInput, output.port as unknown as MIDIOutput);
+}
+
+/** A link over the fakes, exercising the adapter and the correlation together. */
 function linkOver(input: ReturnType<typeof fakeInput>, output: ReturnType<typeof fakeOutput>): DeviceLink {
   return new DeviceLink(input.port as unknown as MIDIInput, output.port as unknown as MIDIOutput);
 }
@@ -72,105 +78,58 @@ function linkOver(input: ReturnType<typeof fakeInput>, output: ReturnType<typeof
 /** Match a message by its first byte, standing in for a real reply shape. */
 const byTag = (tag: number) => (data: Uint8Array) => (data[0] === tag ? data : undefined);
 
-test("the reply that matches finishes the wait, and the listener goes", async () => {
+test("a subscriber hears the port, and stopping takes the MIDI listener with it", () => {
   const input = fakeInput();
-  const output = fakeOutput();
-  const link = linkOver(input, output);
+  const port = portOver(input, fakeOutput());
+  const heard: number[][] = [];
 
-  const waiting = link.awaitReply({ send: () => output.port.send([0x01]), match: byTag(0xaa), timeoutMs: 500 });
-  await Promise.resolve();
-  input.deliver([0xaa, 0x02]);
+  const stop = port.subscribe((bytes) => void heard.push([...bytes]));
+  assert.equal(input.listenerCount, 1);
+  input.deliver([0xf0, 0x01]);
 
-  assert.deepEqual([...(await waiting)!], [0xaa, 0x02]);
-  assert.equal(input.listenerCount, 0, "the listener outlived its request");
-  assert.deepEqual(output.sent, [[0x01]], "the request was not sent exactly once");
+  stop();
+  assert.equal(input.listenerCount, 0, "the midimessage listener outlived its subscription");
+  input.deliver([0xf0, 0x02]);
+
+  assert.deepEqual(heard, [[0xf0, 0x01]], "a message arrived after the subscription was stopped");
 });
 
-test("messages that do not match are ignored, not accepted", async () => {
+test("two subscribers each get their own copy", () => {
+  // Two waits in flight is the normal case, and the registry this replaced could hold exactly one
+  // listener per port. A shared buffer would also let one reader's work affect the other's.
   const input = fakeInput();
-  const output = fakeOutput();
-  const link = linkOver(input, output);
+  const port = portOver(input, fakeOutput());
+  const first: Uint8Array[] = [];
+  const second: Uint8Array[] = [];
 
-  const waiting = link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 500 });
-  await Promise.resolve();
-  // Somebody else's traffic first — this is the normal case, not the exception.
-  input.deliver([0xbb, 0x09]);
-  input.deliver([0xcc]);
-  input.deliver([0xaa, 0x07]);
+  port.subscribe((bytes) => void first.push(bytes));
+  port.subscribe((bytes) => void second.push(bytes));
+  input.deliver([0xf0, 0x7f]);
 
-  assert.deepEqual([...(await waiting)!], [0xaa, 0x07]);
+  assert.equal(first.length, 1);
+  assert.equal(second.length, 1);
+  assert.notEqual(first[0], second[0], "both subscribers were handed the same buffer");
 });
 
-test("two waits in flight do not steal each other's replies", async () => {
-  // The bug this module was extracted for. With one shared slot, whichever request registered last
-  // received both answers and the other waited out its timeout.
+test("closing the port drops every subscription, and nothing else", () => {
+  // What a device's `close()` is for: a probe that leaves listeners on every port it touched is a
+  // probe that changes the thing it is measuring. The MIDI port itself stays open, because a page
+  // holds one input for several conversations at once.
   const input = fakeInput();
-  const output = fakeOutput();
-  const link = linkOver(input, output);
+  const port = portOver(input, fakeOutput());
+  port.subscribe(() => {});
+  port.subscribe(() => {});
+  assert.equal(input.listenerCount, 2);
 
-  const first = link.awaitReply({ send: () => {}, match: byTag(0x11), timeoutMs: 500 });
-  const second = link.awaitReply({ send: () => {}, match: byTag(0x22), timeoutMs: 500 });
-  await Promise.resolve();
-  assert.equal(input.listenerCount, 2, "each wait must own a listener");
-
-  // Answered out of order, which is the case that hurts.
-  input.deliver([0x22, 0xbb]);
-  input.deliver([0x11, 0xaa]);
-
-  assert.deepEqual([...(await first)!], [0x11, 0xaa]);
-  assert.deepEqual([...(await second)!], [0x22, 0xbb]);
+  port.close();
   assert.equal(input.listenerCount, 0);
+  assert.equal(port.input.connection, "open", "the MIDI port itself must not be closed");
 });
 
-test("silence resolves undefined and lets go of the port", async () => {
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-  assert.equal(await link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 5 }), undefined);
-  assert.equal(input.listenerCount, 0);
-});
-
-test("a late answer is an answer, when the caller asked to hear it", async () => {
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-  const late: Uint8Array[] = [];
-
-  const result = await link.awaitReply({
-    send: () => {},
-    match: byTag(0xaa),
-    timeoutMs: 5,
-    onLate: (value) => void late.push(value),
-  });
-
-  assert.equal(result, undefined, "the wait itself still times out");
-  assert.equal(input.listenerCount, 1, "it must still be listening for the late reply");
-
-  input.deliver([0xaa, 0x42]);
-  assert.equal(late.length, 1);
-  assert.deepEqual([...late[0]!], [0xaa, 0x42]);
-  assert.equal(input.listenerCount, 0, "the late reply should end the listening");
-});
-
-test("a send that throws is reported, and does not leave a listener behind", async () => {
-  // `output.send()` throws on an oversized message, and used to leave the shared slot armed for
-  // whoever came next.
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-  let seen: unknown;
-
-  const result = await link.awaitReply({
-    send: () => {
-      throw new Error("port is busy");
-    },
-    match: byTag(0xaa),
-    timeoutMs: 500,
-    onSendError: (error) => {
-      seen = error;
-    },
-  });
-
-  assert.equal(result, undefined);
-  assert.match(String(seen), /port is busy/);
-  assert.equal(input.listenerCount, 0);
+test("send goes out of the output port", () => {
+  const output = fakeOutput();
+  portOver(fakeInput(), output).send(Uint8Array.of(0xf0, 0x7f));
+  assert.deepEqual(output.sent, [[0xf0, 0x7f]]);
 });
 
 test("a closed input is opened before anything is expected from it", async () => {
@@ -182,14 +141,19 @@ test("a closed input is opened before anything is expected from it", async () =>
   assert.equal(input.openCalls, 1);
 });
 
-test("an input that is already open is not opened again", async () => {
+test("an input that is already open is not opened again, and costs no await", async () => {
   // **Found on hardware.** A write's read-back requires Listen to be running, which means the
   // input is already open by the time the wait starts. Calling `.open()` again did not resolve
-  // promptly the way the spec says it should — it hung, past even this function's own timeout,
-  // because the timeout is set up *after* this await. A write that had already landed on the
-  // device sat in "Write in progress" forever. Confirmed by writing to H13 and H16 on real
-  // hardware: both showed the write succeed on the device and the page never move past it.
+  // promptly the way the spec says it should — it hung, past even the wait's own timeout, because
+  // the timeout is armed *after* that point. A write that had already landed on the device sat in
+  // "Write in progress" forever. Confirmed by writing to H13 and H16 on real hardware: both showed
+  // the write succeed on the device and the page never move past it.
+  //
+  // `ready` returning `undefined` rather than a resolved promise is what keeps the async gap out
+  // of the wait. The correlation's side of that contract is pinned in `link.test.ts`.
   const input = fakeInput({ connection: "open" });
+  assert.equal(portOver(input, fakeOutput()).ready(), undefined, "an open port must report no work to do");
+
   const link = linkOver(input, fakeOutput());
   const result = await link.awaitReply({ send: () => {}, match: byTag(0xaa), timeoutMs: 5 });
   assert.equal(input.openCalls, 0, "an already-open port must not be re-opened");
@@ -201,8 +165,8 @@ test("an open that never resolves does not hang the wait", async () => {
   // `.open()` itself is the thing that never settles, the wait must still finish rather than
   // silently hanging past its own timeout the way the hardware bug did.
   const input = fakeInput({ connection: "closed", neverOpens: true });
-  const link = linkOver(input, fakeOutput());
   const output = fakeOutput();
+  const link = linkOver(input, output);
   let openError: unknown;
   let sendError: unknown;
   const result = await link.awaitReply({
@@ -225,54 +189,24 @@ test("an open that never resolves does not hang the wait", async () => {
   assert.equal(input.listenerCount, 0, "no listener should have been attached — the port never opened");
 });
 
-test("the transport rejects on silence, because its callers expect a throw", async () => {
+test("a link over real ports still correlates a reply end to end", async () => {
+  // The adapter and the correlation, wired the way every page wires them. Each half is proven on
+  // its own; this is the proof that the two are actually connected.
   const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-  const transport = link.transport({ timeoutError: () => new Error("nothing came back") });
-  await assert.rejects(() => transport.request(Uint8Array.of(0xf0), 8192, 5), /nothing came back/);
-});
-
-test("the transport tells the page an id is ours before the bytes go out", async () => {
-  // Recorded before the send, or a reply can arrive before its id is known to be ours — which is
-  // how a capture of our own reads came to be labelled "not ours". Exercised on a closed port,
-  // where opening genuinely suspends execution, so there is a real gap for the ordering to fail
-  // across. An already-open port has no such gap — see the next test.
-  const input = fakeInput({ connection: "closed" });
   const output = fakeOutput();
-  const order: string[] = [];
-  const transport = linkOver(input, output).transport({ onSend: (id) => order.push(`issued ${id}`) });
+  const link = linkOver(input, output);
 
-  const sending = transport.request(Uint8Array.of(0xf0), 4242, 5).catch(() => order.push("timed out"));
-  // Nothing has gone out yet: opening the port is awaited first, and the id was recorded before
-  // that. The order is the claim — `issued` can never come after `sent`.
-  order.push(`sent ${output.sent.length}`);
-  await sending;
+  const waiting = link.awaitReply({
+    send: () => output.port.send([0x01]),
+    match: byTag(0xaa),
+    timeoutMs: 500,
+  });
+  await Promise.resolve();
+  input.deliver([0xaa, 0x02]);
 
-  assert.deepEqual(order, ["issued 4242", "sent 0", "timed out"]);
-  assert.equal(output.sent.length, 1, "the request never went out");
-});
-
-test("an already-open port sends without an extra hop — the regression that mattered", async () => {
-  // The fix this file exists for: an already-open port used to be re-opened unconditionally,
-  // which hung on real hardware rather than resolving promptly. There being no async gap here at
-  // all is the point — the id is still recorded first, but nothing waits for a port that is
-  // already listening.
-  const input = fakeInput({ connection: "open" });
-  const output = fakeOutput();
-  const order: string[] = [];
-  const transport = linkOver(input, output).transport({ onSend: (id) => order.push(`issued ${id}`) });
-
-  const sending = transport.request(Uint8Array.of(0xf0), 4242, 5).catch(() => order.push("timed out"));
-  order.push(`sent ${output.sent.length}`);
-  await sending;
-
-  assert.deepEqual(order, ["issued 4242", "sent 1", "timed out"]);
-  assert.equal(input.openCalls, 0);
-});
-
-test("matchApiFrame refuses anything that is not an API message", () => {
-  assert.equal(matchApiFrame(Uint8Array.of(0xf0, 0x00, 0x20, 0x3c, 0x0d), () => true), undefined);
-  assert.equal(matchApiFrame(Uint8Array.of(0x90, 0x40, 0x7f), () => true), undefined);
+  assert.deepEqual([...(await waiting)!], [0xaa, 0x02]);
+  assert.equal(input.listenerCount, 0, "the listener outlived its request");
+  assert.deepEqual(output.sent, [[0x01]], "the request was not sent exactly once");
 });
 
 const port = (name: string) => ({ name }) as unknown as MIDIInput & MIDIOutput;
@@ -303,96 +237,4 @@ test("both instruments are offered when both are plugged in, best guess first", 
   for (const pair of pairs) assert.equal(pair.input.name, pair.output.name);
   // "Digitone II MIDI 1" agrees with itself over more characters, so it is tried first.
   assert.equal(pairs[0]!.output.name, "Digitone II MIDI 1");
-});
-
-test("a timeout that fired impossibly late re-arms instead of declaring silence", async () => {
-  // **The defect this prevents.** A starved or suspended page resumes with both the overdue timer
-  // and any queued `midimessage` runnable, in an order nobody promises. Declaring "no reply" from a
-  // timer that fired minutes late reports a working instrument as a silent one.
-  //
-  // Measured on hardware: a 321ms settle taking 246 seconds, with the tab visible throughout.
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-
-  // A clock that jumps a minute the moment the timer fires, which is what waking up looks like.
-  let clock = 0;
-  const suspicions: number[] = [];
-  let listeningWhenNoticed = -1;
-
-  const waiting = link.awaitReply({
-    send: () => {},
-    match: byTag(0xaa),
-    timeoutMs: 5,
-    now: () => clock,
-    onSuspicion: (elapsed) => {
-      suspicions.push(elapsed);
-      // Asserted at the moment it happens rather than after a sleep. The re-armed wait is only
-      // `timeoutMs` long, so anything that waits before looking is racing it — the first version of
-      // this test did exactly that and passed by luck.
-      listeningWhenNoticed = input.listenerCount;
-      // The device answers while the page is demonstrably awake. Delivering from inside the
-      // callback is also the case that proved the re-arm had to be scheduled before the caller is
-      // told: otherwise this resolves and a stray timer is then scheduled behind it.
-      input.deliver([0xaa, 0x01]);
-    },
-  });
-
-  clock = 60_000;
-  const answer = await waiting;
-
-  assert.deepEqual(suspicions, [60_000], "the late timer should have been noticed, once");
-  assert.equal(listeningWhenNoticed, 1, "it must still be listening — nothing has been concluded");
-  assert.deepEqual([...answer!], [0xaa, 0x01], "the answer after a late timer must still be heard");
-  assert.equal(input.listenerCount, 0, "and the listener goes once it is");
-});
-
-test("re-arming happens once, so a wait cannot run forever", async () => {
-  // A page starved repeatedly would otherwise never conclude anything.
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-
-  let clock = 0;
-  let suspicions = 0;
-  const result = await new Promise<unknown>((resolve) => {
-    void link
-      .awaitReply({
-        send: () => {},
-        match: byTag(0xaa),
-        timeoutMs: 5,
-        now: () => clock,
-        onSuspicion: () => {
-          suspicions++;
-          // Still asleep on the second pass: the clock keeps running away from the timer.
-          clock += 60_000;
-        },
-      })
-      .then(resolve);
-    clock = 60_000;
-  });
-
-  assert.equal(result, undefined, "the second expiry must conclude rather than re-arm again");
-  assert.equal(suspicions, 1);
-  assert.equal(input.listenerCount, 0);
-});
-
-test("an on-time timeout still means silence", async () => {
-  // The ordinary case must not be disturbed by any of the above: a timer that fired when it was
-  // asked to is evidence about the device, and it is the only evidence a silence ever gives.
-  const input = fakeInput();
-  const link = linkOver(input, fakeOutput());
-  let clock = 0;
-  const suspicions: number[] = [];
-
-  const result = await link.awaitReply({
-    send: () => {},
-    match: byTag(0xaa),
-    timeoutMs: 5,
-    // Fired a few milliseconds late, which is ordinary jitter rather than a stopped page.
-    now: () => (clock += 6),
-    onSuspicion: (elapsed) => suspicions.push(elapsed),
-  });
-
-  assert.equal(result, undefined);
-  assert.deepEqual(suspicions, [], "ordinary jitter must not read as suspension");
-  assert.equal(input.listenerCount, 0);
 });
