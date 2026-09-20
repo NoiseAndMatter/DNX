@@ -51,6 +51,13 @@ export function resetRuler(
     if ((a.cutAfter === 0) !== (b.cutAfter === 0)) return a.cutAfter === 0 ? 1 : -1;
     return a.track.length - b.track.length;
   });
+  /*
+   * **Two places, as everywhere else on this card.** A period is `length / speed`, so 14 steps at
+   * 3/4x is 18.666666666666668 and the row read "cut after 8 of 18.666666666666668" — seventeen
+   * digits of float noise where the reader wants a number they can hold against the two settings
+   * printed underneath. `barsOf` and the repetition count next to it already stop at two.
+   */
+  const steps = (n: number) => Number(n.toFixed(2));
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const x = (step: number) => padL + (step / resetSteps) * plot;
@@ -87,7 +94,7 @@ export function resetRuler(
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`${trackLabel(track)} — cut`,
-          `pass ${passes + 1} gets ${remainder} of its ${period} master steps` +
+          `pass ${passes + 1} gets ${steps(remainder)} of its ${steps(period)} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
 
@@ -106,8 +113,9 @@ export function resetRuler(
       font-size="${T.label}" fill="var(--ink2)">${trackLabel(track)}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${remainder} of ${period}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
-        : `${passes} clean \u00d7 ${period}`}</text>`;
+        ? `cut after ${steps(remainder)} of ${steps(period)}` +
+          (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
+        : `${passes} clean \u00d7 ${steps(period)}`}</text>`;
     // What the reader set on the instrument, when it is not the same as the period drawn.
     if (track.speed !== undefined && track.speed !== 1) {
       out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 13}" font-size="${T.tick}"
