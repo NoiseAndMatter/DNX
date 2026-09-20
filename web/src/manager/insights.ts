@@ -616,7 +616,11 @@ export function renderInsights(
       ${table(["Track", "Preset", "Length", "Speed", "Machine", "Trigs", "Repeats per cycle"],
         live.map((t) => [`${trackLabel(t)}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
-          machineLabel(t.machine), t.trigs.length, polymeter / t.length]))}
+          machineLabel(t.machine), t.trigs.length,
+          // Two places, as the chart above prints it. This column divides by the track length
+          // where `realignBars` divides by the master period, so the two disagree whenever a
+          // track has a speed; that is a recount for the insights split, not a rounding.
+          Number((polymeter / t.length).toFixed(2))]))}
     `, "insights/cycle") +
 
     card("Polymeter and the reset", `
