@@ -23,6 +23,7 @@ import { probeFunctionNames, probeWrite } from "./probesource.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
+const CORE = join(HERE, "..", "src");
 
 /* ---- the gate ---------------------------------------------------------------------------- */
 
@@ -84,6 +85,55 @@ test("every path that writes to an instrument passes the gate", () => {
   const ungated = writers.filter((f) => !/\brequireWriteEnabled\s*\(/.test(readFileSync(f, "utf8")));
   assert.deepEqual(ungated.map((f) => f.replace(WEB, "web")), [],
     "these send bytes to an instrument without checking whether writing is switched on");
+});
+
+test("a core module that writes takes the switch from its host and calls it", () => {
+  /*
+   * **The same claim as the test above, for the half that moved.** The workflows are being lifted
+   * into `src/` so an Android app can share them, and `requireWriteEnabled` cannot go with them:
+   * it is this page's switch, and core has no idea whether a host even has one.
+   *
+   * So a core module that reaches a write primitive must take a `gate` and call it before the
+   * write, and its host must pass a real switch in. Without both halves checked, moving a write
+   * into core would quietly leave it ungated while the web scan above still passed, which is the
+   * vacuous green this file exists to prevent.
+   */
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".ts")) files.push(path);
+    }
+  };
+  walk(CORE);
+
+  // `safewrite.ts` is the primitive itself, not a caller of it.
+  const writers = files
+    .filter((f) => !f.endsWith(join("device", "safewrite.ts")))
+    .filter((f) => /\bsafeWrite(Records|File)\s*\(/.test(readFileSync(f, "utf8")));
+  assert.ok(writers.length >= 1,
+    "no core module calls a safe-write function; either the pattern stopped matching or the " +
+      "workflows have not moved yet, and this test must be revisited either way");
+
+  for (const file of writers) {
+    const source = readFileSync(file, "utf8");
+    const name = file.replace(CORE, "src");
+    assert.match(source, /gate:\s*\(\)\s*=>\s*void/,
+      `${name} writes without taking a gate from its host`);
+    const gate = source.search(/\bhost\.gate\(\)/);
+    const send = source.search(/\bsafeWrite(Records|File)\s*\(/);
+    assert.ok(gate > 0, `${name} takes a gate and never calls it`);
+    assert.ok(gate < send, `${name} calls the gate after the write, which is not a gate`);
+  }
+
+  /*
+   * And the page must hand over the real switch. A host passing `() => {}` would satisfy the type
+   * and defeat the point, so the wrapper is read for the name itself.
+   */
+  const wrapper = readFileSync(join(WEB, "src", "driveproject.ts"), "utf8");
+  assert.match(wrapper, /gate:\s*requireWriteEnabled/,
+    "the page must pass its own write switch into the core workflow, not a stand-in");
 });
 
 test("every function in the probe that sends a write passes the gate itself", () => {
