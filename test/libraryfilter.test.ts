@@ -11,7 +11,7 @@ import {
   type LibraryRow,
   NO_FILTER,
   filterRows,
-  tagCounts,
+  tagOffers,
   toggleTag,
 } from "../web/src/library/filter.js";
 import { type TagName } from "../src/project/tags.js";
@@ -112,19 +112,112 @@ test("toggling a tag adds it, then removes it", () => {
   assert.deepEqual(toggleTag(once, "KICK"), []);
 });
 
-test("tag counts are what clicking would actually give you", () => {
+test("a tag's count is what clicking it would actually give you", () => {
   // Counted against the rows surviving everything else. A count over the whole bank would promise
   // 2 and deliver 1 the moment a query was also set.
-  const all = tagCounts(BANK, NO_FILTER);
+  const all = tagOffers(BANK, NO_FILTER).offers;
   assert.equal(all.find((t) => t.tag === "KICK")?.count, 2);
 
-  const narrowed = tagCounts(BANK, { ...NO_FILTER, query: "dusty" });
+  const narrowed = tagOffers(BANK, { ...NO_FILTER, query: "dusty" }).offers;
   assert.equal(narrowed.find((t) => t.tag === "KICK")?.count, 1);
 });
 
 test("tags nothing carries are not offered", () => {
   // The vocabulary is 32 and a bank uses a handful. Listing all of them buries the live ones.
-  const offered = tagCounts(BANK, NO_FILTER).map((t) => t.tag);
+  const offered = tagOffers(BANK, NO_FILTER).offers.map((t) => t.tag);
   assert.ok(!offered.includes("CYMBAL" as TagName));
   assert.ok(offered.includes("KICK" as TagName));
+});
+
+test("with nothing selected every offered tag is reachable", () => {
+  // Nothing to compound with yet, so every tag in the bank leads somewhere and none is dimmed.
+  const { offers, unread } = tagOffers(BANK, NO_FILTER);
+  assert.equal(unread, 0);
+  assert.ok(offers.length > 0);
+  assert.deepEqual(offers.filter((o) => !o.available), []);
+  assert.deepEqual(offers.filter((o) => o.selected), []);
+});
+
+test("one tag chosen dims the tags that lead nowhere, and keeps them", () => {
+  // The user's request: "picking a tag narrows the list, and the tag cloud then shows the tags
+  // still reachable". KICK leaves BD 1 BR and BD DUSTY, so HARD and SOFT still lead somewhere and
+  // PAD does not. PAD stays in the cloud, dimmed: it is still part of the map of this bank.
+  const { offers } = tagOffers(BANK, { ...NO_FILTER, tags: ["KICK"] });
+  const by = (tag: string) => offers.find((o) => o.tag === tag);
+
+  assert.equal(by("KICK")?.selected, true);
+  assert.equal(offers[0]?.tag, "KICK", "the chosen tag comes first, where it was pressed");
+
+  assert.equal(by("SOFT")?.available, true);
+  assert.equal(by("SOFT")?.count, 1, "KICK and SOFT is BD DUSTY, and nothing else");
+  assert.equal(by("HARD")?.count, 1);
+
+  assert.equal(by("PAD")?.available, false, "no kick is also a pad");
+  assert.equal(by("PAD")?.count, 0);
+  assert.ok(by("PAD"), "and it is still offered, dimmed rather than taken away");
+});
+
+test("two tags compound, and the counts follow", () => {
+  // Every click narrows, so the third tag is counted against what the first two left.
+  const { offers } = tagOffers(BANK, { ...NO_FILTER, tags: ["KICK", "SOFT"] });
+  const by = (tag: string) => offers.find((o) => o.tag === tag);
+
+  assert.deepEqual(offers.slice(0, 2).map((o) => o.tag), ["KICK", "SOFT"], "chosen, in order");
+  assert.equal(by("KICK")?.count, 1, "a chosen tag's number is the result it is part of");
+  assert.equal(by("SOFT")?.count, 1);
+  assert.equal(by("HARD")?.available, false, "BD DUSTY is not hard, so there is nowhere to go");
+});
+
+test("a chosen tag is never unclickable, even when it has narrowed to nothing", () => {
+  // A filter you cannot undo is a trap. KICK and PAD together match nothing, and both chips must
+  // still respond or the page is stuck showing an empty table.
+  const { offers } = tagOffers(BANK, { ...NO_FILTER, tags: ["KICK", "PAD"] });
+  assert.deepEqual(filterRows(BANK, { ...NO_FILTER, tags: ["KICK", "PAD"] }).rows, []);
+
+  for (const tag of ["KICK", "PAD"]) {
+    const chip = offers.find((o) => o.tag === tag);
+    assert.equal(chip?.selected, true, `${tag} is drawn pressed`);
+    assert.equal(chip?.available, true, `${tag} can still be dropped`);
+    assert.equal(chip?.count, 0, "and it is honest about leaving nothing");
+  }
+});
+
+test("nothing is dimmed while a row is unread, because unread is not absent", () => {
+  // The hazard `filterRows` exists for, one level up. A tag can look unreachable purely because
+  // the slots carrying it have not been read, and dimming on that is a lie the reads then quietly
+  // correct. So no chip is disabled until the bank's tag read has finished.
+  const partly = [...BANK, row({ index: 7, name: "UNREAD" })];
+
+  const { offers, unread } = tagOffers(partly, { ...NO_FILTER, tags: ["KICK"] });
+  assert.equal(unread, 1, "one occupied row nobody has read");
+  assert.deepEqual(offers.filter((o) => !o.available), [], "so nothing is ruled out yet");
+  assert.equal(offers.find((o) => o.tag === "PAD")?.count, 0, "the count is still an undercount");
+
+  // The page marks that with a `+`. Once the read lands, the same tag is dimmed for real.
+  const read = [...BANK, row({ index: 7, name: "UNREAD", tags: ["HI-HAT"] })];
+  assert.equal(tagOffers(read, { ...NO_FILTER, tags: ["KICK"] }).unread, 0);
+  assert.equal(
+    tagOffers(read, { ...NO_FILTER, tags: ["KICK"] }).offers.find((o) => o.tag === "PAD")?.available,
+    false,
+  );
+});
+
+test("an unread row is only unknown to a question somebody asked", () => {
+  // Rows the omnibox already excluded cannot make the cloud provisional: the `+` would never come
+  // off while one unread slot in the bank failed to match a search.
+  const partly = [...BANK, row({ index: 7, name: "UNREAD" })];
+  assert.equal(tagOffers(partly, { ...NO_FILTER, query: "bd" }).unread, 0);
+});
+
+test("an empty bank offers nothing and says nothing is unread", () => {
+  const empty: LibraryRow[] = [
+    row({ index: 1, occupied: false, writable: true }),
+    row({ index: 2, occupied: false, writable: true }),
+  ];
+  assert.deepEqual(tagOffers(empty, NO_FILTER), { offers: [], unread: 0 });
+  assert.deepEqual(tagOffers([], NO_FILTER), { offers: [], unread: 0 });
+
+  // A free slot is not an unread one: it has nothing in it to read, so it can never make the
+  // cloud provisional. `filterRows` draws the same line for the table.
+  assert.equal(tagOffers(empty, { ...NO_FILTER, tags: ["KICK"] }).unread, 0);
 });

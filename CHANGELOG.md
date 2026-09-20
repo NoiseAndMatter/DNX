@@ -34,6 +34,16 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
   nothing, an empty bank is dimmed and says so, and Refresh takes fresh counts for all of them
   without throwing away a single tag it already read.
 
+- **The Library's tag cloud now shows which tags are still worth pressing.** Also asked for on
+  Elektronauts. Choosing KICK dims every tag no remaining preset carries, so the cloud stops
+  offering clicks that lead to an empty table, and each number is now how many rows would be left
+  if you pressed that chip as well as the ones already chosen. Dimmed tags stay where they are
+  rather than disappearing under the pointer, and a chosen tag is always pressable so a filter can
+  always be undone. **While a bank is still being read nothing is dimmed at all**, because a tag
+  can look unreachable purely because the presets carrying it have not been read yet. The counts
+  wear a `+` until that finishes, next to the row count that already says how many slots are still
+  to come.
+
 ### Fixed
 
 - **The Probe's Write back and Write to slot now check the WRITE switch themselves.** Until now

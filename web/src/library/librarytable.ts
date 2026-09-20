@@ -25,7 +25,7 @@
  */
 
 import { type TagName } from "../../../src/project/tags.js";
-import { type FilterResult, type LibraryFilter, type LibraryRow, tagCounts } from "./filter.js";
+import { type FilterResult, type LibraryFilter, type LibraryRow, tagOffers } from "./filter.js";
 import { type GridDrag } from "../grid.js";
 import { escapeHtml } from "../dom.js";
 
@@ -128,8 +128,17 @@ function cell(text: string, className: string): HTMLElement {
  * The tag chips, each with what pressing it would leave.
  *
  * The count is the point. A bare list of tags makes somebody click to find out whether it narrows
- * to forty or to one; `KICK 12` answers that before the click, and a tag that would leave nothing
- * is not offered at all — `tagCounts` omits it.
+ * to forty or to one; `KICK 12` answers that before the click. With a tag already chosen the
+ * number is what pressing this one *as well* would leave, because the chips compound, and a chip
+ * that would leave nothing is dimmed rather than taken away. `tagOffers` decides all of it; this
+ * draws the answer.
+ *
+ * ## `12+` means the reads have not finished
+ *
+ * While a bank is still being read the counts are undercounts and no tag can be ruled out, so the
+ * numbers carry a `+` and nothing is dimmed. The table says the same thing in words above the
+ * rows: *"9 of 256 · 47 not read yet"*. Printing a bare number that quietly grows would have the
+ * page looking most certain exactly where it knows least.
  */
 export function renderTagChips(
   host: HTMLElement,
@@ -139,24 +148,45 @@ export function renderTagChips(
 ): void {
   host.innerHTML = "";
 
-  // Selected tags first and always shown, even when they have narrowed the result to nothing —
-  // otherwise the chip you just pressed disappears and there is no way to press it again.
-  const counts = tagCounts(rows, filter);
-  const offered = [
-    ...filter.tags.map((tag) => ({ tag, count: counts.find((c) => c.tag === tag)?.count ?? 0 })),
-    ...counts.filter((c) => !filter.tags.includes(c.tag)),
-  ];
+  // Selected tags come first and are always offered, even when they have narrowed the result to
+  // nothing — otherwise the chip you just pressed disappears and there is no way to press it
+  // again. `tagOffers` guarantees both, so this loop simply draws what it is handed.
+  const { offers, unread } = tagOffers(rows, filter);
 
-  for (const { tag, count } of offered) {
+  for (const { tag, count, selected, available } of offers) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "tagchip";
-    const on = filter.tags.includes(tag);
-    chip.setAttribute("aria-pressed", String(on));
-    chip.innerHTML = `${escapeHtml(tag)}<span class="n">${count}</span>`;
+    // Pressed and disabled are both states the button reports, so the styling and the screen
+    // reader read the same thing rather than a class that could disagree with it.
+    chip.setAttribute("aria-pressed", String(selected));
+    chip.disabled = !available;
+    chip.innerHTML = `${escapeHtml(tag)}<span class="n">${count}${unread > 0 ? "+" : ""}</span>`;
+    chip.title = chipTitle(tag, count, selected, available, unread);
     chip.addEventListener("click", () => onToggle(tag));
     host.append(chip);
   }
+}
+
+/**
+ * Why a chip reads the way it does.
+ *
+ * A disabled control with no explanation reads as broken, and "nothing here carries both of these"
+ * is not something anybody would guess from a greyed-out button. The same argument the Rename
+ * button's tooltip is built on.
+ */
+function chipTitle(
+  tag: TagName,
+  count: number,
+  selected: boolean,
+  available: boolean,
+  unread: number,
+): string {
+  if (!available) return `Nothing left carries ${tag} as well as the tags already chosen`;
+  const reading = unread > 0 ? `, and ${unread} slot(s) are still being read, so it may grow` : "";
+  return selected
+    ? `Chosen. ${count} row(s) carry it and everything else chosen${reading}. Press to drop it.`
+    : `${count} row(s) would remain${reading}`;
 }
 
 /** What the table says about itself, above the rows. */

@@ -31,6 +31,13 @@
  * nobody has looked — so it fails a tag filter outright rather than counting as unread. Without
  * that distinction the number includes the ~200 free slots of a 256-slot bank and never reaches
  * zero, which is worse than not showing it.
+ *
+ * ## The same hazard, one level up: which tags are still reachable
+ *
+ * `tagOffers` answers what the cloud should offer once something is selected, and it inherits the
+ * problem whole. A tag looks unreachable when no remaining row carries it, and during a bank's
+ * read that is indistinguishable from *the rows carrying it have not been read yet*. So nothing is
+ * dimmed while a single row is unread, and the counts say so rather than growing in silence.
  */
 
 import { type TagName } from "../../../src/project/tags.js";
@@ -153,31 +160,108 @@ export function toggleTag(tags: readonly TagName[], tag: TagName): TagName[] {
   return tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag];
 }
 
-/**
- * Which tags are worth offering, and how many rows each would leave.
- *
- * **Counted against the rows that survive everything else**, so the number beside a tag is what
- * clicking it would actually give you. A count taken over the whole bank would promise 40 and
- * deliver 2 as soon as anything else was set.
- *
- * Tags nothing carries are omitted entirely: the vocabulary is 32 values and a bank uses a handful,
- * so listing all of them would bury the ones that do something behind two rows of dead buttons.
- */
-export function tagCounts(
-  rows: readonly LibraryRow[],
-  filter: LibraryFilter,
-): { tag: TagName; count: number }[] {
-  const counts = new Map<TagName, number>();
+/** One tag chip, as the cloud should draw it. */
+export interface TagOffer {
+  tag: TagName;
+  /**
+   * Rows that would remain with this tag applied **on top of the current selection**.
+   *
+   * Not the number of rows carrying the tag. With KICK already chosen, `SOFT 1` means one row is
+   * both, which is what pressing SOFT would leave. A selected chip therefore shows the size of the
+   * result on screen, because it is already part of it.
+   *
+   * The count before this was the number of rows carrying the tag with the selection ignored, so a
+   * second chip promised 12 and delivered 2. That was defensible while chips did not compound;
+   * they compound now, and the number has to answer the same question the click does.
+   */
+  count: number;
+  /** In the current selection, so the chip draws pressed. */
+  selected: boolean;
+  /**
+   * Whether pressing it does anything. A chip that is not available is dimmed and disabled.
+   *
+   * True for a selected tag whatever its count: pressing it removes it, which always widens the
+   * result, and a filter you cannot undo is a trap. True as well while any row is unread, see
+   * below.
+   */
+  available: boolean;
+}
 
-  for (const row of filterRows(rows, { ...filter, tags: [] }).rows) {
-    for (const tag of row.tags ?? []) {
-      // Only tags that would still narrow: one already selected is in every surviving row, so its
-      // count is the result size and clicking it again only removes it.
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+export interface TagOffers {
+  /** Selected tags first, in the order they were chosen, then by what each would leave. */
+  offers: TagOffer[];
+  /**
+   * Occupied rows the tag question cannot be put to yet, because their bodies have not been read.
+   *
+   * **While this is above zero nothing is dimmed.** A tag can look unreachable purely because the
+   * slots carrying it are among the unread, and dimming on that is a lie the page would tell with
+   * a straight face: the chip greys out, the reads land, and it silently becomes reachable with
+   * nobody watching. The counts are undercounts for the same reason, so the page marks them as
+   * provisional rather than presenting a number that will quietly grow.
+   *
+   * The same distinction `filterRows` draws, asked of the tag cloud instead of the table: an empty
+   * slot is not unread, it is empty, and it is not counted here.
+   */
+  unread: number;
+}
+
+/**
+ * Which tags to offer, what each would leave, and which of them still lead anywhere.
+ *
+ * Asked for as *"picking a tag narrows the list, and the tag cloud then shows the tags still
+ * reachable"*. A cloud that goes on offering KICK after PAD has been chosen sends somebody
+ * clicking to find an empty table, and the bank is 256 presets, so that is the whole question the
+ * cloud exists to answer.
+ *
+ * **Dimmed, not removed.** A chip that vanished would move the ones beside it under the pointer,
+ * and the cloud is also a map of what this bank holds. Unreachable tags stay where they are and
+ * stop responding.
+ *
+ * Tags nothing in the bank carries are still omitted entirely: the vocabulary is 32 values and a
+ * bank uses a handful, so listing all of them would bury the live ones behind two rows of dead
+ * buttons. What is offered is what the rows surviving the omnibox actually carry, plus whatever is
+ * selected, which must be offered even when it has narrowed the result to nothing.
+ */
+export function tagOffers(rows: readonly LibraryRow[], filter: LibraryFilter): TagOffers {
+  // The pool a tag is offered against: everything the omnibox and the used-only box keep, with the
+  // tag selection lifted. Counting against the whole bank instead would promise 40 and deliver 2
+  // as soon as anything else was set.
+  const pool = filterRows(rows, { ...filter, tags: [] }).rows;
+  const selected = new Set(filter.tags);
+
+  const counts = new Map<TagName, number>();
+  const carriedHere = new Set<TagName>();
+  let unread = 0;
+
+  for (const row of pool) {
+    // A free slot never survives a tag filter, so it is neither a candidate nor an unknown. Every
+    // offer implies at least one tag applied.
+    if (!row.occupied) continue;
+
+    // Captured, because narrowing a property does not survive into a callback.
+    const carried = row.tags;
+    if (carried === undefined) {
+      unread++;
+      continue;
     }
+
+    for (const tag of carried) carriedHere.add(tag);
+
+    // Only rows the current selection keeps can contribute to what a further tag would leave.
+    if (!filter.tags.every((t) => carried.includes(t))) continue;
+    for (const tag of carried) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
 
-  return [...counts]
-    .map(([tag, count]) => ({ tag, count }))
+  const offer = (tag: TagName): TagOffer => {
+    const count = counts.get(tag) ?? 0;
+    const isSelected = selected.has(tag);
+    return { tag, count, selected: isSelected, available: isSelected || count > 0 || unread > 0 };
+  };
+
+  const rest = [...carriedHere]
+    .filter((tag) => !selected.has(tag))
+    .map(offer)
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+
+  return { offers: [...filter.tags.map(offer), ...rest], unread };
 }
