@@ -21,6 +21,20 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## 0.9.0-beta.6 — 2026-09-20
+
+### Fixed
+
+- **The rest of the polymeter card prints periods you can read, as the reset ruler already does.**
+  Only the ruler was rounded last time. The alignment grid above it still wrote a period in full
+  in its column heading, in its row label and in every tooltip along that row — a 14-step track
+  at 3/4x appearing as *"18.666666666666668 steps"* — and so did the sentence naming the closest
+  and furthest pair and the Table view under them, which printed it twice in each row. Two places
+  everywhere now, the same as the ruler and as `barsOf` beside it. Only patterns with a speed
+  other than 1x on some track are affected; every other period is a whole number already. The
+  colour of a cell and the outline on the pair that aligns last are still worked out from the
+  full value, so what is drawn has not moved, only what is written.
+
 ## 0.9.0-beta.5 — 2026-09-20
 
 ### Fixed

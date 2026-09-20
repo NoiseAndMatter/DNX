@@ -4,8 +4,8 @@
  */
 
 import {
-  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
-  type AnalysisTrack, type PeriodGroup,
+  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, stepsLabel,
+  trackLabel, type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GROUND, INK_ON_LIGHT, rampBand, rampIsLight } from "./theme.js";
 import { tip, svg, barGrid, barAxis, rowLabel, rowGround } from "./svg.js";
@@ -51,13 +51,6 @@ export function resetRuler(
     if ((a.cutAfter === 0) !== (b.cutAfter === 0)) return a.cutAfter === 0 ? 1 : -1;
     return a.track.length - b.track.length;
   });
-  /*
-   * **Two places, as everywhere else on this card.** A period is `length / speed`, so 14 steps at
-   * 3/4x is 18.666666666666668 and the row read "cut after 8 of 18.666666666666668" — seventeen
-   * digits of float noise where the reader wants a number they can hold against the two settings
-   * printed underneath. `barsOf` and the repetition count next to it already stop at two.
-   */
-  const steps = (n: number) => Number(n.toFixed(2));
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const x = (step: number) => padL + (step / resetSteps) * plot;
@@ -91,7 +84,7 @@ export function resetRuler(
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`${trackLabel(track)} — cut`,
-          `pass ${passes + 1} gets ${steps(remainder)} of its ${steps(period)} master steps` +
+          `pass ${passes + 1} gets ${stepsLabel(remainder)} of its ${stepsLabel(period)} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
 
@@ -109,9 +102,9 @@ export function resetRuler(
     out += rowLabel(padL, y, rowH, trackLabel(track));
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${steps(remainder)} of ${steps(period)}` +
+        ? `cut after ${stepsLabel(remainder)} of ${stepsLabel(period)}` +
           (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
-        : `${passes} clean \u00d7 ${steps(period)}`}</text>`;
+        : `${passes} clean \u00d7 ${stepsLabel(period)}`}</text>`;
     // What the reader set on the instrument, when it is not the same as the period drawn.
     if (track.speed !== undefined && track.speed !== 1) {
       out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 13}" font-size="${T.tick}"
@@ -191,7 +184,7 @@ export function alignmentGrid(
   groups.forEach((col, j) => {
     const x = padL + j * (cellW + gap);
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 30 : 18)}" text-anchor="middle"
-      font-size="${T.label}" fill="var(--ink2)">${col.period} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${stepsLabel(col.period)} steps</text>`;
     out += `<text x="${x + cellW / 2}" y="${padT - (anySpeed ? 18 : 6)}" text-anchor="middle"
       font-size="${T.value}" fill="var(--ink3)">${col.labels.join(" ")}</text>`;
     if (anySpeed && sources[j]!.length) {
@@ -204,7 +197,7 @@ export function alignmentGrid(
   groups.forEach((row, i) => {
     const y = padT + i * (cellH + gap);
     out += `<text x="${padL - 8}" y="${y + cellH / 2 + (roomy ? 1 : 3)}" text-anchor="end"
-      font-size="${T.label}" fill="var(--ink2)">${row.period} steps</text>`;
+      font-size="${T.label}" fill="var(--ink2)">${stepsLabel(row.period)} steps</text>`;
     if (roomy) {
       const from = sources[i]!.length
         ? sources[i]!.map((s) => `${s.length}@${speedLabel(s.speed)}`).join(" ")
@@ -233,17 +226,20 @@ export function alignmentGrid(
       const isEverything = everything !== undefined && steps === everything && !self;
       const ink = onLight ? INK_ON_LIGHT : "var(--ink)";
       const inkDim = onLight ? INK_ON_LIGHT : "var(--ink2)";
+      // What the cell and its tooltip print. The band above and the outline are decided first,
+      // from the full value, so this is a reading of the answer and not a second answer.
+      const shown = stepsLabel(steps);
       out += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3"
         fill="${self ? GROUND : `var(--q${band + 1})`}"
         stroke="${isEverything ? "var(--crit)" : self ? "var(--line-soft)" : "none"}"
         stroke-width="${isEverything ? 2 : 1}"
-        ${tip(self ? `${row.period} master steps — on its own`
-              : `${row.period} and ${col.period} master steps`,
+        ${tip(self ? `${stepsLabel(row.period)} master steps — on its own`
+              : `${stepsLabel(row.period)} and ${stepsLabel(col.period)} master steps`,
           self
-            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${barsOf(steps)}`
-            : `back in phase every ${steps} steps · ${barsOf(steps)}`)}/>`;
+            ? `${row.labels.join(", ")} comes round every ${shown} steps · ${barsOf(steps)}`
+            : `back in phase every ${shown} steps · ${barsOf(steps)}`)}/>`;
       out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
-        text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
+        text-anchor="middle" font-size="${T.value}" fill="${ink}">${shown}</text>`;
       if (roomy) {
         out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
           font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"

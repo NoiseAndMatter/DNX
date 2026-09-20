@@ -28,7 +28,7 @@ import {
   machineLabel,
   masterPeriod, microBuckets,
   periodGroups, pitchByPreset, pitchWindows, playing, polymeterIsBounded, reachableSteps,
-  overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsToSeconds,
+  overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsLabel, stepsToSeconds,
   trackLabel, trackWindows, voicesPerStep,
   type AnalysisSubject, type KeyFit,
 } from "../analysis/model.js";
@@ -702,7 +702,7 @@ export function renderInsights(
           <span class="h">What the reset interrupts</span>
           <p class="why">${cuts.map((c) =>
             `<b>${trackLabel(c.track)}</b> is ${c.track.length} steps: ${c.passes} complete
-             pass${c.passes === 1 ? "" : "es"}, then <b>${c.cutAfter} of ${c.track.length}
+             pass${c.passes === 1 ? "" : "es"}, then <b>${stepsLabel(c.cutAfter)} of ${c.track.length}
              steps</b> before it is pulled back` +
             (c.lost
               ? ` — <b>${c.lost} trig${c.lost === 1 ? "" : "s"} never sound</b>`
@@ -716,9 +716,9 @@ export function renderInsights(
         <figure style="margin-top:1.1rem">
           <figcaption>When each pair of track periods starts together again.
             ${soonest && latest ? `Read one cell and the rest follow:
-              <b>${soonest.a.period} and ${soonest.b.period} master steps</b> come back into phase every
+              <b>${stepsLabel(soonest.a.period)} and ${stepsLabel(soonest.b.period)} master steps</b> come back into phase every
               <b>${barsOf(soonest.steps)}</b>, while
-              <b>${latest.a.period} and ${latest.b.period}</b> take <b>${barsOf(latest.steps)}</b>.`
+              <b>${stepsLabel(latest.a.period)} and ${stepsLabel(latest.b.period)}</b> take <b>${barsOf(latest.steps)}</b>.`
               : ""}
             The diagonal is a period on its own. Keyed on periods rather than tracks, because two
             tracks that share a period are always in phase.
@@ -756,10 +756,10 @@ export function renderInsights(
             is as far as this goes today.</p>`}
           ${latest === undefined ? "" : latest.steps === reach.total ? `
             <p class="why" style="margin-top:.35rem">The pairing that decides it is
-              <b>${latest.a.period} against ${latest.b.period}</b> — every other pair comes round
+              <b>${stepsLabel(latest.a.period)} against ${stepsLabel(latest.b.period)}</b> — every other pair comes round
               sooner, and that cell is the outlined one above.</p>` : `
             <p class="why" style="margin-top:.35rem"><b>No pair reaches that on its own</b> — the
-              longest is ${latest.a.period} against ${latest.b.period} at
+              longest is ${stepsLabel(latest.a.period)} against ${stepsLabel(latest.b.period)} at
               ${barsOf(latest.steps)}, well short of ${barsOf(reach.total)}. It takes all
               ${groups.length} lengths together, which is why no cell in the grid is marked: the
               answer is not in any one of them.</p>`}
@@ -805,11 +805,11 @@ export function renderInsights(
         live.map((t) => {
           const hit = cuts.find((c) => c.track === t);
           const period = masterPeriod(t);
-          return [`${trackLabel(t)}`, t.length, speedLabel(t.speed ?? 1), period,
+          return [`${trackLabel(t)}`, t.length, speedLabel(t.speed ?? 1), stepsLabel(period),
             // Divides by the period, not the length: the reset counts master steps. This column
             // was still using the raw length after the rest of the file moved to the master clock.
             subject.resetSteps === undefined ? "—" : Math.floor(subject.resetSteps / period),
-            hit ? `${hit.cutAfter} of ${period}` : "—",
+            hit ? `${stepsLabel(hit.cutAfter)} of ${stepsLabel(period)}` : "—",
             hit ? (hit.lost || "none") : "—"];
         }))}
     `, "insights/reset") +

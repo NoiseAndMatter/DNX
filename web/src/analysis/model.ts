@@ -825,6 +825,25 @@ export function gateLabel(steps: number): string {
 }
 
 /**
+ * A count of master steps, printed to two places.
+ *
+ * **A period is `length / speed`, so most of them are fractions in binary.** 14 steps at 3/4x is
+ * 18.666666666666668 and 143 at 3/2x is 95.33333333333333, and both were reaching the screen in
+ * full: the alignment grid put seventeen digits in a column header, in a row label, in every
+ * tooltip along that row, and the reset card's table view printed the same thing twice a row.
+ * Seventeen digits next to the "14 steps @3/4x" the same row prints is noise where the reader is
+ * trying to match a number to two settings on the instrument.
+ *
+ * Here rather than in the charts, for the reason `barsOf` is here: the grid, the ruler and the
+ * prose beside them all print the same period, and two roundings is how they come to disagree.
+ * Printing only — every caller does the arithmetic on the full value, so a colour band or a
+ * comparison is never decided from a rounded number.
+ */
+export function stepsLabel(steps: number): string {
+  return String(Number(steps.toFixed(2)));
+}
+
+/**
  * Steps as bars, the unit this surface is finally read in.
  *
  * **Here rather than in either caller, because both need it and they must agree.** The charts print

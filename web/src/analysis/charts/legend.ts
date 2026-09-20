@@ -6,7 +6,7 @@
  */
 
 import { escapeHtml } from "../../../../src/sheet/html.js";
-import { NOTE_NAMES } from "../model.js";
+import { NOTE_NAMES, stepsLabel } from "../model.js";
 import { pcHue } from "./theme.js";
 
 /**
@@ -15,6 +15,10 @@ import { pcHue } from "./theme.js";
  * A sequential scale without a key is a decoration. This says what the colour means in the same
  * units the cells use, and it is the thing that was missing when the grid read as "true to the data
  * and very hard to interpret".
+ *
+ * Both ends go through `stepsLabel` because they are alignment waits: the cells they key are
+ * rounded to two places, and a legend printing seventeen digits for the same number is a legend
+ * that no longer matches its chart.
  */
 export function rampLegend(soonest: number, longest: number): string {
   const swatches = [0, 1, 2, 3, 4, 5].map((band) =>
@@ -23,7 +27,8 @@ export function rampLegend(soonest: number, longest: number): string {
       <span style="color:var(--ink3)">back in phase sooner</span>
       <span style="display:inline-flex">${swatches}</span>
       <span style="color:var(--ink3)">later</span>
-    </span><span class="item" style="color:var(--ink3)">${soonest} → ${longest} steps</span></div>`;
+    </span><span class="item" style="color:var(--ink3)">${stepsLabel(soonest)} → ${
+      stepsLabel(longest)} steps</span></div>`;
 }
 
 /** A swatch-and-label legend. Each item is `[label, css custom property]`. */
