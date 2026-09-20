@@ -1,14 +1,15 @@
 /**
  * Opening and saving projects in the browser.
  *
- * The only thing this adds over the library is the ZIP layer; everything past the payload
- * bytes — the container header, the LZ4 chain, the check field — is the same code the CLI
- * runs, so a project opened here is parsed exactly as it is on the command line.
+ * The only thing this adds over the library is the browser's ZIP codec and the decoded image the
+ * pages work on. What a project file holds is `src/project/projectfile.ts` and the payload is
+ * `src/project/container.ts`, both of them the same code the CLI runs, so a project opened here is
+ * parsed exactly as it is on the command line.
  */
 
-import { parsePayload, type ProjectManifest, type ProjectPayload } from "../../src/project/container.js";
+import { type ProjectManifest, type ProjectPayload } from "../../src/project/container.js";
 import { decodeProjectImage } from "../../src/project/dn2codec.js";
-import { buildPayload } from "../../src/project/write.js";
+import { projectFrom, rebuiltProjectEntries } from "../../src/project/projectfile.js";
 import { buildZip, readZip } from "./zip.js";
 
 export interface LoadedProject {
@@ -28,24 +29,18 @@ export async function openProject(file: File): Promise<LoadedProject> {
 
 /** Read project bytes from anywhere — a picked file, the server, or the embedded blank. */
 export async function readProjectFile(fileName: string, bytes: Uint8Array): Promise<LoadedProject> {
-  // Named here rather than left to the ZIP layer. `readZip` does not know what it is reading, so
-  // its "not a project file" arrived without saying *which* file — and the one caller who most
-  // needs that is the donor chain, which has three candidates and has to report the one that broke.
-  let entries: Map<string, Uint8Array>;
+  // The file name is added here rather than left to the layers below. Neither the ZIP container
+  // nor `projectFrom` knows what it is reading, so their refusals arrived without saying *which*
+  // file — and the caller who most needs that is the donor chain, which has three candidates and
+  // has to report the one that broke.
+  let manifest: ProjectManifest;
+  let payload: ProjectPayload;
   try {
-    entries = await readZip(bytes);
+    ({ manifest, payload } = projectFrom(await readZip(bytes)));
   } catch (error) {
     throw new ProjectLoadError(`${fileName}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const manifestBytes = entries.get("manifest.json");
-  if (!manifestBytes) throw new ProjectLoadError(`${fileName}: no manifest.json — not a project file`);
-  const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as ProjectManifest;
-
-  const payloadBytes = entries.get(manifest.Payload);
-  if (!payloadBytes) throw new ProjectLoadError(`${fileName}: manifest names a payload "${manifest.Payload}" the ZIP does not contain`);
-
-  const payload = parsePayload(payloadBytes);
   return { fileName, manifest, payload, image: decodeProjectImage(payload.raw).image };
 }
 
@@ -85,9 +80,6 @@ export async function fetchServedTemplate(): Promise<LoadedProject | undefined> 
  * file and must carry the DN2's firmware version, payload entry name and device signature.
  */
 export async function buildProjectBlob(template: LoadedProject, image: Uint8Array): Promise<Blob> {
-  const file = await buildZip([
-    { name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(template.manifest, null, 2)) },
-    { name: template.manifest.Payload, data: buildPayload(template.payload.raw, image) },
-  ]);
+  const file = await buildZip(rebuiltProjectEntries(template.manifest, template.payload.raw, image));
   return new Blob([file as BlobPart], { type: "application/octet-stream" });
 }
