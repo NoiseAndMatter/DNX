@@ -150,6 +150,10 @@ select option { background: #1b2123; color: var(--fg); }
 .tab[aria-selected="true"] { background: var(--panel-2); color: #fff; border-color: var(--line); }
 .tab .n { color: var(--dim); font-size: .68rem; margin-left: .4rem; }
 .tab[aria-selected="true"] .n { color: var(--teal); }
+/* Listed and empty, which is not the same as not listed yet. An empty bank carries no number,
+   because a row of zeroes is noise, so the dimming is all that separates it from a bank nobody has
+   asked about. The tooltip says which one it is. */
+.tab.empty { opacity: .55; }
 
 /* ---- layout ------------------------------------------------------------------------- */
 /*
@@ -719,6 +723,13 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
   background: var(--teal-dim); border-color: var(--teal); color: #eafffb;
 }
 .tagchip[aria-pressed="true"] .n { color: #eafffb; opacity: .75; }
+/* Unreachable: no row left carries it as well as the tags already chosen. Dimmed and disabled
+   rather than removed, because a chip vanishing under the pointer moves the ones beside it, and
+   the cloud is also a map of what this bank holds. Disabled for real, so a press that would do
+   nothing does not look like a press the page ignored. A selected chip is never in this state:
+   dropping it always widens the result. */
+.tagchip:disabled { opacity: .35; cursor: not-allowed; }
+.tagchip:disabled:hover { border-color: var(--line-soft); color: var(--muted); }
 
 /* The rows scroll, the header does not — a 256-row bank is exactly when you stop knowing which
    column is which. `overflow-x: auto` keeps a narrow pane from pushing the page sideways. */

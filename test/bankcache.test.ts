@@ -10,9 +10,12 @@ import { test } from "node:test";
 import {
   type BankCache,
   type SlotFacts,
+  bankCounts,
+  banksToCount,
   forget,
   planBankRead,
   remember,
+  rememberListing,
 } from "../web/src/library/bankcache.js";
 import { type LibraryBank, type LibraryEntry } from "../src/device/library.js";
 
@@ -147,3 +150,91 @@ test("the cache holds copies, so a later listing cannot rewrite history", () => 
   assert.deepEqual(planBankRead(cache.get("preset/A"), bank(entries)).toRead, [1]);
 });
 
+/*
+ * The counts on the bank tabs.
+ *
+ * Same listing, asked a cheaper question: occupancy is already in it, so a bank costs one round
+ * trip to count and 256 reads to know. These are the numbers a tab prints, and the case that
+ * matters is the bank nobody has listed, which must print nothing rather than a zero.
+ */
+
+test("only banks that have been listed have a count", () => {
+  const cache: BankCache = new Map();
+  remember(cache, "preset", bank([entry(1), entry(2), entry(3, { occupied: false, name: "" })]), facts(2));
+
+  const counts = bankCounts(cache, "preset", ["A", "B", "C"]);
+  assert.deepEqual(counts.get("A"), { used: 2, total: 3 });
+  assert.equal(counts.has("B"), false, "unlisted is not empty, and a tab must draw neither");
+  assert.equal(counts.size, 1);
+});
+
+test("an empty bank counts zero, which is not the same as absent", () => {
+  // The distinction the tab hangs on: a zero here is a measurement, a missing key is a question
+  // nobody has asked.
+  const cache: BankCache = new Map();
+  remember(cache, "preset", { ...bank([entry(1, { occupied: false, name: "" })]), bank: "B" }, new Map());
+
+  const counts = bankCounts(cache, "preset", ["A", "B"]);
+  assert.deepEqual(counts.get("B"), { used: 0, total: 1 });
+  assert.equal(counts.has("A"), false);
+});
+
+test("a kit bank's count is not a preset bank's", () => {
+  const cache: BankCache = new Map();
+  remember(cache, "preset", bank([entry(1)]), facts(1));
+  assert.equal(bankCounts(cache, "kit", ["A"]).size, 0);
+});
+
+test("only unlisted banks are worth a listing, and never the one on screen", () => {
+  const cache: BankCache = new Map();
+  remember(cache, "preset", bank([entry(1)]), facts(1));
+
+  assert.deepEqual(
+    banksToCount(cache, "preset", ["A", "B", "C"], { skip: "B", force: false }),
+    ["C"],
+    "A is cached and B is being listed anyway",
+  );
+});
+
+test("a forced refresh re-lists every other bank, cached or not", () => {
+  // One message a bank, and the listing is the only thing that can notice a preset saved on the
+  // front panel. The tags behind it are not dropped; see the next test.
+  const cache: BankCache = new Map();
+  remember(cache, "preset", bank([entry(1)]), facts(1));
+
+  assert.deepEqual(
+    banksToCount(cache, "preset", ["A", "B"], { skip: "B", force: true }),
+    ["A"],
+  );
+});
+
+test("a listing taken for the count keeps the tags the listing still vouches for", () => {
+  // The hazard in storing a listing on its own: overwriting the entries while keeping every fact
+  // would make a renamed slot look unchanged, and it would never be read again.
+  const cache: BankCache = new Map();
+  remember(cache, "preset", bank([entry(1), entry(2)]), facts(2));
+
+  rememberListing(cache, "preset", bank([entry(1), entry(2, { name: "RENAMED" })]));
+
+  const { toRead, reuse } = planBankRead(
+    cache.get("preset/A"),
+    bank([entry(1), entry(2, { name: "RENAMED" })]),
+  );
+  assert.deepEqual(toRead, [2], "the renamed slot lost its cached tags and is read again");
+  assert.deepEqual([...reuse.keys()], [1], "the untouched slot kept 256 reads' worth of work");
+});
+
+test("a listing for the count alone gives a bank its tab number", () => {
+  const cache: BankCache = new Map();
+  rememberListing(cache, "preset", {
+    ...bank([entry(1), entry(2), entry(3, { occupied: false, name: "" })]),
+    bank: "G",
+  });
+
+  assert.deepEqual(bankCounts(cache, "preset", ["G"]).get("G"), { used: 2, total: 3 });
+  assert.deepEqual(
+    planBankRead(cache.get("preset/G"), { ...bank([entry(1), entry(2)]), bank: "G" }).toRead,
+    [1, 2],
+    "counting a bank tells us nothing about its slots, so both are still unread",
+  );
+});
