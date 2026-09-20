@@ -33,7 +33,8 @@
 
 import { buildZip, type ZipEntry } from "./zip.js";
 import { parsePayload } from "../../src/project/container.js";
-import { isDn1Payload, manifestFor } from "../../src/device/drive.js";
+import { storedProjectEntries } from "../../src/project/projectfile.js";
+import { isDn1Payload } from "../../src/device/drive.js";
 
 /** The format this file writes. Bumped when a reader would get it wrong, never for new fields. */
 export const DNX_VERSION = 1;
@@ -126,13 +127,12 @@ export interface DeviceBackup {
  * `firmwareVersion` is required rather than optional for exactly that reason. A caller whose device
  * did not answer has nothing honest to write here, and `backupDevice` keeps the bare payload
  * instead of guessing.
+ *
+ * The two entries come from `storedProjectEntries`, which the CLI's writer shares; all this adds
+ * is the browser's ZIP codec.
  */
 export function projectFile(name: string, firmwareVersion: string, payload: Uint8Array): Promise<Uint8Array> {
-  const manifest = manifestFor(parsePayload(payload), name, firmwareVersion);
-  return buildZip([
-    { name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, undefined, 2)) },
-    { name, data: payload },
-  ]);
+  return buildZip(storedProjectEntries(name, firmwareVersion, payload));
 }
 
 /** What a project file holding this payload is called: `.dnprj` for a Digitone 1, `.dn2prj` otherwise. */

@@ -139,9 +139,13 @@ Entirely in the browser, publishable as static files.
 
 Making it work forced a split worth knowing about: `container.ts` mixed the pure payload
 format with ZIP decompression, so importing it in a browser pulled in `node:zlib` and failed
-at load. The ZIP wrapper now lives in `projectfile.ts` and the browser brings its own, built
+at load. The ZIP wrapper now lives in `projectfile.ts` and the browser brings its own codec, built
 on `CompressionStream`. `test/web.test.ts` walks the import graph from the app entry point and
 fails if anything reachable needs Node, so the boundary cannot rot.
+
+Since 2026-09-20 only the codec differs. `src/archive/zip.ts` writes and reads the container for
+both hosts and takes the compressor as a parameter, so the two sides cannot drift apart in a field
+nobody is comparing.
 
 Still to do here: pinning and reordering by hand, a per-pattern preview like the hardware test
 sheet, and remembering the template between sessions.

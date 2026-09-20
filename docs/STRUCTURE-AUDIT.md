@@ -105,6 +105,16 @@ to assert they agree.
 `open.ts` documents its own violation and states the rule correctly. The other two carry no note. A
 `src/node/` directory would turn a hand-maintained file list into a boundary that cannot go stale.
 
+**The directory — FIXED 2026-08.** All three moved to `src/node/`, and `tsconfig.web.json` excludes
+the directory rather than the files.
+
+**The two writers and the two CRC-32s — FIXED 2026-09-20.** `src/archive/zip.ts` holds the
+container and the checksum once and takes the compressor as a parameter;
+`src/project/projectfile.ts` holds what a project file contains. `src/node/zip.ts` and
+`web/src/zip.ts` are now adapters supplying `node:zlib` and `CompressionStream` and nothing else.
+`test/archive.test.ts` pins the container field by field, which is what the old test could not do:
+it asserted that two writers agreed, and agreement between two wrong writers is not a check.
+
 **Second violation — FIXED 2026-08-01, see item 7:** `DropAction` lives in `web/src/manager/dragrules.ts`, but its strings become
 CSS classes on the shared grid, are styled in the shared stylesheet, and are passed by the
 *expander*. `grid.ts` types the action as bare `string` to avoid importing from a page folder —
