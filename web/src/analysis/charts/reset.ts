@@ -4,27 +4,11 @@
  */
 
 import {
-  masterOffset, masterPeriod, periodSources, speedLabel, trackLabel, type AnalysisTrack,
-  type PeriodGroup,
+  alignmentOf, barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
+  type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
 import { tip, svg } from "./svg.js";
-
-// The one piece of arithmetic this file does. Kept local rather than exported from `model.ts`,
-// because a chart that starts importing derivations is a chart that will start computing them.
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-/** Saturating, for the same reason `model.ts` saturates: sixteen coprime lengths overflow a double. */
-const lcm = (a: number, b: number): number => {
-  const value = (a / gcd(a, b)) * b;
-  return Number.isSafeInteger(value) ? value : Number.MAX_SAFE_INTEGER;
-};
-/**
- * When two **periods** realign. Periods are whole numbers of twenty-fourths — the speeds are 2,
- * 3/2, 1, 3/4, 1/2, 1/4 and 1/8 — so the arithmetic is done there and scaled back rather than
- * asking a float for the least common multiple of 10⅔ and 16.
- */
-const align = (a: number, b: number): number =>
-  a > 0 && b > 0 ? lcm(Math.round(a * 24), Math.round(b * 24)) / 24 : 0;
 
 /**
  * Every track's passes laid against the reset, so an interrupted one can be seen rather than
@@ -60,15 +44,20 @@ export function resetRuler(
   // Rows are taller when a speed has to be spelled out under the pass count.
   const anySpeed = tracks.some((t) => t.speed !== undefined && t.speed !== 1);
   const rowH = 15, gap = anySpeed ? 13 : 5, padL = 30, padR = 150;
-  // Remainder on the master clock, rounded to shake off the floating point in a period like 32/3.
-  const cut = (t: AnalysisTrack) => t.length >= 1
-    ? Number((resetSteps - Math.floor(resetSteps / masterPeriod(t)) * masterPeriod(t)).toFixed(6))
-    : 0;
-  const sorted = [...tracks].sort((a, b) => {
-    const ca = cut(a), cb = cut(b);
-    if ((ca === 0) !== (cb === 0)) return ca === 0 ? 1 : -1;
-    return a.length - b.length;
+  // Passes, remainder and lost trigs all come from the model. This chart draws them and sorts
+  // them; it does not work them out, because `resetCuts` already answers the same question and
+  // two answers to one question is how the two come to differ.
+  const sorted = [...resetPasses(tracks, resetSteps)].sort((a, b) => {
+    if ((a.cutAfter === 0) !== (b.cutAfter === 0)) return a.cutAfter === 0 ? 1 : -1;
+    return a.track.length - b.track.length;
   });
+  /*
+   * **Two places, as everywhere else on this card.** A period is `length / speed`, so 14 steps at
+   * 3/4x is 18.666666666666668 and the row read "cut after 8 of 18.666666666666668" — seventeen
+   * digits of float noise where the reader wants a number they can hold against the two settings
+   * printed underneath. `barsOf` and the repetition count next to it already stop at two.
+   */
+  const steps = (n: number) => Number(n.toFixed(2));
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
   const x = (step: number) => padL + (step / resetSteps) * plot;
@@ -82,16 +71,9 @@ export function resetRuler(
       stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
   }
 
-  sorted.forEach((track, i) => {
+  sorted.forEach(({ track, period, passes, cutAfter: remainder, lost }, i) => {
     const y = i * (rowH + gap);
-    const remainder = cut(track);
-    const period = track.length >= 1 ? masterPeriod(track) : resetSteps;
-    const passes = track.length >= 1 ? Math.floor(resetSteps / period) : 0;
     out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
-
-    // Notes that never sound: they sit in the interrupted part of the final pass.
-    const lost = remainder
-      ? track.trigs.filter((trig) => masterOffset(track, trig.step) >= remainder).length : 0;
 
     for (let pass = 0; pass < passes; pass++) {
       const from = pass * period;
@@ -112,7 +94,7 @@ export function resetRuler(
         fill="${lost ? "var(--crit)" : "none"}" opacity="${lost ? 1 : .9}"
         stroke="${lost ? "none" : "var(--crit)"}" stroke-dasharray="${lost ? "" : "3 2"}"
         ${tip(`${trackLabel(track)} — cut`,
-          `pass ${passes + 1} gets ${remainder} of its ${period} master steps` +
+          `pass ${passes + 1} gets ${steps(remainder)} of its ${steps(period)} master steps` +
           (lost ? ` · ${lost} trig${lost === 1 ? "" : "s"} never sound` : " · no trigs in the lost part"))}/>`;
     }
 
@@ -131,8 +113,9 @@ export function resetRuler(
       font-size="${T.label}" fill="var(--ink2)">${trackLabel(track)}</text>`;
     out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 3.5}" font-size="${T.value}"
       fill="var(${remainder && lost ? "--crit" : "--ink3"})">${remainder
-        ? `cut after ${remainder} of ${period}` + (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
-        : `${passes} clean \u00d7 ${period}`}</text>`;
+        ? `cut after ${steps(remainder)} of ${steps(period)}` +
+          (lost ? ` \u00b7 ${lost} lost` : " \u00b7 nothing lost")
+        : `${passes} clean \u00d7 ${steps(period)}`}</text>`;
     // What the reader set on the instrument, when it is not the same as the period drawn.
     if (track.speed !== undefined && track.speed !== 1) {
       out += `<text x="${padL + plot + 8}" y="${y + rowH / 2 + 13}" font-size="${T.tick}"
@@ -151,19 +134,6 @@ export function resetRuler(
 }
 
 /**
- * Steps as bars, and it says `1 bar` rather than `1 bars`.
- *
- * A track length need not be a multiple of sixteen — 12 and 24 are both common — so the count is
- * often fractional and printing an em-dash for those, as the first version did, threw away the
- * number a reader of a 24-step track most wants.
- */
-function bars(steps: number): string {
-  const value = steps / 16;
-  if (Number.isInteger(value)) return `${value} bar${value === 1 ? "" : "s"}`;
-  return `${Number(value.toFixed(2))} bars`;
-}
-
-/**
  * When each pair of track lengths comes back into phase.
  *
  * **Keyed on lengths, not on tracks, and that is the whole reason it fits.** Alignment is a
@@ -176,6 +146,11 @@ function bars(steps: number): string {
  *
  * Colour is the sequential ramp and it is a redundant encoding — the number is in the cell. It is
  * there so a long pairing can be found by scanning rather than by reading every value.
+ *
+ * **The number is `alignmentOf`, the same one the prose beside this grid prints.** This chart had
+ * its own copy, which saturated at `Number.MAX_SAFE_INTEGER` where the model saturates at
+ * `POLYMETER_LIMIT`, so a pattern past the limit could be given two different answers on one card.
+ * See `alignmentOf` for what the limit costs and why it is still the number shown.
  *
  * **The ramp runs light for a long wait, which is the opposite of print convention and right here.**
  * On a dark ground the light end is the prominent one, and the pairs that take a long time to come
@@ -216,7 +191,8 @@ export function alignmentGrid(
   const roomy = cellW >= 46;
   const cellH = roomy ? 34 : 22;
   const h = padT + n * (cellH + gap) + 16;
-  const worst = Math.max(...groups.flatMap((a) => groups.map((b) => align(a.period, b.period))));
+  const worst = Math.max(
+    ...groups.flatMap((a) => groups.map((b) => alignmentOf(a.period, b.period))));
   let out = "";
 
   groups.forEach((col, j) => {
@@ -247,7 +223,7 @@ export function alignmentGrid(
 
     groups.forEach((col, j) => {
       const x = padL + j * (cellW + gap);
-      const steps = align(row.period, col.period);
+      const steps = alignmentOf(row.period, col.period);
       const self = i === j;
       // Six sequential steps. A pair that is always in phase — one length dividing the other — sits
       // at the bottom of the ramp rather than off it.
@@ -271,14 +247,14 @@ export function alignmentGrid(
         ${tip(self ? `${row.period} master steps — on its own`
               : `${row.period} and ${col.period} master steps`,
           self
-            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${bars(steps)}`
-            : `back in phase every ${steps} steps · ${bars(steps)}`)}/>`;
+            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${barsOf(steps)}`
+            : `back in phase every ${steps} steps · ${barsOf(steps)}`)}/>`;
       out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
         text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
       if (roomy) {
         out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
           font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"
-          >${bars(steps)}</text>`;
+          >${barsOf(steps)}</text>`;
       }
     });
   });

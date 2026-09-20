@@ -17,7 +17,8 @@ import {
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
   POLYMETER_LIMIT, MICRO_MAX, alignmentOf, masterPeriod, microFraction, periodGroups,
   polymeterIsBounded, reachableSteps, dormantTrigs,
-  repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
+  repeatSteps, repetitions, resetCuts, resetOptions, resetPasses, trackWindows, trigDensity,
+  voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
@@ -342,6 +343,57 @@ test("a track the reset interrupts says how far it got", () => {
     [[1, 5, 4], [4, 2, 16]]);
 });
 
+test("every track is laid against the reset, clean ones included", () => {
+  /*
+   * `resetCuts` answers "what is cut" and drops the rest. The reset ruler draws a row per track,
+   * so it needs the clean ones too, and used to work the same three numbers out for itself.
+   */
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 12 })];
+  assert.deepEqual(
+    resetPasses(tracks, 64).map((r) => [r.track.number, r.period, r.passes, r.cutAfter, r.lost]),
+    [[1, 16, 4, 0, 0], [2, 12, 5, 4, 0]]);
+});
+
+test("resetPasses keeps the tracks in the order it was given, and resetCuts is a filter of it", () => {
+  // One arithmetic, or the ruler and the cards can disagree about the same track.
+  const tracks = [track({ number: 3, length: 24 }), track({ number: 1, length: 16 }),
+                  track({ number: 2, length: 12 })];
+  assert.deepEqual(resetPasses(tracks, 64).map((r) => r.track.number), [3, 1, 2]);
+  assert.deepEqual(resetCuts(tracks, 64), resetPasses(tracks, 64).filter((r) => r.cutAfter > 0));
+});
+
+test("a clean track loses no trigs, however many it carries", () => {
+  /*
+   * The lost count is a count of trigs past the cut, and every trig is past a cut of zero. Read
+   * without the guard, a 16-step track under a 64-step reset loses all four of its notes.
+   */
+  const clean = track({ length: 16, trigs: [trig(0, [60]), trig(4, [62]), trig(8, [64])] });
+  assert.deepEqual(resetPasses([clean], 64).map((r) => [r.passes, r.cutAfter, r.lost]),
+    [[4, 0, 0]]);
+});
+
+test("a track on the master clock is cut where the speed puts it, and reports the lost notes", () => {
+  // 14 steps at 3/4x is 18⅔ master steps: three whole passes and 8 steps of a fourth under 64.
+  const t = track({
+    length: 14, speed: 0.75,
+    trigs: [trig(0, [60]), trig(5, [62]), trig(10, [64]), trig(13, [67])],
+  });
+  const [row] = resetPasses([t], 64);
+  assert.ok(row);
+  assert.equal(row.passes, 3);
+  assert.equal(row.cutAfter, 8);
+  // Steps 10 and 13 sit at 13⅓ and 17⅓ master steps, both past the cut at 8.
+  assert.equal(row.lost, 2);
+});
+
+test("a track too short to sequence makes no passes rather than infinitely many", () => {
+  // `masterPeriod` is 0 for it, and `Math.floor(64 / 0)` is `Infinity`, which every loop
+  // downstream takes as a bound. A row is still returned so a per-track chart keeps its row.
+  const [row] = resetPasses([track({ length: 0, trigs: [trig(0, [60])] })], 64);
+  assert.deepEqual(row && [row.period, row.passes, row.cutAfter, row.lost], [0, 0, 0, 0]);
+  assert.deepEqual(resetCuts([track({ length: 0 })], 64), []);
+});
+
 test("no reset means nothing is cut", () => {
   const tracks = [track({ number: 1, length: 7 }), track({ number: 2, length: 12 })];
   assert.deepEqual(resetCuts(tracks, undefined), []);
@@ -437,6 +489,26 @@ test("a fractional period still gives an exact alignment", () => {
   assert.equal(alignmentOf(period, 16), 64);
 });
 
+test("the longest reachable pair saturates rather than being measured", () => {
+  /*
+   * **The disagreement the alignment grid used to draw.** The grid had its own least common
+   * multiple saturating at `Number.MAX_SAFE_INTEGER`; this one stops at `POLYMETER_LIMIT`. The
+   * two answers part company at the longest periods a Digitone II can reach: 127 and 128 steps at
+   * 1/8x are 1,016 and 1,024 master steps, and they realign after 130,048 — which the grid
+   * printed and the prose chip beside it did not.
+   *
+   * The model wins, so both now say the limit. No corpus pattern gets near it: the longest
+   * alignment across 425 playing patterns and 1,467 pairs is 18,746 steps, which is why this case
+   * is written out here rather than read off a project.
+   */
+  const slow = (length: number) => masterPeriod(track({ length, speed: 0.125 }));
+  assert.deepEqual([slow(127), slow(128)], [1016, 1024]);
+  assert.equal(alignmentOf(slow(127), slow(128)), POLYMETER_LIMIT);
+  // Just under the limit is still measured, so the saturation is a ceiling and not a rounding.
+  assert.equal(alignmentOf(1024, 32), 1024);
+  assert.equal(alignmentOf(slow(128), slow(120)), 15_360);
+});
+
 /* ---- the reset calculator ---------------------------------------------------------------- */
 
 test("alignment is a property of periods, so tracks are grouped by those", () => {
@@ -499,6 +571,33 @@ test("sixteen near-coprime lengths are legal, and must not overflow or hang", ()
 test("a bounded polymeter says so", () => {
   assert.equal(polymeterIsBounded([track({ number: 1, length: 12 }),
                                    track({ number: 2, length: 16 })]), true);
+});
+
+test("repetitions counts passes on the master clock, and does not round them", () => {
+  // 12 steps at 3/2x is an eight-step pass, so it comes round eight times in 64 and not five and
+  // a third. The unrounded value is what a log scale needs; the chart rounds it for the label.
+  assert.equal(repetitions(track({ length: 12, speed: 1.5 }), 64), 8);
+  assert.equal(repetitions(track({ length: 24 }), 64), 64 / 24);
+});
+
+test("track density counts trigs, accents and preset locks separately", () => {
+  /*
+   * Accent is "above this pattern's default velocity", not above a number chosen here, and
+   * microtiming counts as shaping too. A trig can be both accented and locked and is counted in
+   * both, which is what the stacked bar draws.
+   */
+  const t = track({
+    trigs: [
+      trig(0, [60]),
+      trig(2, [62], { velocity: 120 }),
+      trig(4, [64], { microTiming: -12 }),
+      trig(6, [65], { velocity: 127, lockPreset: "LOCK" }),
+    ],
+  });
+  assert.deepEqual(trigDensity([t], 100).map((r) => [r.trigs, r.accented, r.presetLocks]),
+    [[4, 3, 1]]);
+  // Raise the default and the same trigs stop being accents. Only the microtimed one is left.
+  assert.deepEqual(trigDensity([t], 127).map((r) => r.accented), [1]);
 });
 
 /* ---- charts, where the geometry can go wrong without throwing --------------------------- */

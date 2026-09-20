@@ -6,7 +6,7 @@
 import { escapeHtml } from "../../../../src/sheet/html.js";
 import {
   MICRO_MAX, NOTE_NAMES, gateLabel, masterOffset, masterPeriod, microFraction, overlappingNotes,
-  pitchClass, presetOf, trackLabel, type AnalysisTrack, type MicroBuckets,
+  pitchClass, presetOf, trackLabel, trigDensity, type AnalysisTrack, type MicroBuckets,
 } from "../model.js";
 import { T, W, GRID_OP, machineVar } from "./theme.js";
 import { tip, svg } from "./svg.js";
@@ -158,32 +158,20 @@ export function densityBars(
   const rowH = 13, gap = 5, padL = 30, padR = 150;
   const h = tracks.length * (rowH + gap);
   const plot = w - padL - padR;
-  const rows = tracks.map((t) => ({
-    track: t,
-    trigs: t.trigs.length,
-    plocks: t.trigs.filter((g) => g.microTiming !== 0 || g.velocity > defaultVelocity).length,
-    locks: t.trigs.filter((g) => g.lockPreset !== undefined).length,
-  }));
-  const max = Math.max(...rows.map((r) => r.trigs + r.plocks + r.locks));
-  /*
-   * **The middle band is not "parameter locks", and calling it that was wrong.**
-   *
-   * It counts trigs carrying microtiming or a velocity above the track default — and on a Digitone
-   * II both of those live in the trig slot itself, which is exactly why `plockparams.ts` lists
-   * `TRIG 1 VEL` and `TRIG 1 NOTE` under `NOT_LOCKABLE`. They are per-trig *values*, not entries in
-   * the lock table. The label now says what is counted; the real lock table is a separate reading
-   * and is not in this chart.
-   */
+  const rows = trigDensity(tracks, defaultVelocity);
+  const max = Math.max(...rows.map((r) => r.trigs + r.accented + r.presetLocks));
+  // The middle band is not "parameter locks": see `TrackDensity.accented` for what it counts and
+  // why the first label was wrong.
   const parts = [
     { key: "trigs", cssVar: "--s3", name: "Note trigs" },
-    { key: "plocks", cssVar: "--s4", name: "Microtimed or accented" },
-    { key: "locks", cssVar: "--s7", name: "Preset locks" },
+    { key: "accented", cssVar: "--s4", name: "Microtimed or accented" },
+    { key: "presetLocks", cssVar: "--s7", name: "Preset locks" },
   ] as const;
   let out = "";
   rows.forEach((r, i) => {
     const y = i * (rowH + gap);
     let cx = padL;
-    const total = r.trigs + r.plocks + r.locks;
+    const total = r.trigs + r.accented + r.presetLocks;
     for (const part of parts) {
       const value = r[part.key];
       if (!value) continue;

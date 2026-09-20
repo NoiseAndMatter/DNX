@@ -21,6 +21,28 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## 0.9.0-beta.5 — 2026-09-20
+
+### Fixed
+
+- **The reset ruler prints a period you can read.** A track's period is its length divided by its
+  speed, so a 14-step track at 3/4x is 18⅔ master steps, and the row said *"cut after 8 of
+  18.666666666666668"*. Seventeen digits of floating-point noise, next to the "14 steps @3/4x" the
+  same row prints, which is the pair of settings the reader is trying to match it to. It now reads
+  *"cut after 8 of 18.67"*, two places, the same as every other fractional number on the card.
+  Only patterns with a speed other than 1x on some track are affected, because every other period
+  is already whole.
+
+### Changed
+
+- **The alignment grid and the prose beside it can no longer give two answers.** Both are asking
+  when two track periods come back into phase, and each had its own arithmetic: the grid stopped
+  counting at the largest integer a double holds exactly, the prose at the one-million-step limit
+  the rest of the analysis uses. They part company only past that limit, which needs tracks of 127
+  and 128 steps at 1/8x. No project in the test corpus reaches it, across 425 playing patterns and
+  1,467 pairs of periods. Where it happens the grid now shows the limit, which is what the pattern
+  summary above it was already saying.
+
 ## 0.9.0-beta.4 — 2026-09-20
 
 ### Added

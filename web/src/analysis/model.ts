@@ -429,15 +429,38 @@ export function repeatSteps(tracks: readonly AnalysisTrack[], resetSteps?: numbe
   return resetSteps === undefined ? cycle : Math.min(cycle, resetSteps);
 }
 
+/**
+ * How many times a track comes round in one cycle.
+ *
+ * On the master clock, so a 12-step track at 3/2x counts its eight-step passes and not its twelve
+ * steps. Rarely a whole number: the track that does not divide the cycle is the one stretching it,
+ * and 2.67 says that where a rounded 3 would hide it.
+ *
+ * Returned unrounded. A caller printing it decides how many places it wants, and a caller scaling
+ * a chart by it needs the exact ratio — rounding first put a bar at a width its own label
+ * contradicted.
+ */
+export function repetitions(track: AnalysisTrack, cycle: number): number {
+  return cycle / masterPeriod(track);
+}
+
 /** A track the reset interrupts, and where. */
-export interface ResetCut {
+/** One track laid against the reset: the passes it completes, and what the reset takes off it. */
+export interface TrackPasses {
   track: AnalysisTrack;
+  /**
+   * Master steps one pass takes, which is `masterPeriod`.
+   *
+   * Carried rather than recomputed because every caller that wants the passes wants the period
+   * beside them, and the reset ruler was deriving it a second time from the same track.
+   */
+  period: number;
   /** Complete passes before the reset lands. */
   passes: number;
-  /** Steps into the next pass at which it is cut off. Always 1..length-1. */
+  /** Steps into the next pass at which it is cut off, or 0 when the track finishes clean. */
   cutAfter: number;
   /**
-   * Trigs in the interrupted part of the pass — the notes that never sound.
+   * Trigs in the interrupted part of the pass — the notes that never sound. 0 when nothing is cut.
    *
    * **A cut only matters if something was going to play in it.** 19 of the 63 interrupted tracks in
    * the corpus lose nothing: every trig sits before the cut, so the geometry is untidy and the
@@ -445,6 +468,49 @@ export interface ResetCut {
    * them is crying wolf, and the first version of this chart did exactly that.
    */
   lost: number;
+}
+
+/** A track the reset interrupts, and where. `cutAfter` is always 1..length-1. */
+export type ResetCut = TrackPasses;
+
+/**
+ * Every track laid against the reset, clean ones included.
+ *
+ * `resetCuts` answers "what is being cut", which is the question the cards ask. The reset ruler
+ * draws a row per track and needs the clean ones too, and was computing the remainder, the pass
+ * count and the lost trigs a second time to get them — the same three lines, in a chart, where a
+ * change to one copy could not reach the other. One function, and the chart selects rather than
+ * derives.
+ *
+ * A track shorter than one step cannot be sequenced, so it completes no passes and is not cut;
+ * `masterPeriod` is 0 for it and dividing by that gives `Infinity`. It is still returned, because
+ * a caller drawing a row per track must not lose the row.
+ */
+export function resetPasses(
+  tracks: readonly AnalysisTrack[], resetSteps: number,
+): TrackPasses[] {
+  return tracks.map((track) => {
+    /*
+     * On the master clock, because that is the clock the reset counts. A 12-step track at 3/2x
+     * takes eight master steps per pass, so a reset of 64 gives it eight whole passes and cuts
+     * nothing — where the same track read at its raw length looked cut after four.
+     */
+    const period = masterPeriod(track);
+    if (track.length < 1) return { track, period, passes: 0, cutAfter: 0, lost: 0 };
+    const passes = Math.floor(resetSteps / period);
+    // Rounded to shake off the floating point in a period like 32/3, where the remainder of an
+    // exact division comes back as 7.105e-15 rather than 0 and reads as a cut that is not there.
+    const cutAfter = Math.max(0, Number((resetSteps - passes * period).toFixed(6)));
+    return {
+      track,
+      period,
+      passes,
+      cutAfter,
+      // A trig is lost when its own position within the pass falls past the cut.
+      lost: cutAfter > 0
+        ? track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length : 0,
+    };
+  });
 }
 
 /**
@@ -465,27 +531,7 @@ export function resetCuts(
   tracks: readonly AnalysisTrack[], resetSteps: number | undefined,
 ): ResetCut[] {
   if (resetSteps === undefined) return [];
-  const out: ResetCut[] = [];
-  for (const track of tracks) {
-    if (track.length < 1) continue;
-    /*
-     * On the master clock, because that is the clock the reset counts. A 12-step track at 3/2x
-     * takes eight master steps per pass, so a reset of 64 gives it eight whole passes and cuts
-     * nothing — where the same track read at its raw length looked cut after four.
-     */
-    const period = masterPeriod(track);
-    const passes = Math.floor(resetSteps / period);
-    const cutAfter = Number((resetSteps - passes * period).toFixed(6));
-    if (cutAfter <= 0) continue;
-    out.push({
-      track,
-      passes,
-      cutAfter,
-      // A trig is lost when its own position within the pass falls past the cut.
-      lost: track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length,
-    });
-  }
-  return out;
+  return resetPasses(tracks, resetSteps).filter((row) => row.cutAfter > 0);
 }
 
 /** A track carrying trigs on steps past its own end. */
@@ -631,6 +677,17 @@ export function speedLabel(speed: number): string {
  *
  * Takes **periods**, not lengths — a period may be fractional (a 16-step track at 3/4x runs
  * 21⅓ master steps), so the arithmetic is done in twenty-fourths and scaled back.
+ *
+ * **The one answer, for the grid and for the prose beside it.** The alignment grid carried its own
+ * copy that saturated at `Number.MAX_SAFE_INTEGER` instead of `POLYMETER_LIMIT`, so a pair past
+ * the limit could be drawn as one number and described as another on the same card. Two tracks of
+ * 127 and 128 steps at 1/8x have periods of 1,016 and 1,024 and realign after 130,048 steps: the
+ * old copy printed that, this returns the limit.
+ *
+ * Saturating loses a number a double holds exactly, which is the price. It is the right price
+ * here: `cycleSteps` stops at the same place, so a pattern the page already calls unbounded no
+ * longer has one cell claiming to have measured it, and a caller that wants to say so asks
+ * `polymeterIsBounded` rather than reading the size of the answer.
  */
 export function alignmentOf(a: number, b: number): number {
   if (!(a > 0) || !(b > 0)) return 0;
@@ -877,6 +934,45 @@ export function sounded(track: AnalysisTrack, trig: AnalysisTrig): readonly numb
   const out: number[] = [];
   for (const note of trig.notes) for (const step of arp) out.push(note + step);
   return out;
+}
+
+/** What one track puts on the grid, counted three ways. */
+export interface TrackDensity {
+  track: AnalysisTrack;
+  /** Note trigs on the track. */
+  trigs: number;
+  /**
+   * Trigs carrying microtiming or a velocity above the track default.
+   *
+   * **Not parameter locks, and calling them that was wrong.** On a Digitone II both of those live
+   * in the trig slot itself, which is why `plockparams.ts` lists `TRIG 1 VEL` and `TRIG 1 NOTE`
+   * under `NOT_LOCKABLE`. They are per-trig values, not entries in the lock table. The lock table
+   * is a separate reading and is not counted here.
+   */
+  accented: number;
+  /** Trigs that swap the preset for the one locked on them. */
+  presetLocks: number;
+}
+
+/**
+ * How much each track carries: trigs, trigs shaped by microtiming or accent, and preset locks.
+ *
+ * Counting, not drawing, so it belongs here rather than in the bar chart that shows it: the same
+ * three numbers answer "which track is doing the work" in prose, and a second copy of the velocity
+ * comparison is a second place for the default to be read wrong.
+ *
+ * `defaultVelocity` is the pattern's, so "accented" means above what this pattern treats as
+ * normal rather than above a number chosen here.
+ */
+export function trigDensity(
+  tracks: readonly AnalysisTrack[], defaultVelocity: number,
+): TrackDensity[] {
+  return tracks.map((track) => ({
+    track,
+    trigs: track.trigs.length,
+    accented: track.trigs.filter((t) => t.microTiming !== 0 || t.velocity > defaultVelocity).length,
+    presetLocks: track.trigs.filter((t) => t.lockPreset !== undefined).length,
+  }));
 }
 
 export interface PitchCell {
