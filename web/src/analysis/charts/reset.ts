@@ -4,7 +4,7 @@
  */
 
 import {
-  barsOf, masterOffset, masterPeriod, periodSources, speedLabel, trackLabel,
+  barsOf, masterOffset, periodSources, resetPasses, speedLabel, trackLabel,
   type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
@@ -60,14 +60,12 @@ export function resetRuler(
   // Rows are taller when a speed has to be spelled out under the pass count.
   const anySpeed = tracks.some((t) => t.speed !== undefined && t.speed !== 1);
   const rowH = 15, gap = anySpeed ? 13 : 5, padL = 30, padR = 150;
-  // Remainder on the master clock, rounded to shake off the floating point in a period like 32/3.
-  const cut = (t: AnalysisTrack) => t.length >= 1
-    ? Number((resetSteps - Math.floor(resetSteps / masterPeriod(t)) * masterPeriod(t)).toFixed(6))
-    : 0;
-  const sorted = [...tracks].sort((a, b) => {
-    const ca = cut(a), cb = cut(b);
-    if ((ca === 0) !== (cb === 0)) return ca === 0 ? 1 : -1;
-    return a.length - b.length;
+  // Passes, remainder and lost trigs all come from the model. This chart draws them and sorts
+  // them; it does not work them out, because `resetCuts` already answers the same question and
+  // two answers to one question is how the two come to differ.
+  const sorted = [...resetPasses(tracks, resetSteps)].sort((a, b) => {
+    if ((a.cutAfter === 0) !== (b.cutAfter === 0)) return a.cutAfter === 0 ? 1 : -1;
+    return a.track.length - b.track.length;
   });
   const h = sorted.length * (rowH + gap) + 14;
   const plot = w - padL - padR;
@@ -82,16 +80,9 @@ export function resetRuler(
       stroke="var(--rule)" stroke-width="${W.grid}" opacity="${GRID_OP}"/>`;
   }
 
-  sorted.forEach((track, i) => {
+  sorted.forEach(({ track, period, passes, cutAfter: remainder, lost }, i) => {
     const y = i * (rowH + gap);
-    const remainder = cut(track);
-    const period = track.length >= 1 ? masterPeriod(track) : resetSteps;
-    const passes = track.length >= 1 ? Math.floor(resetSteps / period) : 0;
     out += `<rect x="${padL}" y="${y}" width="${plot}" height="${rowH}" rx="2" fill="#1a1f21"/>`;
-
-    // Notes that never sound: they sit in the interrupted part of the final pass.
-    const lost = remainder
-      ? track.trigs.filter((trig) => masterOffset(track, trig.step) >= remainder).length : 0;
 
     for (let pass = 0; pass < passes; pass++) {
       const from = pass * period;

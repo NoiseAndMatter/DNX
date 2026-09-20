@@ -430,14 +430,22 @@ export function repeatSteps(tracks: readonly AnalysisTrack[], resetSteps?: numbe
 }
 
 /** A track the reset interrupts, and where. */
-export interface ResetCut {
+/** One track laid against the reset: the passes it completes, and what the reset takes off it. */
+export interface TrackPasses {
   track: AnalysisTrack;
+  /**
+   * Master steps one pass takes, which is `masterPeriod`.
+   *
+   * Carried rather than recomputed because every caller that wants the passes wants the period
+   * beside them, and the reset ruler was deriving it a second time from the same track.
+   */
+  period: number;
   /** Complete passes before the reset lands. */
   passes: number;
-  /** Steps into the next pass at which it is cut off. Always 1..length-1. */
+  /** Steps into the next pass at which it is cut off, or 0 when the track finishes clean. */
   cutAfter: number;
   /**
-   * Trigs in the interrupted part of the pass — the notes that never sound.
+   * Trigs in the interrupted part of the pass — the notes that never sound. 0 when nothing is cut.
    *
    * **A cut only matters if something was going to play in it.** 19 of the 63 interrupted tracks in
    * the corpus lose nothing: every trig sits before the cut, so the geometry is untidy and the
@@ -445,6 +453,49 @@ export interface ResetCut {
    * them is crying wolf, and the first version of this chart did exactly that.
    */
   lost: number;
+}
+
+/** A track the reset interrupts, and where. `cutAfter` is always 1..length-1. */
+export type ResetCut = TrackPasses;
+
+/**
+ * Every track laid against the reset, clean ones included.
+ *
+ * `resetCuts` answers "what is being cut", which is the question the cards ask. The reset ruler
+ * draws a row per track and needs the clean ones too, and was computing the remainder, the pass
+ * count and the lost trigs a second time to get them — the same three lines, in a chart, where a
+ * change to one copy could not reach the other. One function, and the chart selects rather than
+ * derives.
+ *
+ * A track shorter than one step cannot be sequenced, so it completes no passes and is not cut;
+ * `masterPeriod` is 0 for it and dividing by that gives `Infinity`. It is still returned, because
+ * a caller drawing a row per track must not lose the row.
+ */
+export function resetPasses(
+  tracks: readonly AnalysisTrack[], resetSteps: number,
+): TrackPasses[] {
+  return tracks.map((track) => {
+    /*
+     * On the master clock, because that is the clock the reset counts. A 12-step track at 3/2x
+     * takes eight master steps per pass, so a reset of 64 gives it eight whole passes and cuts
+     * nothing — where the same track read at its raw length looked cut after four.
+     */
+    const period = masterPeriod(track);
+    if (track.length < 1) return { track, period, passes: 0, cutAfter: 0, lost: 0 };
+    const passes = Math.floor(resetSteps / period);
+    // Rounded to shake off the floating point in a period like 32/3, where the remainder of an
+    // exact division comes back as 7.105e-15 rather than 0 and reads as a cut that is not there.
+    const cutAfter = Math.max(0, Number((resetSteps - passes * period).toFixed(6)));
+    return {
+      track,
+      period,
+      passes,
+      cutAfter,
+      // A trig is lost when its own position within the pass falls past the cut.
+      lost: cutAfter > 0
+        ? track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length : 0,
+    };
+  });
 }
 
 /**
@@ -465,27 +516,7 @@ export function resetCuts(
   tracks: readonly AnalysisTrack[], resetSteps: number | undefined,
 ): ResetCut[] {
   if (resetSteps === undefined) return [];
-  const out: ResetCut[] = [];
-  for (const track of tracks) {
-    if (track.length < 1) continue;
-    /*
-     * On the master clock, because that is the clock the reset counts. A 12-step track at 3/2x
-     * takes eight master steps per pass, so a reset of 64 gives it eight whole passes and cuts
-     * nothing — where the same track read at its raw length looked cut after four.
-     */
-    const period = masterPeriod(track);
-    const passes = Math.floor(resetSteps / period);
-    const cutAfter = Number((resetSteps - passes * period).toFixed(6));
-    if (cutAfter <= 0) continue;
-    out.push({
-      track,
-      passes,
-      cutAfter,
-      // A trig is lost when its own position within the pass falls past the cut.
-      lost: track.trigs.filter((trig) => masterOffset(track, trig.step) >= cutAfter).length,
-    });
-  }
-  return out;
+  return resetPasses(tracks, resetSteps).filter((row) => row.cutAfter > 0);
 }
 
 /** A track carrying trigs on steps past its own end. */

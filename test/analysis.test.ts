@@ -17,7 +17,7 @@ import {
   overlappingNotes, pitchByPreset, pitchWindows, pitchClass, playing, presetOf, stepsToSeconds,
   POLYMETER_LIMIT, MICRO_MAX, alignmentOf, masterPeriod, microFraction, periodGroups,
   polymeterIsBounded, reachableSteps, dormantTrigs,
-  repeatSteps, resetCuts, resetOptions, trackWindows, voicesPerStep,
+  repeatSteps, resetCuts, resetOptions, resetPasses, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
 } from "../web/src/analysis/model.js";
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
@@ -340,6 +340,57 @@ test("a track the reset interrupts says how far it got", () => {
   const cuts = resetCuts(tracks, 64);
   assert.deepEqual(cuts.map((c) => [c.track.number, c.passes, c.cutAfter]),
     [[1, 5, 4], [4, 2, 16]]);
+});
+
+test("every track is laid against the reset, clean ones included", () => {
+  /*
+   * `resetCuts` answers "what is cut" and drops the rest. The reset ruler draws a row per track,
+   * so it needs the clean ones too, and used to work the same three numbers out for itself.
+   */
+  const tracks = [track({ number: 1, length: 16 }), track({ number: 2, length: 12 })];
+  assert.deepEqual(
+    resetPasses(tracks, 64).map((r) => [r.track.number, r.period, r.passes, r.cutAfter, r.lost]),
+    [[1, 16, 4, 0, 0], [2, 12, 5, 4, 0]]);
+});
+
+test("resetPasses keeps the tracks in the order it was given, and resetCuts is a filter of it", () => {
+  // One arithmetic, or the ruler and the cards can disagree about the same track.
+  const tracks = [track({ number: 3, length: 24 }), track({ number: 1, length: 16 }),
+                  track({ number: 2, length: 12 })];
+  assert.deepEqual(resetPasses(tracks, 64).map((r) => r.track.number), [3, 1, 2]);
+  assert.deepEqual(resetCuts(tracks, 64), resetPasses(tracks, 64).filter((r) => r.cutAfter > 0));
+});
+
+test("a clean track loses no trigs, however many it carries", () => {
+  /*
+   * The lost count is a count of trigs past the cut, and every trig is past a cut of zero. Read
+   * without the guard, a 16-step track under a 64-step reset loses all four of its notes.
+   */
+  const clean = track({ length: 16, trigs: [trig(0, [60]), trig(4, [62]), trig(8, [64])] });
+  assert.deepEqual(resetPasses([clean], 64).map((r) => [r.passes, r.cutAfter, r.lost]),
+    [[4, 0, 0]]);
+});
+
+test("a track on the master clock is cut where the speed puts it, and reports the lost notes", () => {
+  // 14 steps at 3/4x is 18⅔ master steps: three whole passes and 8 steps of a fourth under 64.
+  const t = track({
+    length: 14, speed: 0.75,
+    trigs: [trig(0, [60]), trig(5, [62]), trig(10, [64]), trig(13, [67])],
+  });
+  const [row] = resetPasses([t], 64);
+  assert.ok(row);
+  assert.equal(row.passes, 3);
+  assert.equal(row.cutAfter, 8);
+  // Steps 10 and 13 sit at 13⅓ and 17⅓ master steps, both past the cut at 8.
+  assert.equal(row.lost, 2);
+});
+
+test("a track too short to sequence makes no passes rather than infinitely many", () => {
+  // `masterPeriod` is 0 for it, and `Math.floor(64 / 0)` is `Infinity`, which every loop
+  // downstream takes as a bound. A row is still returned so a per-track chart keeps its row.
+  const [row] = resetPasses([track({ length: 0, trigs: [trig(0, [60])] })], 64);
+  assert.deepEqual(row && [row.period, row.passes, row.cutAfter, row.lost], [0, 0, 0, 0]);
+  assert.deepEqual(resetCuts([track({ length: 0 })], 64), []);
 });
 
 test("no reset means nothing is cut", () => {
