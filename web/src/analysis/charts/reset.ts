@@ -4,8 +4,8 @@
  */
 
 import {
-  masterOffset, masterPeriod, periodSources, speedLabel, trackLabel, type AnalysisTrack,
-  type PeriodGroup,
+  barsOf, masterOffset, masterPeriod, periodSources, speedLabel, trackLabel,
+  type AnalysisTrack, type PeriodGroup,
 } from "../model.js";
 import { T, W, GRID_OP, rampBand, rampIsLight } from "./theme.js";
 import { tip, svg } from "./svg.js";
@@ -151,19 +151,6 @@ export function resetRuler(
 }
 
 /**
- * Steps as bars, and it says `1 bar` rather than `1 bars`.
- *
- * A track length need not be a multiple of sixteen — 12 and 24 are both common — so the count is
- * often fractional and printing an em-dash for those, as the first version did, threw away the
- * number a reader of a 24-step track most wants.
- */
-function bars(steps: number): string {
-  const value = steps / 16;
-  if (Number.isInteger(value)) return `${value} bar${value === 1 ? "" : "s"}`;
-  return `${Number(value.toFixed(2))} bars`;
-}
-
-/**
  * When each pair of track lengths comes back into phase.
  *
  * **Keyed on lengths, not on tracks, and that is the whole reason it fits.** Alignment is a
@@ -271,14 +258,14 @@ export function alignmentGrid(
         ${tip(self ? `${row.period} master steps — on its own`
               : `${row.period} and ${col.period} master steps`,
           self
-            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${bars(steps)}`
-            : `back in phase every ${steps} steps · ${bars(steps)}`)}/>`;
+            ? `${row.labels.join(", ")} comes round every ${steps} steps · ${barsOf(steps)}`
+            : `back in phase every ${steps} steps · ${barsOf(steps)}`)}/>`;
       out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + (roomy ? 1 : 3)}"
         text-anchor="middle" font-size="${T.value}" fill="${ink}">${steps}</text>`;
       if (roomy) {
         out += `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 12}" text-anchor="middle"
           font-size="${T.tick}" fill="${inkDim}" opacity="${onLight ? ".8" : "1"}"
-          >${bars(steps)}</text>`;
+          >${barsOf(steps)}</text>`;
       }
     });
   });
