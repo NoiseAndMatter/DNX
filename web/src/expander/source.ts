@@ -30,10 +30,10 @@ import {
   DeviceSourceError,
   connectDevice,
   listDeviceProjects,
-  openDeviceProject,
 } from "../devicesource.js";
 import { type DriveProject } from "../../../src/device/drive.js";
-import { type Progress, describeBytes } from "../progress.js";
+import { type Progress } from "../progress.js";
+import { projectInSlot, readDriveSlot } from "../drivepicker.js";
 import { deviceFor } from "../../../src/librarian/device.js";
 import { readProjectName } from "../../../src/project/dn1.js";
 import { ProductId } from "../../../src/sysex/devices.js";
@@ -126,24 +126,13 @@ export class Source {
   /** Read one stored project and adopt it. `index` is the slot the listing gave. */
   async openSlot(index: number): Promise<void> {
     const connected = this.#connected;
-    const project = this.#projects?.find((p) => p.index === index);
-    if (!connected || !project) {
-      throw new DeviceSourceError("browse the +Drive again — that listing is stale");
-    }
+    if (!connected) throw new DeviceSourceError("connect a Digitone 1 first");
+    const project = projectInSlot(this.#projects, index);
 
-    this.hooks.onStatus(`Reading ${project.name} from slot ${project.index}…`);
-    this.hooks.progress.working(`Reading ${project.name}`);
-    let opened;
-    try {
-      opened = await openDeviceProject(connected, project, (chunks, bytes) => {
-        if (chunks % 8 === 0) {
-          this.hooks.progress.working(`Reading ${project.name}`);
-          this.hooks.onStatus(`Reading ${project.name}: ${describeBytes(bytes)}…`);
-        }
-      });
-    } finally {
-      this.hooks.progress.done();
-    }
+    const opened = await readDriveSlot(connected, project, {
+      onStatus: (message) => this.hooks.onStatus(message),
+      progress: this.hooks.progress,
+    });
 
     // Checked after the read rather than before, because the +Drive listing does not say what
     // family a stored project is — only the payload does. A DN2 project on a DN1's +Drive should be
