@@ -4,18 +4,33 @@
  * The probe is entirely DOM and MIDI, so the properties its writes must have are checked by reading
  * the functions rather than by running them. `safewrite.test.ts` checks that each write copies what
  * it overwrites before sending; `writeenable.test.ts` checks that each one passes the WRITE switch.
- * Both need the same slice of the same file, so the slicing lives here once.
+ * Both need the same slice of the same source, so the slicing lives here once.
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PROBE = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe", "main.ts");
+const PROBE = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe");
 
-function probeSource(): string {
-  return readFileSync(PROBE, "utf8");
+/**
+ * Every module of the probe, read as one text.
+ *
+ * **A folder, not a file.** The page was a single 2,333-line module until it was split, and the
+ * writes now sit in `writeback.ts`, `writeslot.ts` and `drivefile.ts` while the readiness check
+ * they all pass through sits in `ready.ts`. What these fences guard is a property of the *page* —
+ * every write copies first, every write passes the switch — so naming one file would have made
+ * them pass by finding nothing the moment a write moved out of it.
+ *
+ * Sorted, so a function's slice does not depend on the order the filesystem hands the names back.
+ */
+export function probeSource(): string {
+  return readdirSync(PROBE)
+    .filter((name) => name.endsWith(".ts"))
+    .sort()
+    .map((name) => readFileSync(join(PROBE, name), "utf8"))
+    .join("\n");
 }
 
 /** The names of every top-level function in the probe, in source order. */

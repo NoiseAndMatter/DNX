@@ -420,11 +420,11 @@ const ALLOWED: Record<string, { paths: string[]; because: string }> = {
   // before the copy exists. `writeBack` gained the same read on 2026-09-08, and with it the check
   // that its round trip is still the null one it calls itself.
   writeToSlot: {
-    paths: ["web/src/probe/main.ts"],
+    paths: ["web/src/probe/writeslot.ts"],
     because: "the probe writes one captured record to a chosen slot, which is not an image diff",
   },
   nullRoundTrip: {
-    paths: ["web/src/probe/main.ts"],
+    paths: ["web/src/probe/writeback.ts"],
     because: "the same, for a record sent back to the slot it came from",
   },
 };
