@@ -21,6 +21,18 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## 0.9.0-beta.7 — 2026-09-21
+
+### Fixed
+
+- **The Table view under "How long before it repeats" was counting differently from the chart
+  beside it.** The column divided the polymeter by each track's own length; the chart asked the
+  model how many passes a track completes against the master period. For a track at anything
+  other than 1x those are different questions, so the same track on the same screen carried two
+  numbers. `006 GLITCH_EXPLORE` B1 printed 5.33 in the table against 8 in the chart. One
+  derivation feeds both now, and it is the chart's. Patterns whose tracks all run at 1x are
+  unaffected, because for them the two arithmetics agree.
+
 ## 0.9.0-beta.6 — 2026-09-20
 
 ### Fixed
