@@ -26,7 +26,7 @@ import { verdictAfterSilence } from "./silence.js";
 import { showVerdict, verdictCard } from "./verdicts.js";
 import { hex } from "../../../src/device/capabilities.js";
 import { dumpRequest, REQUEST_OPTIONS } from "../../../src/device/dumprequest.js";
-import { codesUnderTest, describeReply } from "../../../src/device/probecodes.js";
+import { codesUnderTest, describeReply } from "../../../src/research/probecodes.js";
 import { askConfirm } from "../dialog.js";
 import { $, escapeHtml } from "../dom.js";
 

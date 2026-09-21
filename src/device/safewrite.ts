@@ -463,6 +463,14 @@ export interface SafeFileWriteOptions {
   msgId?: number;
   verifyMsgId?: number;
   timeoutMs?: number;
+  /**
+   * The clock, which names the copy taken before an overwrite. Defaults to now.
+   *
+   * The record write beside this one has had an injected `now` since it was written; the file
+   * write read the global clock directly, so the one thing in its output a test could not assert
+   * on was the name of the backup it had just been asked to prove it takes.
+   */
+  now?: () => Date;
   onStatus?: (message: string) => void;
   onProgress?: (done: number, total: number, stage: WriteStage) => void;
   /**
@@ -631,7 +639,7 @@ export async function safeWriteFile(
  * whatever is in the slot at this moment is what gets copied.
  */
 async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
-  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+  const stamp = (options.now?.() ?? new Date()).toISOString().slice(0, 19).replaceAll(":", "-");
   const existing = await readStoredFile(options.path, {
     transport: options.transport,
     form: STORED_FORM,

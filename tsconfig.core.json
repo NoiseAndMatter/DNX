@@ -17,10 +17,10 @@
     "src/node/**/*.ts",
     "src/cli/**/*.ts",
     "src/sheet/**/*.ts",
-    // Research and hardware-test tooling that lives in core's folders until it is moved out.
-    "src/librarian/hardwaretest.ts",
-    "src/librarian/trackhardwaretest.ts",
-    "src/device/usbcapture.ts",
-    "src/device/apiprobe.ts"
+    // Research and hardware-test tooling. Folders rather than a list of files: this named four
+    // files until they were moved out of `device/` and `librarian/`, and a list is a thing to
+    // forget to add to.
+    "src/research/**/*.ts",
+    "src/hardwaretest/**/*.ts"
   ]
 }

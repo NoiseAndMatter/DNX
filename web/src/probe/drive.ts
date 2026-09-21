@@ -31,7 +31,7 @@ import {
   hexBody,
   INFORMATION_CODES,
   informationRequest,
-} from "../../../src/device/apiprobe.js";
+} from "../../../src/research/apiprobe.js";
 import { type Entry, parseListing, StorageCode } from "../../../src/device/storage.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 

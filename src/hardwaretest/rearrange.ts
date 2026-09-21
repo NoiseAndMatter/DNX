@@ -37,8 +37,8 @@
  */
 
 import { patternIndex, patternName } from "../project/naming.js";
-import { type Device } from "./device.js";
-import { type Shuffle, clear, copyMany, moveMany, swap } from "./shuffle.js";
+import { type Device } from "../librarian/device.js";
+import { type Shuffle, clear, copyMany, moveMany, swap } from "../librarian/shuffle.js";
 
 /** The names of the two reference patterns, read from the project being seeded from. */
 export interface SeedNames {

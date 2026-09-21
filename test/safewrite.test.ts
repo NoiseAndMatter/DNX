@@ -650,6 +650,23 @@ test("overwriting without a backup hook is refused before anything is sent", asy
   assert.deepEqual(io.log, [], "refused before the transport was touched at all");
 });
 
+test("the copy is named after the clock it was handed, not the one on the wall", async () => {
+  /*
+   * The backup's name carried the real time, so the one output of a write that proves it took a
+   * copy was the one output no test could assert on. The clock is an option now, the way the
+   * record write beside this has always had one. See `test/determinism.test.ts` for the rule.
+   */
+  const io = slot(payload(0x11));
+  const backups: Backup[] = [];
+  await safeWriteFile(fileWrite(io, {
+    overwrite: true,
+    onBackup: (b) => void backups.push(b),
+    now: () => new Date("2026-09-22T10:11:12Z"),
+  }));
+
+  assert.equal(backups[0]!.name, "MORNING_JAM-before-2026-09-22T10-11-12.payload");
+});
+
 test("the backup holds what was in the slot, and is taken before the first byte goes out", async () => {
   const io = slot(payload(0x11));
   const backups: Backup[] = [];

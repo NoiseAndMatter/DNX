@@ -10,7 +10,7 @@ import {
   expectedAfter,
   expectationsFor,
   stepsFor,
-} from "../src/librarian/trackhardwaretest.js";
+} from "../src/hardwaretest/track.js";
 
 /** A track summary with everything defaulted, so each test states only what it is about. */
 function track(index: number, over: Partial<TrackSummary> = {}): TrackSummary {

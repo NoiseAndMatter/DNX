@@ -71,7 +71,7 @@
  */
 
 import { buildMessage } from "../sysex/container.js";
-import { DUMP_MESSAGES, REQUEST_MESSAGES } from "./capabilities.js";
+import { DUMP_MESSAGES, REQUEST_MESSAGES } from "../device/capabilities.js";
 
 export class NotARequest extends Error {}
 

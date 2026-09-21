@@ -201,6 +201,21 @@ test("a rebuild mints a new identity rather than inheriting the donor's", () => 
   assert.notEqual(projectId(a), projectId(b));
 });
 
+test("a rebuild handed a mint uses it, so two runs can be compared byte for byte", () => {
+  /*
+   * The identity is the one part of a rebuild that is not a function of its inputs, which makes
+   * two runs over the same bytes differ and a diff unable to tell a real change from the hour.
+   * A caller that wants them to agree says so. See `test/determinism.test.ts` for the rule.
+   */
+  const donor = donorDn2();
+  const plan = planRebuild(capture(0x54, 1, DN2.settingsSize, () => 3));
+  const a = applyRebuild(donor, plan, () => 0x0b0a0d0e);
+  const b = applyRebuild(donor, plan, () => 0x0b0a0d0e);
+
+  assert.equal(projectId(a), 0x0b0a0d0e, "the handed identity is the one written");
+  assert.deepEqual(a, b, "and with it handed, the whole image repeats");
+});
+
 test("the donor is not modified", () => {
   const donor = donorDn2();
   const before = donor.slice(0, 64);

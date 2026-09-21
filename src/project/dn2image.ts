@@ -293,12 +293,16 @@ export function writeProjectId(image: Uint8Array, id: number): void {
  * Random rather than derived, because we do not know what the device derives it from and a
  * plausible-looking wrong derivation is worse than an honest random one. It is not validated
  * on load: files carrying an inherited value have loaded and played on hardware twice.
+ *
+ * The source of randomness is a parameter so a test can make the identity predictable, and so a
+ * host with a better one than `Math.random` can say so. This is the only unseeded randomness in
+ * the platform-free part of `src/`.
  */
-export function mintProjectId(): number {
+export function mintProjectId(random: () => number = Math.random): number {
   // Two 16-bit halves rather than one scaled call: it keeps the low bits as well distributed
   // as the high ones, which a single `Math.random() * 2**32` does not guarantee.
-  const hi = Math.floor(Math.random() * 0x10000);
-  const lo = Math.floor(Math.random() * 0x10000);
+  const hi = Math.floor(random() * 0x10000);
+  const lo = Math.floor(random() * 0x10000);
   return ((hi << 16) | lo) >>> 0;
 }
 
