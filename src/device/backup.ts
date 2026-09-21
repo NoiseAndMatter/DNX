@@ -142,6 +142,13 @@ export interface BackupOptions {
   onList?: () => void;
   /** Cooperative cancellation, checked between slots rather than mid-file. */
   shouldStop?: () => boolean;
+  /**
+   * When the backup was taken, for the manifest. Defaults to now.
+   *
+   * A parameter so a test can assert on a manifest without matching a timestamp, and so nothing
+   * platform-free reads a clock it was not handed.
+   */
+  now?: () => Date;
 }
 
 /** A file name that survives a zip, a file system and a round trip through either. */
@@ -414,7 +421,7 @@ export async function backupDevice(
     backup: {
       manifest: {
         dnx: DNX_VERSION,
-        taken: new Date().toISOString(),
+        taken: (options.now?.() ?? new Date()).toISOString(),
         device: {
           name: device.name,
           productId: device.productId,

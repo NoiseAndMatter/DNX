@@ -59,7 +59,7 @@ import {
   chooseSeeds,
   expectationsFor,
   stepsFor,
-} from "../librarian/trackhardwaretest.js";
+} from "../hardwaretest/track.js";
 
 const CONFIRM = { confirmOverwrite: true } as const;
 

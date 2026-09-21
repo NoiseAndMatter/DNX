@@ -23,7 +23,7 @@
 
 import { parseMessage } from "../../../src/sysex/container.js";
 import { dumpRequest } from "../../../src/device/dumprequest.js";
-import { probeRequest } from "../../../src/device/probecodes.js";
+import { probeRequest } from "../../../src/research/probecodes.js";
 import { DeviceLink } from "../devicelink.js";
 
 /** Long enough for a 114 KB PatternKit on a busy device. */

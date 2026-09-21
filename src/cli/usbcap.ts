@@ -17,7 +17,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { summariseCapture } from "../device/capture.js";
-import { parsePcapng, reassembleUsbMidi, toSyx } from "../device/usbcapture.js";
+import { parsePcapng, reassembleUsbMidi, toSyx } from "../research/usbcapture.js";
 
 const input = process.argv[2];
 if (!input) {

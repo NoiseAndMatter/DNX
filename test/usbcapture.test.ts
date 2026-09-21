@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parsePcapng, reassembleUsbMidi, toSyx } from "../src/device/usbcapture.js";
+import { parsePcapng, reassembleUsbMidi, toSyx } from "../src/research/usbcapture.js";
 
 // --- building a pcapng by hand --------------------------------------------------------------------
 

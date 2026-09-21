@@ -9,7 +9,7 @@ import {
   describeReply,
   isRequestCode,
   probeRequest,
-} from "../src/device/probecodes.js";
+} from "../src/research/probecodes.js";
 
 test("only the request band can be addressed", () => {
   // The one thing enforced rather than reasoned about. A 0x5n sent to a device means "store this",

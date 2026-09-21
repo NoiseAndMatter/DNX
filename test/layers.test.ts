@@ -1,8 +1,9 @@
 /**
  * Which folder may import which.
  *
- * The folders of `src/` other than `node`, `cli` and `sheet` are the future platform-free core:
- * the part a second host (Android, a CLI, a test) runs unchanged. That only works while core
+ * The folders of `src/` other than `node`, `cli`, `sheet`, `research` and `hardwaretest` are the
+ * future platform-free core: the part a second host (Android, a CLI, a test) runs unchanged.
+ * That only works while core
  * imports nothing but core. `tsconfig.core.json` checks the globals it uses; this checks its
  * imports, and the two rules the web side keeps: a page's own folder belongs to that page, and
  * nothing under `src/` reaches into `web/`.
@@ -19,13 +20,16 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { ROOT, browserGlobalsIn, code, repoPath, resolveSpecifier, specifiersOf } from "./importgraph.js";
 
-/** Research and hardware-test tooling that sits in core's folders but will not go with it. */
-const TOOLING = [
-  "src/librarian/hardwaretest.ts",
-  "src/librarian/trackhardwaretest.ts",
-  "src/device/usbcapture.ts",
-  "src/device/apiprobe.ts",
-];
+/**
+ * Research and hardware-test tooling: written to find out what a device does, and staying in DNX
+ * when core leaves.
+ *
+ * **Folders, not a list of files.** This was four paths named one at a time, which is a thing to
+ * forget to add to and gave no answer to "where does a new probe module go". The two folders say
+ * it: `research/` is what we build to ask the instrument a question, `hardwaretest/` is what we
+ * build to check an answer on one.
+ */
+const TOOLING = ["research", "hardwaretest"];
 
 /** The pages. Each folder is private to its page. */
 const PAGES = ["expander", "landing", "library", "manager", "probe"];
@@ -33,7 +37,8 @@ const PAGES = ["expander", "landing", "library", "manager", "probe"];
 type Layer = "core" | "tooling" | "node" | "cli" | "sheet" | "web" | `page:${string}` | "outside";
 
 function layerOf(path: string): Layer {
-  if (TOOLING.includes(path)) return "tooling";
+  const tool = /^src\/([^/]+)\//.exec(path);
+  if (tool && TOOLING.includes(tool[1]!)) return "tooling";
   const own = /^src\/(node|cli|sheet)\//.exec(path);
   if (own) return own[1] as Layer;
   if (path.startsWith("src/")) return "core";

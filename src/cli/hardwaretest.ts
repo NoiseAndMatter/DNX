@@ -47,7 +47,7 @@ import {
   seedNameProblem,
   seedingFor,
   stepsFor,
-} from "../librarian/hardwaretest.js";
+} from "../hardwaretest/rearrange.js";
 
 const CONFIRM = { confirmOverwrite: true } as const;
 

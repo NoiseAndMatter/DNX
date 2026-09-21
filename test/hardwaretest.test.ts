@@ -7,7 +7,7 @@ import {
   seedNameProblem,
   seedingFor,
   stepsFor,
-} from "../src/librarian/hardwaretest.js";
+} from "../src/hardwaretest/rearrange.js";
 import { sourceOf, touchedSlots } from "../src/librarian/shuffle.js";
 
 /**

@@ -329,8 +329,14 @@ export function planRebuild(
  * **A new identity is minted.** `mintProjectId` exists because every project built from
  * `EMPTY.dn2prj` claimed to be `EMPTY`, and a rebuild is authoring a project rather than editing
  * the donor. Inheriting here would make every rebuilt project claim to be its template.
+ *
+ * `mint` is a parameter because the identity is the one thing about a rebuild that is not a
+ * function of its inputs, and a caller that wants two runs to agree byte for byte — a test, a
+ * diff — needs to be able to say so.
  */
-export function applyRebuild(donor: Uint8Array, plan: RebuildPlan): Uint8Array {
+export function applyRebuild(
+  donor: Uint8Array, plan: RebuildPlan, mint: () => number = mintProjectId,
+): Uint8Array {
   const { layout } = plan.placement;
   if (!layout.imageSizes.includes(donor.length)) {
     throw new RebuildError(
@@ -344,7 +350,7 @@ export function applyRebuild(donor: Uint8Array, plan: RebuildPlan): Uint8Array {
   for (const group of [plan.patterns, plan.kits, plan.sounds, plan.settings]) {
     for (const placed of group) image.set(placed.bytes, placed.at);
   }
-  writeProjectId(image, mintProjectId());
+  writeProjectId(image, mint());
   return image;
 }
 

@@ -134,7 +134,7 @@ the inversion is visible in the type system.
 - `src/librarian/copy.ts` re-exports `SOUND_SIZE` as a pass-through, making it look like it owns
   geometry it does not.
 - "Read a field out of a DN2 kit" is spread across five modules in four directories.
-- Dead: `web/src/render.ts`'s `renderSummary` (never called), `trackhardwaretest.ts`'s
+- Dead: `web/src/render.ts`'s `renderSummary` (never called), `hardwaretest/track.ts`'s
   `stepPatterns`, `web/src/app.ts`'s `live` set (assigned, never read), the probe's `awaitApi`.
 
 ### What the move actually needed — 2026-08-04
@@ -204,7 +204,7 @@ One real collision: **two different things are called "locks" on the same screen
 `PatternSummary.soundLockCount` is trigs locking a *sound from the pool*;
 `TrackSummary.lockCount` is *parameter* locks from the 80-record table. The manager prints
 "· N locks" for a pattern at one line and "· N locks" for a track directly beneath it.
-`trackhardwaretest.ts` carries a whole `QUIET_FAILURES` entry warning testers that "the count is
+`hardwaretest/track.ts` carries a whole `QUIET_FAILURES` entry warning testers that "the count is
 p-locks ONLY" — documentation patching a naming problem. Suggested: `TrackSummary.lockCount` →
 `paramLockCount`, and label the cell to match.
 
@@ -223,6 +223,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
 | 2b | ~~Split the rest of `probe/main.ts`~~ **DONE 2026-08-01.** `cards.ts` (rendering), `ports.ts` (selection), `storageio.ts` (+Drive conversations), `dumpio.ts` (dump conversations). **2,625 → 2,353 lines**, and what is left is genuinely this page's own work: the flows, the safety confirmations and the narration. **Wants a hardware pass** — every conversation with an instrument moved | shipped, unverified on device |
 | 2c | ~~Split what was left of `probe/main.ts`~~ **DONE 2026-09-21.** Eleven modules by job: `listen`, `ready`, `request`, `readproject`, `writeback`, `writeslot`, `drive`, `drivefile`, `link`, `verdicts`, `chrome`. **2,333 → 497 lines.** `probesource.ts` reads the folder rather than the file, so the write fences follow the writes; `safewrite.test.ts` now names the one module each primitive is exempt in | shipped, unverified on device |
+| 2d | ~~Research and hardware-test tooling out of core's folders~~ **DONE 2026-09-22.** `src/research/` (`apiprobe`, `probecodes`, `usbcapture`) and `src/hardwaretest/` (`rearrange`, `track`). `tsconfig.core.json` and `test/layers.test.ts` name the two folders rather than four files, so a new probe module is outside core by where it lives. `Math.random` and the two remaining clock reads became seams, and `test/determinism.test.ts` keeps it that way | shipped |
 | 3 | ~~Extract the hardware-sheet page scaffold~~ **DONE 2026-08-04.** `src/sheet/page.ts`; drift resolved on the CSS escape; `hhmm` (×5) and the name stamper (×2) moved to `sheet/naming.ts`; both sheets diffed before and after; `test/sheetpage.test.ts` added, 7 tests | shipped |
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | ~~Move the three Node-only modules to `src/node/`~~ **DONE 2026-08-04.** Config excludes a directory; 40 files' imports rewritten; `test/web.test.ts` now *enforces* the boundary across all of `src/`, verified by planting a violation; 757 pass | shipped |
