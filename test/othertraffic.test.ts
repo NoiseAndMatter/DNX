@@ -117,8 +117,8 @@ test("the probe counts while it listens, where nothing of ours is in flight", ()
    * of its own. Listen is the opposite case: a port nobody here is driving, which is exactly where
    * another application's conversation is visible in full — and it would have gone uncounted.
    */
-  const probe = readFileSync(join(ROOT, "web/src/probe/main.ts"), "utf8");
-  // Two handlers in this file match on shape; the listening one is the one that fills the capture.
+  const probe = readFileSync(join(ROOT, "web/src/probe/listen.ts"), "utf8");
+  // The listening handler is the one that fills the capture.
   const start = probe.indexOf("capture.add(data);");
   assert.ok(start > 0, "the listen handler has been renamed; this check no longer guards anything");
   assert.match(probe.slice(start, start + 900), /noteReply\(frame\.respId\)/);

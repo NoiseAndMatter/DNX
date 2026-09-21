@@ -132,7 +132,7 @@ test("nothing decides what is on an instrument from a listing it has not checked
     if (rel === "src/device/storage.ts") continue;
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/\bparseListing\(/g)) {
-      if (rel === "web/src/probe/main.ts" && insideFunction(source, match.index, "listPath")) continue;
+      if (rel === "web/src/probe/drive.ts" && insideFunction(source, match.index, "listPath")) continue;
       offenders.push(`${rel}:${source.slice(0, match.index).split("\n").length}`);
     }
   }

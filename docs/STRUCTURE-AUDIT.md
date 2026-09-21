@@ -29,6 +29,13 @@ already exists in `web/src/devicesource.ts`, which attaches a fresh listener per
 
 Dead: `awaitApi` (2188) is defined, takes an unused parameter, and is never called.
 
+**Finished 2026-09-21.** The file is 497 lines and does one job: connect, choose the ports, decide
+which controls may be pressed, and run the probe. The eleven jobs are eleven modules beside it —
+`listen.ts`, `ready.ts`, `request.ts`, `readproject.ts`, `writeback.ts`, `writeslot.ts`, `drive.ts`,
+`drivefile.ts`, `link.ts`, `verdicts.ts`, `chrome.ts` — and no behaviour moved with them. The
+fences that guard the writes read the folder now rather than one file, so a write that moves house
+can no longer make them pass by finding nothing.
+
 ## 2. Byte-offset arithmetic has no single home — and two readers already disagree — **DONE**
 
 **Verified.** `src/project/dn2image.ts` declares `DN2_KIT` as the canonical kit geometry, and five
@@ -215,6 +222,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 1 | ~~Give DN2 kit geometry one home~~ **DONE 2026-08-01.** `levelOffset/levelSize/levelCount` added, width settled as u16le against 49,152 corpus levels, `trackLevel`/`setTrackLevel` accessors added, six re-declarations and two bare literals removed, `test/dn2image.test.ts` added | shipped |
 | 2a | ~~Extract the reply-correlation transport~~ **DONE 2026-08-01.** `web/src/devicelink.ts`, used by both the probe and `devicesource.ts`. Found on the hardware pass: the fix's own `input.open()` call stalled on an already-open port — both writes hung past their timeout. Fixed by skipping `.open()` when already open and capping the genuinely-closed case at 2s. See `docs/device-probing.md`. | shipped, re-verifying on device |
 | 2b | ~~Split the rest of `probe/main.ts`~~ **DONE 2026-08-01.** `cards.ts` (rendering), `ports.ts` (selection), `storageio.ts` (+Drive conversations), `dumpio.ts` (dump conversations). **2,625 → 2,353 lines**, and what is left is genuinely this page's own work: the flows, the safety confirmations and the narration. **Wants a hardware pass** — every conversation with an instrument moved | shipped, unverified on device |
+| 2c | ~~Split what was left of `probe/main.ts`~~ **DONE 2026-09-21.** Eleven modules by job: `listen`, `ready`, `request`, `readproject`, `writeback`, `writeslot`, `drive`, `drivefile`, `link`, `verdicts`, `chrome`. **2,333 → 497 lines.** `probesource.ts` reads the folder rather than the file, so the write fences follow the writes; `safewrite.test.ts` now names the one module each primitive is exempt in | shipped, unverified on device |
 | 3 | ~~Extract the hardware-sheet page scaffold~~ **DONE 2026-08-04.** `src/sheet/page.ts`; drift resolved on the CSS escape; `hhmm` (×5) and the name stamper (×2) moved to `sheet/naming.ts`; both sheets diffed before and after; `test/sheetpage.test.ts` added, 7 tests | shipped |
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | ~~Move the three Node-only modules to `src/node/`~~ **DONE 2026-08-04.** Config excludes a directory; 40 files' imports rewritten; `test/web.test.ts` now *enforces* the boundary across all of `src/`, verified by planting a violation; 757 pass | shipped |

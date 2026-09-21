@@ -5,12 +5,11 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { probeSource } from "./probesource.js";
 
-const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "probe", "main.ts"), "utf8");
+// The whole page, across its modules. See `probesource.ts` for why it is a folder and not a file.
+const source = probeSource();
 
 function body(name: string): string {
   const start = source.indexOf(`async function ${name}(`);
