@@ -44,6 +44,7 @@ import {
 import { cycleBars } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
 import { MACHINE_ORDER } from "../../../src/analysis/model.js";
+import { insightsData } from "../../../src/analysis/insights.js";
 import { escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
 
@@ -391,8 +392,14 @@ export function renderInsights(
     }
   };
 
-  const live = playing(subject);
-  if (live.length === 0) {
+  /*
+   * The numbers are `insightsData` now: one derivation each, testable without a DOM. What stays
+   * here is what only a page needs — the pitch windows it draws, the buckets the microtiming
+   * strip bins into, and the worked example naming a pair of tracks.
+   */
+  const data = insightsData(subject);
+  const live = data.live;
+  if (data.silent) {
     paint(overview + card("Insights", `<p class="hint">
       <strong>${escapeHtml(subject.label)}</strong> has no trigs on any track, so there is nothing
       to measure. Select a pattern that plays something.</p>`));
@@ -401,40 +408,21 @@ export function renderInsights(
     return;
   }
 
-  /*
-   * **Two different numbers, and the one a musician hears is `repeat`.**
-   *
-   * `polymeter` is the least common multiple of the track lengths — when the tracks would come
-   * round if nothing interrupted them. `repeat` is that bounded by the sequencer's PATTERN RESET,
-   * which pulls every track back to step one whether or not it has finished. Reporting the first
-   * as "true cycle" was arithmetically right and musically false: a pattern this page announced as
-   * 1,984 steps and 12:24 long is restarted by the device every 128 steps, which is 48 seconds.
-   */
-  const polymeter = cycleSteps(live);
-  const cycle = repeatSteps(live, subject.resetSteps);
-  const cut = polymeter > cycle;
-  const cycleSec = stepsToSeconds(cycle, subject.tempo);
+  const {
+    polymeter, cycle, cut, bounded, conditional, cuts, groups, options, completes, alreadyWhole,
+    reach, unreachable, windowSteps, drawn, voices, tonal, arped,
+  } = data;
+  const cycleSec = data.cycleSeconds;
+  const allTrigs = data.trigs;
+  const accents = data.accents;
+  const locks = data.lockedPresets;
+  const peak = data.peakVoices;
+  const over = data.overBudget;
+  const overlaps = data.overlaps;
+  const longestGate = data.longestGate;
+
   const pitch = pitchByPreset(live);
   const micro = microBuckets(live);
-  const allTrigs = live.reduce((a, t) => a + t.trigs.length, 0);
-  const accents = live.reduce(
-    (a, t) => a + t.trigs.filter((g) => g.velocity > subject.defaultVelocity).length, 0);
-  const locks = live.reduce(
-    (a, t) => a + t.trigs.filter((g) => g.lockPreset !== undefined).length, 0);
-
-  const tonal = harmonic(live);
-  /*
-   * Tracks whose arp sounds something beyond the written note. An arp switched on with every
-   * offset at zero strikes the same pitch and changes nothing here, so it is left out.
-   */
-  const arped = live.filter((t) => (t.arpIntervals ?? []).some((n) => n !== 0));
-  /*
-   * **Windowed over what can be drawn, not over what the arithmetic returned.** A pattern whose
-   * tracks never come round has a saturated cycle, and asking for a window per bar of a million
-   * steps is 62,500 windows — eight minutes of work, or a frozen tab. `PRESETS` `FUCHSIA` is one:
-   * tracks of 128, 124, 74, 88 and a 103 at half speed, with RESET at INF.
-   */
-  const drawn = drawableWindow(cycle);
   const keyWindows = tonal.length ? pitchWindows(tonal, drawn.steps, 16, 16) : [];
   const whole = keyWindows.length
     ? fitKey(keyWindows.reduce((acc, v) => acc.map((x, i) => x + v.counts[i]!), new Array(12).fill(0)))
@@ -452,40 +440,6 @@ export function renderInsights(
   const bars = cycle / 16;
   const lengths = new Set(live.map((track) => track.length));
   /*
-   * **The phase strip draws the master length, except when the master is shorter than a track.**
-   *
-   * `017 PRESETS.dn2prj` declares a master length of **1** on every pattern while its tracks run
-   * 14 to 64 steps, so the strip drew a one-step window: four dots stacked on a single pixel
-   * column, a chart of nothing. Widening it to the longest track means every track shows at least
-   * one complete pass, which is the thing the chart is for. A track length is 1..128 by spec, so
-   * this cannot run away.
-   */
-  const longest = Math.max(...live.map((track) => track.length));
-  /*
-   * **One loop of what actually plays.** With a reset, that is the reset — everything past it is a
-   * repeat of what came before, so drawing more draws the same thing twice. Without one, the
-   * longest track is the least that shows every track completing a pass; the master length wins
-   * when it is longer still.
-   */
-  const windowSteps = subject.resetSteps ?? Math.max(subject.masterLength, longest);
-  const cuts = resetCuts(live, subject.resetSteps);
-  const groups = periodGroups(live);
-  const options = resetOptions(live);
-  /*
-   * The shortest reset that leaves every track whole. It is always the last option — the list is
-   * ascending and Pareto-optimal, so the most complete answer is the longest one offered.
-   */
-  const completes = options.at(-1);
-  const alreadyWhole = subject.resetSteps === undefined || cuts.length === 0;
-  /*
-   * Sixteen coprime track lengths have a least common multiple past what a double holds exactly, so
-   * the count saturates. Printing the saturation point as though it were the answer would be
-   * inventing a number, and every windowing loop downstream takes it as a bound.
-   */
-  const bounded = polymeterIsBounded(live);
-  // Conditional trigs make the figure above a floor rather than the answer. See `AnalysisTrig`.
-  const conditional = live.reduce((n, t2) => n + t2.trigs.filter((g) => g.conditional).length, 0);
-  /*
    * **A worked example, taken from this pattern rather than written.** A grid of numbers with a
    * key is still a grid of numbers until somebody has read one cell out loud; naming the soonest
    * pair and the latest one turns the whole thing from a table into a sentence.
@@ -501,19 +455,7 @@ export function renderInsights(
       `background:var(--q${band + 1});vertical-align:baseline;margin-right:.25rem"></span>`;
   };
   void rampIsLight;
-  const reach = reachableSteps(live, subject.resetSteps);
-  const unreachable = reach.total - reach.reachable;
   const machinesUsed = MACHINE_ORDER.filter((m) => live.some((t) => t.machine === m));
-  /*
-   * **Drawn since 2026-09-06**, when the note-length byte was captured. Everything here reads a
-   * gate; all of it was written long before and deliberately left undrawn, because a plausible
-   * mapping would have produced a voice chart indistinguishable from a measured one.
-   */
-  const voices = voicesPerStep(live, windowSteps);
-  const peak = Math.max(...voices, 0);
-  const over = voices.filter((v) => v > subject.voiceBudget).length;
-  const overlaps = live.reduce((n, t) => n + overlappingNotes(t).length, 0);
-  const longestGate = Math.max(...live.flatMap((t) => t.trigs.map((g) => g.length)), 0);
 
   /*
    * **Read from every track, not from `live`.** A track whose only trigs are past its end has none
@@ -617,10 +559,10 @@ export function renderInsights(
         live.map((t) => [`${trackLabel(t)}`, t.preset, t.length,
           t.speed === undefined ? "unknown" : `${t.speed}x`,
           machineLabel(t.machine), t.trigs.length,
-          // Two places, as the chart above prints it. This column divides by the track length
-          // where `realignBars` divides by the master period, so the two disagree whenever a
-          // track has a speed; that is a recount for the insights split, not a rounding.
-          Number((polymeter / t.length).toFixed(2))]))}
+          // From `insightsData`, which measures against the master period. This column used to
+          // divide the polymeter by the track's own length, so it disagreed with the chart above
+          // for any track not at 1x.
+          Number((data.tracks.find((r) => r.track === t)?.repeats ?? 0).toFixed(2))]))}
     `, "insights/cycle") +
 
     card("Polymeter and the reset", `
