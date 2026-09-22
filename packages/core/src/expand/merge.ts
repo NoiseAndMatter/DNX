@@ -389,17 +389,23 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     const pattern = Uint8Array.from(patternRecord(converted, from, spec.layout));
     rerouted += reroute(spec, pattern, remap);
     /*
-     * **The record states the slot it believes it occupies, and a merge moves it.**
+     * **The record keeps saying which pattern slot it came from, because that is what the
+     * instrument does.**
      *
-     * Left alone until 2026-09-22, so every merged pattern claimed its *source* slot: take
-     * pattern 2 into slot 100 and the record still said 2. `rearrange.ts` rewrites this on every
-     * move and says why — a pattern that disagrees about where it lives is one the device has to
-     * meet — and `librarian/copy.ts` has always rewritten it too.
+     * Measured on `008 JAM.dn2prj`, written by a Digitone II: the record sitting at F1 is
+     * byte-identical to F9's, this field included, and F2, F4 and F10 are F9 pasted and then
+     * edited. All four still say F9. A paste on the device does not touch it.
      *
-     * Found by running both engines over the same corpus inputs: across a 2.78 MB image they
-     * agreed on every byte but this one.
+     * DNX rewrote it here for one day, on the reasoning that a pattern should name the slot it
+     * occupies. That is tidier and it is not what the hardware does, and a DNX-written project
+     * that differs from a device-written one in a byte per copied pattern fails the round-trip
+     * diff this project measures itself by.
+     *
+     * A **move** is the other case and rewrites it: `rearrange.ts` does, and verifies it. The
+     * difference is real rather than a preference — the device has no move operation at all, only
+     * copy, paste and clear, so there is a hardware behaviour to match for a copy and none for a
+     * move.
      */
-    pattern[spec.pattern.slotIndexOffset] = to;
     setPatternRecord(image, spec, to, pattern);
     setKitRecord(image, spec, to, kitRecord(converted, from, spec.layout));
   });

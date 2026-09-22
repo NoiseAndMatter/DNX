@@ -235,8 +235,10 @@ export function applyPatternCopy(
     }
   }
 
-  // 3. The pattern record stores the slot it believes it occupies.
-  out[dstPatternStart + PATTERN.slotIndexOffset] = destinationIndex;
+  // 3. The pattern record keeps saying which slot it came from, because a paste on the device
+  //    does not touch that field. See the note in `expand/merge.ts`, where the evidence is: a
+  //    record the instrument pasted into F1 is byte-identical to F9's, this field included.
+  //    A move rewrites it; a copy does not.
 
   // 4. Copy the kit. Home sounds live inline inside it, so they need no remapping.
   const srcKitStart = DN1_LAYOUT.kitBase + sourceIndex * KIT.size;
