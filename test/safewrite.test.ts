@@ -132,11 +132,19 @@ function stubDevice(initial: Uint8Array, options: { silent?: number[]; corrupt?:
 function hooks(answer = true) {
   const backups: Backup[] = [];
   const reviews: RecordWriteReview[] = [];
+  const gated: string[] = [];
   return {
     backups,
     reviews,
-    onBackup: (backup: Backup): void => void backups.push(backup),
+    /** Every step that happened, in order, so "the gate ran first" is a thing a test can say. */
+    gated,
+    gate: (): void => void gated.push("gate"),
+    onBackup: (backup: Backup): void => {
+      gated.push("backup");
+      backups.push(backup);
+    },
     confirm: (review: RecordWriteReview): boolean => {
+      gated.push("confirm");
       reviews.push(review);
       return answer;
     },
@@ -162,7 +170,7 @@ test("the destination is read, backed up and confirmed before anything is sent",
 
   const result = await safeWriteRecords({
     productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-    onBackup: h.onBackup, confirm: h.confirm,
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   assert.equal(result.cancelled, false);
@@ -187,7 +195,7 @@ test("the backup carries the bytes that were there before, replayable", async ()
 
   await safeWriteRecords({
     productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-    onBackup: h.onBackup, confirm: h.confirm,
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   // Parsed rather than compared as a blob: the point of the backup is that it can be sent straight
@@ -208,7 +216,7 @@ test("a slot that does not answer stops the write entirely", async () => {
   await assert.rejects(
     () => safeWriteRecords({
       productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-      onBackup: h.onBackup, confirm: h.confirm, timeoutMs: 10,
+      gate: h.gate, onBackup: h.onBackup, confirm: h.confirm, timeoutMs: 10,
     }),
     (error: unknown) => error instanceof WriteRefusal && /no backup for A4/.test(String(error)),
   );
@@ -225,6 +233,7 @@ test("a backup hook that throws stops the write", async () => {
   await assert.rejects(
     () => safeWriteRecords({
       productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
+      gate: () => {},
       onBackup: () => { throw new Error("disk full"); },
       confirm: () => true,
     }),
@@ -240,7 +249,7 @@ test("saying no sends nothing, and takes no backup either", async () => {
 
   const result = await safeWriteRecords({
     productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-    onBackup: h.onBackup, confirm: h.confirm,
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   assert.equal(result.cancelled, true);
@@ -257,13 +266,78 @@ test("a missing hook is refused rather than defaulted", async () => {
 
   await assert.rejects(
     // A caller that forgot is the case this module exists for, so it cannot be a silent default.
-    () => safeWriteRecords({ ...bad, confirm: () => true } as never),
+    () => safeWriteRecords({ ...bad, gate: () => {}, confirm: () => true } as never),
     (error: unknown) => error instanceof WriteRefusal && /backup hook/.test(String(error)),
   );
   await assert.rejects(
-    () => safeWriteRecords({ ...bad, onBackup: () => {} } as never),
+    () => safeWriteRecords({ ...bad, gate: () => {}, onBackup: () => {} } as never),
     (error: unknown) => error instanceof WriteRefusal && /confirmation hook/.test(String(error)),
   );
+  await assert.rejects(
+    () => safeWriteRecords({ ...bad, onBackup: () => {}, confirm: () => true } as never),
+    (error: unknown) => error instanceof WriteRefusal && /write gate/.test(String(error)),
+  );
+});
+
+test("a write with no gate is refused, on both paths, before the transport is touched", async () => {
+  /*
+   * **The reason this is a required option and not an optional one.** The switch lives in the
+   * browser, in `web/src/writeenable.ts`, and it cannot go to core: there is no `sessionStorage`
+   * on an instrument's host and no toolbar on Android. Core therefore takes one — and an optional
+   * one is the sort a second host forgets, with no symptom at all. Everything works; the arming
+   * step simply is not there.
+   *
+   * TypeScript catches the omission for a caller it compiles. This catches it for one it does
+   * not: a plain object, a JSON-shaped call across a bridge, a host written in another language.
+   */
+  const { before, after } = editedPair();
+  const { io, sent } = stubDevice(before);
+
+  await assert.rejects(
+    () => safeWriteRecords({
+      productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
+      onBackup: () => {}, confirm: () => true,
+    } as never),
+    (error: unknown) => error instanceof WriteRefusal && /write gate/.test(String(error)),
+  );
+  assert.deepEqual(sent, [], "refused before a byte went anywhere");
+
+  const drive = slot(payload(0x11));
+  const { gate: _dropped, ...ungated } = fileWrite(drive);
+  await assert.rejects(
+    () => safeWriteFile(ungated as never),
+    (error: unknown) => error instanceof WriteRefusal && /write gate/.test(String(error)),
+  );
+  assert.deepEqual(drive.log, [], "and the +Drive was not listed, read or opened");
+});
+
+test("the gate runs first, and a gate that throws stops everything", async () => {
+  // First of the three, because a refusal after the question has wasted the question and a
+  // refusal after the backup has already spent the time reading the slot.
+  const { before, after } = editedPair();
+  const { io, sent } = stubDevice(before);
+  const h = hooks();
+
+  await safeWriteRecords({
+    productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
+  });
+  assert.equal(h.gated[0], "gate", `the order was ${h.gated.join(", ")}`);
+
+  const second = stubDevice(before);
+  await assert.rejects(
+    () => safeWriteRecords({
+      productId: ProductId.DN2, io: second.io, before, after, layout: DN2_LAYOUT,
+      witness: witness(),
+      // What `requireWriteEnabled` does when the switch is off. Its own message reaches the
+      // person, unwrapped, because it is the one that says what to do about it.
+      gate: () => { throw new Error("Writing to the instrument is switched off."); },
+      onBackup: () => {}, confirm: () => true,
+    }),
+    /switched off/,
+  );
+  assert.deepEqual(second.sent, [], "nothing was read and nothing was written");
+  void sent;
 });
 
 test("a device that stores something else is reported unverified, with the offset", async () => {
@@ -273,7 +347,7 @@ test("a device that stores something else is reported unverified, with the offse
 
   const result = await safeWriteRecords({
     productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-    onBackup: h.onBackup, confirm: h.confirm,
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   assert.equal(result.written, 1, "the write itself completed");
@@ -300,7 +374,7 @@ test("a slot changed on the device since the read is named, not silently replace
 
   const result = await safeWriteRecords({
     productId: ProductId.DN2, io, before, after, layout: DN2_LAYOUT, witness: witness(),
-    onBackup: h.onBackup, confirm: h.confirm,
+    gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   assert.deepEqual(result.moved, ["A4"]);
@@ -315,7 +389,7 @@ test("an unedited project asks nothing and sends nothing", async () => {
 
   const result = await safeWriteRecords({
     productId: ProductId.DN2, io, before, after: Uint8Array.from(before), layout: DN2_LAYOUT,
-    witness: witness(), onBackup: h.onBackup, confirm: h.confirm,
+    witness: witness(), gate: h.gate, onBackup: h.onBackup, confirm: h.confirm,
   });
 
   assert.equal(result.written, 0);
@@ -618,6 +692,7 @@ function occupied(over: Partial<Entry> = {}): Entry {
 
 function fileWrite(io: ApiTransport, over: Partial<SafeFileWriteOptions> = {}): SafeFileWriteOptions {
   return {
+    gate: () => {},
     transport: io,
     path: "/projects/6",
     name: "SONGWORK",

@@ -14,9 +14,15 @@
  *
  * ## Two layers, on purpose, and it is the same shape as `WritePermit`
  *
- * `requireWriteEnabled()` is the gate that matters. It sits at the three places in `web/src/` that
- * call a safe-write function and in the probe's two direct dump writes, and it throws before any
- * of them sends a byte. **A button that somebody forgot to disable still cannot write.**
+ * `requireWriteEnabled()` is the gate that matters, and it throws before anything sends a byte.
+ * **A button that somebody forgot to disable still cannot write.**
+ *
+ * It reaches the writes two ways. `safeWriteRecords` and `safeWriteFile` take a `gate` as a
+ * **required** option, so a caller that forgets one does not compile and a caller that reached
+ * them some other way is refused before the transport is touched; this page passes
+ * `requireWriteEnabled` as that option, and the core workflows pass their host's copy of it. The
+ * probe's two direct dump writes build a message and hand it to `output.send`, with no options
+ * object to carry anything, so they call this themselves on the line before.
  *
  * The visual half is the affordance: gated controls go flat and stop accepting clicks. That is what
  * a person actually experiences, and it is the half that is easy to get wrong, because every page

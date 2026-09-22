@@ -166,11 +166,14 @@ export async function writeProjectToDrive(
   const target = await entryForSlot(device, host.ids, slot);
   const transport = device.api;
 
-  // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
-  // sent, so a control the page forgot to gate still cannot write. The host supplies the switch,
-  // because core does not know what one looks like; in the browser it is `requireWriteEnabled`.
+  // Nothing reaches an instrument until somebody arms the switch. Checked twice on purpose: here
+  // so the refusal arrives before the work, and again inside `safeWriteFile`, which requires its
+  // own `gate` and does not take a caller's word that one was consulted. The host supplies the
+  // switch, because core does not know what one looks like; in the browser it is
+  // `requireWriteEnabled`.
   host.gate();
   const result = await safeWriteFile({
+    gate: host.gate,
     transport,
     path: projectPath(slot),
     name,

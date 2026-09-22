@@ -98,7 +98,17 @@ test("every path that writes to an instrument passes the gate", () => {
   assert.ok(everywhere >= 3,
     `only ${everywhere} modules call a safe-write function anywhere; the pattern stopped matching`);
 
-  const ungated = writers.filter((f) => !/\brequireWriteEnabled\s*\(/.test(readFileSync(f, "utf8")));
+  /*
+   * Two spellings, both acceptable, and the second is the stronger one.
+   *
+   * `requireWriteEnabled()` on its own line is a caller that checks and then writes. `gate:
+   * requireWriteEnabled` hands the switch to the write itself, which since the gate became a
+   * **required** option is the form that cannot be forgotten: a caller that omits it does not
+   * compile, and one that compiled elsewhere is refused before the transport is touched.
+   */
+  const gated = (source: string): boolean =>
+    /\brequireWriteEnabled\s*\(/.test(source) || /\bgate:\s*requireWriteEnabled\b/.test(source);
+  const ungated = writers.filter((f) => !gated(readFileSync(f, "utf8")));
   assert.deepEqual(ungated.map((f) => f.replace(WEB, "web")), [],
     "these send bytes to an instrument without checking whether writing is switched on");
 });
@@ -134,6 +144,10 @@ test("a core module that writes takes the switch from its host and calls it", ()
     const send = source.search(/\bsafeWrite(Records|File)\s*\(/);
     assert.ok(gate > 0, `${name} takes a gate and never calls it`);
     assert.ok(gate < send, `${name} calls the gate after the write, which is not a gate`);
+    // And hands it down. The safe write requires its own `gate` and will not take a caller's
+    // word that one was consulted, so passing the host's switch through is the contract.
+    assert.match(source, /\bgate:\s*host\.gate\b/,
+      `${name} calls the gate but does not pass it to the write that requires one`);
   }
 
   /*
@@ -171,11 +185,27 @@ test("every function in the probe that sends a write passes the gate itself", ()
 
   for (const name of writers) {
     const body = probeWrite(name, 20_000);
-    // A statement on its own line, so a comment naming the gate does not count as calling it.
-    const gate = /^\s*requireWriteEnabled\(\);/m.exec(body)?.index ?? -1;
-    assert.ok(gate > 0, `${name} sends a write without calling requireWriteEnabled()`);
-    const send = body.search(/\bsafeWrite(Records|File)\s*\(|\boutput\.send\(\[\.\.\.message\]\)/);
-    assert.ok(send > 0 && gate < send, `${name} checks the switch only after it has started writing`);
+    /*
+     * Either the statement on its own line, or the switch handed to a write that requires one.
+     * Both are written out rather than matched loosely, so a comment naming the gate still does
+     * not count as using it.
+     *
+     * The two dump writes must use the first form: they build a message and hand it to
+     * `output.send`, with no safe-write call to carry an option. `readThenWrite` uses the second,
+     * which is why the requirement was worth adding — the gate travels with the write instead of
+     * sitting above it where a later edit can separate them.
+     */
+    const called = /^\s*requireWriteEnabled\(\);/m.exec(body)?.index ?? -1;
+    const handed = /^\s*gate:\s*requireWriteEnabled,/m.exec(body)?.index ?? -1;
+    const gate = called >= 0 ? called : handed;
+    assert.ok(gate > 0,
+      `${name} sends a write without calling requireWriteEnabled() or passing it as the gate`);
+    const send = body.search(/\boutput\.send\(\[\.\.\.message\]\)/);
+    // A handed gate is inside the call, so "before the send" only means anything for the two that
+    // send directly. For those it is the whole claim.
+    if (send > 0) {
+      assert.ok(gate < send, `${name} checks the switch only after it has started writing`);
+    }
   }
 });
 
