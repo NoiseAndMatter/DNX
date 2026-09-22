@@ -158,7 +158,10 @@ What replaces dependency resolution as the risk:
 
 - **`slotIndexOffset`.** The pattern record stores the slot it believes it occupies — DN1 in
   `PATTERN.slotIndexOffset`, DN2 at meta+0x1C. Every move must rewrite it, or the device meets a
-  pattern that disagrees about where it lives.
+  pattern that disagrees about where it lives. **`planPatternMerge` did not**, until 2026-09-22:
+  every merged pattern carried its source slot, including in the expander, which ships. Found by
+  running it against `applyPatternCopy` on the same inputs — across a 2.78 MB image they differed
+  in that one byte and nothing else.
 - **Version 2.** `checkDn2PatternRecord` rejects anything but version 3, and the factory
   `PRESETS.dn2prj` is version 2 — all 128 of its patterns fail. Our whole DN2 corpus is version 3,
   which means **the untested case is the one a manager meets first: a project the device itself
