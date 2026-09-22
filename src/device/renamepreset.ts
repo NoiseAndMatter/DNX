@@ -87,9 +87,10 @@ export async function renamePresetOnDrive(options: RenamePresetOptions): Promise
   const { device, host, bank, index } = options;
   const status = options.onStatus ?? ((): void => {});
 
-  // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is sent,
-  // so a control the page forgot to gate still cannot write. The host supplies the switch; in the
-  // browser it is `requireWriteEnabled`.
+  // Nothing reaches an instrument until somebody arms the switch. Checked twice on purpose: here
+  // so the refusal arrives before the listing and the read, and again inside `safeWriteFile`,
+  // which requires its own `gate` and does not take a caller's word that one was consulted. The
+  // host supplies the switch; in the browser it is `requireWriteEnabled`.
   host.gate();
 
   const transport = device.api;
@@ -125,6 +126,7 @@ export async function renamePresetOnDrive(options: RenamePresetOptions): Promise
 
   const sound = extensionsFor(device.productId).sound;
   const result = await safeWriteFile({
+    gate: host.gate,
     transport,
     path,
     name: plan.to,

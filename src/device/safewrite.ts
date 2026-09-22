@@ -110,6 +110,27 @@ const PERMIT = Object.freeze({}) as unknown as WritePermit;
 /** Raised when a write is refused before anything reaches the wire. */
 export class WriteRefusal extends Error {}
 
+/**
+ * Refuse unless a switch was supplied, then throw it.
+ *
+ * **First, before the listing, the confirmation and the backup.** A refusal that arrives after a
+ * person has been asked to confirm has already wasted the question, and one that arrives after a
+ * read has already spent the time. The switch is the cheapest check there is.
+ *
+ * Both halves matter. A missing `gate` is a caller that has not thought about the switch, which
+ * on a new host is the likely mistake rather than a hypothetical one; a `gate` that throws is a
+ * switch that is off, and its own message is the one the person should see, so it is not wrapped.
+ */
+function requireGate(gate: (() => void) | undefined): void {
+  if (typeof gate !== "function") {
+    throw new WriteRefusal(
+      "refusing to write without a write gate — pass `gate`, which is `requireWriteEnabled` in " +
+        "the browser, or `() => {}` from a host that has no such switch",
+    );
+  }
+  gate();
+}
+
 /** A replayable copy of what was about to be overwritten. */
 export interface Backup {
   /** A filename that says what it is, which device it came from, and when. */
@@ -184,6 +205,20 @@ export interface SafeRecordWriteOptions {
   onBackup: BackupHook;
   /** Required. Return false to cancel. */
   confirm: ConfirmHook<RecordWriteReview>;
+  /**
+   * The switch. Called before anything is read, asked or sent; throwing refuses the write.
+   *
+   * **Required, like `onBackup`, and for the same reason.** Core cannot know what a switch looks
+   * like — there is no `sessionStorage` on an instrument's own host and no toolbar on Android —
+   * so it takes one rather than reaching for one. Required rather than optional because an
+   * optional gate is a gate a second host forgets, and the failure is silent: everything works,
+   * and the arming step nobody implemented is simply absent.
+   *
+   * In the browser it is `requireWriteEnabled`. A caller with no such concept passes `() => {}`
+   * and has said so out loud, which is the whole difference.
+   */
+  gate: () => void;
+
   onStatus?: (message: string) => void;
   /** `stage` is `backup`, `write` or `verify`, so a bar can say which of the three it is drawing. */
   onProgress?: (done: number, total: number, stage: WriteStage) => void;
@@ -226,6 +261,7 @@ export async function safeWriteRecords(
 
   // Thrown rather than defaulted. A hook that is missing because a caller forgot is the case this
   // module exists for, and quietly writing without a backup is what it is here to make impossible.
+  requireGate(options.gate);
   if (typeof options.onBackup !== "function") {
     throw new WriteRefusal("refusing to write without a backup hook");
   }
@@ -453,6 +489,20 @@ export interface SafeFileWriteOptions {
   /** Required. Return false to cancel. */
   confirm: ConfirmHook<FileWriteReview>;
   /**
+   * The switch. Called before anything is read, asked or sent; throwing refuses the write.
+   *
+   * **Required, like `onBackup`, and for the same reason.** Core cannot know what a switch looks
+   * like — there is no `sessionStorage` on an instrument's own host and no toolbar on Android —
+   * so it takes one rather than reaching for one. Required rather than optional because an
+   * optional gate is a gate a second host forgets, and the failure is silent: everything works,
+   * and the arming step nobody implemented is simply absent.
+   *
+   * In the browser it is `requireWriteEnabled`. A caller with no such concept passes `() => {}`
+   * and has said so out loud, which is the whole difference.
+   */
+  gate: () => void;
+
+  /**
    * Left to the caller, because the checksum question is still open and the probe page exists to
    * push on it. `undefined` is the answer that has ever worked.
    */
@@ -532,6 +582,7 @@ export async function safeWriteFile(
   const status = options.onStatus ?? ((): void => {});
   const progress = options.onProgress ?? ((): void => {});
 
+  requireGate(options.gate);
   if (typeof options.confirm !== "function") {
     throw new WriteRefusal("refusing to write without a confirmation hook");
   }

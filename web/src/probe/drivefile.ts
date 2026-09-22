@@ -258,10 +258,11 @@ async function readThenWrite(): Promise<void> {
     // read-back are not optional here either. **The read-back is skipped only for the corruption
     // run**, where the write is meant to be refused and a verifying read would report a failure
     // that is the finding rather than a fault.
-    // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
-    // sent, so a control the page forgot to gate still cannot write. See `writeenable.ts`.
-    requireWriteEnabled();
     const result = await safeWriteFile({
+      // Nothing reaches an instrument until somebody arms the switch. Handed over rather than
+      // called here: `safeWriteFile` requires one and throws it before anything is sent, so a
+      // control the page forgot to gate still cannot write. See `writeenable.ts`.
+      gate: requireWriteEnabled,
       transport: apiTransport(output),
       path: target,
       name: source,

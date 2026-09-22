@@ -288,10 +288,11 @@ export async function writeBack(
   edited: Uint8Array,
   hooks: WriteBackHooks,
 ): Promise<SafeRecordWriteResult> {
-  // Nothing reaches an instrument until somebody arms the switch. Thrown before a byte is
-  // sent, so a control the page forgot to gate still cannot write. See `writeenable.ts`.
-  requireWriteEnabled();
   return safeWriteRecords({
+    // Nothing reaches an instrument until somebody arms the switch. Handed over rather than
+    // called here: `safeWriteRecords` requires one and throws it before it reads, asks or sends,
+    // so a control the page forgot to gate still cannot write. See `writeenable.ts`.
+    gate: requireWriteEnabled,
     productId: handle.productId,
     io: handle.io,
     before: handle.original,
