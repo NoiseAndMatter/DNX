@@ -17,7 +17,7 @@ import {
   remember,
   rememberListing,
 } from "../web/src/library/bankcache.js";
-import { type LibraryBank, type LibraryEntry } from "../src/device/library.js";
+import { type LibraryBank, type LibraryEntry } from "@noiseandmatter/dnx-core/device/library.js";
 
 function entry(index: number, over: Partial<LibraryEntry> = {}): LibraryEntry {
   return {

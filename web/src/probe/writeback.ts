@@ -31,12 +31,12 @@ import {
   nullRoundTrip,
   settleMsAfter,
   verifyWrite,
-} from "../../../src/device/dumpwrite.js";
+} from "@noiseandmatter/dnx-core/device/dumpwrite.js";
 import { $ } from "../dom.js";
-import { buildRecordBackup } from "../../../src/device/safewrite.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
-import { patternName } from "../../../src/project/naming.js";
-import { ProductId } from "../../../src/sysex/devices.js";
+import { buildRecordBackup } from "@noiseandmatter/dnx-core/device/safewrite.js";
+import { DN1_DEVICE, DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { askConfirm } from "../dialog.js";
 import { saveBytesTo, savedTone, whereSaved } from "../dnxfolder.js";
 import { requireWriteEnabled } from "../writeenable.js";

@@ -1,12 +1,16 @@
 /**
  * Which folder may import which.
  *
- * The folders of `src/` other than `node`, `cli`, `sheet`, `research` and `hardwaretest` are the
- * future platform-free core: the part a second host (Android, a CLI, a test) runs unchanged.
- * That only works while core
- * imports nothing but core. `tsconfig.core.json` checks the globals it uses; this checks its
- * imports, and the two rules the web side keeps: a page's own folder belongs to that page, and
- * nothing under `src/` reaches into `web/`.
+ * `packages/core` is the platform-free core: the part a second host (Android, a CLI, a test) runs
+ * unchanged, published as `@noiseandmatter/dnx-core`. That only works while core imports nothing
+ * but core. `tsconfig.core.json` checks the globals it uses; this checks its imports, and the two
+ * rules the web side keeps: a page's own folder belongs to that page, and nothing under `src/`
+ * reaches into `web/`.
+ *
+ * **The package is imported by name and is still local.** `@noiseandmatter/dnx-core/...` is a
+ * workspace whose source is in this repository, so it is classified as the core layer rather than
+ * waved through as a bare specifier. Reading it as external would have turned every rule about
+ * what may reach core into a rule about nothing.
  *
  * **A ratchet.** The boundary was not drawn when the code was written, so it is not clean today.
  * Every current violation is listed in `KNOWN` by file and import. The test fails on a violation
@@ -18,11 +22,13 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ROOT, browserGlobalsIn, code, repoPath, resolveSpecifier, specifiersOf } from "./importgraph.js";
+import {
+  CORE_PACKAGE, ROOT, browserGlobalsIn, code, isLocal, repoPath, resolveSpecifier, specifiersOf,
+} from "./importgraph.js";
 
 /**
- * Research and hardware-test tooling: written to find out what a device does, and staying in DNX
- * when core leaves.
+ * Research and hardware-test tooling: written to find out what a device does, and left behind in
+ * DNX when core moved out.
  *
  * **Folders, not a list of files.** This was four paths named one at a time, which is a thing to
  * forget to add to and gave no answer to "where does a new probe module go". The two folders say
@@ -37,11 +43,11 @@ const PAGES = ["expander", "landing", "library", "manager", "probe"];
 type Layer = "core" | "tooling" | "node" | "cli" | "sheet" | "web" | `page:${string}` | "outside";
 
 function layerOf(path: string): Layer {
+  if (path.startsWith("packages/core/src/")) return "core";
   const tool = /^src\/([^/]+)\//.exec(path);
   if (tool && TOOLING.includes(tool[1]!)) return "tooling";
   const own = /^src\/(node|cli|sheet)\//.exec(path);
   if (own) return own[1] as Layer;
-  if (path.startsWith("src/")) return "core";
   const page = /^web\/src\/([^/]+)\//.exec(path);
   if (page && PAGES.includes(page[1]!)) return `page:${page[1]!}`;
   if (path.startsWith("web/src/")) return "web";
@@ -51,8 +57,10 @@ function layerOf(path: string): Layer {
 /**
  * What each layer may import: local layers, and bare specifiers by prefix.
  *
- * A new folder under `src/` is core by default, which is the safe way round: it has to earn its
- * way out of the rules rather than into them.
+ * Everything under `packages/core/src` is core, which is the safe way round: a file has to be put
+ * in the package deliberately to earn core's rules, and one that does not belong there is in the
+ * wrong directory rather than missing from a list. A folder under `src/` that is not `node`,
+ * `cli`, `sheet` or tooling now lands in no layer at all, and the test below fails on it.
  */
 const RULES: Record<string, { layers: string[]; bare: string[] }> = {
   core: { layers: ["core"], bare: [] },
@@ -79,7 +87,7 @@ function violationsOf(path: string, specifiers: string[], source: string): strin
   const found: string[] = [];
 
   for (const specifier of specifiers) {
-    if (specifier.startsWith(".")) {
+    if (isLocal(specifier)) {
       const target = layerOf(repoPath(resolveSpecifier(join(ROOT, path), specifier)));
       if (!allowed.layers.includes(target)) found.push(`${path} -> ${specifier}`);
     } else if (!allowed.bare.some((prefix) => specifier.startsWith(prefix))) {
@@ -104,7 +112,11 @@ function tsFiles(dir: string): string[] {
   });
 }
 
-const FILES = [...tsFiles(join(ROOT, "src")), ...tsFiles(join(ROOT, "web", "src"))];
+const FILES = [
+  ...tsFiles(join(ROOT, "packages", "core", "src")),
+  ...tsFiles(join(ROOT, "src")),
+  ...tsFiles(join(ROOT, "web", "src")),
+];
 
 /**
  * Every violation today. Delete a line when its import goes; never add one.
@@ -144,25 +156,25 @@ test("the layer check would actually catch a violation", () => {
    * invented core file importing every forbidden thing, and a real browser module read as if it
    * were core, must each be caught. Once KNOWN is empty this is the only proof the check works.
    */
-  const invented = violationsOf("src/project/invented.ts", [
+  const invented = violationsOf("packages/core/src/project/invented.ts", [
     "node:fs",
-    "../node/zip.js",
-    "../cli/args.js",
-    "../sheet/naming.js",
-    "../../web/src/dom.js",
+    "../../../../src/node/zip.js",
+    "../../../../src/cli/args.js",
+    "../../../../src/sheet/naming.js",
+    "../../../../web/src/dom.js",
     "./machine.js",
   ], "export const title = document.title;");
   assert.deepEqual(invented, [
-    "src/project/invented.ts -> node:fs",
-    "src/project/invented.ts -> ../node/zip.js",
-    "src/project/invented.ts -> ../cli/args.js",
-    "src/project/invented.ts -> ../sheet/naming.js",
-    "src/project/invented.ts -> ../../web/src/dom.js",
-    "src/project/invented.ts uses document",
+    "packages/core/src/project/invented.ts -> node:fs",
+    "packages/core/src/project/invented.ts -> ../../../../src/node/zip.js",
+    "packages/core/src/project/invented.ts -> ../../../../src/cli/args.js",
+    "packages/core/src/project/invented.ts -> ../../../../src/sheet/naming.js",
+    "packages/core/src/project/invented.ts -> ../../../../web/src/dom.js",
+    "packages/core/src/project/invented.ts uses document",
   ]);
 
   const mount = join(ROOT, "web", "src", "analysis", "mount.ts");
-  assert.ok(violationsOf("src/analysis/mount.ts", [], code(mount)).length > 0,
+  assert.ok(violationsOf("packages/core/src/analysis/mount.ts", [], code(mount)).length > 0,
     "mount.ts touches the document; read as core it must be flagged");
 
   assert.deepEqual(
@@ -170,6 +182,8 @@ test("the layer check would actually catch a violation", () => {
     ["web/src/choosedevice.ts -> ./manager/main.js", "web/src/choosedevice.ts -> ../../src/node/open.js"],
     "a shared web module may not reach a page folder or src/node",
   );
-  assert.deepEqual(violationsOf("web/src/probe/cards.ts", ["./format.js", "../../../src/project/machine.js"], ""), [],
-    "a page may import its own folder and core");
+  assert.deepEqual(
+    violationsOf("web/src/probe/cards.ts", ["./format.js", `${CORE_PACKAGE}project/machine.js`], ""),
+    [],
+    "a page may import its own folder and core, and core by its package name is still core");
 });

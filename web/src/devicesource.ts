@@ -24,7 +24,7 @@
  * instrument.
  */
 
-import { type DeviceIo, readProjectFromDevice } from "../../src/device/deviceproject.js";
+import { type DeviceIo, readProjectFromDevice } from "@noiseandmatter/dnx-core/device/deviceproject.js";
 import {
   type BackupHook,
   type ConfirmHook,
@@ -32,7 +32,7 @@ import {
   type SafeRecordWriteResult,
   type WriteStage,
   safeWriteRecords,
-} from "../../src/device/safewrite.js";
+} from "@noiseandmatter/dnx-core/device/safewrite.js";
 import { requireWriteEnabled } from "./writeenable.js";
 import {
   type DriveProject,
@@ -40,14 +40,14 @@ import {
   listProjects,
   manifestFor,
   readDriveProject,
-} from "../../src/device/drive.js";
-import type { ProjectManifest, ProjectPayload } from "../../src/project/container.js";
-import { type ApiTransport } from "../../src/device/storagesession.js";
+} from "@noiseandmatter/dnx-core/device/drive.js";
+import type { ProjectManifest, ProjectPayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { DeviceLink, type PortPair, candidatePairs } from "./devicelink.js";
 import { type DeviceChoice } from "./devicechoice.js";
-import { type ConnectedDevice, DeviceSourceError, identify } from "../../src/device/identify.js";
-import { PRODUCT_NAMES } from "../../src/sysex/devices.js";
-import { layoutFor } from "../../src/project/dn2image.js";
+import { type ConnectedDevice, DeviceSourceError, identify } from "@noiseandmatter/dnx-core/device/identify.js";
+import { PRODUCT_NAMES } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { IDS_FOR, reserveMessageIds } from "./messageids.js";
 
 // Re-exported so a page importing "a device" gets its description from the same place. The
@@ -63,7 +63,7 @@ export { type DeviceChoice, describeChoice } from "./devicechoice.js";
  * Re-exported under their old names from their old module, so no page had to change and
  * `error instanceof DeviceSourceError` still names exactly one class.
  */
-export { type ConnectedDevice, DeviceSourceError } from "../../src/device/identify.js";
+export { type ConnectedDevice, DeviceSourceError } from "@noiseandmatter/dnx-core/device/identify.js";
 
 export interface ConnectOptions {
   /**

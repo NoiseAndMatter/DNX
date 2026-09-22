@@ -23,9 +23,9 @@
  * presses Apply. `renderReport` says it in words; this says it in the grid.
  */
 
-import { type LandingMode, landingSlotsFor } from "../../../src/expand/landing.js";
-import { patternName } from "../../../src/project/naming.js";
-import { DN2_LAYOUT } from "../../../src/project/dn2image.js";
+import { type LandingMode, landingSlotsFor } from "@noiseandmatter/dnx-core/expand/landing.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 
 export interface Landing {
   /** Chosen source patterns, **in click order** — that order is the landing order. */

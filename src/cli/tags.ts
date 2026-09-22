@@ -12,9 +12,9 @@
 import { readdirSync, statSync } from "node:fs";
 import { readProjectImage } from "./args.js";
 import { basename, join } from "node:path";
-import { readKit, readProjectName, readSoundPool, type Dn1Sound } from "../project/dn1.js";
-import { TAG_NAMES, decodeTags, soundCharacter, type TagName } from "../project/tags.js";
-import { collectSoundUsage } from "../expand/plan.js";
+import { readKit, readProjectName, readSoundPool, type Dn1Sound } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { TAG_NAMES, decodeTags, soundCharacter, type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
+import { collectSoundUsage } from "@noiseandmatter/dnx-core/expand/plan.js";
 
 
 interface Entry {

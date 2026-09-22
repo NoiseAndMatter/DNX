@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Code, encodeMessage } from "../src/device/api.js";
-import { DumpCapture, apiName, captureFileName, summariseCapture } from "../src/device/capture.js";
+import { Code, encodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { DumpCapture, apiName, captureFileName, summariseCapture } from "@noiseandmatter/dnx-core/device/capture.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 /**

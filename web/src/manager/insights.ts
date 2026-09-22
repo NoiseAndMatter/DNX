@@ -31,7 +31,7 @@ import {
   overlappingNotes, repeatSteps, resetCuts, resetOptions, speedLabel, stepsLabel, stepsToSeconds,
   trackLabel, trackWindows, voicesPerStep,
   type AnalysisSubject, type KeyFit,
-} from "../../../src/analysis/model.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
 import {
   alignmentGrid, densityBars, keyTimeline, legend, machineVar, microDiverging, pcLegend,
   phaseStrip, pitchBars, rampBand, rampIsLight, rampLegend, realignBars, resetRuler, table,
@@ -40,11 +40,11 @@ import {
 } from "../analysis/charts.js";
 import {
   compareSubjects, summariseComparison, type ComparisonRow,
-} from "../../../src/analysis/compare.js";
+} from "@noiseandmatter/dnx-core/analysis/compare.js";
 import { cycleBars } from "../analysis/charts.js";
 import { attachTooltip, mount, repaint } from "../analysis/mount.js";
-import { MACHINE_ORDER } from "../../../src/analysis/model.js";
-import { insightsData } from "../../../src/analysis/insights.js";
+import { MACHINE_ORDER } from "@noiseandmatter/dnx-core/analysis/model.js";
+import { insightsData } from "@noiseandmatter/dnx-core/analysis/insights.js";
 import { escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
 

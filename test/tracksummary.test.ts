@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
-import { readMidiTrackMask } from "../src/project/dn2pattern.js";
-import { deviceFor } from "../src/librarian/device.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readMidiTrackMask } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   applyTrackMove,
-} from "../src/librarian/trackmove.js";
+} from "@noiseandmatter/dnx-core/librarian/trackmove.js";
 import {
   trigCounts,
-} from "../src/librarian/tracksummary.js";
-import { swap } from "../src/librarian/shuffle.js";
-import { summariseTracks, trackIndex, trackName } from "../src/librarian/tracksummary.js";
+} from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { summariseTracks, trackIndex, trackName } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

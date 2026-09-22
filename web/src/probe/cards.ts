@@ -20,9 +20,9 @@
  */
 
 import { escapeHtml } from "../../../src/sheet/html.js";
-import { type ApiGroup, type CaptureSummary } from "../../../src/device/capture.js";
-import { describeMessages, hex } from "../../../src/device/capabilities.js";
-import { type DirEntry } from "../../../src/device/api.js";
+import { type ApiGroup, type CaptureSummary } from "@noiseandmatter/dnx-core/device/capture.js";
+import { describeMessages, hex } from "@noiseandmatter/dnx-core/device/capabilities.js";
+import { type DirEntry } from "@noiseandmatter/dnx-core/device/api.js";
 
 /** A titled block of key/value rows — the probe's whole visual vocabulary. */
 export function card(into: HTMLElement, title: string, rows: [string, string][]): void {

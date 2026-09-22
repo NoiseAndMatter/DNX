@@ -20,7 +20,7 @@ import {
   describeLanding,
   landingRefusal,
   landingSlotsFor,
-} from "../src/expand/landing.js";
+} from "@noiseandmatter/dnx-core/expand/landing.js";
 
 /** `A1` is 0, `B1` is 16 — banks of sixteen, one 128-slot run. */
 const A1 = 0, A9 = 8, A10 = 9, B1 = 16, B2 = 17, B3 = 18, B9 = 24, B10 = 25;

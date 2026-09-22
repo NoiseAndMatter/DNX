@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   DiffError,
   changedRuns,
@@ -17,7 +17,7 @@ import {
   locate,
   subtractNoise,
   summarise,
-} from "../src/project/imagediff.js";
+} from "@noiseandmatter/dnx-core/project/imagediff.js";
 
 function image(fill = 0): Uint8Array {
   return new Uint8Array(DN2_LAYOUT.imageSize).fill(fill);

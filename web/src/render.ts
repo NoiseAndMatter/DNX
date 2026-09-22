@@ -6,9 +6,9 @@
  * through the same helpers the hardware test sheet uses.
  */
 
-import { patternName } from "../../src/project/naming.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { escapeHtml } from "../../src/sheet/html.js";
-import type { ExpansionPlan } from "../../src/expand/types.js";
+import type { ExpansionPlan } from "@noiseandmatter/dnx-core/expand/types.js";
 
 /** Compact list of patterns: "A1, A2, B5 +3 more". */
 function patternList(patterns: readonly number[], limit = 6): string {

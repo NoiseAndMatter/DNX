@@ -21,9 +21,9 @@ import {
   emptyProjectSlots as coreEmptySlots,
   projectSlotEntries as coreSlotEntries,
   writeProjectToDrive as coreWriteProject,
-} from "../../src/device/driveproject.js";
+} from "@noiseandmatter/dnx-core/device/driveproject.js";
 import { type ConnectedDevice } from "./devicesource.js";
-import { type Entry } from "../../src/device/storage.js";
+import { type Entry } from "@noiseandmatter/dnx-core/device/storage.js";
 import { confirmFileWrite } from "./safewriteui.js";
 import { pageMessageIds } from "./messageids.js";
 import { requireWriteEnabled } from "./writeenable.js";
@@ -33,7 +33,7 @@ export {
   firstDifference,
   projectPath,
   type WriteProjectResult,
-} from "../../src/device/driveproject.js";
+} from "@noiseandmatter/dnx-core/device/driveproject.js";
 
 /** This page's half: its allocator, its dialog, and its write switch. */
 const host: DriveWriteHost = {

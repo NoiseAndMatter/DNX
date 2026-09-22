@@ -11,12 +11,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DN2_PROJECTS, NO_CORPUS, corpusPath } from "./corpus.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_DEVICE } from "../src/librarian/device.js";
-import { patternSubject } from "../src/analysis/patternsubject.js";
-import { insightsData } from "../src/analysis/insights.js";
-import { repetitions } from "../src/analysis/model.js";
+import { DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { patternSubject } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
+import { insightsData } from "@noiseandmatter/dnx-core/analysis/insights.js";
+import { repetitions } from "@noiseandmatter/dnx-core/analysis/model.js";
 
 const FILE = "006 GLITCH_EXPLORE.dn2prj";
 const SKIP = !NO_CORPUS && existsSync(join(corpusPath(DN2_PROJECTS), FILE))

@@ -109,7 +109,7 @@ message carried no data, changed nothing, and asked a perfectly reasonable quest
 
 **How to apply.** Before sending anything that returns a handle, an id, a session or a lock: know
 the message that releases it, and send that release in a `finally`. If you cannot, do not send the
-first one. `src/device/storagesession.ts` is the worked example — the sequence is a module
+first one. `packages/core/src/device/storagesession.ts` is the worked example — the sequence is a module
 precisely so the close cannot be forgotten at an early return, and `openRequest`'s token is passed
 from there because that `finally` is the only thing that makes the promise true.
 
@@ -157,7 +157,7 @@ does not hold.
 
 ### 1. Allowlist, never blocklist
 
-An allowlist fails safe; a blocklist fails dangerous. `src/device/capabilities.ts` classifies
+An allowlist fails safe; a blocklist fails dangerous. `packages/core/src/device/capabilities.ts` classifies
 every message as `read`, `write` or `unknown`, and the probe sends **only `read`** through a
 single gate, `safeToSend`.
 
@@ -509,7 +509,8 @@ advertised dump codes are still unidentified, and this is not what they are.
 That began as an inference from the strings the firmware *prints*. It is now evidence from the code
 that *reads*: a Ghidra pass found the line assembler at `0x40110ff8`, a state machine over incoming
 bytes that switches on the first one — `0x23` `#` opens a command line — accumulates into a
-`0x480`-byte buffer, **discards `` and terminates on `
+`0x480`-byte buffer, **discards `
+` and terminates on `
 `**, then posts the line to an RTOS queue
 that the dispatcher blocks on. A byte stream assembled on a newline carries no SysEx framing, and a
 dump-protocol code does not arrive as a text line.
@@ -615,12 +616,12 @@ request paths: the write read-back, the pattern-kit read, the link check, the +D
 unknown-code trial and the API transport. Whichever path armed it last received the next matching
 reply, and the other waited out its timeout. Its own comments record paying for that twice.
 
-Correlation now lives in `src/device/link.ts`, shared with the manager's device source, which had
+Correlation now lives in `packages/core/src/device/link.ts`, shared with the manager's device source, which had
 already solved it: **a listener per request, removed on the way out, matched by message id.** Two
 waits can be in flight without seeing each other's traffic.
 
 It moved out of `web/src/devicelink.ts` on 2026-09-20, parameterised on `SysexPort`
-(`src/device/port.ts`): send bytes, subscribe to bytes, close. The Web MIDI adapter and the
+(`packages/core/src/device/port.ts`): send bytes, subscribe to bytes, close. The Web MIDI adapter and the
 port-name matching stayed in the browser layer. A second host implements those three methods and
 inherits the correlation rather than writing its own, which is what produced the false `0xd3`
 reading in the first place.

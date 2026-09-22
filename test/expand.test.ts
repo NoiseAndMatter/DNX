@@ -17,17 +17,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   checkDn2PatternRecord,
   midiTrackMaskOf,
   readDn2PatternRecord,
-} from "../src/project/dn2pattern.js";
-import { readKit, readPattern, readSoundPool, SYNTH_TRACK_COUNT } from "../src/project/dn1.js";
-import { convertProject } from "../src/expand/convert.js";
-import { planExpansion } from "../src/expand/plan.js";
-import { destinationsBySound, findCollisions, promotionKey, routePattern } from "../src/expand/route.js";
+} from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { readKit, readPattern, readSoundPool, SYNTH_TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
+import { planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { destinationsBySound, findCollisions, promotionKey, routePattern } from "@noiseandmatter/dnx-core/expand/route.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

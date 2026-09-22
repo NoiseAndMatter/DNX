@@ -143,7 +143,7 @@ at load. The ZIP wrapper now lives in `projectfile.ts` and the browser brings it
 on `CompressionStream`. `test/web.test.ts` walks the import graph from the app entry point and
 fails if anything reachable needs Node, so the boundary cannot rot.
 
-Since 2026-09-20 only the codec differs. `src/archive/zip.ts` writes and reads the container for
+Since 2026-09-20 only the codec differs. `packages/core/src/archive/zip.ts` writes and reads the container for
 both hosts and takes the compressor as a parameter, so the two sides cannot drift apart in a field
 nobody is comparing.
 
@@ -204,7 +204,7 @@ already populated and `planExpansion` allocates across a whole project rather th
 whose tracks may be occupied.
 
 **A correction worth keeping.** The plan's first version claimed the manager was "buildable today,
-nothing missing", citing `src/librarian/copy.ts`. That module is **DN1 → DN1 only**, so the
+nothing missing", citing `packages/core/src/librarian/copy.ts`. That module is **DN1 → DN1 only**, so the
 product's central operation did not exist for half its subject matter. The real preconditions:
 
 | Precondition | State |
@@ -841,7 +841,7 @@ The first probe of a real Digitone II, firmware 1.10E, build 0050:
 
 | | |
 |---|---|
-| Product id (API space) | **43** — matching what `src/sysex/devices.ts` already recorded |
+| Product id (API space) | **43** — matching what `packages/core/src/sysex/devices.ts` already recorded |
 | Firmware / build | **1.10E / 0050** — the string the storage-version question waited on |
 | Advertised messages | `0x01 0x02 0x03 0x04 0x06 0x07 0x09` and `0x50`–`0x5e` |
 
@@ -861,7 +861,7 @@ A Digitone 1 on 1.42A, build 0097:
 | Dump band | `0x50`–`0x5d` | `0x50`–`0x5e` |
 | +Drive file API | **none** | **none** |
 
-Product id **20** confirms what `src/sysex/devices.ts` had only inferred, so both halves of that
+Product id **20** confirms what `packages/core/src/sysex/devices.ts` had only inferred, so both halves of that
 table are now hardware-checked.
 
 Four things follow:
@@ -889,7 +889,7 @@ layer been written first, this would have surfaced as a chunked read loop agains
 never answers.
 
 It is also why `Device` returns `supportedMessages` at all, and why reading it was worth doing
-rather than assuming. `src/device/capabilities.ts` now turns that list into answers, and the
+rather than assuming. `packages/core/src/device/capabilities.ts` now turns that list into answers, and the
 probe **checks before it sends** — a message the device does not implement produces a stated
 refusal rather than a two-second timeout that reads like our bug.
 
@@ -917,13 +917,13 @@ payload:  u16be msgId    a counter the caller allocates, echoed in the response
 Header byte `0x10` selects the API. It is **device-independent**, unlike the dump protocol's
 per-product byte (`0x0D` Digitone, `0x15` Digitone II), and the device identifies itself in a
 `Device` response instead — in *a different product-id space*: elk-herd reads 12 Digitakt and 42
-Digitakt II, while `src/sysex/devices.ts` records 20 Digitone and 43 Digitone II. Two spaces for
+Digitakt II, while `packages/core/src/sysex/devices.ts` records 20 Digitone and 43 Digitone II. Two spaces for
 two protocols; conflating them is an afternoon.
 
 **A response's code is the request's code + `0x80`.** `buildApi id … (id + 0x80)` — invisible
 until nothing ever matches.
 
-The 8-in-7 encoding is the one `src/sysex/codec.ts` already implements and has tested against
+The 8-in-7 encoding is the one `packages/core/src/sysex/codec.ts` already implements and has tested against
 real Digitone dumps, confirmed identical to elk-herd's `ByteArray.SevenBit` including bit order
 and the trailing partial group.
 
@@ -982,7 +982,7 @@ Transfer mode's read half. Individual requests are verified on both machines (§
 > Two of the three questions below were answered as hoped, one better than hoped, and the
 > 128th pattern turned out to be last night's bad checksum — see *What the run answered*.
 
-`src/device/readplan.ts` says what a project is made of. `src/device/dumpreader.ts` executes a
+`packages/core/src/device/readplan.ts` says what a project is made of. `packages/core/src/device/dumpreader.ts` executes a
 plan. **Read project** on `/probe` is the page around them. Two files rather than one because
 *what a project consists of* is format knowledge and *how to pace a request stream* is a transport
 concern, and neither has anything to say about the other.
@@ -1077,7 +1077,7 @@ deliberately not started: reading had to be shown correct first, and now it has 
 ### 3c-vi. Rebuilding a project from a capture — DONE 2026-07-29, both families on real captures
 
 `npm run rebuild`. A `.syx` read off a device becomes a `.dn2prj` / `.dnprj`.
-`src/project/rebuild.ts` plans, applies and verifies; the CLI has the shape the other tools use —
+`packages/core/src/project/rebuild.ts` plans, applies and verifies; the CLI has the shape the other tools use —
 look first, `--apply --out` to commit, never overwrite an input.
 
 Proven end to end on both machines:
@@ -1177,7 +1177,7 @@ Rebuilding **into** a device — that is the write half, and it is §3c-vii belo
 
 The first thing in DNX that can destroy someone's work. `docs/device-probing.md` gained a
 **Writing** section *before* any of this was written, and the parts that belong in code rather than
-prose are in `src/device/dumpwrite.ts` — because a rule that lives only in a document is a rule
+prose are in `packages/core/src/device/dumpwrite.ts` — because a rule that lives only in a document is a rule
 that holds until somebody is in a hurry.
 
 #### Why now, and not before
@@ -1309,7 +1309,7 @@ and one is a much bigger jump than it looks.
 
 ### 4a-i. BUILT 2026-07-30 — a device is a source, and files are not demoted
 
-`src/device/deviceproject.ts` and `web/src/manager/devicesource.ts`. **Open device…** reads a whole
+`packages/core/src/device/deviceproject.ts` and `web/src/manager/devicesource.ts`. **Open device…** reads a whole
 project off a connected instrument and opens it exactly as a file opens; **Write to device** sends
 back only the records the edits changed.
 
@@ -1380,7 +1380,7 @@ loses work at the next project change. Treat it as a functional requirement of �
 
 ### 4b-i. The expansion planner — BUILT 2026-07-30, library only
 
-`src/expand/deviceexpand.ts`. Joins stages that were each already proven: read a DN1, read the DN2,
+`packages/core/src/expand/deviceexpand.ts`. Joins stages that were each already proven: read a DN1, read the DN2,
 convert and expand, diff, send only what changed. **Plans and transmits nothing.**
 
 #### The destination device is its own template
@@ -1822,10 +1822,10 @@ The landing slot stopped being a start and became an **anchor**, and the page sa
 
 **The rule had been written three times** — once in `merge.ts` to decide what gets written, twice
 in the page to decide what the grid previews and which cells it marks. Three copies of a rule that
-must agree is a preview that can lie about what Apply will do. It lives in `src/expand/landing.ts`
+must agree is a preview that can lie about what Apply will do. It lives in `packages/core/src/expand/landing.ts`
 now, and all three call it, so the preview is the same computation as the write.
 
-**Called `landing`, not `placement`.** `src/expand/` already uses *placement* for which **track** a
+**Called `landing`, not `placement`.** `packages/core/src/expand/` already uses *placement* for which **track** a
 sound gets — `PlacementRule`, `matchRule`, `placement.test.ts`. A second meaning in the same folder
 is a trap for whoever reads it next, and *landing* was already the vocabulary for this question:
 `landing`, `landingSlots`, `landingSlotsFor`.
@@ -1920,7 +1920,7 @@ does not.
 That asymmetry is the lead worth following, and it points at the template lookup rather than at
 MIDI: `fetchServedTemplate` fails or is never called, while `openDeviceProject` needs no template
 because a stored file carries every byte. Note the expander gained an **embedded blank project**
-(`src/librarian/blankproject.ts`) for exactly this reason — the manager may simply not use it yet,
+(`packages/core/src/librarian/blankproject.ts`) for exactly this reason — the manager may simply not use it yet,
 in which case the fix is to reach for the same fallback rather than to serve a file.
 
 ### 7b. Export does nothing after an edit, and there is no SAVE to the device

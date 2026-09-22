@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decode87, encode87 } from "../src/sysex/codec.js";
+import { decode87, encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
 
 test("encode87 packs the documented MSB-first bit order", () => {
   // Seven bytes with only the high bit set, one at a time, must light up

@@ -10,11 +10,11 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { PATTERN, RECORD_VERSION, TRACK_SIZE_BY_VERSION, asVersion3, recordVersion } from "../src/project/dn2pattern.js";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
+import { PATTERN, RECORD_VERSION, TRACK_SIZE_BY_VERSION, asVersion3, recordVersion } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { deviceFor } from "../src/librarian/device.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { CORPUS } from "./corpus.js";
 
 test("version 4 is read with the version-3 track size", () => {

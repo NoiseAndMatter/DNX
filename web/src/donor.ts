@@ -31,7 +31,7 @@
  * either bundled as *the* template or withheld until the page is useless without it.
  */
 
-import { blankDn2ProjectFile } from "../../src/librarian/blankproject.js";
+import { blankDn2ProjectFile } from "@noiseandmatter/dnx-core/librarian/blankproject.js";
 import { fetchServedTemplate, readProjectFile, type LoadedProject } from "./project.js";
 
 /** Where a donor came from, worst-matched last. */

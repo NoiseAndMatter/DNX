@@ -16,7 +16,7 @@ import {
   UNMAPPED_IDS,
   describePlock,
   plockParameter,
-} from "../src/project/plockparams.js";
+} from "@noiseandmatter/dnx-core/project/plockparams.js";
 
 test("ids are unique", () => {
   const ids = PLOCK_PARAMETERS.map((p) => p.id);

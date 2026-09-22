@@ -16,10 +16,10 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseFile } from "../src/sysex/container.js";
+import { parseFile } from "@noiseandmatter/dnx-core/sysex/container.js";
 import {
   ProductId, UNNAMED_DN1_TYPES, describeDumpType, describeProduct, isConfirmedCombination,
-} from "../src/sysex/devices.js";
+} from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 /**

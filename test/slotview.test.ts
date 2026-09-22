@@ -11,8 +11,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { countOccupiedIn, patternSlotView } from "../web/src/slotview.js";
-import { PATTERNS_PER_BANK } from "../src/project/naming.js";
-import type { Device } from "../src/librarian/device.js";
+import { PATTERNS_PER_BANK } from "@noiseandmatter/dnx-core/project/naming.js";
+import type { Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 
 /** A device that reports exactly what a test asks it to, and nothing else. */
 function fakeDevice(summaries: Record<number, Partial<ReturnType<Device["summarise"]>>>): Device {

@@ -8,7 +8,7 @@ import {
   seedingFor,
   stepsFor,
 } from "../src/hardwaretest/rearrange.js";
-import { sourceOf, touchedSlots } from "../src/librarian/shuffle.js";
+import { sourceOf, touchedSlots } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 /**
  * The hardware test is only trustworthy if its layout holds. These assert the design rather

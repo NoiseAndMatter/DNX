@@ -12,11 +12,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
-import { listLibraryBank } from "../src/device/library.js";
-import { listProjects } from "../src/device/drive.js";
-import { ShortListingError, wholeListing } from "../src/device/storage.js";
-import { type ApiTransport } from "../src/device/storagesession.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { listLibraryBank } from "@noiseandmatter/dnx-core/device/library.js";
+import { listProjects } from "@noiseandmatter/dnx-core/device/drive.js";
+import { ShortListingError, wholeListing } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 
 /** A listing reply that declares `declared` entries and carries the named ones. */
 function page(declared: number, names: string[]): Uint8Array {
@@ -123,13 +123,14 @@ test("nothing decides what is on an instrument from a listing it has not checked
     }
   };
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  walk(join(root, "packages", "core", "src"));
   walk(join(root, "src"));
   walk(join(root, "web", "src"));
 
   const offenders: string[] = [];
   for (const file of files) {
     const rel = relative(root, file).replaceAll("\\", "/");
-    if (rel === "src/device/storage.ts") continue;
+    if (rel === "packages/core/src/device/storage.ts") continue;
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/\bparseListing\(/g)) {
       if (rel === "web/src/probe/drive.ts" && insideFunction(source, match.index, "listPath")) continue;

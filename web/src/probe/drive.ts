@@ -25,14 +25,14 @@ import { verdictAfterSilence } from "./silence.js";
 import { LIST_TIMEOUT_MS, requestListing } from "./storageio.js";
 import { showVerdict, verdictCard } from "./verdicts.js";
 import { $ } from "../dom.js";
-import { type ApiFrame } from "../../../src/device/api.js";
+import { type ApiFrame } from "@noiseandmatter/dnx-core/device/api.js";
 import {
   describeApiReply,
   hexBody,
   INFORMATION_CODES,
   informationRequest,
 } from "../../../src/research/apiprobe.js";
-import { type Entry, parseListing, StorageCode } from "../../../src/device/storage.js";
+import { type Entry, parseListing, StorageCode } from "@noiseandmatter/dnx-core/device/storage.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 
 /**

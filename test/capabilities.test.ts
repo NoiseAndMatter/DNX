@@ -10,7 +10,7 @@ import {
   describeMessages,
   hex,
   safeToSend,
-} from "../src/device/capabilities.js";
+} from "@noiseandmatter/dnx-core/device/capabilities.js";
 
 // --- the Digitone II, as it actually answered ---------------------------------------------
 

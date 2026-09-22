@@ -21,8 +21,8 @@
  * use it without dragging the DOM into the root typecheck.
  */
 
-import type { Device } from "../../src/librarian/device.js";
-import { PATTERNS_PER_BANK, patternName } from "../../src/project/naming.js";
+import type { Device } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { PATTERNS_PER_BANK, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 /** One cell, already reduced to what it displays. */
 export interface SlotView {

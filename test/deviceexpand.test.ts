@@ -3,18 +3,18 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { NO_CORPUS, corpusFiles, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
-import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET } from "../src/project/soundmap.js";
-import { TRACK, trackRecord } from "../src/project/dn1.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { DN1_POOL_OFFSET, SOUND_NAME_OFFSET } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { TRACK, trackRecord } from "@noiseandmatter/dnx-core/project/dn1.js";
 import { describeDeviceExpand,
   DeviceExpandRefused,
   planDeviceExpand,
   poolCoverage,
-} from "../src/expand/deviceexpand.js";
-import { blankPatternKit } from "../src/librarian/blank.js";
-import { DN2_DEVICE } from "../src/librarian/device.js";
-import { PATTERN } from "../src/project/dn2pattern.js";
+} from "@noiseandmatter/dnx-core/expand/deviceexpand.js";
+import { blankPatternKit } from "@noiseandmatter/dnx-core/librarian/blank.js";
+import { DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { PATTERN } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 
 const DN1_SOUND_SIZE = 302;
 

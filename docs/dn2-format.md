@@ -10,7 +10,7 @@ Status of every claim below is marked **[verified]**, **[inferred]** or **[specu
 
 Related: `docs/sysex-format.md` (SysEx transport), `docs/dn1-project-format.md`.
 
-> **Note for readers of `docs/dn1-project-format.md` and `src/project/dn1.ts`:** those were
+> **Note for readers of `docs/dn1-project-format.md` and `packages/core/src/project/dn1.ts`:** those were
 > written before the compression was found and describe the payload body as
 > "uncompressed and variable length". That is not correct — see
 > [The body is LZ4-compressed](#1-the-body-is-lz4-compressed) below. The "variable-length
@@ -49,7 +49,7 @@ Offsets into the raw (still compressed) payload. Little-endian unless stated.
 | `0x1A` | 2 | `72 2A` on every DN1, `AE C4` on every DN2 | verified constant per device family; meaning unknown |
 | `0x1C` | 3 | `04 01 0C` | verified constant, 62/62; meaning unknown |
 | `0x1F` | — | **start of the LZ4 block chain and of the CRC region** | verified |
-| `len-12` | u32be | CRC-32 (solved separately, see `src/project/checksum.ts`) | verified elsewhere |
+| `len-12` | u32be | CRC-32 (solved separately, see `packages/core/src/project/checksum.ts`) | verified elsewhere |
 | `len-8` | u32be | `len - 43` | verified |
 | `len-4` | 4 | `AA A1 DA AA` footer magic | verified |
 
@@ -103,7 +103,7 @@ First sequence of `MORNING_JAM.dn2prj`, worked by hand, as a sanity anchor:
 20 literals `BE EF BA CE 00 00 00 03 "MORNING_JAM" 00`, offset `01 00` = 1, so the match
 repeats the last byte (`0x00`) four times — completing a 16-byte name field.
 
-Implementation: `src/project/dn2codec.ts`.
+Implementation: `packages/core/src/project/dn2codec.ts`.
 
 ### This resolves the stride-6 `0xFF` anomaly
 
@@ -210,7 +210,7 @@ Verified three independent ways:
    i.e. `[track, step, note, ...]` 6-byte records on track 0 at steps 0, 1, 4, 11, 12.
 
 **Everything learned from the 424-capture SysEx corpus applies to project patterns with
-no offset translation.** `patternAsSysexPayload()` in `src/project/dn2image.ts` rebuilds a
+no offset translation.** `patternAsSysexPayload()` in `packages/core/src/project/dn2image.ts` rebuilds a
 dump-equivalent buffer for any of the 128 slots.
 
 **[inferred]** pattern *k* pairs with kit *k*: the arrays are parallel, both 128 long, and
@@ -238,7 +238,7 @@ format and has never been used by the instrument.
 Both facts matter, and only the first is visible in the bytes. Two readers in this codebase had
 disagreed about the width — one read the pair, one read the low byte — and agreed on every project
 we own precisely because of the second fact. `DN2_KIT.levelOffset/levelSize/levelCount` and the
-`trackLevel` / `setTrackLevel` accessors in `src/project/dn2image.ts` are now the only way to touch
+`trackLevel` / `setTrackLevel` accessors in `packages/core/src/project/dn2image.ts` are now the only way to touch
 the field.
 
 **An empty kit name is legitimate; the device supplies `KIT <slot index + 1>` lazily.**
@@ -510,7 +510,7 @@ hundred, silently, and only the checksum notices. Both were caught, both re-read
 
 > **A read is not finished until its checksums are, and a rebuild that skips that check will
 > eventually write a corrupt pattern into a project and pass every test we have.**
-> `src/project/rebuild.ts` refuses on a bad checksum for this reason; that refusal is not
+> `packages/core/src/project/rebuild.ts` refuses on a bad checksum for this reason; that refusal is not
 > defensive coding, it is the observed failure rate.
 
 ### A kit is dumpable on its own — and it is exactly the kit record
@@ -552,7 +552,7 @@ Captured the same way, from a Digitone 1 on 1.42A:
 | ProjectSettings payload | **11,776** | 512 |
 
 Both PatternKit sizes are `patternSize + kitSize` **exactly**, on both machines. The unit is the
-same idea at two scales, and the product ids confirm what `src/sysex/devices.ts` had recorded.
+same idea at two scales, and the product ids confirm what `packages/core/src/sysex/devices.ts` had recorded.
 
 > [!warning] **A DN1 project dump carries no sounds**
 > There is **no `0x53` in a Digitone 1 project dump** — only patterns and settings — and its
@@ -774,7 +774,7 @@ sound whatever its origin, and the panel pool send carries every lock target.
 Practical consequence for anything rebuilding a project: **the two cases are indistinguishable
 from the bytes.** Both are `0x53`, both carry an object number, both are 302 bytes. Placing a
 request's four kit sounds as pool slots 0–3 would overwrite sound-lock targets with whatever the
-tracks happened to be using — so `src/project/rebuild.ts` refuses to place DN1 sound records until
+tracks happened to be using — so `packages/core/src/project/rebuild.ts` refuses to place DN1 sound records until
 told which they are.
 
 ### `0x6f` on the Digitone II — VERIFIED 2026-07-30
@@ -1017,10 +1017,10 @@ SysEx pattern payload (§3), and elk-herd calls that unit a `patternKit`.
 
 | File | Purpose |
 |---|---|
-| `src/project/container.ts` | ZIP + payload header/footer (pre-existing) |
-| `src/project/checksum.ts` | CRC-32 over `payload[0x1F : len-12]` (pre-existing) |
-| `src/project/dn2codec.ts` | LZ4 linked-block chain decoder — works for DN1 and DN2 |
-| `src/project/dn2image.ts` | Decoded image geometry, record slicing, name accessors |
+| `packages/core/src/project/container.ts` | ZIP + payload header/footer (pre-existing) |
+| `packages/core/src/project/checksum.ts` | CRC-32 over `payload[0x1F : len-12]` (pre-existing) |
+| `packages/core/src/project/dn2codec.ts` | LZ4 linked-block chain decoder — works for DN1 and DN2 |
+| `packages/core/src/project/dn2image.ts` | Decoded image geometry, record slicing, name accessors |
 
 ```ts
 const project = parseProject(new Uint8Array(readFileSync(path)));
@@ -1035,7 +1035,7 @@ patternAsSysexPayload(image, 0);        // 99,840 bytes, identical to a SysEx du
 
 The 359-byte object was mapped *structurally* long before it was mapped *meaningfully*: 139
 offsets have a known DN1 source and conversion is 99.99966% byte-exact, but nothing said which
-byte was `CUTOFF`. This closes that. Implementation: `src/project/soundparams.ts`.
+byte was `CUTOFF`. This closes that. Implementation: `packages/core/src/project/soundparams.ts`.
 
 Captured in pattern H4 of `MORNING_JA 1640(5).dn2prj`. Six tracks on FM TONE + MULTI-MODE, track 1
 left untouched as a baseline, tracks 2-6 each carrying a group of controls set to distinct values.
@@ -1062,7 +1062,7 @@ slot of each group of eight is unused**, and the lock table has a matching unuse
 **That is alignment, not a reservation**, and the two holes are not independent evidence for one.
 Both layers round three LFOs up to four, which is what padding does every time. The firmware's
 inverse lock map folds every id in the spare lane onto the no-lock sentinel, so nothing in OS 1.11
-can address a fourth LFO. `src/project/plockparams.ts` records the measurement.
+can address a fourth LFO. `packages/core/src/project/plockparams.ts` records the measurement.
 
 Note the lock table interleaves the same three LFOs as `4 * slot + lfo`. Both layers interleave
 rather than block, at different strides, so neither can be derived from the other.

@@ -6,11 +6,11 @@
  * the page needs and connects the three.
  */
 
-import { convertProject } from "../../../src/expand/convert.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../../../src/expand/plan.js";
-import { mintProjectId, projectName, writeProjectId, writeProjectName } from "../../../src/project/dn2image.js";
-import { readProjectName } from "../../../src/project/dn1.js";
-import type { ExpansionPlan } from "../../../src/expand/types.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { mintProjectId, projectName, writeProjectId, writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import type { ExpansionPlan } from "@noiseandmatter/dnx-core/expand/types.js";
 import {
   buildProjectBlob,
   fetchServedTemplate,
@@ -30,8 +30,8 @@ import { statusBar } from "../statusbar.js";
 import { progressBar } from "../progress.js";
 import { renderToolNav } from "../toolnav.js";
 import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
-import { recordWriteMessage } from "../../../src/device/safewrite.js";
-import { type DriveProject } from "../../../src/device/drive.js";
+import { recordWriteMessage } from "@noiseandmatter/dnx-core/device/safewrite.js";
+import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import {
   type ExpanderOptions,
   type MergeOverrides,
@@ -43,7 +43,7 @@ import {
   renderDescribed,
   reportScope,
 } from "./planning.js";
-import { patternName, stampedProjectName as stampedName } from "../../../src/project/naming.js";
+import { patternName, stampedProjectName as stampedName } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
   GridDrag,
   bankSlots,
@@ -51,8 +51,8 @@ import {
   renderGrid as renderSlots,
 } from "../grid.js";
 import { nextSelection } from "../selection.js";
-import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../../../src/librarian/device.js";
-import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
+import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { type LandingMode, describeLanding } from "@noiseandmatter/dnx-core/expand/landing.js";
 import {
   type Landing,
   allSlots,
@@ -61,7 +61,7 @@ import {
   landingSlots,
   pendingSources,
 } from "./drop.js";
-import { ProductId } from "../../../src/sysex/devices.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 
 /**
  * The page's status bar.

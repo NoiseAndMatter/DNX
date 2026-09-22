@@ -9,8 +9,8 @@
 
 import { readProjectImage } from "./args.js";
 import { basename } from "node:path";
-import { readProjectName } from "../project/dn1.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
 
 
 function report(path: string, useFreedMidiTracks: boolean, useRules: boolean): void {

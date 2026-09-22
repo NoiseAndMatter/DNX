@@ -49,8 +49,8 @@ import {
   type LibraryBank,
   type LibraryEntry,
   type LibraryKind,
-} from "../../../src/device/library.js";
-import { type TagName } from "../../../src/project/tags.js";
+} from "@noiseandmatter/dnx-core/device/library.js";
+import { type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
 
 /** What a body read produced for one slot. */
 export interface SlotFacts {

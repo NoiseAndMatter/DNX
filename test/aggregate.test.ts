@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { readPattern } from "../src/project/dn1.js";
-import { groupByName, groupCandidate, nameKey } from "../src/expand/aggregate.js";
-import { byTrigCount, rank } from "../src/expand/ranking.js";
+import { readPattern } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { groupByName, groupCandidate, nameKey } from "@noiseandmatter/dnx-core/expand/aggregate.js";
+import { byTrigCount, rank } from "@noiseandmatter/dnx-core/expand/ranking.js";
 import { corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
-import { planExpansion } from "../src/expand/plan.js";
-import { destinationsBySound, priorityBySound, routePattern } from "../src/expand/route.js";
-import type { SoundUsage } from "../src/expand/types.js";
+import { planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { destinationsBySound, priorityBySound, routePattern } from "@noiseandmatter/dnx-core/expand/route.js";
+import type { SoundUsage } from "@noiseandmatter/dnx-core/expand/types.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

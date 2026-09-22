@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { OBSERVED_DIGITONE_1, OBSERVED_DIGITONE_II } from "../src/device/capabilities.js";
+import { parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { OBSERVED_DIGITONE_1, OBSERVED_DIGITONE_II } from "@noiseandmatter/dnx-core/device/capabilities.js";
 import {
   NotARequest,
   codesUnderTest,

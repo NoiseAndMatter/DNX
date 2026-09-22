@@ -115,9 +115,15 @@ A few findings that appear in no public source:
 
 ## How it is put together
 
-Two front ends over one core. **`src/` is platform-free** — no DOM, no Web MIDI, no filesystem —
-because it is the part proven byte-for-byte against Elektron's own output, and keeping it that way
-is what lets a page, a command and a test exercise the same code.
+Two front ends over one core. **The core is a package**, `packages/core`, published as
+`@noiseandmatter/dnx-core` and platform-free — no DOM, no Web MIDI, no filesystem — because it is
+the part proven byte-for-byte against Elektron's own output, and keeping it that way is what lets
+a page, a command, a test and eventually a phone exercise the same code.
+
+What is left in `src/` is DNX's own: `cli` (the terminal commands), `node` (the three modules that
+need a filesystem), `sheet` (the hardware-test sheets), `research` (what we built to ask an
+instrument a question) and `hardwaretest` (what we built to check an answer on one). None of those
+go with the core.
 
 ```mermaid
 flowchart TD
@@ -129,7 +135,7 @@ flowchart TD
 
   A["<b>web/src/analysis</b><br/>Insights: cycle · voices<br/>pitch · key"]
 
-  subgraph CORE["src/ · platform-free"]
+  subgraph CORE["packages/core · @noiseandmatter/dnx-core · platform-free"]
     direction TB
     OPS["<b>expand</b> · <b>librarian</b> · <b>device</b><br/>Digitone 1 to Digitone II · slots and banks · +Drive protocol"]
     J["<b>project</b><br/>container · LZ4 · CRC · patterns · kits · sounds"]
@@ -145,8 +151,8 @@ flowchart TD
   Y -. "over Web MIDI, carried by the browser" .-> I
 ```
 
-**Every solid arrow is a real import, every one points down, and none point back.** `src/` imports
-nothing outside `src/`, and no page imports another page's folder. That is checked rather than
+**Every solid arrow is a real import, every one points down, and none point back.** The core
+imports nothing outside the core, and no page imports another page's folder. That is checked rather than
 hoped for: the rule and what breaking it has already cost are in
 [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md). The dotted line is the only thing that is not an
 import; it is the instrument.
@@ -209,10 +215,10 @@ the codec, the container, the placement rules and everything else that needs no 
 - [`bsp2/libanalogrytm`](https://github.com/bsp2/libanalogrytm) — Analog Rytm structures.
 - [`ashojaeddini/digitools`](https://github.com/ashojaeddini/digitools) — Digitone 1 sound tags.
 
-**Nothing in `src/` is copied from another project.** Two files name one anyway, because the
-design came from somewhere and saying so is cheaper than being asked: `src/librarian/shuffle.ts`
+**Nothing in the core is copied from another project.** Two files name one anyway, because the
+design came from somewhere and saying so is cheaper than being asked: `librarian/shuffle.ts`
 follows the *shape* of elk-herd's `Bank.Shuffle` (BSD 2-Clause, Mark Lentczner), separating a
-described reordering from its application; `src/device/safewrite.ts` reaches the same six-step
+described reordering from its application; `device/safewrite.ts` reaches the same six-step
 write sequence as digi-roll's `safe-write.js`, independently — its licence is unstated and its
 code was not read.
 

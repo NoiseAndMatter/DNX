@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decode87, encode87 } from "../src/sysex/codec.js";
+import { decode87, encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
 import {
   API_SELECTOR,
   ApiError,
@@ -20,7 +20,7 @@ import {
   readFileReadResponse,
   readVersionResponse,
   versionRequest,
-} from "../src/device/api.js";
+} from "@noiseandmatter/dnx-core/device/api.js";
 
 /**
  * Build a response the way a device would, so the readers are tested against bytes rather than

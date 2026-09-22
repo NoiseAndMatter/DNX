@@ -33,22 +33,22 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, fail } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { patternIndex, patternName } from "../project/naming.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { OpenError, openProject } from "../node/open.js";
-import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "../librarian/shuffle.js";
+import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 import {
   summariseTracks,
   trackIndex,
   trackName,
   type TrackSummary,
-} from "../librarian/tracksummary.js";
-import { TRACK_COUNT as DN2_TRACK_COUNT } from "../project/dn2pattern.js";
+} from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 import {
   applyTrackMove,
   planTrackMove,
   type TrackScope,
   verifyTrackMove,
-} from "../librarian/trackmove.js";
+} from "@noiseandmatter/dnx-core/librarian/trackmove.js";
 
 const SCOPES: readonly TrackScope[] = ["both", "sequence", "preset"];
 

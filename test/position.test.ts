@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { applyRearrange } from "../src/librarian/rearrange.js";
-import { keepOnly } from "../src/librarian/shuffle.js";
-import { readSavedPosition } from "../src/project/position.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
+import { keepOnly } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { readSavedPosition } from "@noiseandmatter/dnx-core/project/position.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 /**

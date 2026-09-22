@@ -14,14 +14,14 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE, decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout, layoutFor } from "../src/project/dn2image.js";
-import { parsePayload } from "../src/project/container.js";
+import { DN2_IMAGE_SIZE, DN2_OS111_IMAGE_SIZE, decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout, layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { buildPayload } from "../src/project/write.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { planChangedRecords } from "../src/device/deviceproject.js";
-import { imageFrom } from "../src/device/drive.js";
+import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { planChangedRecords } from "@noiseandmatter/dnx-core/device/deviceproject.js";
+import { imageFrom } from "@noiseandmatter/dnx-core/device/drive.js";
 import { CORPUS } from "./corpus.js";
 
 // --- the sizes, without a device ----------------------------------------------------------------------

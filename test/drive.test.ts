@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
 import {
   PROJECTS,
   imageFrom,
@@ -20,11 +20,11 @@ import {
   manifestFor,
   projectFor,
   readDriveProject,
-} from "../src/device/drive.js";
-import { parsePayload } from "../src/project/container.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+} from "@noiseandmatter/dnx-core/device/drive.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { type ApiTransport } from "../src/device/storagesession.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

@@ -4,14 +4,14 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { readPattern, readSoundPool } from "../src/project/dn1.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { readPattern, readSoundPool } from "@noiseandmatter/dnx-core/project/dn1.js";
 import {
   applyPatternCopy,
   freePoolSlots,
   LibrarianError,
   planPatternCopy,
-} from "../src/librarian/copy.js";
+} from "@noiseandmatter/dnx-core/librarian/copy.js";
 
 const DIR = NO_CORPUS ? "" : corpusPath(DN1_PROJECTS);
 

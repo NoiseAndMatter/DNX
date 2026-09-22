@@ -17,8 +17,8 @@ import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { renderSheetPage, sheetCss } from "../src/sheet/page.js";
-import { STAMPED_NAME_SIZE, hhmm, stampedProjectName } from "../src/project/naming.js";
-import { NAME_SIZE } from "../src/librarian/rename.js";
+import { STAMPED_NAME_SIZE, hhmm, stampedProjectName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { NAME_SIZE } from "@noiseandmatter/dnx-core/librarian/rename.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

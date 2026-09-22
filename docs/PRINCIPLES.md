@@ -43,19 +43,24 @@ instead of using it — two implementations of one gesture, and only one of them
 ## 3. The layering, and it goes one way
 
 ```
-src/                pure and platform-free. No DOM, no WebMIDI, no fs.
-src/cli/            the only place in src/ that touches the filesystem or argv.
+packages/core/src/  pure and platform-free. No DOM, no WebMIDI, no fs, no clock it was not handed.
+src/cli/            the terminal commands. The only place that touches argv.
+src/node/           the three modules that need a filesystem.
+src/sheet/          the hardware-test sheets.
+src/research/       what we built to ask an instrument a question.
+src/hardwaretest/   what we built to check an answer on one.
 web/src/*.ts        shared browser code: dom, statusbar, grid, devicesource, project, render.
 web/src/<page>/     one page and nothing else.
 test/               one file per subject.
 ```
 
-`src/` never imports from `web/`. A page never imports another page's folder. Anything crossing
-those lines is a design error, not a shortcut.
+The core never imports from `src/` or `web/`. A page never imports another page's folder. Anything
+crossing those lines is a design error, not a shortcut.
 
-**Why it holds here:** `src/` is the part that has been proven byte-for-byte against Elektron's own
-output. Keeping it free of the browser is what lets a CLI, a test and a page all exercise the same
-proven code.
+**Why it holds here:** the core is the part that has been proven byte-for-byte against Elektron's
+own output. Keeping it free of the browser is what lets a CLI, a test, a page and a phone all
+exercise the same proven code. It is a package, `@noiseandmatter/dnx-core`, so the boundary is a
+directory rather than a habit.
 
 ## 4. Reuse means the shared thing, not a copy of it
 
@@ -109,7 +114,7 @@ somewhere bounded. A panel that can grow without bound will, and it will take th
 ## 10. Vocabulary follows the hardware
 
 A **track** is a sequence plus a preset, because that is what the device shows. Positions are named
-as the device names them — `A1`, `B12`, `H16` — through `src/project/naming.ts`, never as raw indices
+as the device names them — `A1`, `B12`, `H16` — through `packages/core/src/project/naming.ts`, never as raw indices
 in anything a person reads. One name per concept, across CLI, page and docs.
 
 ---
@@ -145,7 +150,7 @@ Before opening an MR:
   file you had open?
 - Can each file you touched be described without an "and"?
 - Did you copy anything that already exists? Did the copy you replaced actually get deleted?
-- Does anything in `src/` now know about a browser?
+- Does anything in the core now know about a browser, a clock or a filesystem?
 - Did you improve a default without checking who overrides it?
 - Did you run the page or the CLI, not only the tests?
 - Can any output you added grow without bound?

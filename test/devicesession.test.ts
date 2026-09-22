@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encode87 } from "../src/sysex/codec.js";
-import { API_SELECTOR, Code, RESPONSE_BIT, deviceRequest, versionRequest } from "../src/device/api.js";
+import { encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
+import { API_SELECTOR, Code, RESPONSE_BIT, deviceRequest, versionRequest } from "@noiseandmatter/dnx-core/device/api.js";
 import {
   DeviceSession,
   DeviceTimeout,
   SessionClosed,
   type Transport,
-} from "../src/device/session.js";
+} from "@noiseandmatter/dnx-core/device/session.js";
 
 /** A reply built by hand, the way a device would — never by our own encoder. */
 function reply(respId: number, code: number, ...body: number[]): Uint8Array {

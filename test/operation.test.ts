@@ -16,11 +16,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DN2_PROJECTS, NO_CORPUS, corpusPath } from "./corpus.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { applyOperation, planOperation } from "../src/librarian/operation.js";
-import { copyMany, moveMany } from "../src/librarian/shuffle.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { applyOperation, planOperation } from "@noiseandmatter/dnx-core/librarian/operation.js";
+import { copyMany, moveMany } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 const FILE = "MORNING_JAM.dn2prj";
 const have = !NO_CORPUS && existsSync(join(corpusPath(DN2_PROJECTS), FILE));

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
+import { parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import {
   REQUEST_OPTIONS,
   RequestCode,
   dumpProductFor,
   dumpRequest,
   responseFor,
-} from "../src/device/dumprequest.js";
-import { describeMessages, safeToSend } from "../src/device/capabilities.js";
+} from "@noiseandmatter/dnx-core/device/dumprequest.js";
+import { describeMessages, safeToSend } from "@noiseandmatter/dnx-core/device/capabilities.js";
 
 test("a request carries no payload, which is why it cannot write", () => {
   // The entire safety argument in one assertion. elk-herd builds these with `Builder.empty` and

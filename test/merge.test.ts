@@ -9,12 +9,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
-import { PATTERN, TRACK, TRACK_COUNT } from "../src/project/dn2pattern.js";
-import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../src/project/soundmap.js";
-import { MergeRefused, describeMerge, planPatternMerge } from "../src/expand/merge.js";
+import { DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { PATTERN, TRACK, TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { MergeRefused, describeMerge, planPatternMerge } from "@noiseandmatter/dnx-core/expand/merge.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON, corpusFiles } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

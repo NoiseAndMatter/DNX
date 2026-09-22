@@ -20,12 +20,12 @@ import {
   repeatSteps, repetitions, resetCuts, resetOptions, resetPasses, trackWindows, trigDensity,
   voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
-} from "../src/analysis/model.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
-import { compareSubjects, summariseComparison } from "../src/analysis/compare.js";
-import { MACHINE } from "../src/project/machine.js";
+import { compareSubjects, summariseComparison } from "@noiseandmatter/dnx-core/analysis/compare.js";
+import { MACHINE } from "@noiseandmatter/dnx-core/project/machine.js";
 import { browserGlobalsIn, code, importGraph, repoPath, specifiersOf } from "./importgraph.js";
-import { noteLengthSteps } from "../src/project/dn2pattern.js";
+import { noteLengthSteps } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -870,10 +870,10 @@ const CHART_FILES = readdirSync(resolve(HERE, "../web/src/analysis/charts"))
  */
 const PURE: string[] = [
   "web/src/analysis/charts.ts",
-  "src/analysis/compare.ts",
-  "src/analysis/model.ts",
-  "src/analysis/patternsubject.ts",
-  "src/analysis/dn1subject.ts",
+  "packages/core/src/analysis/compare.ts",
+  "packages/core/src/analysis/model.ts",
+  "packages/core/src/analysis/patternsubject.ts",
+  "packages/core/src/analysis/dn1subject.ts",
   ...CHART_FILES.map((f) => `web/src/analysis/${f}.ts`),
 ];
 

@@ -72,11 +72,11 @@ import {
   readQueryResponse,
   readVersionResponse,
   versionRequest,
-} from "../../../src/device/api.js";
+} from "@noiseandmatter/dnx-core/device/api.js";
 import { INFORMATION_CODES } from "../../../src/research/apiprobe.js";
-import { capabilitiesOf, hex, QUERY_KEYS } from "../../../src/device/capabilities.js";
-import { dumpProductFor } from "../../../src/device/dumprequest.js";
-import { DeviceSession } from "../../../src/device/session.js";
+import { capabilitiesOf, hex, QUERY_KEYS } from "@noiseandmatter/dnx-core/device/capabilities.js";
+import { dumpProductFor } from "@noiseandmatter/dnx-core/device/dumprequest.js";
+import { DeviceSession } from "@noiseandmatter/dnx-core/device/session.js";
 import { $ } from "../dom.js";
 import { renderToolNav } from "../toolnav.js";
 

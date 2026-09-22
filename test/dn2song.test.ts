@@ -16,9 +16,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CORPUS, NO_CORPUS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
-import { DN2_DEVICE } from "../src/librarian/device.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   Dn2SongError,
   END_LOOP,
@@ -35,7 +35,7 @@ import {
   readSongs,
   selectedSong,
   songTableBase,
-} from "../src/project/dn2song.js";
+} from "@noiseandmatter/dnx-core/project/dn2song.js";
 
 function emptyImage(): Uint8Array {
   return new Uint8Array(DN2_LAYOUT.imageSize);

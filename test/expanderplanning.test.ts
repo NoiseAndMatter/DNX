@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, SKIP_REASON, requireCorpusFile } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import {
   type ExpanderOptions,
   PlanningRefused,

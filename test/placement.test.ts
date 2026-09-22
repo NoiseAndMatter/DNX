@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { allocate } from "../src/expand/allocate.js";
-import { PERCUSSION_LOW_RULES, matchRule } from "../src/expand/rules.js";
-import { byTrigCount, rank } from "../src/expand/ranking.js";
-import { encodeTags, type TagName } from "../src/project/tags.js";
-import type { PlacementRule, SoundUsage } from "../src/expand/types.js";
+import { allocate } from "@noiseandmatter/dnx-core/expand/allocate.js";
+import { PERCUSSION_LOW_RULES, matchRule } from "@noiseandmatter/dnx-core/expand/rules.js";
+import { byTrigCount, rank } from "@noiseandmatter/dnx-core/expand/ranking.js";
+import { encodeTags, type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
+import type { PlacementRule, SoundUsage } from "@noiseandmatter/dnx-core/expand/types.js";
 
 let nextSlot = 0;
 function sound(name: string, tags: TagName[], trigCount = 1): SoundUsage {

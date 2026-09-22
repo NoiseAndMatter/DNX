@@ -16,9 +16,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readReportRows } from "../web/src/probe/report.js";
-import { type ReadReport, type StepResult } from "../src/device/dumpreader.js";
-import { type ReadStep } from "../src/device/readplan.js";
-import { RequestCode } from "../src/device/dumprequest.js";
+import { type ReadReport, type StepResult } from "@noiseandmatter/dnx-core/device/dumpreader.js";
+import { type ReadStep } from "@noiseandmatter/dnx-core/device/readplan.js";
+import { RequestCode } from "@noiseandmatter/dnx-core/device/dumprequest.js";
 
 function step(label: string, over: Partial<ReadStep> = {}): ReadStep {
   return {

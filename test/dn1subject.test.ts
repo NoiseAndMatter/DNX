@@ -16,15 +16,15 @@ import {
   DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, corpusFiles, requireCorpusFile,
 } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../src/librarian/device.js";
-import { MACHINE } from "../src/project/machine.js";
-import { readPattern } from "../src/project/dn1.js";
-import { readDn2Pattern, noteLengthSteps, type Dn2Trig } from "../src/project/dn2pattern.js";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
-import { dn1PatternSubject } from "../src/analysis/dn1subject.js";
-import { PatternSubjectError } from "../src/analysis/patternsubject.js";
-import { playing, trackLabel } from "../src/analysis/model.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_DEVICE, DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { MACHINE } from "@noiseandmatter/dnx-core/project/machine.js";
+import { readPattern } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { readDn2Pattern, noteLengthSteps, type Dn2Trig } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { dn1PatternSubject } from "@noiseandmatter/dnx-core/analysis/dn1subject.js";
+import { PatternSubjectError } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
+import { playing, trackLabel } from "@noiseandmatter/dnx-core/analysis/model.js";
 
 const PROJECT = "002 MORNING_JAM.dnprj";
 

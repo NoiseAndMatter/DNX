@@ -56,7 +56,7 @@ and `0x5b`. They are recorded as `UNNAMED_DN1_TYPES` rather than guessed at.
 > be maintained by hand**. `test/dumptypes.test.ts` now walks every capture and fails on any
 > combination not written down — and it caught three the first correction had still missed.
 
-`src/sysex/devices.ts` holds the same table in code, and `inspect` flags anything unrecognised.
+`packages/core/src/sysex/devices.ts` holds the same table in code, and `inspect` flags anything unrecognised.
 Checking the type byte matters: `digitools` omits that check, so it will happily decode a pattern
 dump as a sound and re-emit it with the type byte overwritten.
 

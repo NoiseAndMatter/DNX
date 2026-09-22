@@ -28,7 +28,7 @@ import {
   type DriveProjectHandle,
   openDeviceProject,
 } from "./devicesource.js";
-import { type DriveProject } from "../../src/device/drive.js";
+import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { type Progress, describeBytes } from "./progress.js";
 
 /** What a page lends this while a read is running. */

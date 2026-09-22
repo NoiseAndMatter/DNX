@@ -22,8 +22,8 @@
  * halves of one page. One definition, imported by everyone who prints a number.
  */
 
-import { driveChecksum } from "../../../src/device/storage.js";
-import { type StoredFile } from "../../../src/device/storagesession.js";
+import { driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type StoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
 
 /** Two hex digits, for a byte. */
 export function hex2(b: number): string {

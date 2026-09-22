@@ -10,7 +10,7 @@ import { messageCard as drawMessages, verdictCard as drawVerdict } from "./cards
 import { status } from "./chrome.js";
 import { type Verdict } from "./silence.js";
 import { $ } from "../dom.js";
-import { hex } from "../../../src/device/capabilities.js";
+import { hex } from "@noiseandmatter/dnx-core/device/capabilities.js";
 
 /** The write verdict, into the element this page reserves for it. */
 export function verdictCard(title: string, rows: [string, string][]): void {

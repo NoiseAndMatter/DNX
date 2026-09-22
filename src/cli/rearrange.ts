@@ -34,16 +34,16 @@ import { writeFileSync } from "node:fs";
 import { cliArgs } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { patternIndex, patternName } from "../project/naming.js";
-import { type Device } from "../librarian/device.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   OpenError,
   type Provenance,
   describeProvenance,
   openProject,
 } from "../node/open.js";
-import { applyRearrange, planRearrange } from "../librarian/rearrange.js";
-import { clear, copyMany, keepOnly, moveMany, swap } from "../librarian/shuffle.js";
+import { applyRearrange, planRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
+import { clear, copyMany, keepOnly, moveMany, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 function resolveSlot(token: string, patternCount: number): number {
   const named = patternIndex(token.toUpperCase());

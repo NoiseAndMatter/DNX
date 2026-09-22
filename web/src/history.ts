@@ -19,7 +19,7 @@
  * business.
  */
 
-import { type Session } from "../../src/librarian/session.js";
+import { type Session } from "@noiseandmatter/dnx-core/librarian/session.js";
 import { escapeHtml } from "./dom.js";
 
 export interface HistoryElements {

@@ -25,7 +25,7 @@
  * category for *hangs the instrument* until one did.
  */
 
-import { type ApiFrame, Code, encodeMessage, readDeviceResponse, readVersionResponse } from "../device/api.js";
+import { type ApiFrame, Code, encodeMessage, readDeviceResponse, readVersionResponse } from "@noiseandmatter/dnx-core/device/api.js";
 
 /** A code this module is willing to send, and what is known about it. */
 export interface InformationCode {

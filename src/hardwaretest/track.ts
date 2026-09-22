@@ -50,9 +50,9 @@
  * sheet prints the counts it expects and the tester counts them on the hardware.
  */
 
-import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "../librarian/shuffle.js";
-import { type TrackScope } from "../librarian/trackmove.js";
-import { type TrackSummary, trackName } from "../librarian/tracksummary.js";
+import { type Shuffle, clear, copyMany, moveMany, sourceOf, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { type TrackScope } from "@noiseandmatter/dnx-core/librarian/trackmove.js";
+import { type TrackSummary, trackName } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
 
 /** The untouched copy of the source pattern, `A1`. Nothing is ever written to it. */
 export const REFERENCE = 0;

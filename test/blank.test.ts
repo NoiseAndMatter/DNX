@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DN1_BLANK, DN2_BLANK, decodeBlank } from "../src/librarian/blankdata.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../src/librarian/device.js";
-import { blankFits, blankPatternKit, blankSource } from "../src/librarian/blank.js";
-import { RleError, fromBase64, rleDecode, rleEncode, toBase64 } from "../src/librarian/rle.js";
+import { DN1_BLANK, DN2_BLANK, decodeBlank } from "@noiseandmatter/dnx-core/librarian/blankdata.js";
+import { DN1_DEVICE, DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { blankFits, blankPatternKit, blankSource } from "@noiseandmatter/dnx-core/librarian/blank.js";
+import { RleError, fromBase64, rleDecode, rleEncode, toBase64 } from "@noiseandmatter/dnx-core/librarian/rle.js";
 
 // --- the codec -------------------------------------------------------------
 

@@ -55,7 +55,7 @@ shift, and the terminator at the new offset.
 alone is not enough, because both candidate ends sit inside what the instrument sends and the
 declared length cannot tell a 1.43 project from a padded 1.42A one.
 
-`imageFrom` in `src/device/drive.ts` therefore locates `BA CE F0 0C` and slices to it. The declared
+`imageFrom` in `packages/core/src/device/drive.ts` therefore locates `BA CE F0 0C` and slices to it. The declared
 length is tried first and shorter candidates after it, longest first, so a project that really is
 the size it says it is is never mistaken for a padded older one. When no candidate carries the
 terminator the read is refused, and the refusal names the three things it can be: a read cut short
@@ -299,7 +299,7 @@ Everything needed to do better already existed and every piece of it was optiona
 | a confirmation naming the destination | the probe's slot write only |
 
 **A guard nobody is obliged to use is documentation.** Fixed by making the obligation structural:
-`src/device/safewrite.ts` is the only path, the primitives now require a `WritePermit` that only it
+`packages/core/src/device/safewrite.ts` is the only path, the primitives now require a `WritePermit` that only it
 can produce, and `test/safewrite.test.ts` scans the tree for anything reaching around it.
 
 A side effect worth recording on its own: `readBackRecords` declared `layout.patternSize` as the
@@ -382,10 +382,10 @@ preset bank lists all 256 slots, and every preset's tags decode.
 
 The image size is used as the family test, and one size per family is assumed:
 
-- `layoutFor` in `src/project/dn2image.ts` recognises an image by its exact length.
-- `imageFrom` in `src/device/drive.ts` compares a payload's declared length against one size per
+- `layoutFor` in `packages/core/src/project/dn2image.ts` recognises an image by its exact length.
+- `imageFrom` in `packages/core/src/device/drive.ts` compares a payload's declared length against one size per
   kind, and calls any mismatch "compressed".
-- `src/expand/convert.ts`, `src/expand/deviceexpand.ts` and `src/expand/merge.ts` each assert the
+- `packages/core/src/expand/convert.ts`, `packages/core/src/expand/deviceexpand.ts` and `packages/core/src/expand/merge.ts` each assert the
   destination is exactly `DN2_LAYOUT.imageSize`.
 
 ### The fix: a second accepted size, not a second layout
@@ -432,7 +432,7 @@ nothing said so. `parseListing` has reported a short page as `complete: false` s
 `listProjects` and the backup each listed a directory and took whatever arrived, so a backup taken
 with Transfer open would save part of a bank and report it as saved.
 
-`wholeListing` now lives in `src/device/storage.ts` and every caller that decides what is on an
+`wholeListing` now lives in `packages/core/src/device/storage.ts` and every caller that decides what is on an
 instrument goes through it: the library, `listProjects`, the backup, the manager, and the probe's
 destination check before a write. It also refuses a reply with no SysEx end marker, and the refusal
 names Transfer and Overbridge, because a reader can close an application.
@@ -606,7 +606,7 @@ missing template instead of about their device.
 > about anything else, so it goes first. The code already knew this — its own comment says
 > *"checked before the read, not after it"* — and stopped one step short.
 
-**2. A refusal for want of something the code already had.** `src/librarian/blankproject.ts` has
+**2. A refusal for want of something the code already had.** `packages/core/src/librarian/blankproject.ts` has
 carried a device-authored blank since the expander needed one. Only the expander's *blank
 destination* used it; the manager's device read, the expander's device read and the expander's
 export all gave up instead. Four callers, one question, four answers — now `web/src/donor.ts`, which
@@ -684,7 +684,7 @@ Two literals did it: `safewriteui.ts` replaced `.payload` with `.dn2prj` whateve
 the same `projectFile`, so a Digitone 1 backup's projects carried the Digitone II manifest too.
 
 Both now read the payload's family byte (`kind` at `0x08`): `productTypesFor` and `isDn1Payload` in
-`src/device/drive.ts`, which `manifestFor` already used the same way, and `projectExtensionFor` in
+`packages/core/src/device/drive.ts`, which `manifestFor` already used the same way, and `projectExtensionFor` in
 `dnxfile.ts`. Checked on both instruments: saving `/projects/127` back over itself on the Digitone 1
 saved `RELTEST PRESETS-before-2026-09-15T13-43-44.dnprj` with `ProductType: ["24","30"]`; the same on
 the Digitone II's `/projects/19` saved a `.dn2prj`.
@@ -770,7 +770,7 @@ match the new toggle state — you have to re-drop for it to affect the preview.
 
 ### The interesting part
 
-This is the failure `src/expand/landing.ts` was written to prevent, arriving through the other door.
+This is the failure `packages/core/src/expand/landing.ts` was written to prevent, arriving through the other door.
 That change gave the placement **rule** one home so the preview could not disagree with the write —
 and it worked: both still called the same function. What it did not give one home to was
 **invalidation**.
@@ -1130,7 +1130,7 @@ integer.** A fine-resolution parameter stores a coarse byte and a fine byte, whi
 read turns into nonsense. Conversion is unaffected — it copies the bytes through — but any
 editor showing a p-lock value must know which kind of parameter it has.
 
-**Done.** Both readers and the writer now agree on `u16be`, and `src/project/lockvalue.ts` splits
+**Done.** Both readers and the writer now agree on `u16be`, and `packages/core/src/project/lockvalue.ts` splits
 a slot into its coarse and fine bytes and offers the three readings a caller can want: the plain
 0-127 value, the bipolar value, and the fine-resolution one. The corpus cross-validation still
 finds the same 392 records and the same 6 rescaled values, which is the check that the byte-order
@@ -1216,7 +1216,7 @@ this is the first thing to suspect.
 268. Derived from 7,168 record samples (14 pairs × 128 kits × 4 tracks): of the 18 DN2 bytes
 that vary, 14 have exactly one DN1 source agreeing on every sample, three are ambiguous by
 value and assigned positionally, and one has none. See `MIDI_TRACK_MAP` in
-`src/expand/fieldmap.ts`.
+`packages/core/src/expand/fieldmap.ts`.
 
 Two thirds of the old divergence was not the configuration at all but the **track name**: a
 native DN2 names its MIDI records `MIDI 1`..`MIDI 16` and the importer clears all sixteen, so

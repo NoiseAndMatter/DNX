@@ -9,10 +9,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
-import { type Entry, StorageCode, driveChecksum } from "../src/device/storage.js";
-import { type ApiTransport } from "../src/device/storagesession.js";
-import { FORM_FLAG_OFFSET, refuseRawForm, refuseUnlessEmpty, writeStoredFile } from "../src/device/storagewrite.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { type Entry, StorageCode, driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { FORM_FLAG_OFFSET, refuseRawForm, refuseUnlessEmpty, writeStoredFile } from "@noiseandmatter/dnx-core/device/storagewrite.js";
 import { TEST_PERMIT } from "./permit.js";
 
 /**

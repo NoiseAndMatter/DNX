@@ -11,6 +11,6 @@
  * one is a diff somebody has to look at rather than a line nobody notices.
  */
 
-import { type WritePermit } from "../src/device/writepermit.js";
+import { type WritePermit } from "@noiseandmatter/dnx-core/device/writepermit.js";
 
 export const TEST_PERMIT = Object.freeze({}) as unknown as WritePermit;

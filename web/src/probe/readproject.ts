@@ -17,8 +17,8 @@ import { capture, setInboundSink } from "./listen.js";
 import { readyDump } from "./ready.js";
 import { readReportRows } from "./report.js";
 import { fillWriteSources } from "./writeslot.js";
-import { DumpReader, type ReadReport } from "../../../src/device/dumpreader.js";
-import { planBytes, planProjectRead } from "../../../src/device/readplan.js";
+import { DumpReader, type ReadReport } from "@noiseandmatter/dnx-core/device/dumpreader.js";
+import { planBytes, planProjectRead } from "@noiseandmatter/dnx-core/device/readplan.js";
 import { askConfirm } from "../dialog.js";
 import { $, escapeHtml } from "../dom.js";
 

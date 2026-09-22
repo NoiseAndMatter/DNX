@@ -19,12 +19,12 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, readProjectFile } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { readProjectName } from "../project/dn1.js";
-import { mintProjectId, writeProjectId } from "../project/dn2image.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { mintProjectId, writeProjectId } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { findTemplate, templateSearchPaths } from "../node/open.js";
-import { convertProject } from "../expand/convert.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
-import { stampedProjectName } from "../project/naming.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { stampedProjectName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 
 /**

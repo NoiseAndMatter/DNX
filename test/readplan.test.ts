@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ProductId } from "../src/sysex/devices.js";
-import { DN1_LAYOUT, DN2_LAYOUT, DN1_KIT, DN2_KIT } from "../src/project/dn2image.js";
-import { POOL_SOUND_COUNT } from "../src/project/soundmap.js";
-import { RequestCode } from "../src/device/dumprequest.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { DN1_LAYOUT, DN2_LAYOUT, DN1_KIT, DN2_KIT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { POOL_SOUND_COUNT } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { RequestCode } from "@noiseandmatter/dnx-core/device/dumprequest.js";
 import {
   RESPONSE_SIZES,
   planBytes,
@@ -11,7 +11,7 @@ import {
   poolNeedsPanelDump,
   soundRequestCount,
   wireBytes,
-} from "../src/device/readplan.js";
+} from "@noiseandmatter/dnx-core/device/readplan.js";
 
 test("a whole Digitone II project is 128 patterns, 128 pool sounds and one settings record", () => {
   const plan = planProjectRead(ProductId.DN2);

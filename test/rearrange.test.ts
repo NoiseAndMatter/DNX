@@ -3,17 +3,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, corpusPath } from "./corpus.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { kitRecord, patternRecord } from "../src/project/dn2image.js";
-import { blankPatternKit } from "../src/librarian/blank.js";
-import { deviceFor } from "../src/librarian/device.js";
+import { kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { blankPatternKit } from "@noiseandmatter/dnx-core/librarian/blank.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   RearrangeError,
   applyRearrange,
   planRearrange,
   verifyRearrange,
-} from "../src/librarian/rearrange.js";
+} from "@noiseandmatter/dnx-core/librarian/rearrange.js";
 import {
   asImport,
   clear,
@@ -25,7 +25,7 @@ import {
   moveMany,
   outOfRange,
   swap,
-} from "../src/librarian/shuffle.js";
+} from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 /*
  * **The shuffle primitive is tested in `shuffle.test.ts`, not here.**

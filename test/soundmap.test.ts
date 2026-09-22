@@ -4,8 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, kitRecord } from "../src/project/dn2image.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, kitRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   COPY_MAP,
   DEFAULT_BYTES,
@@ -23,7 +23,7 @@ import {
   convertDn1SoundToDn2,
   convertDn1SoundToDn2Detailed,
   mapSelector,
-} from "../src/project/soundmap.js";
+} from "@noiseandmatter/dnx-core/project/soundmap.js";
 
 const EXAMPLES = CORPUS ?? "";
 

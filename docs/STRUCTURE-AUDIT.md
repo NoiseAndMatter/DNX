@@ -38,19 +38,19 @@ can no longer make them pass by finding nothing.
 
 ## 2. Byte-offset arithmetic has no single home — and two readers already disagree — **DONE**
 
-**Verified.** `src/project/dn2image.ts` declares `DN2_KIT` as the canonical kit geometry, and five
+**Verified.** `packages/core/src/project/dn2image.ts` declares `DN2_KIT` as the canonical kit geometry, and five
 other modules re-declare the same numbers locally: the sound offset `60`, sound size `359`, the MIDI
 record `5964`/`268`, and the pool offset `10756` each have between two and five homes.
 
 The track level is worse — it has **no** home. `DN2_KIT` has no `levelOffset`, so `0x1c` is written
-as a bare literal in `src/librarian/tracksummary.ts:63` and `src/librarian/trackmove.ts:150`, and as
-a local constant in `src/expand/convert.ts` and `src/sheet/collect.ts`.
+as a bare literal in `packages/core/src/librarian/tracksummary.ts:63` and `packages/core/src/librarian/trackmove.ts:150`, and as
+a local constant in `packages/core/src/expand/convert.ts` and `src/sheet/collect.ts`.
 
 They have already drifted:
 
 ```ts
 src/sheet/collect.ts:70        kit[off + track * 2] | (kit[off + track * 2 + 1] << 8)   // u16le
-src/librarian/tracksummary.ts:63   kit[0x1c + index * 2]                                // low byte only
+packages/core/src/librarian/tracksummary.ts:63   kit[0x1c + index * 2]                                // low byte only
 ```
 
 Levels are 0–127, so the high byte is always zero and nothing is visibly broken today. It is a
@@ -104,7 +104,7 @@ three intended ones.
 
 ## 5. Layering: three Node-only modules sit in `src/`
 
-`src/project/zip.ts` and `src/project/projectfile.ts` import `node:zlib`; `src/librarian/open.ts`
+`packages/core/src/project/zip.ts` and `packages/core/src/project/projectfile.ts` import `node:zlib`; `packages/core/src/librarian/open.ts`
 imports `node:fs`. All three are hand-listed as exclusions in `tsconfig.web.json`, and the browser
 reimplements them — so there are two ZIP writers and two CRC-32s, with `test/web.test.ts` existing
 to assert they agree.
@@ -115,9 +115,9 @@ to assert they agree.
 **The directory — FIXED 2026-08.** All three moved to `src/node/`, and `tsconfig.web.json` excludes
 the directory rather than the files.
 
-**The two writers and the two CRC-32s — FIXED 2026-09-20.** `src/archive/zip.ts` holds the
+**The two writers and the two CRC-32s — FIXED 2026-09-20.** `packages/core/src/archive/zip.ts` holds the
 container and the checksum once and takes the compressor as a parameter;
-`src/project/projectfile.ts` holds what a project file contains. `src/node/zip.ts` and
+`packages/core/src/project/projectfile.ts` holds what a project file contains. `src/node/zip.ts` and
 `web/src/zip.ts` are now adapters supplying `node:zlib` and `CompressionStream` and nothing else.
 `test/archive.test.ts` pins the container field by field, which is what the old test could not do:
 it asserted that two writers agreed, and agreement between two wrong writers is not a check.
@@ -129,9 +129,9 @@ the inversion is visible in the type system.
 
 ## 6. Cohesion and dead code — **readers/pass-through DONE 2026-08-04**
 
-- `src/librarian/trackmove.ts` exports `trigCounts`, `lockCounts`, `trackMachines` — *readers* in a
+- `packages/core/src/librarian/trackmove.ts` exports `trigCounts`, `lockCounts`, `trackMachines` — *readers* in a
   *mover*. So `tracksummary.ts` imports from the write module in order to summarise.
-- `src/librarian/copy.ts` re-exports `SOUND_SIZE` as a pass-through, making it look like it owns
+- `packages/core/src/librarian/copy.ts` re-exports `SOUND_SIZE` as a pass-through, making it look like it owns
   geometry it does not.
 - "Read a field out of a DN2 kit" is spread across five modules in four directories.
 - Dead: `web/src/render.ts`'s `renderSummary` (never called), `hardwaretest/track.ts`'s
@@ -185,10 +185,10 @@ suite would have gone green while checking less. `test/corpus.test.ts` proves th
 because a guard that never fires is the same bug one level up and this is the last place anyone
 would look for it.
 
-**Untested subjects that matter:** `src/device/api.ts` (487 lines, eight response readers — the
-existing `deviceapi.test.ts` tests the codec, not this); the whole `src/expand/` pipeline
+**Untested subjects that matter:** `packages/core/src/device/api.ts` (487 lines, eight response readers — the
+existing `deviceapi.test.ts` tests the codec, not this); the whole `packages/core/src/expand/` pipeline
 (`route`, `allocate`, `ranking`, `rules`, `tracks`, `usage`) covered only indirectly;
-`src/librarian/shuffle.ts`, where every operation's semantics originate; `web/src/grid.ts`, shared by
+`packages/core/src/librarian/shuffle.ts`, where every operation's semantics originate; `web/src/grid.ts`, shared by
 both pages, whose `nextSelection` is pure and trivially testable.
 
 **Test names cannot identify their subject** while six names exist twice in `src/` (`plan`,
@@ -225,6 +225,7 @@ Ranked by what the codebase most needs. Each is one PR.
 | 2c | ~~Split what was left of `probe/main.ts`~~ **DONE 2026-09-21.** Eleven modules by job: `listen`, `ready`, `request`, `readproject`, `writeback`, `writeslot`, `drive`, `drivefile`, `link`, `verdicts`, `chrome`. **2,333 → 497 lines.** `probesource.ts` reads the folder rather than the file, so the write fences follow the writes; `safewrite.test.ts` now names the one module each primitive is exempt in | shipped, unverified on device |
 | 2d | ~~Research and hardware-test tooling out of core's folders~~ **DONE 2026-09-22.** `src/research/` (`apiprobe`, `probecodes`, `usbcapture`) and `src/hardwaretest/` (`rearrange`, `track`). `tsconfig.core.json` and `test/layers.test.ts` name the two folders rather than four files, so a new probe module is outside core by where it lives. `Math.random` and the two remaining clock reads became seams, and `test/determinism.test.ts` keeps it that way | shipped |
 | 2e | ~~The write gate becomes a required option of the safe writes~~ **DONE 2026-09-22.** `gate: () => void` on `SafeRecordWriteOptions` and `SafeFileWriteOptions`, required the way `onBackup` is, called before the listing, the confirmation and the backup. The two page call sites hand `requireWriteEnabled` over rather than calling it above the write, and the two core workflows pass their host's. A caller that omits it does not compile; one that reached the function some other way is refused before the transport is touched | shipped |
+| 2f | ~~Extract the core~~ **DONE 2026-09-22.** `packages/core`, an npm workspace named `@noiseandmatter/dnx-core`: `analysis`, `archive`, `device`, `expand`, `librarian`, `project`, `sysex`. 605 imports across 173 files repointed at the package name; the pages carry a one-entry import map because the browser has no `node_modules`. `tsconfig.core.json` is a directory rather than a subtraction, and `importgraph.ts` follows the package so the walks do not stop at the boundary | shipped |
 | 3 | ~~Extract the hardware-sheet page scaffold~~ **DONE 2026-08-04.** `src/sheet/page.ts`; drift resolved on the CSS escape; `hhmm` (×5) and the name stamper (×2) moved to `sheet/naming.ts`; both sheets diffed before and after; `test/sheetpage.test.ts` added, 7 tests | shipped |
 | 4 | ~~Collapse the seven `escapeHtml`s~~ **DONE 2026-08-01.** One home in `src/sheet/html.ts`, re-exported by `dom.ts`; `grid.ts`'s quote-dropping copy gone; `u32` exported once; `apiprobe`'s `hex` renamed `hexBody` so the probe no longer aliases at the import; `renderSummary`, `stepPatterns`, `soundLockPoolOffset` and `app.ts`'s unused `live` deleted; `test/html.test.ts` added | shipped |
 | 5 | ~~Move the three Node-only modules to `src/node/`~~ **DONE 2026-08-04.** Config excludes a directory; 40 files' imports rewritten; `test/web.test.ts` now *enforces* the boundary across all of `src/`, verified by planting a violation; 757 pass | shipped |
@@ -292,7 +293,7 @@ Recorded so this reads as an audit rather than a complaint list:
 - **No `src/` → `web/` import.** The one-way dependency holds absolutely.
 - **No DOM, WebMIDI or `localStorage` consumed in `src/`.** The only hits are inside the browser JS
   that `src/sheet/resultsform.ts` *generates* as text — a code generator, and honest about it.
-- **`src/expand/`'s deliberate split survives** — `usage` reads, `tracks` budgets, `rules`/`ranking`
+- **`packages/core/src/expand/`'s deliberate split survives** — `usage` reads, `tracks` budgets, `rules`/`ranking`
   decide, `allocate` assigns, `route` maps, `convert` writes. None has grown a second job.
 - **`src/sheet/`'s collect/render/naming split is clean.**
 - **Position vocabulary is exemplary** — one home for `A1`…`H16`, one for `T1`…`T16`, an explicit

@@ -25,24 +25,24 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   checkDn2PatternRecord,
   PATTERN,
   readDn2PatternRecord,
   readLockTable,
   TRACK,
-} from "../src/project/dn2pattern.js";
+} from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 import {
   patternRecord as dn1PatternRecord,
   readLockTable as dn1ReadLockTable,
   readPattern,
   readProjectName,
-} from "../src/project/dn1.js";
-import { isLockSet, lockCoarse, lockFine } from "../src/project/lockvalue.js";
-import { convertProject } from "../src/expand/convert.js";
-import { knownParameterIds, knownTrigConditions } from "../src/expand/translate.js";
+} from "@noiseandmatter/dnx-core/project/dn1.js";
+import { isLockSet, lockCoarse, lockFine } from "@noiseandmatter/dnx-core/project/lockvalue.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
+import { knownParameterIds, knownTrigConditions } from "@noiseandmatter/dnx-core/expand/translate.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const PAIRS: [string, string][] = [

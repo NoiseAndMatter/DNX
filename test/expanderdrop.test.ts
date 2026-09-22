@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   allSlots,
   describeSlots,

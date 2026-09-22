@@ -20,14 +20,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parsePayload } from "../src/project/container.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
 import {
   DN1_IMAGE_SIZE,
   DN1_OS143_IMAGE_SIZE,
   decodeProjectImage,
-} from "../src/project/dn2codec.js";
-import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout, layoutFor } from "../src/project/dn2image.js";
-import { PATTERN, RECORD_VERSIONS, checkDn1Image, readPattern } from "../src/project/dn1.js";
+} from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN1_LAYOUT, DN2_LAYOUT, fitsLayout, layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { PATTERN, RECORD_VERSIONS, checkDn1Image, readPattern } from "@noiseandmatter/dnx-core/project/dn1.js";
 import {
   BOB_CONFIG,
   SETTINGS_VERSIONS,
@@ -38,10 +38,10 @@ import {
   readSongs,
   tailGeometry,
   tailRegionBase,
-} from "../src/project/dn1tail.js";
-import { imageFrom } from "../src/device/drive.js";
-import { ListingError } from "../src/device/storage.js";
-import { deviceFor } from "../src/librarian/device.js";
+} from "@noiseandmatter/dnx-core/project/dn1tail.js";
+import { imageFrom } from "@noiseandmatter/dnx-core/device/drive.js";
+import { ListingError } from "@noiseandmatter/dnx-core/device/storage.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { DN1_OS143, NO_CORPUS, SKIP_REASON, requireCorpusFile } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

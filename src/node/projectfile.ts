@@ -19,9 +19,9 @@
  * `test/web.test.ts` fails if anything outside `src/node/` or `src/cli/` imports a `node:` module.
  */
 
-import { ZipError } from "../archive/zip.js";
-import { ProjectParseError, type Project, type ProjectManifest } from "../project/container.js";
-import { projectFrom, rebuiltProjectEntries } from "../project/projectfile.js";
+import { ZipError } from "@noiseandmatter/dnx-core/archive/zip.js";
+import { ProjectParseError, type Project, type ProjectManifest } from "@noiseandmatter/dnx-core/project/container.js";
+import { projectFrom, rebuiltProjectEntries } from "@noiseandmatter/dnx-core/project/projectfile.js";
 import { buildZip, readZip } from "./zip.js";
 
 /** Parse a complete .dnprj / .dn2prj file. */

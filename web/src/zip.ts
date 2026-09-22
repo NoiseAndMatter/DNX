@@ -14,9 +14,9 @@ import {
   buildZipAsync,
   readZipAsync,
   type ZipEntry,
-} from "../../src/archive/zip.js";
+} from "@noiseandmatter/dnx-core/archive/zip.js";
 
-export { ZipError, crc32, type ZipEntry } from "../../src/archive/zip.js";
+export { ZipError, crc32, type ZipEntry } from "@noiseandmatter/dnx-core/archive/zip.js";
 
 async function through(data: Uint8Array, stream: GenericTransformStream): Promise<Uint8Array> {
   // The DOM lib types these streams as BufferSource-in / Uint8Array-out, which pipeThrough

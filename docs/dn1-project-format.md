@@ -21,7 +21,7 @@ Reverse-engineered from the 53 DN1 projects in `00_Examples/01_DN1/01_Projects/`
 > codes (`F1 02`, `F5 08`, `F0 0C`, the `0xFF` bytes apparently punched into names) are
 > LZ4 tokens and u16le match offsets. There is no bespoke encoding, no escape range, and
 > nothing to crack. See [`docs/dn2-format.md` §1](./dn2-format.md#1-the-body-is-lz4-compressed)
-> and `src/project/dn2codec.ts`.
+> and `packages/core/src/project/dn2codec.ts`.
 >
 > **Practical rule: never pattern-match on raw payload bytes. Decompress first.** Once
 > decompressed, a DN1 project is a flat array of fixed-size records and every offset in
@@ -76,7 +76,7 @@ from 94,212 to 94,724 and the terminator lands at `0x2A7400`.
 kit records 10 to 11, sound objects 5 to 6 in kits and in the pool, the tail's settings
 object 7 to 8. Across the 2,359,296-byte pattern array the two saves differ in exactly 128
 bytes, one per record, all of them the version field. `RECORD_VERSIONS` and
-`PROJECT_SOUND_VERSIONS` in `src/project/dn1.ts` hold the pairs.
+`PROJECT_SOUND_VERSIONS` in `packages/core/src/project/dn1.ts` hold the pairs.
 
 **VERIFIED** 1.43 also clears two things 1.42A left behind: the residue after a sound name's
 NUL (`BD BORING\0SM` becomes `BD BORING\0\0\0`), and the kit name fields, in 21 of the 22
@@ -97,7 +97,7 @@ The strides are not just arithmetic. Independent confirmation:
   correctly terminated by `BA CE F0 0C` at `+298`. 27,136 objects checked, all pass.
 - The 128 sound-pool objects in the tail are likewise all correctly framed.
 
-`src/project/dn1.ts` exposes `checkDn1Image()`, which re-runs all of the above.
+`packages/core/src/project/dn1.ts` exposes `checkDn1Image()`, which re-runs all of the above.
 
 ### Image header (first 512 bytes)
 
@@ -441,7 +441,7 @@ configured and are the best candidates.
 Elektron's importer produced — 7,168 samples, 14 matched pairs × 128 kits × 4 tracks — places
 17 of the 18 varying DN2 bytes on a DN1 source with no counterexample. That the map holds at
 all confirms the `0x54E` base and the 172-byte stride, which §8.2 could previously only pin
-to ±3 bytes. The correspondences are in `MIDI_TRACK_MAP` (`src/expand/fieldmap.ts`): DN1
+to ±3 bytes. The correspondences are in `MIDI_TRACK_MAP` (`packages/core/src/expand/fieldmap.ts`): DN1
 `+0` `+1` `+2` `+4` `+16` `+28` `+29` `+32` `+34` `+36` `+38` `+48` `+50` `+64` `+66` `+158`
 `+159`. Which of them is the channel is still **UNKNOWN** — the mapping says where a byte
 goes, not what it means.
@@ -495,11 +495,11 @@ Ordered by how much they block the DN1 → DN2 expansion project.
 
 | File | Purpose |
 |---|---|
-| `src/project/container.ts` | ZIP + payload header/footer |
-| `src/project/checksum.ts` | CRC-32 over `payload[0x1F : len-12]` |
-| `src/project/dn2codec.ts` | LZ4 linked-block decoder — works for DN1 and DN2 |
-| `src/project/dn2image.ts` | Shared image geometry and layout constants |
-| `src/project/dn1.ts` | DN1 pattern / track / trig / lock / kit / sound-pool readers |
+| `packages/core/src/project/container.ts` | ZIP + payload header/footer |
+| `packages/core/src/project/checksum.ts` | CRC-32 over `payload[0x1F : len-12]` |
+| `packages/core/src/project/dn2codec.ts` | LZ4 linked-block decoder — works for DN1 and DN2 |
+| `packages/core/src/project/dn2image.ts` | Shared image geometry and layout constants |
+| `packages/core/src/project/dn1.ts` | DN1 pattern / track / trig / lock / kit / sound-pool readers |
 
 ```ts
 import { readFileSync } from "node:fs";

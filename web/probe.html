@@ -271,6 +271,17 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
   Inert until cloned: a `<template>` renders nothing and its contents are not part of the document.
 -->
 
+<!--
+  Where `@noiseandmatter/dnx-core` is, for the browser.
+
+  The core is a workspace package, so every page imports it by name and the emitted JavaScript
+  carries that name verbatim — TypeScript does not rewrite specifiers. Node resolves it through
+  `node_modules`; a browser has no such thing, so the page says where it is. One entry, and it
+  must come before the module script below it.
+-->
+<script type="importmap">
+{ "imports": { "@noiseandmatter/dnx-core/": "./dist/packages/core/src/" } }
+</script>
 <script type="module" src="dist/web/src/probe/main.js"></script>
 </body>
 </html>

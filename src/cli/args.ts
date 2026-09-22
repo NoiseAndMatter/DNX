@@ -21,9 +21,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { decodeProjectImage } from "../project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../node/projectfile.js";
-import type { ProjectManifest, ProjectPayload } from "../project/container.js";
+import type { ProjectManifest, ProjectPayload } from "@noiseandmatter/dnx-core/project/container.js";
 
 export interface CliArgs {
   /** The value after `--name`, or `undefined` when it is absent or has no value. */

@@ -9,11 +9,11 @@
  * Produces a plain model. Rendering is `render.ts`'s job.
  */
 
-import { DN2_KIT, kitRecord, trackLevel } from "../project/dn2image.js";
-import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
-import { readPattern, readSoundPool, type Dn1Pattern } from "../project/dn1.js";
-import { readDn2Pattern, readMidiTrackMask, type Dn2Pattern } from "../project/dn2pattern.js";
-import { stepName, stepsByPage } from "../project/naming.js";
+import { DN2_KIT, kitRecord, trackLevel } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { readPattern, readSoundPool, type Dn1Pattern } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { readDn2Pattern, readMidiTrackMask, type Dn2Pattern } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { stepName, stepsByPage } from "@noiseandmatter/dnx-core/project/naming.js";
 
 /** DN2 tracks 9-16, which no Elektron import ever populates. Expansion is what fills them. */
 const FIRST_EXPANDED_TRACK = 8;

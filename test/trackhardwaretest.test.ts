@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clear, moveMany, swap } from "../src/librarian/shuffle.js";
-import { type TrackSummary } from "../src/librarian/tracksummary.js";
-import { MACHINE } from "../src/project/machine.js";
+import { clear, moveMany, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { type TrackSummary } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { MACHINE } from "@noiseandmatter/dnx-core/project/machine.js";
 import {
   FIRST_STEP,
   REFERENCE,

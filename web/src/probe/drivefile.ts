@@ -25,15 +25,15 @@ import { verdictAfterSilence } from "./silence.js";
 import { requestListing } from "./storageio.js";
 import { showVerdict, verdictCard } from "./verdicts.js";
 import { $ } from "../dom.js";
-import { safeWriteFile } from "../../../src/device/safewrite.js";
+import { safeWriteFile } from "@noiseandmatter/dnx-core/device/safewrite.js";
 import {
   driveChecksum,
   type Entry,
   STORED_FORM,
   wholeListing,
-} from "../../../src/device/storage.js";
-import { readStoredFile } from "../../../src/device/storagesession.js";
-import { CONTAINER_SLOT_OFFSET } from "../../../src/project/container.js";
+} from "@noiseandmatter/dnx-core/device/storage.js";
+import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { CONTAINER_SLOT_OFFSET } from "@noiseandmatter/dnx-core/project/container.js";
 import { saveBytesTo, whereSaved } from "../dnxfolder.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { describeBytes } from "../progress.js";

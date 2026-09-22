@@ -20,7 +20,7 @@ import {
   describeAnswerChange,
   describeListingChange,
 } from "../web/src/probe/changes.js";
-import { type Entry } from "../src/device/storage.js";
+import { type Entry } from "@noiseandmatter/dnx-core/device/storage.js";
 
 function entry(index: number, name: string, trailer?: number[]): Entry {
   return {

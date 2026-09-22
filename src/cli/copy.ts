@@ -13,9 +13,9 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, readProjectFile } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { readProjectName } from "../project/dn1.js";
-import { applyPatternCopy, freePoolSlots, planPatternCopy } from "../librarian/copy.js";
-import { patternName } from "../project/naming.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { applyPatternCopy, freePoolSlots, planPatternCopy } from "@noiseandmatter/dnx-core/librarian/copy.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 function main(): void {
   const { arg, flag } = cliArgs();

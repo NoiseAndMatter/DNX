@@ -7,12 +7,12 @@
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { isLengthValid } from "../project/container.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { readSavedPosition } from "../project/position.js";
+import { isLengthValid } from "@noiseandmatter/dnx-core/project/container.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { readSavedPosition } from "@noiseandmatter/dnx-core/project/position.js";
 import { parseProject } from "../node/projectfile.js";
-import { deviceFor } from "../librarian/device.js";
-import { patternName } from "../project/naming.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 function ascii(bytes: Uint8Array): string {
   return [...bytes].map((b) => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : ".")).join("");

@@ -25,10 +25,10 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, fail } from "./args.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseFile } from "../sysex/container.js";
-import { PRODUCT_NAMES } from "../sysex/devices.js";
+import { parseFile } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { PRODUCT_NAMES } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { buildProjectFile } from "../node/projectfile.js";
-import { projectName, writeProjectName } from "../project/dn2image.js";
+import { projectName, writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { OpenError, findTemplate, openProject } from "../node/open.js";
 import {
   type Dn1Sounds,
@@ -37,7 +37,7 @@ import {
   coverage,
   planRebuild,
   verifyRebuild,
-} from "../project/rebuild.js";
+} from "@noiseandmatter/dnx-core/project/rebuild.js";
 
 
 function main(): void {

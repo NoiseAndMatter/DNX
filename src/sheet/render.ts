@@ -5,7 +5,7 @@
  * layout can change without touching anything that reads bytes.
  */
 
-import { patternName } from "../project/naming.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { escapeHtml } from "./html.js";
 import type { PatternSheet } from "./collect.js";
 

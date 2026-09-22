@@ -11,9 +11,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { planRename } from "../src/librarian/rename.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { planRename } from "@noiseandmatter/dnx-core/librarian/rename.js";
 import { CORPUS } from "./corpus.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
