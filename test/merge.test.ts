@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
-import { PATTERN, TRACK, TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
 import { MergeRefused, describeMerge, planPatternMerge } from "@noiseandmatter/dnx-core/expand/merge.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON, corpusFiles } from "./corpus.js";
@@ -37,6 +37,43 @@ function destination(): Uint8Array {
   const files = corpusFiles("02_DN2/01_Projects", ".dn2prj");
   if (files.length === 0) throw new Error("no DN2 projects in the corpus");
   return imageOf(files[0]!);
+}
+
+/**
+ * A **different** Digitone II project with a pattern that uses sound locks.
+ *
+ * Different from `destination()` on purpose: merging a project into itself resolves every lock as
+ * `reused` and would prove nothing about carrying a sound across. Throws rather than skipping — a
+ * fixture that quietly finds nothing is a test that passes by not looking.
+ */
+function dn2Source(): { image: Uint8Array; pattern: number } {
+  for (const path of corpusFiles("02_DN2/01_Projects", ".dn2prj").slice(1)) {
+    const image = imageOf(path);
+    for (let p = 0; p < DN2_LAYOUT.patternCount; p++) {
+      // `soundLockedSlots`, not the raw `locks` walk, and the difference is the whole fixture.
+      // Reading every step's lock byte reports slot 0 and slot 161 locked by all 128 patterns of
+      // every corpus project — unset memory, not music. The merge counts a lock only where a trig
+      // exists, so a fixture chosen any other way hands it patterns with nothing real to carry.
+      const real = [...soundLockedSlots(patternRecord(image, p, DN2_LAYOUT))]
+        .filter((slot) => slot < 128 && poolName(image, slot) !== "");
+      if (real.length > 0) return { image, pattern: p };
+    }
+  }
+  throw new Error("no second DN2 project in the corpus has a pattern locking a sound that exists");
+}
+
+/** A destination slot holding no locks, so a merge into it destroys nothing this test cares about. */
+function quietSlot(image: Uint8Array): number {
+  for (let p = DN2_LAYOUT.patternCount - 1; p >= 0; p--) {
+    if ([...locks(patternRecord(image, p, DN2_LAYOUT))].length === 0) return p;
+  }
+  throw new Error("every pattern in the destination holds locks");
+}
+
+/** One pool slot's bytes, which is what "the same sound" means here. */
+function poolSound(image: Uint8Array, slot: number): Uint8Array {
+  const at = DN2_LAYOUT.tailBase + DN2_POOL_OFFSET + slot * DN2_SOUND_SIZE;
+  return image.subarray(at, at + DN2_SOUND_SIZE);
 }
 
 /** Count sound locks across a whole DN2 image. */
@@ -316,7 +353,13 @@ test("a one-pattern merge does not report the whole project's conversion notes",
     confirmOverwrite: true,
   });
 
-  const all = plan.report.warnings.length;
+  // A Digitone 1 source, so a conversion ran and there is a report. Asserted rather than assumed:
+  // without this the reads below would be on `undefined` and prove nothing.
+  assert.equal(plan.sourceKind, "dn1");
+  assert.ok(plan.report, "a converted source must carry its conversion report");
+  const report = plan.report;
+
+  const all = report.warnings.length;
   const kept = plan.notes.reduce((n, note) => n + note.count, 0);
   assert.ok(all > 0, "the corpus source converts with no notes at all — this proves nothing");
   assert.ok(kept < all, `kept every one of the ${all} notes; nothing was scoped`);
@@ -327,7 +370,7 @@ test("a one-pattern merge does not report the whole project's conversion notes",
   // 90, so "is this message present" cannot tell a kept note from a dropped one. The count can.
   const placed = new Set(plan.pool.map((p) => p.from));
   const expected = new Map<string, number>();
-  for (const w of plan.report.warnings) {
+  for (const w of report.warnings) {
     if (w.pattern !== undefined && w.pattern !== 0) continue;
     if (w.poolSlot !== undefined && !placed.has(w.poolSlot)) continue;
     expected.set(w.message, (expected.get(w.message) ?? 0) + 1);
@@ -395,4 +438,121 @@ test("planning a merge against its own result asks to overwrite", { skip }, () =
   // a wall. This is the path the CLI takes with --confirm.
   const again = planPatternMerge({ ...args, destination: first.image, confirmOverwrite: true });
   assert.deepEqual(again.landingSlots, [3]);
+});
+
+// --- a Digitone II source: the same merge, without a conversion -------------------------------------
+
+test("a Digitone II source is taken as it stands, with no conversion", { skip }, () => {
+  /*
+   * The case the expander never had. Both projects are already Digitone II, so there is nothing to
+   * translate — but the pool work still has to happen, because the source's lock numbers mean
+   * nothing in the destination's pool. That is true whichever machine the patterns came from,
+   * which is why this is one function and not two.
+   */
+  const { image: src, pattern } = dn2Source();
+  const dest = destination();
+  const plan = planPatternMerge({
+    source: src,
+    patterns: [pattern],
+    destination: dest,
+    landing: quietSlot(dest),
+    confirmOverwrite: true,
+  });
+
+  assert.equal(plan.sourceKind, "dn2");
+  assert.equal(plan.report, undefined, "nothing was converted, so there is no conversion report");
+  assert.deepEqual(plan.notes, [], "conversion notes describe a mapping that did not run");
+  assert.equal(plan.image.length, dest.length, "the destination keeps its own size");
+});
+
+test("every trig in a merged Digitone II pattern still plays the sound it played", { skip }, () => {
+  /*
+   * **The property the whole feature turns on.** A lock is an index into a 128-slot pool, and two
+   * projects number their pools differently. Re-pointing is not a detail of the copy, it is the
+   * copy. Checked by bytes rather than by name: a name is a label somebody typed, and two
+   * different sounds can share one.
+   */
+  const { image: src, pattern } = dn2Source();
+  const dest = destination();
+  const landing = quietSlot(dest);
+  const plan = planPatternMerge({
+    source: src, patterns: [pattern], destination: dest, landing, confirmOverwrite: true,
+  });
+
+  const before = [...locks(patternRecord(src, pattern, DN2_LAYOUT))];
+  const after = [...locks(patternRecord(plan.image, landing, DN2_LAYOUT))];
+  assert.ok(before.length > 0, "the chosen source pattern has no locks; this test proves nothing");
+  assert.equal(after.length, before.length, "a lock went missing in the copy");
+
+  const moved = new Map(plan.pool.map((p) => [p.from, p.to]));
+  let checked = 0;
+  for (const [i, was] of before.entries()) {
+    const now = after[i]!;
+    assert.equal(now.track, was.track);
+    assert.equal(now.step, was.step);
+
+    const to = moved.get(was.slot);
+    if (to === undefined) continue; // dangling in the source: left pointing where it was
+    assert.equal(now.slot, to, `the lock at track ${was.track} step ${was.step} was not re-pointed`);
+    assert.deepEqual(
+      [...poolSound(plan.image, now.slot)],
+      [...poolSound(src, was.slot)],
+      `slot ${now.slot} does not hold the sound that slot ${was.slot} held`,
+    );
+    checked++;
+  }
+  assert.ok(checked > 0, "every lock was dangling; no sound was actually carried across");
+});
+
+test("a sound the destination already holds is reused, not appended twice", { skip }, () => {
+  // Merging the same pattern twice must not keep growing the pool. The second pass finds every
+  // sound already there, byte for byte, and points at it.
+  const { image: src, pattern } = dn2Source();
+  const dest = destination();
+  const first = planPatternMerge({
+    source: src, patterns: [pattern], destination: dest, landing: quietSlot(dest),
+    confirmOverwrite: true,
+  });
+  const second = planPatternMerge({
+    source: src, patterns: [pattern], destination: first.image, landing: quietSlot(first.image),
+    confirmOverwrite: true,
+  });
+
+  assert.ok(first.pool.length > 0, "nothing was placed; this test proves nothing");
+  assert.ok(
+    second.pool.every((p) => p.reused),
+    `the second merge appended ${second.pool.filter((p) => !p.reused).length} sound(s) again`,
+  );
+  assert.deepEqual(
+    occupiedPool(second.image),
+    occupiedPool(first.image),
+    "the pool grew on a merge that had nothing new to add",
+  );
+});
+
+test("an expansion plan with a Digitone II source is refused, not ignored", { skip }, () => {
+  // Dropping it silently would leave a caller believing tracks were promoted. A DN2 pattern
+  // already has sixteen; there is nothing for expansion to decide.
+  const { image: src, pattern } = dn2Source();
+  const dest = destination();
+  assert.throws(
+    () => planPatternMerge({
+      source: src,
+      patterns: [pattern],
+      destination: dest,
+      landing: quietSlot(dest),
+      confirmOverwrite: true,
+      plan: {} as never,
+    }),
+    (error: unknown) => error instanceof MergeRefused && /expansion plan/.test(String(error)),
+  );
+});
+
+test("a source that is neither machine's image is refused by size", { skip }, () => {
+  assert.throws(
+    () => planPatternMerge({
+      source: new Uint8Array(1024), patterns: [0], destination: destination(), landing: 0,
+    }),
+    (error: unknown) => error instanceof MergeRefused && /neither a Digitone 1/.test(String(error)),
+  );
 });

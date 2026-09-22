@@ -1,5 +1,10 @@
 /**
- * Merging **selected** patterns from a Digitone 1 into an existing Digitone II project.
+ * Merging **selected** patterns into an existing Digitone II project, from either machine.
+ *
+ * A Digitone 1 source is converted on the way in; a Digitone II source is already in the
+ * destination's language and is taken as it stands. Everything after that is the same work, which
+ * is why it is one function: keep the destination's pool, grow it, reuse what is already there,
+ * and re-point every sound lock at wherever its sound landed.
  *
  * ## The other mode
  *
@@ -91,7 +96,13 @@ export class MergeRefused extends Error {
 }
 
 export interface MergeOptions {
-  /** The Digitone 1 project the patterns come from. */
+  /**
+   * The project the patterns come from, a Digitone 1 or a Digitone II.
+   *
+   * A Digitone 1 source is run through `convertProject` first; a Digitone II source is used
+   * directly. Both firmware image sizes are accepted on either machine — 1.11 and 1.43 only
+   * append, and every offset this file reads is before what they added.
+   */
   source: Uint8Array;
   /** Which source patterns to take, in the order they should land. */
   patterns: number[];
@@ -111,6 +122,13 @@ export interface MergeOptions {
    * a preview computed separately from the write is a preview that can be wrong.
    */
   landingMode?: LandingMode;
+  /**
+   * The expansion plan, for a Digitone 1 source only.
+   *
+   * Refused with a Digitone II source rather than ignored: expansion is what promotes sound-locked
+   * trigs onto the twelve tracks a DN1 does not have, and a DN2 pattern already has sixteen. A
+   * caller passing one has misunderstood what it is about to do.
+   */
   plan?: ExpansionPlan;
   /**
    * Write what fits when the destination's pool cannot take every incoming sound.
@@ -155,7 +173,15 @@ export interface MergePlan {
   rerouted: number;
   /** Free pool slots left afterwards. */
   freePoolSlots: number;
-  report: ConversionReport;
+  /** Which machine the patterns came from. `dn1` means they were converted on the way in. */
+  sourceKind: "dn1" | "dn2";
+  /**
+   * What the conversion did, **absent when none ran**.
+   *
+   * A Digitone II source is not converted, and a zeroed report would read as a conversion that
+   * found nothing to do. Its absence is the honest way to say there was no conversion.
+   */
+  report?: ConversionReport;
   /**
    * What the merge itself did that somebody has to know about — overwrites, dangling locks, sounds
    * with nowhere to go. Short by construction, and always worth reading.
@@ -195,13 +221,27 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
         `DN2 patterns and a DN1 cannot receive them`,
     );
   }
-  if (!fitsLayout(source, DN1_LAYOUT)) {
-    throw new MergeRefused(`the source is ${source.length} bytes, not a Digitone 1 image`);
+  const fromDn1 = fitsLayout(source, DN1_LAYOUT);
+  const sourceKind = fromDn1 ? "dn1" : "dn2";
+  if (!fromDn1 && !fitsLayout(source, DN2_LAYOUT)) {
+    throw new MergeRefused(
+      `the source is ${source.length} bytes, which is neither a Digitone 1 image ` +
+        `(${DN1_LAYOUT.imageSizes.join(" or ")}) nor a Digitone II one ` +
+        `(${DN2_LAYOUT.imageSizes.join(" or ")})`,
+    );
+  }
+  if (!fromDn1 && options.plan) {
+    throw new MergeRefused(
+      "an expansion plan was given for a Digitone II source. Expansion promotes sound-locked " +
+        "trigs onto the twelve tracks a Digitone 1 does not have, and these patterns already " +
+        "have sixteen — there is nothing for it to decide.",
+    );
   }
   if (patterns.length === 0) throw new MergeRefused("no patterns selected");
+  const sourceLayout = fromDn1 ? DN1_LAYOUT : DN2_LAYOUT;
   for (const p of patterns) {
-    if (!Number.isInteger(p) || p < 0 || p >= DN1_LAYOUT.patternCount) {
-      throw new MergeRefused(`${p} is not a Digitone 1 pattern index`);
+    if (!Number.isInteger(p) || p < 0 || p >= sourceLayout.patternCount) {
+      throw new MergeRefused(`${p} is not a ${fromDn1 ? "Digitone 1" : "Digitone II"} pattern index`);
     }
   }
   if (!Number.isInteger(landing) || landing < 0 || landing >= DN2_LAYOUT.patternCount) {
@@ -217,12 +257,22 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   const refusal = landingRefusal(patterns, landingSlots, DN2_LAYOUT.patternCount);
   if (refusal) throw new MergeRefused(refusal);
 
-  // **Planned for the patterns being merged, not for the project they came from.** Expansion
-  // decides which sounds get a track and which stay locked across everything in scope, so a
-  // whole-project plan can hand track 9 to a sound used only in pattern 99 while a sound in these
-  // four overflows. The caller may still supply its own plan; this is the default.
-  const plan = options.plan ?? planExpansion(source, { patterns: [...patterns].sort((a, b) => a - b) });
-  const { image: converted, report } = convertProject(source, destination, { plan });
+  /*
+   * **Planned for the patterns being merged, not for the project they came from.** Expansion
+   * decides which sounds get a track and which stay locked across everything in scope, so a
+   * whole-project plan can hand track 9 to a sound used only in pattern 99 while a sound in these
+   * four overflows. The caller may still supply its own plan; this is the default.
+   *
+   * None of it applies to a Digitone II source. Its patterns are already DN2 patterns, so
+   * `converted` is the source itself and there is no report — the pool work below reads the same
+   * offsets either way, which is the whole reason one function serves both.
+   */
+  let converted = source;
+  let report: ConversionReport | undefined;
+  if (fromDn1) {
+    const plan = options.plan ?? planExpansion(source, { patterns: [...patterns].sort((a, b) => a - b) });
+    ({ image: converted, report } = convertProject(source, destination, { plan }));
+  }
 
   const image = Uint8Array.from(destination);
 
@@ -317,7 +367,9 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     setKitRecord(image, to, kitRecord(converted, from, DN2_LAYOUT));
   });
 
-  const notes = scopedNotes(report, patterns, pool);
+  // Conversion notes describe the DN1 to DN2 field mapping. Without a conversion there are none,
+  // and inventing an empty list to keep a shape would say the mapping ran and found nothing.
+  const notes = report ? scopedNotes(report, patterns, pool) : [];
   const warnings: string[] = [];
   if (outOfRange.length > 0) {
     warnings.unshift(
@@ -350,7 +402,8 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     dangling: { outOfRange, empty },
     rerouted,
     freePoolSlots: free.length,
-    report,
+    sourceKind,
+    ...(report === undefined ? {} : { report }),
     warnings,
     notes,
   };
