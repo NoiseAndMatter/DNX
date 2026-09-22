@@ -630,10 +630,17 @@ test("a Digitone 1 merge matches applyPatternCopy byte for byte", { skip }, () =
   );
 });
 
-test("a merged pattern says it lives where it landed", { skip }, () => {
-  // The record carries the slot it believes it occupies. `rearrange.ts` rewrites it on every move
-  // and says why: a pattern that disagrees about where it lives is one the device has to meet.
-  // The merge landed patterns without touching it, so a merged pattern claimed its source slot.
+test("a merged pattern keeps saying which slot it came from, as a device paste does", { skip }, () => {
+  /*
+   * Measured on `008 JAM.dn2prj`, written by a Digitone II: the record at F1 is byte-identical to
+   * F9's, the slot-index field included, and F2, F4 and F10 are F9 pasted and then edited. All
+   * four still say F9. A paste on the instrument does not touch this field, so neither does a
+   * copy here.
+   *
+   * A move is the other case and does rewrite it — see `rearrange.ts`, which verifies it. The
+   * device has no move operation, so there is a hardware behaviour to match for a copy and none
+   * for a move.
+   */
   const { image: src, pattern } = dn1SourcePattern();
   const dest = dn1Destination(src);
   const landing = 120;
@@ -643,6 +650,8 @@ test("a merged pattern says it lives where it landed", { skip }, () => {
     source: src, patterns: [pattern], destination: dest, landing, confirmOverwrite: true,
   }).image;
 
-  const record = patternRecord(merged, landing, DN1_LAYOUT);
-  assert.equal(record[DN1_SPEC.pattern.slotIndexOffset], landing);
+  const was = patternRecord(src, pattern, DN1_LAYOUT)[DN1_SPEC.pattern.slotIndexOffset];
+  const now = patternRecord(merged, landing, DN1_LAYOUT)[DN1_SPEC.pattern.slotIndexOffset];
+  assert.equal(now, was, "the merge rewrote a field the instrument leaves alone");
+  assert.notEqual(now, landing, "and it is not the landing slot, which is the whole point");
 });

@@ -58,7 +58,10 @@ test("a copied pattern reproduces the source's trigs and notes", { skip }, () =>
 
   assert.equal(after.name, before.name);
   assert.equal(after.tempo, before.tempo);
-  assert.equal(after.slotIndex, 3, "the record should know its new slot");
+  // Not the destination. A pasted pattern on the instrument keeps naming the slot it came from,
+  // and DNX matches it — see the note in `expand/merge.ts` for the corpus evidence.
+  assert.equal(after.slotIndex, before.slotIndex,
+    "a copied pattern should still name the slot it came from, as a device paste does");
 
   for (let t = 0; t < 8; t++) {
     const a = before.tracks[t]!;
