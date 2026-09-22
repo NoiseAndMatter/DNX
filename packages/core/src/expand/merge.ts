@@ -34,6 +34,7 @@
  * their own tracks needs no pool at all.
  */
 
+import { type DeviceSpec, DN2_SPEC, poolSlotAt } from "../project/spec.js";
 import { type ConversionReport } from "./convert.js";
 import { convertProject } from "./convert.js";
 import { type ExpansionPlan } from "./types.js";
@@ -51,16 +52,10 @@ import {
   kitRecord,
   patternRecord,
 } from "../project/dn2image.js";
-import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "../project/dn2pattern.js";
-import {
-  DN2_POOL_OFFSET,
-  DN2_SOUND_SIZE,
-  POOL_SOUND_COUNT,
-  SOUND_NAME_OFFSET,
-  SOUND_NAME_SIZE,
-} from "../project/soundmap.js";
+import { soundLockedSlots } from "../project/dn2pattern.js";
+import { POOL_SOUND_COUNT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { patternName } from "../project/naming.js";
-import { DN2_DEVICE } from "../librarian/device.js";
+import { DN1_DEVICE, DN2_DEVICE } from "../librarian/device.js";
 
 /** No lock on this step. */
 const NO_LOCK = 0xff;
@@ -221,6 +216,10 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
         `DN2 patterns and a DN1 cannot receive them`,
     );
   }
+  // One spec for the whole merge, taken from the destination. A Digitone 1 source is converted
+  // into the destination's family before anything below reads a pool slot.
+  const spec = DN2_SPEC;
+
   const fromDn1 = fitsLayout(source, DN1_LAYOUT);
   const sourceKind = fromDn1 ? "dn1" : "dn2";
   if (!fromDn1 && !fitsLayout(source, DN2_LAYOUT)) {
@@ -276,7 +275,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
 
   const image = Uint8Array.from(destination);
 
-  const overwrites = landingSlots.filter((slot) => patternOccupied(destination, slot));
+  const overwrites = landingSlots.filter((slot) => patternOccupied(destination, spec, slot));
   if (overwrites.length > 0 && !options.confirmOverwrite) {
     // **States the fact, not the remedy.** This sentence is shown to a musician verbatim — the web
     // puts it straight into a dialog — and it used to end "pass confirmOverwrite to replace them",
@@ -316,21 +315,21 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   // refusing a whole merge over somebody's old untidiness. What it will not do is invent a sound.
   const outOfRange = [...seen].filter((slot) => slot >= POOL_SOUND_COUNT).sort((a, b) => a - b);
   const empty = [...seen].filter(
-    (slot) => slot < POOL_SOUND_COUNT && !poolSlotHoldsSound(converted, slot),
+    (slot) => slot < POOL_SOUND_COUNT && !poolSlotHoldsSound(converted, spec, slot),
   ).sort((a, b) => a - b);
   const needed = new Set(
-    [...seen].filter((slot) => slot < POOL_SOUND_COUNT && poolSlotHoldsSound(converted, slot)),
+    [...seen].filter((slot) => slot < POOL_SOUND_COUNT && poolSlotHoldsSound(converted, spec, slot)),
   );
 
   // --- place them ------------------------------------------------------------------------------
-  const free = freePoolSlots(destination);
+  const free = freePoolSlots(destination, spec);
   const pool: PoolPlacement[] = [];
   const dropped: number[] = [];
   const remap = new Map<number, number>();
 
   for (const from of [...needed].sort((a, b) => a - b)) {
-    const sound = poolSlot(converted, from);
-    const already = findIdenticalSound(destination, sound);
+    const sound = poolSlot(converted, spec, from);
+    const already = findIdenticalSound(destination, spec, sound);
     if (already !== undefined) {
       pool.push({ from, to: already, reused: true, name: soundName(sound) });
       remap.set(from, already);
@@ -341,7 +340,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
       dropped.push(from);
       continue;
     }
-    setPoolSlot(image, to, sound);
+    setPoolSlot(image, spec, to, sound);
     pool.push({ from, to, reused: false, name: soundName(sound) });
     remap.set(from, to);
   }
@@ -361,10 +360,10 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   let rerouted = 0;
   patterns.forEach((from, i) => {
     const to = landingSlots[i]!;
-    const pattern = Uint8Array.from(patternRecord(converted, from, DN2_LAYOUT));
-    rerouted += reroute(pattern, remap);
-    setPatternRecord(image, to, pattern);
-    setKitRecord(image, to, kitRecord(converted, from, DN2_LAYOUT));
+    const pattern = Uint8Array.from(patternRecord(converted, from, spec.layout));
+    rerouted += reroute(spec, pattern, remap);
+    setPatternRecord(image, spec, to, pattern);
+    setKitRecord(image, spec, to, kitRecord(converted, from, spec.layout));
   });
 
   // Conversion notes describe the DN1 to DN2 field mapping. Without a conversion there are none,
@@ -464,6 +463,13 @@ export function describeMerge(plan: MergePlan): string[] {
 }
 
 // --- pattern and pool access ----------------------------------------------------------------------
+//
+// Every one of these took the Digitone II's geometry as a given. They take a `DeviceSpec` now, and
+// the arithmetic is `poolSlotAt` in `project/spec.ts` rather than a second copy of it here.
+//
+// **One spec per merge, not two.** A Digitone 1 source is converted before any of this runs, so by
+// the time the pool is touched the source is already in the destination's family. That is what
+// makes a single `spec` correct rather than a simplification.
 
 /**
  * Re-point every lock through the map. Locks with no entry are left alone.
@@ -478,12 +484,13 @@ export function describeMerge(plan: MergePlan): string[] {
  * that has just been made, and altering both at once on the same inference is how a wrong
  * assumption gets twice as far. Worth revisiting with a round trip against the instrument.
  */
-function reroute(pattern: Uint8Array, remap: Map<number, number>): number {
+function reroute(spec: DeviceSpec, pattern: Uint8Array, remap: Map<number, number>): number {
+  const { trackOffset, trackSize, soundLockOffset, lockTrackCount } = spec.pattern;
   let changed = 0;
-  for (let t = 0; t < TRACK_COUNT; t++) {
-    const at = PATTERN.trackOffset + t * PATTERN.trackSize;
-    for (let step = 0; step < 128; step++) {
-      const i = at + TRACK.soundLockOffset + step;
+  for (let t = 0; t < lockTrackCount; t++) {
+    const at = trackOffset + t * trackSize;
+    for (let step = 0; step < spec.stepCount; step++) {
+      const i = at + soundLockOffset + step;
       const slot = pattern[i]!;
       if (slot === NO_LOCK) continue;
       const to = remap.get(slot);
@@ -495,17 +502,13 @@ function reroute(pattern: Uint8Array, remap: Map<number, number>): number {
   return changed;
 }
 
-function poolAt(slot: number): number {
-  return DN2_LAYOUT.tailBase + DN2_POOL_OFFSET + slot * DN2_SOUND_SIZE;
+function poolSlot(image: Uint8Array, spec: DeviceSpec, slot: number): Uint8Array {
+  const at = poolSlotAt(spec, slot);
+  return image.subarray(at, at + spec.sound.size);
 }
 
-function poolSlot(image: Uint8Array, slot: number): Uint8Array {
-  const at = poolAt(slot);
-  return image.subarray(at, at + DN2_SOUND_SIZE);
-}
-
-function setPoolSlot(image: Uint8Array, slot: number, sound: Uint8Array): void {
-  image.set(sound, poolAt(slot));
+function setPoolSlot(image: Uint8Array, spec: DeviceSpec, slot: number, sound: Uint8Array): void {
+  image.set(sound, poolSlotAt(spec, slot));
 }
 
 function soundName(sound: Uint8Array): string {
@@ -520,17 +523,17 @@ function soundName(sound: Uint8Array): string {
  * The same test `poolCoverage` uses, and for the same reason: a DN1's slots are all *framed*
  * whether or not they hold anything, so framing answers nothing and the name does.
  */
-function poolSlotHoldsSound(image: Uint8Array, slot: number): boolean {
-  const at = poolAt(slot) + SOUND_NAME_OFFSET;
+function poolSlotHoldsSound(image: Uint8Array, spec: DeviceSpec, slot: number): boolean {
+  const at = poolSlotAt(spec, slot) + SOUND_NAME_OFFSET;
   const name = image.subarray(at, at + SOUND_NAME_SIZE);
   return !name.every((b) => b === 0 || b === 0xff);
 }
 
 /** Free slots, ascending — so incoming sounds land after what is already there. */
-function freePoolSlots(image: Uint8Array): number[] {
+function freePoolSlots(image: Uint8Array, spec: DeviceSpec): number[] {
   const free: number[] = [];
   for (let slot = 0; slot < POOL_SOUND_COUNT; slot++) {
-    if (!poolSlotHoldsSound(image, slot)) free.push(slot);
+    if (!poolSlotHoldsSound(image, spec, slot)) free.push(slot);
   }
   return free;
 }
@@ -541,12 +544,12 @@ function freePoolSlots(image: Uint8Array): number[] {
  * Byte-identical only. A looser test — same name, say — would collapse two sounds a musician
  * deliberately kept apart, and the cost of missing a match is one duplicated pool slot out of 128.
  */
-function findIdenticalSound(image: Uint8Array, sound: Uint8Array): number | undefined {
+function findIdenticalSound(image: Uint8Array, spec: DeviceSpec, sound: Uint8Array): number | undefined {
   for (let slot = 0; slot < POOL_SOUND_COUNT; slot++) {
-    if (!poolSlotHoldsSound(image, slot)) continue;
-    const existing = poolSlot(image, slot);
+    if (!poolSlotHoldsSound(image, spec, slot)) continue;
+    const existing = poolSlot(image, spec, slot);
     let same = true;
-    for (let i = 0; i < DN2_SOUND_SIZE; i++) {
+    for (let i = 0; i < spec.sound.size; i++) {
       if (existing[i] !== sound[i]) { same = false; break; }
     }
     if (same) return slot;
@@ -557,18 +560,19 @@ function findIdenticalSound(image: Uint8Array, sound: Uint8Array): number | unde
 /**
  * Whether a destination slot already holds a pattern.
  *
- * `DN2_DEVICE.summarise` already answers this, and the manager's grid has been showing it on
+ * `Device.summarise` already answers this, and the manager's grid has been showing it on
  * hardware-verified data for weeks. A second implementation here would be a second opinion about
  * what "occupied" means, and the two would disagree the first time either changed.
  */
-function patternOccupied(image: Uint8Array, slot: number): boolean {
-  return DN2_DEVICE.summarise(image, slot).occupied === true;
+function patternOccupied(image: Uint8Array, spec: DeviceSpec, slot: number): boolean {
+  const device = spec.kind === "dn1" ? DN1_DEVICE : DN2_DEVICE;
+  return device.summarise(image, slot).occupied === true;
 }
 
-function setPatternRecord(image: Uint8Array, slot: number, pattern: Uint8Array): void {
-  image.set(pattern, DN2_LAYOUT.headerSize + slot * DN2_LAYOUT.patternSize);
+function setPatternRecord(image: Uint8Array, spec: DeviceSpec, slot: number, pattern: Uint8Array): void {
+  image.set(pattern, spec.layout.headerSize + slot * spec.layout.patternSize);
 }
 
-function setKitRecord(image: Uint8Array, slot: number, kit: Uint8Array): void {
-  image.set(kit, DN2_LAYOUT.kitBase + slot * DN2_LAYOUT.kitSize);
+function setKitRecord(image: Uint8Array, spec: DeviceSpec, slot: number, kit: Uint8Array): void {
+  image.set(kit, spec.layout.kitBase + slot * spec.layout.kitSize);
 }
