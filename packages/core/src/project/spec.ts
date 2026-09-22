@@ -46,10 +46,14 @@ import {
   PATTERN as DN1_PATTERN,
   RECORD_VERSION as DN1_PATTERN_VERSION,
   RECORD_VERSIONS as DN1_PATTERN_VERSIONS,
+  SYNTH_TRACK_COUNT as DN1_SYNTH_TRACK_COUNT,
+  TRACK as DN1_TRACK,
 } from "./dn1.js";
 import {
   PATTERN as DN2_PATTERN,
   RECORD_VERSION as DN2_PATTERN_VERSION,
+  TRACK as DN2_TRACK,
+  TRACK_COUNT as DN2_TRACK_COUNT,
 } from "./dn2pattern.js";
 import {
   DN1_POOL_OFFSET,
@@ -87,6 +91,27 @@ export interface PatternSpec {
   slotIndexOffset: number;
   /** The 16-byte name the device's RENAME screen writes. */
   nameOffset: number;
+
+  /**
+   * Where a track record sits inside a pattern record, and how far apart they are.
+   *
+   * Here because copying a pattern between projects has to reach a track's sound locks on either
+   * machine, and the two families keep these constants in two different modules — `dn1.ts` and
+   * `dn2pattern.ts`. That is the shape that lets a caller pick one and quietly run it over the
+   * other's bytes, which is confident nonsense rather than an error.
+   */
+  trackOffset: number;
+  trackSize: number;
+  /** Where a track's per-step sound-lock bytes begin, relative to the track record. */
+  soundLockOffset: number;
+  /**
+   * Tracks whose steps can carry a sound lock, counted from track 0.
+   *
+   * Not every track. A Digitone 1 pattern has eight and only the four synth tracks can lock a
+   * preset — a MIDI track has no sound to lock. Walking all eight finds bytes at that offset
+   * which mean something else entirely.
+   */
+  lockTrackCount: number;
 }
 
 /** Where a kit record keeps its name. Sizes and slot geometry live in `DN1_KIT` / `DN2_KIT`. */
@@ -148,6 +173,11 @@ export const DN1_SPEC: DeviceSpec = {
     writableVersions: DN1_PATTERN_VERSIONS,
     slotIndexOffset: DN1_PATTERN.slotIndexOffset,
     nameOffset: DN1_PATTERN.nameOffset,
+    trackOffset: DN1_PATTERN.trackOffset,
+    trackSize: DN1_PATTERN.trackSize,
+    soundLockOffset: DN1_TRACK.soundLockOffset,
+    // The four synth tracks. Its four MIDI tracks have no sound to lock.
+    lockTrackCount: DN1_SYNTH_TRACK_COUNT,
   },
   kit: { nameOffset: 4, nameSize: KIT_NAME_SIZE },
   sound: {
@@ -169,6 +199,11 @@ export const DN2_SPEC: DeviceSpec = {
     writableVersions: [DN2_PATTERN_VERSION],
     slotIndexOffset: DN2_PATTERN.slotIndexOffset,
     nameOffset: DN2_PATTERN.nameOffset,
+    trackOffset: DN2_PATTERN.trackOffset,
+    trackSize: DN2_PATTERN.trackSize,
+    soundLockOffset: DN2_TRACK.soundLockOffset,
+    // All sixteen. Every Digitone II track is a synth track.
+    lockTrackCount: DN2_TRACK_COUNT,
   },
   kit: { nameOffset: 8, nameSize: KIT_NAME_SIZE },
   sound: {
