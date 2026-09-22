@@ -1,10 +1,17 @@
 /**
- * Merging **selected** patterns into an existing Digitone II project, from either machine.
+ * Merging **selected** patterns into an existing project, in every direction that means anything.
  *
- * A Digitone 1 source is converted on the way in; a Digitone II source is already in the
- * destination's language and is taken as it stands. Everything after that is the same work, which
- * is why it is one function: keep the destination's pool, grow it, reuse what is already there,
- * and re-point every sound lock at wherever its sound landed.
+ * | from | into | what happens |
+ * |---|---|---|
+ * | Digitone 1 | Digitone II | converted on the way in, then merged |
+ * | Digitone II | Digitone II | merged as it stands |
+ * | Digitone 1 | Digitone 1 | merged as it stands |
+ * | Digitone II | Digitone 1 | refused — presets travel one way |
+ *
+ * A source in the destination's own family is already in its language and is taken as it stands;
+ * only a crossing needs converting. Everything after that is the same work, which is why it is
+ * one function: keep the destination's pool, grow it, reuse what is already there, and re-point
+ * every sound lock at wherever its sound landed.
  *
  * ## The other mode
  *
@@ -34,7 +41,8 @@
  * their own tracks needs no pool at all.
  */
 
-import { type DeviceSpec, DN2_SPEC, poolSlotAt } from "../project/spec.js";
+import { type DeviceSpec, DN1_SPEC, DN2_SPEC, poolSlotAt } from "../project/spec.js";
+import { readPattern as readDn1Pattern } from "../project/dn1.js";
 import { type ConversionReport } from "./convert.js";
 import { convertProject } from "./convert.js";
 import { type ExpansionPlan } from "./types.js";
@@ -210,18 +218,34 @@ export interface MergeNote {
 export function planPatternMerge(options: MergeOptions): MergePlan {
   const { source, destination, patterns, landing } = options;
 
-  if (!fitsLayout(destination, DN2_LAYOUT)) {
+  const intoDn1 = fitsLayout(destination, DN1_LAYOUT);
+  if (!intoDn1 && !fitsLayout(destination, DN2_LAYOUT)) {
     throw new MergeRefused(
-      `the destination is ${destination.length} bytes, not a Digitone II image — a merge writes ` +
-        `DN2 patterns and a DN1 cannot receive them`,
+      `the destination is ${destination.length} bytes, which is neither a Digitone 1 image ` +
+        `(${DN1_LAYOUT.imageSizes.join(" or ")}) nor a Digitone II one ` +
+        `(${DN2_LAYOUT.imageSizes.join(" or ")})`,
     );
   }
-  // One spec for the whole merge, taken from the destination. A Digitone 1 source is converted
+  // One spec for the whole merge, taken from the destination. A crossing source is converted
   // into the destination's family before anything below reads a pool slot.
-  const spec = DN2_SPEC;
+  const spec = intoDn1 ? DN1_SPEC : DN2_SPEC;
 
   const fromDn1 = fitsLayout(source, DN1_LAYOUT);
   const sourceKind = fromDn1 ? "dn1" : "dn2";
+  if (!fromDn1 && intoDn1) {
+    /*
+     * **Presets travel one way, and this is where that is enforced for patterns.**
+     *
+     * A Digitone II pattern has sixteen tracks against four, a different record entirely, and
+     * presets a Digitone 1 has no machine for. There is no conversion in this direction and
+     * inventing one would mean deciding which twelve tracks to discard — a decision belonging to
+     * whoever wrote the music, not to a copy.
+     */
+    throw new MergeRefused(
+      "a Digitone II pattern cannot be merged into a Digitone 1 project. Sixteen tracks do not " +
+        "fit in four, and the presets have no machine to play them on. Nothing was changed.",
+    );
+  }
   if (!fromDn1 && !fitsLayout(source, DN2_LAYOUT)) {
     throw new MergeRefused(
       `the source is ${source.length} bytes, which is neither a Digitone 1 image ` +
@@ -243,8 +267,8 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
       throw new MergeRefused(`${p} is not a ${fromDn1 ? "Digitone 1" : "Digitone II"} pattern index`);
     }
   }
-  if (!Number.isInteger(landing) || landing < 0 || landing >= DN2_LAYOUT.patternCount) {
-    throw new MergeRefused(`${landing} is not a Digitone II pattern slot`);
+  if (!Number.isInteger(landing) || landing < 0 || landing >= spec.layout.patternCount) {
+    throw new MergeRefused(`${landing} is not a ${spec.name} pattern slot`);
   }
   // Refused rather than truncated. Dropping the tail of a selection is the kind of quiet
   // helpfulness that gets discovered three patterns later.
@@ -253,7 +277,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   // landing the two are different numbers, and the arithmetic version would both miss real
   // overflows and invent ones that are not there.
   const landingSlots = landingSlotsFor(patterns, landing, options.landingMode ?? DEFAULT_LANDING);
-  const refusal = landingRefusal(patterns, landingSlots, DN2_LAYOUT.patternCount);
+  const refusal = landingRefusal(patterns, landingSlots, spec.layout.patternCount);
   if (refusal) throw new MergeRefused(refusal);
 
   /*
@@ -262,13 +286,15 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
    * whole-project plan can hand track 9 to a sound used only in pattern 99 while a sound in these
    * four overflows. The caller may still supply its own plan; this is the default.
    *
-   * None of it applies to a Digitone II source. Its patterns are already DN2 patterns, so
-   * `converted` is the source itself and there is no report — the pool work below reads the same
-   * offsets either way, which is the whole reason one function serves both.
+   * None of it applies when the source is already in the destination's family. Its patterns are
+   * already the right patterns, so `converted` is the source itself and there is no report — the
+   * pool work below reads the spec's offsets either way, which is the whole reason one function
+   * serves every direction.
    */
+  const crossing = fromDn1 && !intoDn1;
   let converted = source;
   let report: ConversionReport | undefined;
-  if (fromDn1) {
+  if (crossing) {
     const plan = options.plan ?? planExpansion(source, { patterns: [...patterns].sort((a, b) => a - b) });
     ({ image: converted, report } = convertProject(source, destination, { plan }));
   }
@@ -302,7 +328,7 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   // sounds nothing points at.
   const seen = new Set<number>();
   for (const p of patterns) {
-    for (const slot of soundLockedSlots(patternRecord(converted, p, DN2_LAYOUT))) seen.add(slot);
+    for (const slot of lockedSlots(converted, spec, p)) seen.add(slot);
   }
 
   // **A lock can point at a slot that is not there.** Found by the round-trip test: merging the
@@ -362,6 +388,18 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
     const to = landingSlots[i]!;
     const pattern = Uint8Array.from(patternRecord(converted, from, spec.layout));
     rerouted += reroute(spec, pattern, remap);
+    /*
+     * **The record states the slot it believes it occupies, and a merge moves it.**
+     *
+     * Left alone until 2026-09-22, so every merged pattern claimed its *source* slot: take
+     * pattern 2 into slot 100 and the record still said 2. `rearrange.ts` rewrites this on every
+     * move and says why — a pattern that disagrees about where it lives is one the device has to
+     * meet — and `librarian/copy.ts` has always rewritten it too.
+     *
+     * Found by running both engines over the same corpus inputs: across a 2.78 MB image they
+     * agreed on every byte but this one.
+     */
+    pattern[spec.pattern.slotIndexOffset] = to;
     setPatternRecord(image, spec, to, pattern);
     setKitRecord(image, spec, to, kitRecord(converted, from, spec.layout));
   });
@@ -500,6 +538,25 @@ function reroute(spec: DeviceSpec, pattern: Uint8Array, remap: Map<number, numbe
     }
   }
   return changed;
+}
+
+/**
+ * Pool slots the trigs of one pattern lock, read the way each family's own reader reads them.
+ *
+ * **Dispatched rather than unified.** Both readers count a lock only where a trig exists, and that
+ * gate is the reason they are trustworthy: walking every step reports slot 0 and slot 161 locked
+ * by all 128 patterns of every corpus project, which is unset memory rather than music. But the
+ * two families decide "is there a trig here" from different bytes, and writing a third reader
+ * over the spec would be inferring that gate rather than reusing two that are already proven.
+ */
+function lockedSlots(image: Uint8Array, spec: DeviceSpec, index: number): Set<number> {
+  if (spec.kind === "dn2") return soundLockedSlots(patternRecord(image, index, spec.layout));
+  const out = new Set<number>();
+  for (const track of readDn1Pattern(image, index).tracks) {
+    if (track.index >= spec.synthTrackCount) continue;
+    for (const trig of track.trigs) if (trig.soundLock !== undefined) out.add(trig.soundLock);
+  }
+  return out;
 }
 
 function poolSlot(image: Uint8Array, spec: DeviceSpec, slot: number): Uint8Array {

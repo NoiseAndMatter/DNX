@@ -11,7 +11,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { DN1_LAYOUT, DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { DN1_SPEC } from "@noiseandmatter/dnx-core/project/spec.js";
+import { applyPatternCopy, planPatternCopy } from "@noiseandmatter/dnx-core/librarian/copy.js";
 import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
 import { MergeRefused, describeMerge, planPatternMerge } from "@noiseandmatter/dnx-core/expand/merge.js";
@@ -255,10 +257,19 @@ test("a selection running past the last slot is refused, not truncated", { skip 
   );
 });
 
-test("a Digitone 1 destination is refused", { skip }, () => {
+test("a Digitone II pattern is refused a Digitone 1 destination", { skip }, () => {
+  /*
+   * The one direction that stays refused. Sixteen tracks do not fit in four, and the presets have
+   * no machine to play them on — there is no conversion, and inventing one would mean deciding
+   * which twelve tracks to discard, which belongs to whoever wrote the music.
+   *
+   * This test used to say "a Digitone 1 destination is refused", which was the limitation rather
+   * than the rule. A Digitone 1 destination is fine; a Digitone II *source* for it is not.
+   */
+  const { image: dn2 } = dn2Source();
   assert.throws(
-    () => planPatternMerge({ source: source(), patterns: [0], destination: source(), landing: 0 }),
-    /not a Digitone II image/,
+    () => planPatternMerge({ source: dn2, patterns: [0], destination: source(), landing: 0 }),
+    (error: unknown) => error instanceof MergeRefused && /Sixteen tracks do not fit in four/.test(String(error)),
   );
 });
 
@@ -555,4 +566,83 @@ test("a source that is neither machine's image is refused by size", { skip }, ()
     }),
     (error: unknown) => error instanceof MergeRefused && /neither a Digitone 1/.test(String(error)),
   );
+});
+
+// --- Digitone 1 into Digitone 1: the same answer as the engine it replaces --------------------------
+
+/** A DN1 project and a pattern in it whose trigs lock a preset that exists. */
+function dn1SourcePattern(): { image: Uint8Array; pattern: number } {
+  for (const path of corpusFiles("01_DN1/01_Projects", ".dnprj")) {
+    const image = imageOf(path);
+    for (let p = 0; p < 128; p++) {
+      const plan = planPatternCopy(image, p, image, p);
+      if (plan.soundMoves.length > 0) return { image, pattern: p };
+    }
+  }
+  throw new Error("no DN1 project in the corpus has a pattern locking a preset that exists");
+}
+
+/** A different DN1 project, to merge into. */
+function dn1Destination(source: Uint8Array): Uint8Array {
+  for (const path of corpusFiles("01_DN1/01_Projects", ".dnprj")) {
+    const image = imageOf(path);
+    if (image.length !== source.length) continue;
+    let same = true;
+    for (let i = 0; i < image.length; i += 4096) {
+      if (image[i] !== source[i]) { same = false; break; }
+    }
+    if (!same) return image;
+  }
+  throw new Error("only one distinct DN1 project in the corpus");
+}
+
+test("a Digitone 1 merge matches applyPatternCopy byte for byte", { skip }, () => {
+  /*
+   * **The test that lets `librarian/copy.ts` be retired.**
+   *
+   * `copy.ts` is the engine that was validated on hardware: a pattern copied into another project
+   * loaded and played, carrying exactly the four sounds it needed. Replacing it with a path that
+   * merely looks equivalent would throw that evidence away. So the two run on the same corpus
+   * inputs and the images must come out identical — not similar, identical.
+   *
+   * Once this holds, the hardware evidence transfers, because the bytes are the same bytes.
+   */
+  const { image: src, pattern } = dn1SourcePattern();
+  const dest = dn1Destination(src);
+  const landing = 127;
+
+  const copied = applyPatternCopy(src, pattern, dest, landing).image;
+  const merged = planPatternMerge({
+    source: src, patterns: [pattern], destination: dest, landing, confirmOverwrite: true,
+  }).image;
+
+  assert.equal(merged.length, copied.length, "the two engines disagree about the image size");
+
+  const differ: number[] = [];
+  for (let i = 0; i < copied.length; i++) {
+    if (copied[i] !== merged[i] && differ.push(i) >= 8) break;
+  }
+  assert.deepEqual(
+    differ,
+    [],
+    `the two engines wrote different bytes, first at ${differ[0]} ` +
+      `(copy ${copied[differ[0]!]}, merge ${merged[differ[0]!]})`,
+  );
+});
+
+test("a merged pattern says it lives where it landed", { skip }, () => {
+  // The record carries the slot it believes it occupies. `rearrange.ts` rewrites it on every move
+  // and says why: a pattern that disagrees about where it lives is one the device has to meet.
+  // The merge landed patterns without touching it, so a merged pattern claimed its source slot.
+  const { image: src, pattern } = dn1SourcePattern();
+  const dest = dn1Destination(src);
+  const landing = 120;
+  assert.notEqual(pattern, landing, "the source and landing slots must differ for this to mean anything");
+
+  const merged = planPatternMerge({
+    source: src, patterns: [pattern], destination: dest, landing, confirmOverwrite: true,
+  }).image;
+
+  const record = patternRecord(merged, landing, DN1_LAYOUT);
+  assert.equal(record[DN1_SPEC.pattern.slotIndexOffset], landing);
 });
