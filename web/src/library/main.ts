@@ -25,38 +25,38 @@
  * offsets over DN1 bytes.
  */
 
-import { auditPool, describePoolAudit, type PoolAudit } from "../../../src/librarian/poolaudit.js";
-import { BANKS } from "../../../src/project/naming.js";
+import { auditPool, describePoolAudit, type PoolAudit } from "@noiseandmatter/dnx-core/librarian/poolaudit.js";
+import { BANKS } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
   type LibraryBank,
   type LibraryKind,
   listLibraryBank,
   readLibraryObject,
-} from "../../../src/device/library.js";
+} from "@noiseandmatter/dnx-core/device/library.js";
 import {
   applyAddPreset,
   describeAddPreset,
   planAddPreset,
-} from "../../../src/librarian/poolwrite.js";
+} from "@noiseandmatter/dnx-core/librarian/poolwrite.js";
 import {
   applyLoadKit,
   describeLoadKit,
   planLoadKit,
   readPatternKitName,
-} from "../../../src/librarian/kitwrite.js";
-import { summariseTracks } from "../../../src/librarian/tracksummary.js";
-import { patternName } from "../../../src/project/naming.js";
+} from "@noiseandmatter/dnx-core/librarian/kitwrite.js";
+import { summariseTracks } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { patternSlotView } from "../slotview.js";
 import { buildProjectBlob } from "../project.js";
 import { saveFile, savedTone, whereSaved } from "../dnxfolder.js";
-import { deviceFor } from "../../../src/librarian/device.js";
-import { ProductId } from "../../../src/sysex/devices.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { $, escapeHtml } from "../dom.js";
 import { GridDrag, type GridDropHint, renderGrid, type SlotView } from "../grid.js";
 import { statusBar } from "../statusbar.js";
 import { readDriveSlot } from "../drivepicker.js";
 import { describeBytes, progressBar } from "../progress.js";
-import { Session, tag } from "../../../src/librarian/session.js";
+import { Session, tag } from "@noiseandmatter/dnx-core/librarian/session.js";
 import {
   type HistoryElements,
   goToHistoryPoint,
@@ -75,7 +75,7 @@ import {
 import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
 import { renamePresetOnDrive } from "./renamepreset.js";
-import { NAME_SIZE } from "../../../src/librarian/rename.js";
+import { NAME_SIZE } from "@noiseandmatter/dnx-core/librarian/rename.js";
 import {
   type BankCache,
   type CacheDecision,
@@ -88,7 +88,7 @@ import {
   remember,
   rememberListing,
 } from "./bankcache.js";
-import { type TagName } from "../../../src/project/tags.js";
+import { type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
 import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { renderToolNav } from "../toolnav.js";
 import { openProject, type LoadedProject } from "../project.js";
@@ -99,7 +99,7 @@ import {
   listDeviceProjects,
   openDeviceProject,
 } from "../devicesource.js";
-import { type DriveProject } from "../../../src/device/drive.js";
+import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { chooseDevice, devicePicker } from "../choosedevice.js";
 
 const status = statusBar();

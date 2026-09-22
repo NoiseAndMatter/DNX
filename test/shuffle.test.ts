@@ -44,7 +44,7 @@ import {
   sourceOf,
   swap,
   touchedSlots,
-} from "../src/librarian/shuffle.js";
+} from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 test("an untouched slot keeps its contents, and an emptied one is not the same thing", () => {
   const s = move(3, 7);

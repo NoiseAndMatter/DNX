@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodeMessage } from "../src/device/api.js";
+import { decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
 import {
   FREEZES,
   STORED_FORM,
@@ -16,7 +16,7 @@ import {
   writeChunkRequest,
   writeCloseRequest,
   writeOpenRequest,
-} from "../src/device/storage.js";
+} from "@noiseandmatter/dnx-core/device/storage.js";
 
 /** Bytes exactly as a Digitone 1 sent them, transcribed from the Transfer capture. */
 const bytes = (hex: string): Uint8Array =>

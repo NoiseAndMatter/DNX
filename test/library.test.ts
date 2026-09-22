@@ -15,9 +15,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
-import { decodeMessage } from "../src/device/api.js";
-import { parseListing } from "../src/device/storage.js";
-import { BANKS } from "../src/project/naming.js";
+import { decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { parseListing } from "@noiseandmatter/dnx-core/device/storage.js";
+import { BANKS } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
   BANK_SIZE,
   LIBRARY_ROOT,
@@ -25,20 +25,20 @@ import {
   describeBank,
   objectInStoredBody,
   slotPath,
-} from "../src/device/library.js";
+} from "@noiseandmatter/dnx-core/device/library.js";
 import {
   DN1_SOUND_SIZE,
   DN2_SOUND_SIZE,
   SOUND_NAME_OFFSET,
   SOUND_NAME_SIZE,
-} from "../src/project/soundmap.js";
-import { decodeTags } from "../src/project/tags.js";
+} from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { decodeTags } from "@noiseandmatter/dnx-core/project/tags.js";
 import {
   HEAD_LENGTH_MINIMUM,
   LENGTH_BIAS,
   fileLengthFromHead,
   parsePayload,
-} from "../src/project/container.js";
+} from "@noiseandmatter/dnx-core/project/container.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 

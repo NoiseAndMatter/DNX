@@ -3,7 +3,7 @@
  * tracks are holding them.
  */
 
-import { gateLabel, masterOffset, masterPeriod, trackLabel, type AnalysisTrack } from "../../../../src/analysis/model.js";
+import { gateLabel, masterOffset, masterPeriod, trackLabel, type AnalysisTrack } from "@noiseandmatter/dnx-core/analysis/model.js";
 import { T, W, GRID_OP, machineVar } from "./theme.js";
 import { tip, svg, barGrid, barAxis, rowLabel } from "./svg.js";
 

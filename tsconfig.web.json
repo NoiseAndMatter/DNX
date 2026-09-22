@@ -15,7 +15,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "web/src/**/*.ts"
+    "web/src/**/*.ts",
+    "packages/core/src/**/*.ts"
   ],
   // Two directories, not a list of files. The three Node-only modules used to be named here one
   // by one, so adding a fourth meant remembering to come back — and forgetting would have dragged

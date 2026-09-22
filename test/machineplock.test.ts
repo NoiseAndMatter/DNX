@@ -22,8 +22,8 @@ import {
   WAVETONE_PLOCKS,
   isMachineRelative,
   machinePlock,
-} from "../src/project/machineplock.js";
-import { PLOCK_PARAMETERS } from "../src/project/plockparams.js";
+} from "@noiseandmatter/dnx-core/project/machineplock.js";
+import { PLOCK_PARAMETERS } from "@noiseandmatter/dnx-core/project/plockparams.js";
 
 test("every shared id between FM TONE and WAVETONE names a different parameter", () => {
   const fm = new Map(FM_TONE_PLOCKS.map((p) => [p.id, p]));

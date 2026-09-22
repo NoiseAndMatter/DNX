@@ -41,8 +41,8 @@
  *   never quietly authorise overwriting `A9`.
  */
 
-import { type ExpansionPlan } from "../../../src/expand/types.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../../../src/expand/plan.js";
+import { type ExpansionPlan } from "@noiseandmatter/dnx-core/expand/types.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
 import {
   MergeRefused,
   describeMerge,
@@ -50,12 +50,12 @@ import {
   type MergeNote,
   type MergePlan,
   type RefusalKind,
-} from "../../../src/expand/merge.js";
-import { describeDeviceExpand, planDeviceExpand } from "../../../src/expand/deviceexpand.js";
-import { type LandingMode, describeLanding } from "../../../src/expand/landing.js";
-import { readProjectName } from "../../../src/project/dn1.js";
-import { deviceFor } from "../../../src/librarian/device.js";
-import { patternName, stampedProjectName as stampedName } from "../../../src/project/naming.js";
+} from "@noiseandmatter/dnx-core/expand/merge.js";
+import { describeDeviceExpand, planDeviceExpand } from "@noiseandmatter/dnx-core/expand/deviceexpand.js";
+import { type LandingMode, describeLanding } from "@noiseandmatter/dnx-core/expand/landing.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { patternName, stampedProjectName as stampedName } from "@noiseandmatter/dnx-core/project/naming.js";
 // **From `src/`, not from `../dom.js`.** `dom.ts` only re-exports this, and importing it here
 // would pull `HTMLElement` and `Blob` into anything that imports planning — which is how a Node
 // test of this module would start failing `tsc` on types it never asked for. That has happened

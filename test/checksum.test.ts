@@ -14,7 +14,7 @@ import {
   isCheckValid,
   readCheckField,
   stampCheckField,
-} from "../src/project/checksum.js";
+} from "@noiseandmatter/dnx-core/project/checksum.js";
 
 const EXAMPLES = CORPUS ?? "";
 

@@ -14,18 +14,18 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { NO_CORPUS, SKIP_REASON, requireCorpusFile, DN1_PROJECTS, DN2_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { readSoundPool } from "../src/project/dn1.js";
-import { DN1_SOUND_SIZE, DN2_SOUND_SIZE, SOUND_NAME_OFFSET } from "../src/project/soundmap.js";
-import { MACHINE, SOUND_MACHINE_OFFSET } from "../src/project/machine.js";
-import { auditPool } from "../src/librarian/poolaudit.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { readSoundPool } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { DN1_SOUND_SIZE, DN2_SOUND_SIZE, SOUND_NAME_OFFSET } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { MACHINE, SOUND_MACHINE_OFFSET } from "@noiseandmatter/dnx-core/project/machine.js";
+import { auditPool } from "@noiseandmatter/dnx-core/librarian/poolaudit.js";
 import {
   PoolWriteError,
   applyAddPreset,
   describeAddPreset,
   planAddPreset,
-} from "../src/librarian/poolwrite.js";
+} from "@noiseandmatter/dnx-core/librarian/poolwrite.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 

@@ -330,7 +330,7 @@ before rearrange mode is offered.
 
 ### The tag table — DONE and verified
 
-`src/project/tags.ts`. Names come from `ashojaeddini/digitools`, checked against 541
+`packages/core/src/project/tags.ts`. Names come from `ashojaeddini/digitools`, checked against 541
 distinct named sounds from the 53 projects using sound names as an independent signal:
 KICK 45/45, SNAR 39/39, PAD 13/13, LEAD 4/4, ARP 1/1, BASS 39/40, HHAT 30/31, PERC 34/36.
 The two near-misses were probe false positives ("THAT ORGAN SM" contains HAT; "SUB KICK FP"
@@ -412,7 +412,7 @@ Two callers depend on it:
   track, whose DN2 equivalent is FM TONE, and MIDI tracks map to MIDI tracks. The full
   302-byte to 359-byte sound field mapping is derived and reproduces Elektron's own
   conversion byte-for-byte on all 5,760 available sound pairs. See `docs/sound-mapping.md`
-  and `src/project/soundmap.ts`. Residual risk is confined to a handful of fields that never
+  and `packages/core/src/project/soundmap.ts`. Residual risk is confined to a handful of fields that never
   vary in the corpus and are flagged as inferred rather than verified;
   `convertDn1SoundToDn2Detailed` returns per-field warnings so the expander can refuse or
   flag rather than silently write a guess to hardware.

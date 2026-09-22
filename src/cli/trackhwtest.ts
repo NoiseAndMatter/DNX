@@ -29,10 +29,10 @@ import { cliArgs, fail } from "./args.js";
 import { escapeHtml } from "../sheet/html.js";
 import { basename, join } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { DN2_LAYOUT, writeProjectName } from "../project/dn2image.js";
-import { readDn2Pattern } from "../project/dn2pattern.js";
-import { describePlock } from "../project/plockparams.js";
-import { hhmm, patternIndex, patternName } from "../project/naming.js";
+import { DN2_LAYOUT, writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readDn2Pattern } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { describePlock } from "@noiseandmatter/dnx-core/project/plockparams.js";
+import { hhmm, patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
   type ExportRow,
   type ExportSpec,
@@ -43,12 +43,12 @@ import {
   verdictCell,
 } from "../sheet/resultsform.js";
 import { renderSheetPage } from "../sheet/page.js";
-import { type Device } from "../librarian/device.js";
+import { type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { OpenError, openProject } from "../node/open.js";
-import { applyRearrange } from "../librarian/rearrange.js";
-import { copyMany, keepOnly } from "../librarian/shuffle.js";
-import { applyTrackMove, verifyTrackMove } from "../librarian/trackmove.js";
-import { type TrackSummary, summariseTracks, trackName } from "../librarian/tracksummary.js";
+import { applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
+import { copyMany, keepOnly } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { applyTrackMove, verifyTrackMove } from "@noiseandmatter/dnx-core/librarian/trackmove.js";
+import { type TrackSummary, summariseTracks, trackName } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
 import {
   FIRST_STEP,
   QUIET_FAILURES,

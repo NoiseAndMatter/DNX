@@ -13,11 +13,11 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { PresetRenameError, renamePresetFile, storedPresetName } from "../src/device/presetrename.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { buildPayload } from "../src/project/write.js";
-import { parsePayload } from "../src/project/container.js";
-import { isCheckValid } from "../src/project/checksum.js";
+import { PresetRenameError, renamePresetFile, storedPresetName } from "@noiseandmatter/dnx-core/device/presetrename.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { isCheckValid } from "@noiseandmatter/dnx-core/project/checksum.js";
 import { CORPUS } from "./corpus.js";
 
 /** A stored preset built the way the device lays one out: prefix, then a named sound object. */

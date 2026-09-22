@@ -21,9 +21,9 @@ import { CORPUS } from "./corpus.js";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN2_LAYOUT, patternRecord } from "../src/project/dn2image.js";
-import { patternRecord as dn1PatternRecord, readLockTable as dn1ReadLockTable, readPattern } from "../src/project/dn1.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { patternRecord as dn1PatternRecord, readLockTable as dn1ReadLockTable, readPattern } from "@noiseandmatter/dnx-core/project/dn1.js";
 import {
   PATTERN,
   STEP_COUNT,
@@ -33,7 +33,7 @@ import {
   readDn2Pattern,
   readMidiTrackMask,
   readTrigSlots,
-} from "../src/project/dn2pattern.js";
+} from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 
 const EXAMPLES = CORPUS ?? "";
 const DN1_DIR = `${EXAMPLES}01_DN1/01_Projects/`;

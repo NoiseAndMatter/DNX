@@ -5,22 +5,17 @@
     "lib": ["ES2022"],
     "types": []
   },
-  // The future platform-free core, checked with no DOM and no Node. The only host globals it may
-  // use are declared in types/core-host.d.ts. `test/layers.test.ts` checks the same boundary
-  // from the import side.
+  // The platform-free core, checked with no DOM and no Node. The only host globals it may use are
+  // declared in types/core-host.d.ts. `test/layers.test.ts` checks the same boundary from the
+  // import side.
+  //
+  // **A whole package, with nothing excluded.** This used to point at `src/**` and then subtract
+  // the folders that were not core — first three directories, later two more and four files by
+  // name. The package boundary replaces the subtraction: everything under `packages/core` is core
+  // because that is what the directory is, and a file that does not belong is in the wrong repo
+  // folder rather than missing from a list.
   "include": [
     "types/core-host.d.ts",
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    // These stay in DNX when the core is extracted.
-    "src/node/**/*.ts",
-    "src/cli/**/*.ts",
-    "src/sheet/**/*.ts",
-    // Research and hardware-test tooling. Folders rather than a list of files: this named four
-    // files until they were moved out of `device/` and `librarian/`, and a list is a thing to
-    // forget to add to.
-    "src/research/**/*.ts",
-    "src/hardwaretest/**/*.ts"
+    "packages/core/src/**/*.ts"
   ]
 }

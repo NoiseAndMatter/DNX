@@ -90,7 +90,7 @@ test("every API reply is counted where they all pass, not per page", () => {
    * instrument. Counting anywhere else means the page somebody forgets is the page running the
    * read that Transfer truncates.
    */
-  const link = readFileSync(join(ROOT, "src/device/link.ts"), "utf8");
+  const link = readFileSync(join(ROOT, "packages/core/src/device/link.ts"), "utf8");
   const start = link.indexOf("awaitApiFrame(");
   assert.ok(start > 0, "awaitApiFrame has been renamed; this check no longer guards anything");
   assert.match(link.slice(start, start + 900), /noteReply\?\.\(frame\.respId\)/);

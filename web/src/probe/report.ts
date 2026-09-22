@@ -28,8 +28,8 @@
  * that line it reads as 124 things going wrong rather than as a device with four sounds.
  */
 
-import { type ReadReport, stepsToRetry } from "../../../src/device/dumpreader.js";
-import { hex } from "../../../src/device/capabilities.js";
+import { type ReadReport, stepsToRetry } from "@noiseandmatter/dnx-core/device/dumpreader.js";
+import { hex } from "@noiseandmatter/dnx-core/device/capabilities.js";
 
 /**
  * The read report as title-and-value rows, in the order they should be read.

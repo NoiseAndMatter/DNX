@@ -30,8 +30,8 @@
  * module renders what it is handed, which is what lets it be tested without a browser.
  */
 
-import { type Song, type SongRow, LABELS, LIMITS, mutedTracks } from "../../../src/project/dn2song.js";
-import { patternName } from "../../../src/project/naming.js";
+import { type Song, type SongRow, LABELS, LIMITS, mutedTracks } from "@noiseandmatter/dnx-core/project/dn2song.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 /**
  * The drag controller, reduced to what a song row needs.

@@ -17,12 +17,12 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { parseFile } from "../sysex/container.js";
-import { PATTERN_PAYLOAD_SIZE, describeOffset } from "../project/locate.js";
+import { parseFile } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { PATTERN_PAYLOAD_SIZE, describeOffset } from "@noiseandmatter/dnx-core/project/locate.js";
 import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { patternAsSysexPayload } from "../project/dn2image.js";
-import { patternIndex, patternName } from "../project/naming.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { patternAsSysexPayload } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 interface Change {
   offset: number;

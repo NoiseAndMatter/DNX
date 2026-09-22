@@ -9,10 +9,10 @@
  * Everything is re-exported under its old name, so the manager's import did not change.
  */
 
-import { backupDevice as readBackup, type BackupHost } from "../../src/device/backup.js";
+import { backupDevice as readBackup, type BackupHost } from "@noiseandmatter/dnx-core/device/backup.js";
 import { type ConnectedDevice } from "./devicesource.js";
-import { type BackupOptions } from "../../src/device/backup.js";
-import { type DeviceBackup } from "../../src/project/dnxfile.js";
+import { type BackupOptions } from "@noiseandmatter/dnx-core/device/backup.js";
+import { type DeviceBackup } from "@noiseandmatter/dnx-core/project/dnxfile.js";
 import { projectFile } from "./dnxfile.js";
 import { pageMessageIds } from "./messageids.js";
 
@@ -21,7 +21,7 @@ export {
   type BackupOptions,
   type BackupProgress,
   type BackupStage,
-} from "../../src/device/backup.js";
+} from "@noiseandmatter/dnx-core/device/backup.js";
 
 /**
  * This page's host services, as one object.

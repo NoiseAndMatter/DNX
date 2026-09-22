@@ -25,15 +25,15 @@ import { ROOT, repoPath } from "./importgraph.js";
 
 /** Each name, and the one file allowed to declare it. */
 const HOMES: Record<string, string> = {
-  BANKS: "src/project/naming.ts",
-  PATTERNS_PER_BANK: "src/project/naming.ts",
-  SOUND_NAME_OFFSET: "src/project/soundmap.ts",
-  SOUND_NAME_SIZE: "src/project/soundmap.ts",
-  POOL_SOUND_COUNT: "src/project/soundmap.ts",
-  KIT_NAME_SIZE: "src/project/spec.ts",
-  CONTAINER_SLOT_OFFSET: "src/project/container.ts",
+  BANKS: "packages/core/src/project/naming.ts",
+  PATTERNS_PER_BANK: "packages/core/src/project/naming.ts",
+  SOUND_NAME_OFFSET: "packages/core/src/project/soundmap.ts",
+  SOUND_NAME_SIZE: "packages/core/src/project/soundmap.ts",
+  POOL_SOUND_COUNT: "packages/core/src/project/soundmap.ts",
+  KIT_NAME_SIZE: "packages/core/src/project/spec.ts",
+  CONTAINER_SLOT_OFFSET: "packages/core/src/project/container.ts",
   // The +Drive library's bank sizes (256 presets, 128 kits). A pattern bank is `PATTERNS_PER_BANK`.
-  BANK_SIZE: "src/device/library.ts",
+  BANK_SIZE: "packages/core/src/device/library.ts",
 };
 
 /** Second names for a number that has a home. The pattern count is `ImageLayout.patternCount`. */
@@ -74,7 +74,11 @@ function declaredIn(path: string, source: string): string[] {
   return found;
 }
 
-const FILES = [...tsFiles(join(ROOT, "src")), ...tsFiles(join(ROOT, "web", "src"))];
+const FILES = [
+  ...tsFiles(join(ROOT, "packages", "core", "src")),
+  ...tsFiles(join(ROOT, "src")),
+  ...tsFiles(join(ROOT, "web", "src")),
+];
 
 /** name -> the files that declare it. */
 function declarations(): Map<string, string[]> {

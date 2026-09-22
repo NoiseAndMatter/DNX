@@ -15,8 +15,8 @@ import {
   INPUT_GATED_FIELDS,
   KIT_FX_CONSTANTS,
   KIT_FX_MAP,
-} from "../src/expand/fieldmap.js";
-import { KIT_FX_PARAMETERS, kitFxAt } from "../src/project/kitfx.js";
+} from "@noiseandmatter/dnx-core/expand/fieldmap.js";
+import { KIT_FX_PARAMETERS, kitFxAt } from "@noiseandmatter/dnx-core/project/kitfx.js";
 
 /** `min(floor(dn1 x 25600 / 127), 25599)` — a 0-127 source on a 0-100 scale in 1/256 steps. */
 function rescale(dn1: number): number {

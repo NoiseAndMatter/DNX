@@ -33,7 +33,7 @@ import { type DropAction, type DropModifiers } from "./dropaction.js";
 // here and there is no reason to make them learn a second path.
 import { type SlotView } from "./slotview.js";
 export { type SlotView };
-import { BANKS, PATTERNS_PER_BANK } from "../../src/project/naming.js";
+import { BANKS, PATTERNS_PER_BANK } from "@noiseandmatter/dnx-core/project/naming.js";
 
 /** Where a drag came from. `grid` identifies which grid, so a cross-grid drop can be judged. */
 export interface DragFrom {

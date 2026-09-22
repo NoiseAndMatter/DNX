@@ -22,29 +22,29 @@
  * the only copy of that work, and an undo they have to discover after the fact is not consent.
  */
 
-import { deviceFor, type Device } from "../../../src/librarian/device.js";
-import { type DriveProject } from "../../../src/device/drive.js";
-import { ProductId } from "../../../src/sysex/devices.js";
-import { planRearrange, applyRearrange } from "../../../src/librarian/rearrange.js";
+import { deviceFor, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { planRearrange, applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
 import {
   NAME_SIZE,
   applyRename,
   planRename,
   readPatternName,
   verifyRename,
-} from "../../../src/librarian/rename.js";
-import { clear, copyMany, moveMany, swap, type Shuffle } from "../../../src/librarian/shuffle.js";
-import { applyOperation, planOperation } from "../../../src/librarian/operation.js";
-import { Session, tag } from "../../../src/librarian/session.js";
+} from "@noiseandmatter/dnx-core/librarian/rename.js";
+import { clear, copyMany, moveMany, swap, type Shuffle } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
+import { applyOperation, planOperation } from "@noiseandmatter/dnx-core/librarian/operation.js";
+import { Session, tag } from "@noiseandmatter/dnx-core/librarian/session.js";
 import {
   applyTrackMove,
   planTrackMove,
   type TrackScope,
   verifyTrackMove,
-} from "../../../src/librarian/trackmove.js";
-import { TRACK_COUNT as DN2_TRACK_COUNT } from "../../../src/project/dn2pattern.js";
-import { summariseTracks, trackName } from "../../../src/librarian/tracksummary.js";
-import { patternName } from "../../../src/project/naming.js";
+} from "@noiseandmatter/dnx-core/librarian/trackmove.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { summariseTracks, trackName } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
   buildProjectBlob,
   openProject,
@@ -66,11 +66,11 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { chooseDevice, devicePicker } from "../choosedevice.js";
-import { recordWriteMessage } from "../../../src/device/safewrite.js";
+import { recordWriteMessage } from "@noiseandmatter/dnx-core/device/safewrite.js";
 import { projectSlotEntries, writeProjectToDrive } from "../driveproject.js";
-import { buildPayload } from "../../../src/project/write.js";
-import { type Song, readSongs, selectedSong } from "../../../src/project/dn2song.js";
-import { projectName, writeProjectName } from "../../../src/project/dn2image.js";
+import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
+import { type Song, readSongs, selectedSong } from "@noiseandmatter/dnx-core/project/dn2song.js";
+import { projectName, writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   SONG_GRID,
   describeSong,
@@ -93,9 +93,9 @@ import {
   setRowPattern,
   setSongTempo,
   toggleRowMute,
-} from "../../../src/librarian/songedit.js";
-import { END_LOOP, END_STOP } from "../../../src/project/dn2song.js";
-import { DN2_LAYOUT, layoutFor } from "../../../src/project/dn2image.js";
+} from "@noiseandmatter/dnx-core/librarian/songedit.js";
+import { END_LOOP, END_STOP } from "@noiseandmatter/dnx-core/project/dn2song.js";
+import { DN2_LAYOUT, layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
 import {
   type Level,
@@ -107,7 +107,7 @@ import {
 // Aliased: this module has its own `renderGrid`, which draws *the pattern bank* and then delegates
 // the cells. Two functions of that name in one file would be a coin toss every time it is read.
 import { GridDrag, bankCount, renderBanks, renderGrid as renderSlots } from "../grid.js";
-import { BANKS } from "../../../src/project/naming.js";
+import { BANKS } from "@noiseandmatter/dnx-core/project/naming.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
@@ -124,9 +124,9 @@ import { registerBackup } from "../settings.js";
 import { backupDevice } from "../backup.js";
 import { backupFileName, packBackup } from "../dnxfile.js";
 import { renderInsights, type InsightsRefusal } from "./insights.js";
-import { dn1PatternSubject } from "../../../src/analysis/dn1subject.js";
-import { patternSubject } from "../../../src/analysis/patternsubject.js";
-import { type AnalysisSubject } from "../../../src/analysis/model.js";
+import { dn1PatternSubject } from "@noiseandmatter/dnx-core/analysis/dn1subject.js";
+import { patternSubject } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
+import { type AnalysisSubject } from "@noiseandmatter/dnx-core/analysis/model.js";
 
 const status = statusBar();
 const progress = progressBar();

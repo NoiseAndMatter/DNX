@@ -36,9 +36,9 @@
  * audio: a step that moved the right bytes to the wrong slot fails visibly.
  */
 
-import { patternIndex, patternName } from "../project/naming.js";
-import { type Device } from "../librarian/device.js";
-import { type Shuffle, clear, copyMany, moveMany, swap } from "../librarian/shuffle.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { type Shuffle, clear, copyMany, moveMany, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 
 /** The names of the two reference patterns, read from the project being seeded from. */
 export interface SeedNames {

@@ -7,7 +7,7 @@ import { escapeHtml } from "../../../../src/sheet/html.js";
 import {
   MACHINE_ORDER, NOTE_NAMES, machineLabel, noteName, pitchClass, trackLabel, type PitchCell,
   type PitchWindow, type TrackRow,
-} from "../../../../src/analysis/model.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
 import { T, W, GRID_OP, GROUND, machineVar, pcHue } from "./theme.js";
 import { tip, svg, gridLine, tickLabel, rowLabel, rowGround } from "./svg.js";
 

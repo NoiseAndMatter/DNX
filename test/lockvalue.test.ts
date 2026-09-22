@@ -17,7 +17,7 @@ import {
   lockFine,
   lockFineValue,
   lockRaw,
-} from "../src/project/lockvalue.js";
+} from "@noiseandmatter/dnx-core/project/lockvalue.js";
 
 /**
  * The lock record for the LFO depth sweep in pattern A3 of `DATA_CAPTURE.dn2prj`

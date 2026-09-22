@@ -13,8 +13,8 @@ import {
   parseFile,
   rebuildMessage,
   type SysExMessage,
-} from "../sysex/container.js";
-import { describeDumpType, describeProduct, isConfirmedCombination } from "../sysex/devices.js";
+} from "@noiseandmatter/dnx-core/sysex/container.js";
+import { describeDumpType, describeProduct, isConfirmedCombination } from "@noiseandmatter/dnx-core/sysex/devices.js";
 
 function hex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(" ");

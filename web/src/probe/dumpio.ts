@@ -21,8 +21,8 @@
  * kind of confusion on the API side.
  */
 
-import { parseMessage } from "../../../src/sysex/container.js";
-import { dumpRequest } from "../../../src/device/dumprequest.js";
+import { parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { dumpRequest } from "@noiseandmatter/dnx-core/device/dumprequest.js";
 import { probeRequest } from "../../../src/research/probecodes.js";
 import { DeviceLink } from "../devicelink.js";
 

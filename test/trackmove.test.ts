@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
-import { readDn2Pattern, readLockTable, readMidiTrackMask } from "../src/project/dn2pattern.js";
-import { DN1_DEVICE, deviceFor } from "../src/librarian/device.js";
+import { DN2_KIT, DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readDn2Pattern, readLockTable, readMidiTrackMask } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN1_DEVICE, deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   applyTrackMove,
   planTrackMove,
   verifyTrackMove,
-} from "../src/librarian/trackmove.js";
+} from "@noiseandmatter/dnx-core/librarian/trackmove.js";
 import {
   lockCounts,
   summariseTracks,
   trackMachines,
   trigCounts,
-} from "../src/librarian/tracksummary.js";
-import { TRACK_COUNT as DN2_TRACK_COUNT } from "../src/project/dn2pattern.js";
-import { clear, copyMany, moveMany, swap } from "../src/librarian/shuffle.js";
+} from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
+import { TRACK_COUNT as DN2_TRACK_COUNT } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { clear, copyMany, moveMany, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

@@ -15,7 +15,7 @@ import {
   type RenamePresetOptions,
   type RenamePresetResult,
   renamePresetOnDrive as coreRename,
-} from "../../../src/device/renamepreset.js";
+} from "@noiseandmatter/dnx-core/device/renamepreset.js";
 import { confirmFileWrite } from "../safewriteui.js";
 import { pageMessageIds } from "../messageids.js";
 import { requireWriteEnabled } from "../writeenable.js";
@@ -25,7 +25,7 @@ export {
   PresetNotRenameable,
   type RenamePresetOptions,
   type RenamePresetResult,
-} from "../../../src/device/renamepreset.js";
+} from "@noiseandmatter/dnx-core/device/renamepreset.js";
 
 const host: RenamePresetHost = {
   ids: pageMessageIds,

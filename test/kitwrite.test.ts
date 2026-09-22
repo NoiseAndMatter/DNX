@@ -15,18 +15,18 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, SKIP_REASON, requireCorpusFile } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
-import { readDn2PatternRecord } from "../src/project/dn2pattern.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { summariseTracks } from "../src/librarian/tracksummary.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readDn2PatternRecord } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { summariseTracks } from "@noiseandmatter/dnx-core/librarian/tracksummary.js";
 import {
   KitWriteError,
   applyLoadKit,
   readPatternKitName,
   describeLoadKit,
   planLoadKit,
-} from "../src/librarian/kitwrite.js";
+} from "@noiseandmatter/dnx-core/librarian/kitwrite.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 

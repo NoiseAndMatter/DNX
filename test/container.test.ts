@@ -9,8 +9,8 @@ import {
   isLengthValid,
   parseFile,
   rebuildMessage,
-} from "../src/sysex/container.js";
-import { DumpType, ProductId } from "../src/sysex/devices.js";
+} from "@noiseandmatter/dnx-core/sysex/container.js";
+import { DumpType, ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 
 const EXAMPLES = CORPUS ?? "";
 

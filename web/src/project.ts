@@ -7,9 +7,9 @@
  * parsed exactly as it is on the command line.
  */
 
-import { type ProjectManifest, type ProjectPayload } from "../../src/project/container.js";
-import { decodeProjectImage } from "../../src/project/dn2codec.js";
-import { projectFrom, rebuiltProjectEntries } from "../../src/project/projectfile.js";
+import { type ProjectManifest, type ProjectPayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { projectFrom, rebuiltProjectEntries } from "@noiseandmatter/dnx-core/project/projectfile.js";
 import { buildZip, readZip } from "./zip.js";
 
 export interface LoadedProject {

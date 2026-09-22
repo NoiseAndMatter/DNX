@@ -7,7 +7,7 @@ import { escapeHtml } from "../../../../src/sheet/html.js";
 import {
   MICRO_MAX, NOTE_NAMES, gateLabel, masterOffset, masterPeriod, microFraction, overlappingNotes,
   pitchClass, presetOf, trackLabel, trigDensity, type AnalysisTrack, type MicroBuckets,
-} from "../../../../src/analysis/model.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
 import { T, W, GRID_OP, machineVar } from "./theme.js";
 import { tip, svg, barGrid, barAxis, rowLabel, rowGround } from "./svg.js";
 

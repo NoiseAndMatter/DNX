@@ -4,7 +4,7 @@ The 89,088-byte pattern record: tracks, trigs, sound locks, parameter locks, met
 
 Companion to `docs/dn2-format.md` (container, image geometry, kit record) and
 `docs/dn1-project-format.md` (the DN1 equivalents). Implementation:
-`src/project/dn2pattern.ts`. Cross-validation: `test/dn2pattern.test.ts`.
+`packages/core/src/project/dn2pattern.ts`. Cross-validation: `test/dn2pattern.test.ts`.
 
 Every claim below carries a status tag:
 
@@ -157,7 +157,7 @@ populate. INFERRED for the write direction; untested on hardware.
 ### 2.2 Sound locks — VERIFIED
 
 `+0x400 + step`, one u8 per step, `0xFF` = no lock, otherwise an index 0..127 into the
-project's 128-slot sound pool at `tailBase + 10756` (see `src/project/soundmap.ts`).
+project's 128-slot sound pool at `tailBase + 10756` (see `packages/core/src/project/soundmap.ts`).
 
 This is the single most important field for the expander and it is the most strongly
 verified one. All 2,131 sound locks in the matched corpus agree with the DN1 source
@@ -589,7 +589,7 @@ files is also what an unused field looks like.
 byte is zero, which is why reading the pair as a little-endian integer worked for as long as
 nothing with finer resolution was tested. For a parameter with fine resolution it does not: a
 `u16le` read turns an LFO depth of `-1.00` into 32,575. Read the two bytes as `u16be` and split
-them; `src/project/lockvalue.ts` does this and is the only place that should.
+them; `packages/core/src/project/lockvalue.ts` does this and is the only place that should.
 
 **The DN1 slot has the same shape, and conversion has to copy the pair rather than re-encode it.**
 It did not: `expand/convert.ts` read the DN1 value with `getUint16(…, true)` and wrote it back
@@ -878,7 +878,7 @@ are single bytes at a stride of 2 from `kit+5810`, in page order:
 pattern of the capture. Same coarse/fine shape as a p-lock slot (§4) and as every other entry
 in this stride-2 block.
 
-That corrected the reading in `src/expand/fieldmap.ts`, which treated 5898/5899 as one `u16be`
+That corrected the reading in `packages/core/src/expand/fieldmap.ts`, which treated 5898/5899 as one `u16be`
 rescaled by "roughly x201.57" — an artefact of reading two fields as one number. The bytes it
 wrote were right, since the table came from the pairs Elektron actually produces.
 
@@ -912,7 +912,7 @@ list plus a single reading.
 
 **Ping-pong at `kit+5826` is a 0/1 toggle**, confirmed by a pattern pair differing only in it.
 
-The table above is machine-readable in `src/project/kitfx.ts`, which the differential analyser
+The table above is machine-readable in `packages/core/src/project/kitfx.ts`, which the differential analyser
 uses to name FX bytes instead of reporting them as "kit gap 5804-5963, unidentified".
 
 ### The external input page — mapped by a second capture, 2026-07-26
@@ -1070,7 +1070,7 @@ pattern.tracks[0]!.trigs[1]!.microTiming;      // -23
 Named by a device-authored capture: 61 controls, each locked on its **own step** of one pattern
 (`H1` of `MORNING_JA 1640.dn2prj`), so a record's single locked step identifies it by position.
 47 records came back, every one with exactly one locked step. Implementation:
-`src/project/plockparams.ts`.
+`packages/core/src/project/plockparams.ts`.
 
 ### The LFO block is arithmetic, not a list
 
@@ -1126,7 +1126,7 @@ for them. INFERRED from the gap, not observed.
 **The same id means a different parameter on a different machine.** An id in this range is
 meaningless without knowing the track's machine. Captured in pattern H2 of
 `MORNING_JA 1640(2).dn2prj`: four machines on four tracks of one pattern, each control locked on
-its own step. Implementation: `src/project/machineplock.ts`.
+its own step. Implementation: `packages/core/src/project/machineplock.ts`.
 
 Of the **22 ids FM TONE and WAVETONE both use, all 22 name different parameters.** In the
 filters:

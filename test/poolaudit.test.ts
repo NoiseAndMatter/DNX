@@ -15,10 +15,10 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { NO_CORPUS, SKIP_REASON, requireCorpusFile, DN2_PROJECTS, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { deviceFor } from "../src/librarian/device.js";
-import { POOL_SOUND_COUNT } from "../src/project/soundmap.js";
-import { PoolAuditError, auditPool, describePoolAudit } from "../src/librarian/poolaudit.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { POOL_SOUND_COUNT } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { PoolAuditError, auditPool, describePoolAudit } from "@noiseandmatter/dnx-core/librarian/poolaudit.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 

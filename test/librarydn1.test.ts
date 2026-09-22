@@ -12,8 +12,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { slotFacts } from "../web/src/library/slottags.js";
-import { objectInStoredBody } from "../src/device/library.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { objectInStoredBody } from "@noiseandmatter/dnx-core/device/library.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { CORPUS } from "./corpus.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");

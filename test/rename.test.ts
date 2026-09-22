@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { deviceFor } from "../src/librarian/device.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import {
   NAME_SIZE,
   RenameError,
@@ -12,7 +12,7 @@ import {
   planRename,
   readPatternName,
   verifyRename,
-} from "../src/librarian/rename.js";
+} from "@noiseandmatter/dnx-core/librarian/rename.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 /**

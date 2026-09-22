@@ -24,7 +24,7 @@
  * Which rows to show is `filter.ts`, and it is pure. This module renders whatever it is handed.
  */
 
-import { type TagName } from "../../../src/project/tags.js";
+import { type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
 import { type FilterResult, type LibraryFilter, type LibraryRow, tagOffers } from "./filter.js";
 import { type GridDrag } from "../grid.js";
 import { escapeHtml } from "../dom.js";

@@ -26,7 +26,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SCAN = ["src", "test", "web/src", "docs"];
+const SCAN = ["packages/core/src", "src", "test", "web/src", "docs"];
 const SUFFIXES = [".ts", ".js", ".md", ".css", ".html"];
 
 /** Tab, newline and carriage return are ordinary. The rest below `0x20`, plus DEL, are mistakes. */

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { buildMessage, parseFile } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { DN1_LAYOUT, DN2_LAYOUT, patternRecord, kitRecord, projectId } from "../src/project/dn2image.js";
-import { DN1_OS143_IMAGE_SIZE } from "../src/project/dn2codec.js";
-import { DN2_POOL_OFFSET, POOL_SOUND_COUNT } from "../src/project/soundmap.js";
-import { SAVED_PATTERN_OFFSET, SAVED_TRACK_OFFSET } from "../src/project/position.js";
+import { buildMessage, parseFile } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { DN1_LAYOUT, DN2_LAYOUT, patternRecord, kitRecord, projectId } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { DN1_OS143_IMAGE_SIZE } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { DN2_POOL_OFFSET, POOL_SOUND_COUNT } from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { SAVED_PATTERN_OFFSET, SAVED_TRACK_OFFSET } from "@noiseandmatter/dnx-core/project/position.js";
 import {
   PLACEMENTS,
   RebuildError,
@@ -14,7 +14,7 @@ import {
   coverage,
   planRebuild,
   verifyRebuild,
-} from "../src/project/rebuild.js";
+} from "@noiseandmatter/dnx-core/project/rebuild.js";
 
 const DN2 = PLACEMENTS[ProductId.DN2]!;
 const DN1 = PLACEMENTS[ProductId.DN1]!;

@@ -21,8 +21,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { cliArgs, readProjectFile } from "./args.js";
 import { join } from "node:path";
 import { buildProjectFile, } from "../node/projectfile.js";
-import { writeProjectName } from "../project/dn2image.js";
-import { hhmm, patternIndex, patternName } from "../project/naming.js";
+import { writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { hhmm, patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { escapeHtml } from "../sheet/html.js";
 import {
   type ExportRow,
@@ -34,9 +34,9 @@ import {
   verdictCell,
 } from "../sheet/resultsform.js";
 import { renderSheetPage } from "../sheet/page.js";
-import { deviceFor } from "../librarian/device.js";
-import { applyRearrange } from "../librarian/rearrange.js";
-import { copyMany, keepOnly } from "../librarian/shuffle.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
+import { copyMany, keepOnly } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 import {
   QUIET_FAILURES,
   SEED_SOURCES,

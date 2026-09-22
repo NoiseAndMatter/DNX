@@ -15,10 +15,10 @@
  */
 
 import { noteReply } from "./othertraffic.js";
-import { SysexLink } from "../../src/device/link.js";
-import { type SysexPort } from "../../src/device/port.js";
+import { SysexLink } from "@noiseandmatter/dnx-core/device/link.js";
+import { type SysexPort } from "@noiseandmatter/dnx-core/device/port.js";
 
-export { type AwaitOptions, matchApiFrame } from "../../src/device/link.js";
+export { type AwaitOptions, matchApiFrame } from "@noiseandmatter/dnx-core/device/link.js";
 
 /** How long `.open()` on a closed port gets before a wait gives up rather than hangs. */
 const OPEN_TIMEOUT_MS = 2000;

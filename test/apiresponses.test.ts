@@ -24,7 +24,7 @@ import {
   readFileReadOpenResponse,
   readFileReadResponse,
   readQueryResponse,
-} from "../src/device/api.js";
+} from "@noiseandmatter/dnx-core/device/api.js";
 
 /** Big-endian u32, the API's only integer width. */
 function u32(value: number): number[] {

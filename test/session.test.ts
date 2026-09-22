@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { Session, combiningTag, tag } from "../src/librarian/session.js";
-import { diffImages, isEmptyPatch, patchExtent, redoPatch, undoPatch } from "../src/librarian/patch.js";
-import { applyRearrange } from "../src/librarian/rearrange.js";
-import { keepOnly, moveMany, swap } from "../src/librarian/shuffle.js";
+import { Session, combiningTag, tag } from "@noiseandmatter/dnx-core/librarian/session.js";
+import { diffImages, isEmptyPatch, patchExtent, redoPatch, undoPatch } from "@noiseandmatter/dnx-core/librarian/patch.js";
+import { applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
+import { keepOnly, moveMany, swap } from "@noiseandmatter/dnx-core/librarian/shuffle.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
 
 const skip = NO_CORPUS && SKIP_REASON;

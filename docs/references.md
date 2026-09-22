@@ -60,9 +60,9 @@ it disagrees with us, one of the two is wrong and it is worth knowing which.
 DNX moves what already exists between instruments and slots, and editorial features stay behind the
 manager. So this is worth reading for what it proves about the format, not as a feature to match.
 
-**Read, and two of its ideas are now in DNX.** Its per-device spec module became `src/project/spec.ts`
+**Read, and two of its ideas are now in DNX.** Its per-device spec module became `packages/core/src/project/spec.ts`
 (#206) — one file per machine rather than twenty numbers spread across modules named after formats.
-Its `safe-write.js` became `src/device/safewrite.ts` (#207): backup, confirm, write, verify, in one
+Its `safe-write.js` became `packages/core/src/device/safewrite.ts` (#207): backup, confirm, write, verify, in one
 path a caller cannot go around.
 
 The three questions this section used to hold are answered:
@@ -108,7 +108,7 @@ cross-check we could not otherwise buy.
 ### Where it differs is the useful part — tags
 
 DNX reads tags as a **`tagBits` u32be bitfield at object +8**, against a closed 32-name vocabulary in
-`src/project/tags.ts`. **The table itself is not in doubt** — it is confirmed by photographs of the
+`packages/core/src/project/tags.ts`. **The table itself is not in doubt** — it is confirmed by photographs of the
 device's TAGS screen and cross-checked against eight bit assignments derived independently from 664
 named sounds in 53 projects.
 
@@ -154,7 +154,7 @@ difference. It transfers the bytes a device hands over and puts them back, so it
 break across projects**, because a lock is an index into the destination's sound pool and nothing
 remaps it.
 
-`src/librarian/copy.ts` remaps those indices, which is only possible because the pool audit knows
+`packages/core/src/librarian/copy.ts` remaps those indices, which is only possible because the pool audit knows
 what a lock points at. So the two projects have taken opposite routes at the same fork: transfer
 the bytes and accept what breaks, or decode enough to carry the references. Worth watching for what
 their route turns out to cost, and worth being honest that theirs ships against a device today.
@@ -186,7 +186,7 @@ manager, which is what `ui-plan.md` describes wanting to build.
 of dictionaries, `movesTo` and `cameFrom`, over `Trash | Dst Int` and `Empty | Src Int`, with
 `mergeShuffles` for composition and **`rereference`** for fixing up references after a move.
 
-That is the general form of a problem we currently solve narrowly: `src/librarian/copy.ts`
+That is the general form of a problem we currently solve narrowly: `packages/core/src/librarian/copy.ts`
 remaps sound-lock indices when a pattern is copied. A manager that moves patterns, sounds and
 kits between arbitrary slots needs the general version, and this is a worked one under a licence
 that permits borrowing.
@@ -201,7 +201,7 @@ convention across a device family:
 | **`0x62`** | **`0x52`** | **Kit** |
 | `0x63` | `0x53` | Sound |
 
-**This corroborates something we had only inferred.** `src/sysex/devices.ts` lists `KIT: 0x52`
+**This corroborates something we had only inferred.** `packages/core/src/sysex/devices.ts` lists `KIT: 0x52`
 from the family convention, flagged as unconfirmed because no file we hold uses it. elk-herd
 implements it as a working message type on the Digitakt, which is independent confirmation from
 a sibling device.

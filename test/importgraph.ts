@@ -25,9 +25,35 @@ export function specifiersOf(file: string): string[] {
   return [...readFileSync(file, "utf8").matchAll(IMPORT)].map((m) => m[1]!);
 }
 
-/** The file a relative specifier names, as the `.ts` source rather than the compiled `.js`. */
+/**
+ * The core package, which lives in this repository and is imported by name.
+ *
+ * `@noiseandmatter/dnx-core/project/dn1.js` is a workspace, not a dependency: the source is in
+ * `packages/core/src`, and `package.json`'s `exports` maps `./*` onto it. The walks below follow
+ * it like any other local module, because a graph that stopped at the package boundary would
+ * answer "does this page reach Node?" with "I did not look".
+ */
+export const CORE_PACKAGE = "@noiseandmatter/dnx-core/";
+
+/** Where that package's sources are, as a path under the repository root. */
+export const CORE_ROOT = join(ROOT, "packages", "core", "src");
+
+/**
+ * The file a specifier names, as the `.ts` source rather than the compiled `.js`.
+ *
+ * Relative specifiers resolve against the importing file. The core package resolves against its
+ * own source root, which is what makes it local rather than external.
+ */
 export function resolveSpecifier(from: string, specifier: string): string {
+  if (specifier.startsWith(CORE_PACKAGE)) {
+    return join(CORE_ROOT, specifier.slice(CORE_PACKAGE.length).replace(/\.js$/, ".ts"));
+  }
   return join(dirname(from), specifier.replace(/\.js$/, ".ts"));
+}
+
+/** Whether a specifier names something inside this repository, by either spelling. */
+export function isLocal(specifier: string): boolean {
+  return specifier.startsWith(".") || specifier.startsWith(CORE_PACKAGE);
 }
 
 /** A path relative to the repository root, with forward slashes on every platform. */
@@ -53,7 +79,7 @@ export function importGraph(entry: string): { files: string[]; external: string[
     seen.add(file);
 
     for (const specifier of specifiersOf(file)) {
-      if (specifier.startsWith(".")) queue.push(resolveSpecifier(file, specifier));
+      if (isLocal(specifier)) queue.push(resolveSpecifier(file, specifier));
       else external.push(`${file} -> ${specifier}`);
     }
   }

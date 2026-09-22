@@ -47,14 +47,14 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { decodeProjectImage } from "../project/dn2codec.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "./projectfile.js";
-import type { ProjectManifest, ProjectPayload } from "../project/container.js";
-import { mintProjectId, writeProjectId } from "../project/dn2image.js";
-import { readProjectName } from "../project/dn1.js";
-import { convertProject } from "../expand/convert.js";
-import { PERCUSSION_LOW_RULES, planExpansion } from "../expand/plan.js";
-import { type Device, deviceFor } from "../librarian/device.js";
+import type { ProjectManifest, ProjectPayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { mintProjectId, writeProjectId } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
+import { PERCUSSION_LOW_RULES, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { type Device, deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 
 export interface OpenOptions {
   /** Convert a DN1 project to DN2 on the way in. Ignored for a project that is already DN2. */

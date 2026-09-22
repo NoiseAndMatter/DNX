@@ -14,7 +14,7 @@ import {
   tagOffers,
   toggleTag,
 } from "../web/src/library/filter.js";
-import { type TagName } from "../src/project/tags.js";
+import { type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
 
 function row(over: Partial<LibraryRow> & { index: number }): LibraryRow {
   return { name: "", occupied: true, writable: false, size: 364, ...over };

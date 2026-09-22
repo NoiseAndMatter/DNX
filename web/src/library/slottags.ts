@@ -26,10 +26,10 @@
  * which the filter already knows how to describe.
  */
 
-import { type ApiTransport } from "../../../src/device/storagesession.js";
-import { type LibraryKind, readLibraryObject } from "../../../src/device/library.js";
-import { type TagName, decodeTags } from "../../../src/project/tags.js";
-import { SOUND_MACHINE_OFFSET, machineName } from "../../../src/project/machine.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { type LibraryKind, readLibraryObject } from "@noiseandmatter/dnx-core/device/library.js";
+import { type TagName, decodeTags } from "@noiseandmatter/dnx-core/project/tags.js";
+import { SOUND_MACHINE_OFFSET, machineName } from "@noiseandmatter/dnx-core/project/machine.js";
 
 /** Where the tag bitfield sits in a sound object. `docs/` has the derivation of the table itself. */
 const TAG_BITS_OFFSET = 8;

@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Song, type SongRow, SWING_BASE } from "../src/project/dn2song.js";
+import { type Song, type SongRow, SWING_BASE } from "@noiseandmatter/dnx-core/project/dn2song.js";
 import {
   LABEL_NAMES,
   describeLabel,

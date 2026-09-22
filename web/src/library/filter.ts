@@ -40,7 +40,7 @@
  * dimmed while a single row is unread, and the counts say so rather than growing in silence.
  */
 
-import { type TagName } from "../../../src/project/tags.js";
+import { type TagName } from "@noiseandmatter/dnx-core/project/tags.js";
 
 /** One slot, as the table shows it. */
 export interface LibraryRow {

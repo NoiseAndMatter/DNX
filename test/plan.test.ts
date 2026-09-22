@@ -4,10 +4,10 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { collectSoundUsage, midiTrackDestination, planExpansion } from "../src/expand/plan.js";
-import { SYNTH_TRACK_COUNT, readKit, readPattern } from "../src/project/dn1.js";
-import { DN1_INIT_SOUND_FINGERPRINT, soundFingerprint } from "../src/expand/sourcetracks.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { collectSoundUsage, midiTrackDestination, planExpansion } from "@noiseandmatter/dnx-core/expand/plan.js";
+import { SYNTH_TRACK_COUNT, readKit, readPattern } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { DN1_INIT_SOUND_FINGERPRINT, soundFingerprint } from "@noiseandmatter/dnx-core/expand/sourcetracks.js";
 
 const DIR = NO_CORPUS ? "" : corpusPath(DN1_PROJECTS);
 

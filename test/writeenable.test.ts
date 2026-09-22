@@ -23,7 +23,7 @@ import { probeFunctionNames, probeWrite } from "./probesource.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
-const CORE = join(HERE, "..", "src");
+const CORE = join(HERE, "..", "packages", "core", "src");
 
 /** Every `.ts` file under a directory, collected into `into`. */
 function walkTs(dir: string, into: string[]): void {
@@ -137,7 +137,7 @@ test("a core module that writes takes the switch from its host and calls it", ()
 
   for (const file of writers) {
     const source = readFileSync(file, "utf8");
-    const name = file.replace(CORE, "src");
+    const name = file.replace(CORE, "packages/core/src");
     assert.match(source, /gate:\s*\(\)\s*=>\s*void/,
       `${name} writes without taking a gate from its host`);
     const gate = source.search(/\bhost\.gate\(\)/);

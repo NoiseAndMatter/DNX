@@ -16,8 +16,8 @@ import {
   UNRESOLVED_SOUND_CONTROLS,
   decodeSoundValue,
   soundParameterAt,
-} from "../src/project/soundparams.js";
-import { DN2_SOUND_SIZE } from "../src/project/soundmap.js";
+} from "@noiseandmatter/dnx-core/project/soundparams.js";
+import { DN2_SOUND_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
 
 test("offsets are unique and inside the sound object", () => {
   const offsets = SOUND_PARAMETERS.map((p) => p.offset);

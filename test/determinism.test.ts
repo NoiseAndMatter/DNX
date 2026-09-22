@@ -29,10 +29,10 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ROOT, code, repoPath } from "./importgraph.js";
-import { mintProjectId } from "../src/project/dn2image.js";
+import { mintProjectId } from "@noiseandmatter/dnx-core/project/dn2image.js";
 
-/** Folders of `src/` that are not core, so not bound by this. See `layers.test.ts`. */
-const NOT_CORE = ["node", "cli", "sheet", "research", "hardwaretest"];
+/** Where core lives. The whole package is bound by this; nothing else is. */
+const CORE_SRC = ["packages", "core", "src"];
 
 /**
  * The globals that make an output depend on when it ran or on luck.
@@ -87,9 +87,7 @@ function tsFiles(dir: string): string[] {
   });
 }
 
-const CORE = tsFiles(join(ROOT, "src")).filter(
-  (file) => !NOT_CORE.includes(repoPath(file).split("/")[1]!),
-);
+const CORE = tsFiles(join(ROOT, ...CORE_SRC));
 
 test("nothing in core reads the clock or the dice except as a seam's default", () => {
   assert.ok(CORE.length > 40, `only ${CORE.length} core files found; the walk is wrong`);

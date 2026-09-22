@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildMessage, parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
+import { buildMessage, parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   type DeviceIo,
   DEFAULT_WRITE_LIMIT,
   WriteTooLarge,
   readProjectFromDevice,
   writeChangedRecords,
-} from "../src/device/deviceproject.js";
+} from "@noiseandmatter/dnx-core/device/deviceproject.js";
 import { TEST_PERMIT } from "./permit.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;

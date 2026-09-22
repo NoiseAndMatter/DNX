@@ -29,7 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
-import { driveChecksum } from "../src/device/storage.js";
+import { driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 

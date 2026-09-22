@@ -6,9 +6,9 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PATTERN, TRACK, KIT_MIDI_MASK_OFFSET } from "../src/project/dn2pattern.js";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
-import { describeOffset, locateInPatternPayload } from "../src/project/locate.js";
+import { PATTERN, TRACK, KIT_MIDI_MASK_OFFSET } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { describeOffset, locateInPatternPayload } from "@noiseandmatter/dnx-core/project/locate.js";
 
 test("known fields are named, not just located", () => {
   const trackThree = PATTERN.trackOffset + 2 * TRACK.size;

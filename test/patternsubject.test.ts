@@ -12,15 +12,15 @@ import { basename } from "node:path";
 import { test } from "node:test";
 import { DN2_PROJECTS, NO_CORPUS, requireCorpusFile, requireCorpusFiles } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { readDn2Pattern } from "../src/project/dn2pattern.js";
-import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "../src/librarian/device.js";
-import { noteLengthSteps } from "../src/project/dn2pattern.js";
-import { patternSubject, PatternSubjectError } from "../src/analysis/patternsubject.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { readDn2Pattern } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { DN1_DEVICE, DN2_DEVICE, deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { noteLengthSteps } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
+import { patternSubject, PatternSubjectError } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
 import {
   cycleSteps,
   drawableWindow, harmonic, pitchByPreset, pitchWindows, playing, repeatSteps, trackWindows,
-} from "../src/analysis/model.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
 import {
   densityBars, keyTimeline, phaseStrip, pitchBars, realignBars, trackTimeline,
 } from "../web/src/analysis/charts.js";

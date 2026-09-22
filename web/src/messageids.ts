@@ -11,7 +11,7 @@
  * project. That history is worth reading before adding a second allocator anywhere.
  */
 
-import { MessageIds } from "../../src/device/messageids.js";
+import { MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
 
 export {
   FIRST_MESSAGE_ID,
@@ -19,7 +19,7 @@ export {
   MAX_MESSAGE_ID,
   MESSAGE_ID_SPAN,
   MessageIds,
-} from "../../src/device/messageids.js";
+} from "@noiseandmatter/dnx-core/device/messageids.js";
 
 /**
  * Every conversation this page has, numbered from here.

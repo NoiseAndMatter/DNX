@@ -12,18 +12,18 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DN1_SPEC, DN2_SPEC, SPECS, poolBase, poolSlotAt } from "../src/project/spec.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../src/librarian/device.js";
-import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT } from "../src/project/dn2image.js";
+import { DN1_SPEC, DN2_SPEC, SPECS, poolBase, poolSlotAt } from "@noiseandmatter/dnx-core/project/spec.js";
+import { DN1_DEVICE, DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { DN1_KIT, DN1_LAYOUT, DN2_KIT, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   DN1_POOL_OFFSET,
   DN1_SOUND_SIZE,
   DN2_POOL_OFFSET,
   DN2_SOUND_SIZE,
   POOL_SOUND_COUNT,
-} from "../src/project/soundmap.js";
-import { SOUND_SIZE as DN1_SOUND_SIZE_FROM_DN1 } from "../src/project/dn1.js";
-import { KIT_NAME_OFFSET } from "../src/librarian/kitwrite.js";
+} from "@noiseandmatter/dnx-core/project/soundmap.js";
+import { SOUND_SIZE as DN1_SOUND_SIZE_FROM_DN1 } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { KIT_NAME_OFFSET } from "@noiseandmatter/dnx-core/librarian/kitwrite.js";
 
 test("a device reports the spec it is built from", () => {
   // The fields on `Device` are conveniences read off the spec. If they were ever set independently

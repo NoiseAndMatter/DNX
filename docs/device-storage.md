@@ -210,7 +210,7 @@ The sequence around a project download was `0xd4` → `0xd5` (repeatedly) → `0
 0xd6  body 9    close
 ```
 
-The chunks carry **`manifest.json`** — byte for byte the same manifest `src/project/projectfile.ts`
+The chunks carry **`manifest.json`** — byte for byte the same manifest `packages/core/src/project/projectfile.ts`
 parses out of a `.dnprj`. Another read returned `0097`, the DN1 format version.
 
 **What a project read actually returns is not a `.dnprj`** — verified 2026-07-30 by reading 131,072
@@ -673,7 +673,7 @@ device reported   e48ff54e
 crc32ZeroInit     e48ff54e
 ```
 
-**The function was in this repository the whole time.** `src/project/checksum.ts` has used it for
+**The function was in this repository the whole time.** `packages/core/src/project/checksum.ts` has used it for
 the project payload's check field since the format was decoded. It went unrecognised because the
 eleven forms tried against this field were tried as *whole algorithms* — and the one that fits
 differs from `zlib.crc32` in a single parameter.
@@ -878,7 +878,7 @@ Note which device each row of that table came from. **The preset row is a Digito
 captured file declares container kind **9** and format **`"0097"`**, the DN1 project signature, and
 carries a 302-byte body, which is the DN1's sound-object size. The kit row is a DN2.
 
-So the 302 that `src/device/library.ts` records for a preset slot is a **DN1 measurement**, and
+So the 302 that `packages/core/src/device/library.ts` records for a preset slot is a **DN1 measurement**, and
 what a Digitone II's `/soundbanks` holds is unmeasured. Two possibilities, both coherent:
 
 | | preset object | consequence |
@@ -1142,7 +1142,7 @@ A capability set, not a flag, which is why it never looked like a single bit. Wh
 is still unassigned.
 
 > [!caution] **This overturns a recorded hypothesis, and the way it was wrong is the point.**
-> The field was documented as *"probably the sound's tag bitmask, which `src/project/tags.ts`
+> The field was documented as *"probably the sound's tag bitmask, which `packages/core/src/project/tags.ts`
 > already models"*. It had **two samples** — `0x0012` on `DIGIT-ONE` and `0x007e` on
 > `HH TICK_PITX_AR` — and a theory that fit both. They are a factory sound and a user sound.
 >

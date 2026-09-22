@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DN2_LAYOUT } from "../src/project/dn2image.js";
+import { DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   Dn2SongError,
   END_LOOP,
@@ -20,7 +20,7 @@ import {
   readSong,
   songRecord,
   writeSong,
-} from "../src/project/dn2song.js";
+} from "@noiseandmatter/dnx-core/project/dn2song.js";
 import {
   SongEditError,
   blankRow,
@@ -34,7 +34,7 @@ import {
   setRowPattern,
   setSongTempo,
   toggleRowMute,
-} from "../src/librarian/songedit.js";
+} from "@noiseandmatter/dnx-core/librarian/songedit.js";
 
 /** An image holding one song of `n` rows, each identifiable by its pattern. */
 function withSong(n: number, index = 0): Uint8Array {

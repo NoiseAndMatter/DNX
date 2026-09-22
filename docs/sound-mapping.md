@@ -4,7 +4,7 @@ How a 302-byte Digitone 1 sound object becomes a 359-byte Digitone II sound obje
 from nine project pairs that Elektron converted themselves, and validated on three of them
 that were withheld from the derivation.
 
-Implementation: `src/project/soundmap.ts`. Test: `test/soundmap.test.ts`.
+Implementation: `packages/core/src/project/soundmap.ts`. Test: `test/soundmap.test.ts`.
 
 | Status | Meaning |
 |---|---|

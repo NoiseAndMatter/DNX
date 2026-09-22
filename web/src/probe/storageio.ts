@@ -18,8 +18,8 @@
  * trip and an `Invalid path` — see `docs/device-storage.md`.
  */
 
-import { Code, deviceRequest } from "../../../src/device/api.js";
-import { StorageCode, listRequest } from "../../../src/device/storage.js";
+import { Code, deviceRequest } from "@noiseandmatter/dnx-core/device/api.js";
+import { StorageCode, listRequest } from "@noiseandmatter/dnx-core/device/storage.js";
 import { DeviceLink, matchApiFrame } from "../devicelink.js";
 
 /** Fixed and high, so a reply can be matched to it and it cannot collide with Transfer's low ids. */

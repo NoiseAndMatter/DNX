@@ -8,6 +8,12 @@
     "url": "git+https://github.com/NoiseAndMatter/DNX.git"
   },
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@noiseandmatter/dnx-core": "*"
+  },
   "scripts": {
     "inspect": "tsx src/cli/inspect.ts",
     "diff": "tsx src/cli/diff.ts",

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildMessage, parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { RequestCode, responseFor } from "../src/device/dumprequest.js";
-import { DumpReader, stepsToRetry, timeoutFor } from "../src/device/dumpreader.js";
-import { RESPONSE_SIZES, planProjectRead } from "../src/device/readplan.js";
+import { buildMessage, parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { RequestCode, responseFor } from "@noiseandmatter/dnx-core/device/dumprequest.js";
+import { DumpReader, stepsToRetry, timeoutFor } from "@noiseandmatter/dnx-core/device/dumpreader.js";
+import { RESPONSE_SIZES, planProjectRead } from "@noiseandmatter/dnx-core/device/readplan.js";
 
 /**
  * A device that answers, on an instant clock.

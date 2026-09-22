@@ -27,9 +27,9 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { parseProject } from "../node/projectfile.js";
-import { decodeProjectImage } from "../project/dn2codec.js";
-import { layoutFor } from "../project/dn2image.js";
-import { changedRuns, diffImages, summarise } from "../project/imagediff.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { changedRuns, diffImages, summarise } from "@noiseandmatter/dnx-core/project/imagediff.js";
 
 const args = process.argv.slice(2);
 const noiseAt = args.indexOf("--noise");

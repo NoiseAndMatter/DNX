@@ -10,9 +10,9 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
-import { StorageCode } from "../src/device/storage.js";
-import { type ApiTransport, readStoredFile } from "../src/device/storagesession.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { StorageCode } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type ApiTransport, readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
 
 // --- real replies, transcribed ------------------------------------------------------------------
 

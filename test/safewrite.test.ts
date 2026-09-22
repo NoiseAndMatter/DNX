@@ -18,15 +18,15 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { buildMessage, parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { DN2_LAYOUT, kitRecord, patternRecord } from "../src/project/dn2image.js";
-import { type DeviceIo } from "../src/device/deviceproject.js";
-import { RESPONSE_SIZES } from "../src/device/readplan.js";
-import { DN1_LAYOUT } from "../src/project/dn2image.js";
-import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "../src/device/api.js";
-import { type Entry, StorageCode } from "../src/device/storage.js";
-import { type ApiTransport } from "../src/device/storagesession.js";
+import { buildMessage, parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { DN2_LAYOUT, kitRecord, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { type DeviceIo } from "@noiseandmatter/dnx-core/device/deviceproject.js";
+import { RESPONSE_SIZES } from "@noiseandmatter/dnx-core/device/readplan.js";
+import { DN1_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
+import { type Entry, StorageCode } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { probeWrite } from "./probesource.js";
 import {
   CONTAINER_BANK_OFFSET,
@@ -41,7 +41,7 @@ import {
   type FileWriteReview,
   type RecordWriteReview,
   type SafeFileWriteOptions,
-} from "../src/device/safewrite.js";
+} from "@noiseandmatter/dnx-core/device/safewrite.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
 
@@ -477,11 +477,11 @@ test("a patternKit's size agrees with the two records it is made of", () => {
  */
 const ALLOWED: Record<string, { paths: string[]; because: string }> = {
   writeChangedRecords: {
-    paths: ["src/device/safewrite.ts"],
+    paths: ["packages/core/src/device/safewrite.ts"],
     because: "the safe path is the only caller; it backs up, asks and verifies around this",
   },
   writeStoredFile: {
-    paths: ["src/device/safewrite.ts"],
+    paths: ["packages/core/src/device/safewrite.ts"],
     because: "same, for the +Drive",
   },
   // The probe's two builders. They *build* a message rather than send one, and the probe's own
@@ -504,7 +504,7 @@ const ALLOWED: Record<string, { paths: string[]; because: string }> = {
 };
 
 /** Where a permit may be minted. One in the shipped code, one for tests that need the primitives. */
-const MAY_MINT = ["src/device/safewrite.ts", "test/permit.ts"];
+const MAY_MINT = ["packages/core/src/device/safewrite.ts", "test/permit.ts"];
 
 function sourceFiles(...roots: string[]): string[] {
   const out: string[] = [];
@@ -551,7 +551,7 @@ test("the import reader sees the forms this codebase actually writes", () => {
 });
 
 test("nothing reaches a mutating primitive except the safe path", () => {
-  const files = sourceFiles("src", "web/src");
+  const files = sourceFiles("packages/core/src", "src", "web/src");
   // A scan that finds nothing passes, and looks exactly like a scan that ran. Prove it read the
   // tree it was pointed at before believing its silence.
   assert.ok(files.length > 80, `only ${files.length} source files found — the scan is looking in the wrong place`);
@@ -574,13 +574,13 @@ test("the primitives are still guarded, so the scan is testing something", () =>
   // The counterpart to the scan: it can only pass honestly if the names it looks for are the names
   // that actually mutate an instrument. If `writeChangedRecords` were renamed or its permit
   // dropped, the scan above would keep passing while protecting nothing.
-  const safe = readFileSync(join(import.meta.dirname, "..", "src/device/safewrite.ts"), "utf8");
+  const safe = readFileSync(join(import.meta.dirname, "..", "packages/core/src/device/safewrite.ts"), "utf8");
   for (const name of ["writeChangedRecords", "writeStoredFile"]) {
     assert.match(safe, new RegExp(`\\b${name}\\b`), `${name} is not called by the safe path any more`);
   }
   for (const [path, symbol] of [
-    ["src/device/deviceproject.ts", "permit: WritePermit"],
-    ["src/device/storagewrite.ts", "permit: WritePermit"],
+    ["packages/core/src/device/deviceproject.ts", "permit: WritePermit"],
+    ["packages/core/src/device/storagewrite.ts", "permit: WritePermit"],
   ] as const) {
     const source = readFileSync(join(import.meta.dirname, "..", path), "utf8");
     assert.match(source, new RegExp(symbol), `${path} no longer demands a permit`);
@@ -599,7 +599,7 @@ function withoutComments(source: string): string {
 }
 
 test("only the two named places can mint a permit", () => {
-  const files = [...sourceFiles("src", "web/src"), ...sourceFiles("test")];
+  const files = [...sourceFiles("packages/core/src", "src", "web/src"), ...sourceFiles("test")];
   const minting: string[] = [];
   for (const file of files) {
     const rel = relative(join(import.meta.dirname, ".."), file).replaceAll("\\", "/");
@@ -874,7 +874,7 @@ test("every read of a file the writer touches asks for the stored form", () => {
    * `readStoredFile` inside this module defaults its form.
    */
   const source = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "device", "safewrite.ts"), "utf8");
+    join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "core", "src", "device", "safewrite.ts"), "utf8");
 
   const calls = [...source.matchAll(/readStoredFile\(([\s\S]*?)\n  \}\);/g)];
   assert.ok(calls.length >= 2, `found ${calls.length} readStoredFile calls; expected the backup and the verify`);

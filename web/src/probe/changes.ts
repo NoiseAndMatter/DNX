@@ -31,7 +31,7 @@
  * looked.
  */
 
-import { type Entry } from "../../../src/device/storage.js";
+import { type Entry } from "@noiseandmatter/dnx-core/device/storage.js";
 // Imported rather than declared. This module had its own copy of `hex2` while `cards.ts` exported
 // another — two implementations of "print a byte", which is how two rows of one page come to
 // disagree about the same value.

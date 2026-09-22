@@ -21,8 +21,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blankDn2ProjectFile } from "../src/librarian/blankproject.js";
-import { deviceFor } from "../src/librarian/device.js";
+import { blankDn2ProjectFile } from "@noiseandmatter/dnx-core/librarian/blankproject.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { BUILT_IN_BLANK_FIRMWARE, describeDonor, loadDonor, type Donor } from "../web/src/donor.js";
 import { fetchServedTemplate, readProjectFile } from "../web/src/project.js";
 

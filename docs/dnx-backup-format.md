@@ -172,7 +172,7 @@ and Insights through the path that exists.
 | write a sound or a kit to a slot | the `0x57`/`0x58`/`0x59` path, **proven on a Digitone 1 on 2026-08-04** and never run against a DN2 |
 
 The checksum those writes are validated against is `crc32ZeroInit`, solved 2026-08-06 and already
-in `src/project/checksum.ts`. See `device-storage.md`.
+in `packages/core/src/project/checksum.ts`. See `device-storage.md`.
 
 ## Where the code is
 

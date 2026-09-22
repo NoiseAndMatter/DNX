@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildMessage, parseMessage } from "../src/sysex/container.js";
-import { ProductId } from "../src/sysex/devices.js";
-import { DN1_LAYOUT, DN2_LAYOUT } from "../src/project/dn2image.js";
+import { buildMessage, parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   WriteCode,
   WriteRefused,
@@ -17,7 +17,7 @@ import {
   verifyWrite,
   versionOf,
   writeToSlot,
-} from "../src/device/dumpwrite.js";
+} from "@noiseandmatter/dnx-core/device/dumpwrite.js";
 
 const PATTERN_KIT = DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize;
 

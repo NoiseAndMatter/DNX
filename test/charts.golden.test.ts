@@ -36,8 +36,8 @@ import {
   POLYMETER_LIMIT, cycleSteps, fitKey, harmonic, microBuckets, periodGroups, pitchByPreset,
   pitchWindows, playing, trackWindows, voicesPerStep,
   type AnalysisSubject, type AnalysisTrack, type AnalysisTrig,
-} from "../src/analysis/model.js";
-import { MACHINE } from "../src/project/machine.js";
+} from "@noiseandmatter/dnx-core/analysis/model.js";
+import { MACHINE } from "@noiseandmatter/dnx-core/project/machine.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "charts");
 const UPDATE = process.env["DNX_UPDATE_GOLDEN"] === "1";

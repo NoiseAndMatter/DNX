@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { cliArgs, readProjectImage } from "./args.js";
 import { basename } from "node:path";
-import { projectName } from "../project/dn2image.js";
+import { projectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { collectSheet } from "../sheet/collect.js";
 import { renderSheet } from "../sheet/render.js";
 

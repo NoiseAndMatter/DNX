@@ -14,10 +14,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encode87 } from "../src/sysex/codec.js";
-import { API_SELECTOR, Code, RESPONSE_BIT } from "../src/device/api.js";
-import { SysexLink, matchApiFrame } from "../src/device/link.js";
-import { type SysexPort } from "../src/device/port.js";
+import { encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
+import { API_SELECTOR, Code, RESPONSE_BIT } from "@noiseandmatter/dnx-core/device/api.js";
+import { SysexLink, matchApiFrame } from "@noiseandmatter/dnx-core/device/link.js";
+import { type SysexPort } from "@noiseandmatter/dnx-core/device/port.js";
 
 /**
  * A port that hands out whatever we feed it, and counts its listeners.

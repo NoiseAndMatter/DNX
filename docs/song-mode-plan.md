@@ -37,7 +37,7 @@ Two facts that matter for an editor rather than a viewer:
 
 ### The Digitone 1's song table is decoded
 
-`src/project/dn1tail.ts` has it: **17 records of 2,560 bytes** at tail offset `0x2efc`, each holding
+`packages/core/src/project/dn1tail.ts` has it: **17 records of 2,560 bytes** at tail offset `0x2efc`, each holding
 **99 rows of 21 bytes**, a version of `1`, a `u16be` tempo at `+0x838` reading BPM×120, and a flag
 byte at `+0x835`.
 
@@ -154,7 +154,7 @@ action, which is the cheap way to get a song with real content into save 1.
 
 ## 5. Finding the table from a capture
 
-`src/project/imagediff.ts` is pure and does the reading: changed runs, noise subtraction, and
+`packages/core/src/project/imagediff.ts` is pure and does the reading: changed runs, noise subtraction, and
 locating an offset in the words the format documents use — `pattern 12`, `kit 3`, `tail +0x2efc`. It
 deliberately does **not** dress the tail's interior up as a structure that has not been established.
 
@@ -164,7 +164,7 @@ noise region** — containment counts as noise, overlap does not.
 
 ## 6. Sequencing
 
-1. **Captures A and B**, then `docs/dn2-song-format.md` and a read-only `src/project/dn2song.ts`
+1. **Captures A and B**, then `docs/dn2-song-format.md` and a read-only `packages/core/src/project/dn2song.ts`
 2. **`SongState` becomes real for the DN2** — the rearrange guard stops being blind, which is a
    safety win independent of any editor
 3. **A song viewer in the manager** — show before touch

@@ -12,10 +12,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { parseProject } from "../src/node/projectfile.js";
-import { decodeProjectImage } from "../src/project/dn2codec.js";
-import { kitRecord, DN2_LAYOUT } from "../src/project/dn2image.js";
-import { MACHINE, SOUND_MACHINE_OFFSET, machineName, machineOf } from "../src/project/machine.js";
-import { convertProject } from "../src/expand/convert.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
+import { kitRecord, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
+import { MACHINE, SOUND_MACHINE_OFFSET, machineName, machineOf } from "@noiseandmatter/dnx-core/project/machine.js";
+import { convertProject } from "@noiseandmatter/dnx-core/expand/convert.js";
 import { NO_CORPUS, SKIP_REASON, corpusPath, requireCorpusFile, DN1_PROJECTS, DN2_PROJECTS } from "./corpus.js";
 
 const KIT_SOUND_OFFSET = 60;

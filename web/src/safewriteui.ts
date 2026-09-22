@@ -29,7 +29,7 @@ import {
   type WriteStage,
   describeFileWrite,
   describeRecordWrite,
-} from "../../src/device/safewrite.js";
+} from "@noiseandmatter/dnx-core/device/safewrite.js";
 import { askConfirm } from "./dialog.js";
 import { saveFile, whereSaved } from "./dnxfolder.js";
 import { projectExtensionFor, projectFile } from "./dnxfile.js";

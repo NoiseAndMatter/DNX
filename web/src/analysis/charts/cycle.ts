@@ -4,7 +4,7 @@
  */
 
 import { escapeHtml } from "../../../../src/sheet/html.js";
-import { barsOf, clock, repetitions, trackLabel, type AnalysisTrack } from "../../../../src/analysis/model.js";
+import { barsOf, clock, repetitions, trackLabel, type AnalysisTrack } from "@noiseandmatter/dnx-core/analysis/model.js";
 import { T } from "./theme.js";
 import { tip, svg, clip, rowLabel, OVER_LIMIT } from "./svg.js";
 

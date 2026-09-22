@@ -70,8 +70,8 @@
  * store something is one bit in one byte.
  */
 
-import { buildMessage } from "../sysex/container.js";
-import { DUMP_MESSAGES, REQUEST_MESSAGES } from "../device/capabilities.js";
+import { buildMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { DUMP_MESSAGES, REQUEST_MESSAGES } from "@noiseandmatter/dnx-core/device/capabilities.js";
 
 export class NotARequest extends Error {}
 

@@ -43,11 +43,11 @@ import {
   writeBack,
 } from "../devicesource.js";
 import { STAGE_LABEL, confirmRecordWrite, downloadBackup } from "../safewriteui.js";
-import { type DriveProject } from "../../../src/device/drive.js";
+import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { type Progress } from "../progress.js";
 import { projectInSlot, readDriveSlot } from "../drivepicker.js";
-import { deviceFor } from "../../../src/librarian/device.js";
-import { ProductId } from "../../../src/sysex/devices.js";
+import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 
 export interface InstrumentHooks {
   /** Progress and news, in the words the status bar should show. */

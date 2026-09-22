@@ -18,9 +18,9 @@
  */
 
 import { deflateRawSync, inflateRawSync } from "node:zlib";
-import { buildZip as buildZipWith, readZip as readZipWith, type ZipEntry } from "../archive/zip.js";
+import { buildZip as buildZipWith, readZip as readZipWith, type ZipEntry } from "@noiseandmatter/dnx-core/archive/zip.js";
 
-export { ZipError, crc32, type ZipEntry } from "../archive/zip.js";
+export { ZipError, crc32, type ZipEntry } from "@noiseandmatter/dnx-core/archive/zip.js";
 
 /** Build a ZIP with one deflated entry per input, in the order given. */
 export function buildZip(entries: readonly ZipEntry[]): Uint8Array {

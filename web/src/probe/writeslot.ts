@@ -31,13 +31,13 @@ import {
   settleMsAfter,
   verifyWrite,
   writeToSlot,
-} from "../../../src/device/dumpwrite.js";
-import { buildRecordBackup } from "../../../src/device/safewrite.js";
-import { blankPatternKit } from "../../../src/librarian/blank.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../../../src/librarian/device.js";
-import { patternIndex, patternName } from "../../../src/project/naming.js";
-import { parseMessage } from "../../../src/sysex/container.js";
-import { ProductId } from "../../../src/sysex/devices.js";
+} from "@noiseandmatter/dnx-core/device/dumpwrite.js";
+import { buildRecordBackup } from "@noiseandmatter/dnx-core/device/safewrite.js";
+import { blankPatternKit } from "@noiseandmatter/dnx-core/librarian/blank.js";
+import { DN1_DEVICE, DN2_DEVICE } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
+import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { askConfirm } from "../dialog.js";
 import { saveBytesTo, savedTone, whereSaved } from "../dnxfolder.js";
 import { $, escapeHtml } from "../dom.js";

@@ -21,8 +21,8 @@ import {
   hex8,
   looksLikeZip,
 } from "../web/src/probe/format.js";
-import { driveChecksum } from "../src/device/storage.js";
-import { type StoredFile } from "../src/device/storagesession.js";
+import { driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
+import { type StoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
 
 /** A read, built the way the device sends one: chunks of a stated size, each with its own sum. */
 function read(chunks: Uint8Array[], over: Partial<StoredFile> = {}): StoredFile {

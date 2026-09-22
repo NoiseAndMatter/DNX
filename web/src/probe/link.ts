@@ -24,7 +24,7 @@ import { requestPatternKit } from "./dumpio.js";
 import { PortPicker } from "./ports.js";
 import { linkIsAlive as checkLink } from "./storageio.js";
 import { $ } from "../dom.js";
-import { type ApiTransport } from "../../../src/device/storagesession.js";
+import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { DeviceLink } from "../devicelink.js";
 
 export let access: MIDIAccess | undefined;

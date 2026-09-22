@@ -6,7 +6,7 @@ Reverse-engineered from the 53 DN1 projects in `00_Examples/01_DN1/01_Projects/`
 
 This document covers the region `docs/dn1-project-format.md` §6.3 left as *"UNKNOWN — the
 55,552-byte remainder"*. Everything before it (header, 128 patterns, 128 kits, the
-128-slot sound pool) is already decoded in `src/project/dn1.ts`.
+128-slot sound pool) is already decoded in `packages/core/src/project/dn1.ts`.
 
 | Tag | Meaning |
 |---|---|
@@ -119,7 +119,7 @@ Also useful, and checked:
 
 **VERIFIED** The 55,552 bytes partition exactly, with no slack and no overlap. Every
 boundary below is confirmed on all 53 images by `checkDn1Tail()` in
-`src/project/dn1tail.ts`, which reports zero problems corpus-wide.
+`packages/core/src/project/dn1tail.ts`, which reports zero problems corpus-wide.
 
 | Offset | Size | Region | Varying bytes across the 53 projects |
 |---|---:|---|---:|
@@ -138,7 +138,7 @@ boundary below is confirmed on all 53 images by `checkDn1Tail()` in
 
 **VERIFIED** From OS 1.43 the region is **56,064** bytes: 512 more, inserted at `0x29C800`
 for the Outbox 8 CV configuration (§5.1). Every row above the song array keeps its offset;
-the songs and the terminator move up by 512. `tailGeometry` in `src/project/dn1tail.ts`
+the songs and the terminator move up by 512. `tailGeometry` in `packages/core/src/project/dn1tail.ts`
 derives the two that move from the image's own length, so `TAIL` stays one table rather than
 becoming two that can drift apart.
 
@@ -378,7 +378,7 @@ SUSTAIN, SOSTENUTO, EXPRESSION LEARN, REVERSE DIRECTION, PORT A and PORT B, form
 **UNKNOWN** `0x4663`, and the 208 bytes the `_v0_t` suffix suggests a later release will fill.
 
 **No accessor is provided**, for the same reason as the song row and the mixer block. `BOB_CONFIG`
-in `src/project/dn1tail.ts` names the block and its size so the geometry can step over it; the
+in `packages/core/src/project/dn1tail.ts` names the block and its size so the geometry can step over it; the
 bytes round-trip verbatim.
 
 ### Song rows — 99 × 21 bytes at `+0x16`
@@ -446,7 +446,7 @@ Ordered by how much it matters.
    nothing to permute. But the row *does* carry 8 per-track bytes, and their position is
    unknown. Detect a non-empty song table — any byte other than row byte `+0`, or row
    byte `+0` outside `{0, 1}` — and refuse the rearrange with a clear message rather than
-   silently desyncing an arrangement. `isSongTableEmpty()` in `src/project/dn1tail.ts`
+   silently desyncing an arrangement. `isSongTableEmpty()` in `packages/core/src/project/dn1tail.ts`
    does exactly this check.
 3. **Guard on the 1,024-slot array (§4).** Empty in 50 of 53 projects and in all 9 that
    have DN2 conversions. If occupied, refuse: the array *may* be per-track and we cannot
@@ -478,7 +478,7 @@ rearrange leaves it alone — but a pattern-reordering feature would need to rew
 
 ## 9. Code
 
-`src/project/dn1tail.ts` implements the readers and `checkDn1Tail()`, which re-runs every
+`packages/core/src/project/dn1tail.ts` implements the readers and `checkDn1Tail()`, which re-runs every
 **VERIFIED** claim in this document. It reports zero problems on all 53 corpus images.
 
 ```ts

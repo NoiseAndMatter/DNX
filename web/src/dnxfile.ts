@@ -32,10 +32,10 @@
  */
 
 import { buildZip, type ZipEntry } from "./zip.js";
-import { parsePayload } from "../../src/project/container.js";
-import { storedProjectEntries } from "../../src/project/projectfile.js";
-import { isDn1Payload } from "../../src/device/drive.js";
-import { type DeviceBackup } from "../../src/project/dnxfile.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { storedProjectEntries } from "@noiseandmatter/dnx-core/project/projectfile.js";
+import { isDn1Payload } from "@noiseandmatter/dnx-core/device/drive.js";
+import { type DeviceBackup } from "@noiseandmatter/dnx-core/project/dnxfile.js";
 
 /*
  * The version, the manifest types and `backupFileName` moved to `src/project/dnxfile.ts`: they are
@@ -49,7 +49,7 @@ export {
   type BackupEntry,
   type BackupManifest,
   type DeviceBackup,
-} from "../../src/project/dnxfile.js";
+} from "@noiseandmatter/dnx-core/project/dnxfile.js";
 
 export function projectFile(name: string, firmwareVersion: string, payload: Uint8Array): Promise<Uint8Array> {
   return buildZip(storedProjectEntries(name, firmwareVersion, payload));

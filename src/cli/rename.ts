@@ -19,7 +19,7 @@ import { writeFileSync } from "node:fs";
 import { cliArgs, fail } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
-import { patternIndex, patternName } from "../project/naming.js";
+import { patternIndex, patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 import { OpenError, openProject } from "../node/open.js";
 import {
   NAME_SIZE,
@@ -28,7 +28,7 @@ import {
   planRename,
   readPatternName,
   verifyRename,
-} from "../librarian/rename.js";
+} from "@noiseandmatter/dnx-core/librarian/rename.js";
 
 
 /**

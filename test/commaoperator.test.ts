@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SCAN = ["src", "test", "web/src"];
+const SCAN = ["packages/core/src", "src", "test", "web/src"];
 
 function walk(dir: string, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

@@ -25,8 +25,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
-import { imageFrom, manifestFor } from "../src/device/drive.js";
-import { parsePayload } from "../src/project/container.js";
+import { imageFrom, manifestFor } from "@noiseandmatter/dnx-core/device/drive.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
 import { buildProjectBlob, readProjectFile } from "../web/src/project.js";
 import { readZip } from "../web/src/zip.js";
 
