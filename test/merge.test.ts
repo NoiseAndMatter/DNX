@@ -7,12 +7,18 @@
  */
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { DN1_LAYOUT, DN2_LAYOUT, patternRecord } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import { DN1_SPEC } from "@noiseandmatter/dnx-core/project/spec.js";
+import {
+  SYNTH_TRACK_COUNT as DN1_SYNTH_TRACKS,
+  readPattern,
+  readSoundPool,
+} from "@noiseandmatter/dnx-core/project/dn1.js";
 import { applyPatternCopy, planPatternCopy } from "@noiseandmatter/dnx-core/librarian/copy.js";
 import { PATTERN, TRACK, TRACK_COUNT, soundLockedSlots } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 import { DN2_POOL_OFFSET, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "@noiseandmatter/dnx-core/project/soundmap.js";
@@ -570,13 +576,28 @@ test("a source that is neither machine's image is refused by size", { skip }, ()
 
 // --- Digitone 1 into Digitone 1: the same answer as the engine it replaces --------------------------
 
-/** A DN1 project and a pattern in it whose trigs lock a preset that exists. */
+/**
+ * A DN1 project and a pattern in it whose trigs lock a preset that exists.
+ *
+ * **Selected from the decoder, not from the librarian.** It used to ask `planPatternCopy` which
+ * patterns had sound moves, which was fine while that was a separate engine and is circular now
+ * that it calls the merge: the fixture for a test of X must not be chosen by X. `readPattern` and
+ * `readSoundPool` are validated against the matched corpus independently of either engine.
+ */
 function dn1SourcePattern(): { image: Uint8Array; pattern: number } {
   for (const path of corpusFiles("01_DN1/01_Projects", ".dnprj")) {
     const image = imageOf(path);
+    const pool = readSoundPool(image);
     for (let p = 0; p < 128; p++) {
-      const plan = planPatternCopy(image, p, image, p);
-      if (plan.soundMoves.length > 0) return { image, pattern: p };
+      for (const track of readPattern(image, p).tracks) {
+        if (track.index >= DN1_SYNTH_TRACKS) continue;
+        for (const trig of track.trigs) {
+          const lock = trig.soundLock;
+          if (lock === undefined) continue;
+          const sound = pool[lock];
+          if (sound?.framed && sound.name !== "") return { image, pattern: p };
+        }
+      }
     }
   }
   throw new Error("no DN1 project in the corpus has a pattern locking a preset that exists");
@@ -596,38 +617,51 @@ function dn1Destination(source: Uint8Array): Uint8Array {
   throw new Error("only one distinct DN1 project in the corpus");
 }
 
-test("a Digitone 1 merge matches applyPatternCopy byte for byte", { skip }, () => {
+/**
+ * What the pre-fold `librarian/copy.ts` wrote, on the fixture the two helpers above select.
+ *
+ * Recorded 2026-09-25 from the standalone engine, immediately before it became a wrapper over
+ * the merge. `001 PRESETS.dnprj` pattern 1 into `002 MORNING_JAM.dnprj` slot 127, one sound
+ * move 10 -> 64, 1,570 of 2,781,700 bytes changed.
+ */
+const COPY_ENGINE_DIGEST = "92a8c074b628f4343002c9ee6389a9e2da8a052a1c775196fc32cd7cf4d8626d";
+const COPY_ENGINE_CHANGED_BYTES = 1_570;
+
+test("the merge still writes what the copy engine wrote", { skip }, () => {
   /*
-   * **The test that lets `librarian/copy.ts` be retired.**
+   * **The evidence that let `librarian/copy.ts` become a wrapper, kept alive after the fold.**
    *
-   * `copy.ts` is the engine that was validated on hardware: a pattern copied into another project
-   * loaded and played, carrying exactly the four sounds it needed. Replacing it with a path that
-   * merely looks equivalent would throw that evidence away. So the two run on the same corpus
-   * inputs and the images must come out identical — not similar, identical.
+   * `copy.ts` was the engine validated on hardware: a pattern copied into another project loaded
+   * on a Digitone 1 and played, carrying exactly the sounds it needed. That evidence is about
+   * bytes, so it only transfers while the bytes are unchanged.
    *
-   * Once this holds, the hardware evidence transfers, because the bytes are the same bytes.
+   * This used to run both engines and demand identical images. **That test cannot say anything
+   * now** — `applyPatternCopy` calls `planPatternMerge`, so comparing them would compare the
+   * merge with itself and pass however either behaved. A check that can only succeed is not a
+   * check.
+   *
+   * So the digest is pinned instead, taken from the old implementation before it was deleted. It
+   * is a fixture from outside the code under test in the only sense available: the code that
+   * produced it no longer exists to agree with itself. If this fails, the merge has changed what
+   * a Digitone 1 copy writes, and the hardware evidence no longer covers it.
    */
   const { image: src, pattern } = dn1SourcePattern();
   const dest = dn1Destination(src);
   const landing = 127;
 
   const copied = applyPatternCopy(src, pattern, dest, landing).image;
-  const merged = planPatternMerge({
-    source: src, patterns: [pattern], destination: dest, landing, confirmOverwrite: true,
-  }).image;
 
-  assert.equal(merged.length, copied.length, "the two engines disagree about the image size");
-
-  const differ: number[] = [];
-  for (let i = 0; i < copied.length; i++) {
-    if (copied[i] !== merged[i] && differ.push(i) >= 8) break;
-  }
-  assert.deepEqual(
-    differ,
-    [],
-    `the two engines wrote different bytes, first at ${differ[0]} ` +
-      `(copy ${copied[differ[0]!]}, merge ${merged[differ[0]!]})`,
+  assert.equal(copied.length, dest.length, "a copy should not change the image size");
+  assert.equal(
+    createHash("sha256").update(copied).digest("hex"),
+    COPY_ENGINE_DIGEST,
+    "the bytes a Digitone 1 copy writes have changed since the hardware-validated engine wrote them",
   );
+
+  // Stated separately so a failure says *how much* moved, not only that the digest missed.
+  let changed = 0;
+  for (let i = 0; i < copied.length; i++) if (copied[i] !== dest[i]) changed++;
+  assert.equal(changed, COPY_ENGINE_CHANGED_BYTES, "a different number of bytes was written");
 });
 
 test("a merged pattern keeps saying which slot it came from, as a device paste does", { skip }, () => {
