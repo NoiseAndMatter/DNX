@@ -39,21 +39,68 @@
  * since it was written, because the table had never been located — so the guard could not tell a
  * project with songs from one without, and had to assume the worst on the machine DNX cares most
  * about. This ends that.
+ *
+ * ## Three corrections, 2026-10-03
+ *
+ * Re-derived from files after a firmware session reported a different geometry. Measurements in
+ * `docs/dn2-song-format.md`; what changed here:
+ *
+ * 1. **The row count is a `u16be` at `+0xb47`, not a byte at `+0xb48`.** Seven captures could not
+ *    have shown the difference, because no song in any of them had more than 18 rows and the high
+ *    byte of 0..99 is always zero. `dn2-song-format.md` recorded `+0xb47` as "zero in every record
+ *    seen", which is exactly what that high byte looks like.
+ * 2. **There are seventeen records, not sixteen**, and the first one sits 3,072 bytes *before* what
+ *    this module calls song 0. See `SONG_RECORD_ZERO_OFFSET`.
+ * 3. **OS 1.11 moved the array and this module cannot yet read it.** Refused rather than read at
+ *    offsets now known to be wrong — see `requireKnownSongLayout`.
+ *
+ * What did **not** change: the meta block's position inside a record. An earlier analysis had it
+ * moving `0xa00` earlier on OS 1.11, which would have put the row count inside row 10. The bytes
+ * that analysis measured did move, but because the whole array slid, not because a field did.
  */
 
-import { type ImageLayout, DN2_LAYOUT } from "./dn2image.js";
+import { type ImageLayout, DN2_LAYOUT, projectObjectVersion } from "./dn2image.js";
 
 export class Dn2SongError extends Error {}
 
-/** Where the table sits, and how big it is. */
+/**
+ * Where the sixteen songs the instrument names sit, and how big each one is.
+ *
+ * `offset` is song 0, not the start of the array: there is a seventeenth record before it. This
+ * table keeps the song numbering that was validated against the device's own song list on
+ * 2026-08-15, because renumbering on file evidence alone would move every song under the user by
+ * one. `SONG_RECORD_ZERO_OFFSET` carries the record that numbering leaves out.
+ */
 export const SONG_TABLE = {
-  /** Offset from `layout.tailBase`. */
+  /** Offset from `layout.tailBase` of **song 0**, before OS 1.11. */
   offset: 0xec04,
   /** Bytes per song record. */
   recordSize: 0xc00,
-  /** Songs per project, as the manual states and the arithmetic confirms. */
+  /** Songs the instrument presents, as the manual states. */
   count: 16,
 } as const;
+
+/**
+ * The 3,072 bytes immediately **before** song 0, which are a song record too.
+ *
+ * **Found 2026-10-03 by the tempo series.** An untouched song record reads `0x3840` at `+0xb4c`,
+ * 14,400, which is 120 BPM at the x120 scale. A clean project has **seventeen** of those words at a
+ * stride of 3,072, the first at `tail+0xeb50` — one whole record earlier than `SONG_TABLE.offset`
+ * accounts for. Seventeen records from `tail+0xe004` end on the image's last byte with nothing left
+ * over, so the array is seventeen long and this module had been reading records 1..16.
+ *
+ * The sixteen-record reading closes on the end of the image too, which is why it survived: it has
+ * to call that seventeenth tempo word a coincidence sitting exactly one stride before the array.
+ *
+ * **The Digitone 1 has seventeen as well** (`dn1tail.ts`, `TAIL.songCount`), which is a second
+ * reason to believe it rather than a second place to doubt.
+ *
+ * **What this record is for is UNKNOWN.** It reads as an untouched song in every project in the
+ * corpus — empty name, no rows, 120 BPM — so nothing observed distinguishes "a working copy of the
+ * song being edited" from "a seventeenth slot the front panel does not reach". Only the guard uses
+ * it, where a row in it means a rearrangement might desync something nobody can see.
+ */
+export const SONG_RECORD_ZERO_OFFSET = SONG_TABLE.offset - SONG_TABLE.recordSize;
 
 /** Field offsets inside one 3,072-byte song record. */
 export const SONG = {
@@ -61,10 +108,17 @@ export const SONG = {
   nameSize: 16,
   rowOffset: 0x010,
   rowSize: 29,
-  /** The manual's number, and `0x10 + 99 x 29` lands exactly on the trailer. */
+  /** The manual's number, and `0x10 + 99 x 29` lands exactly on the meta block. */
   rowCount: 99,
-  /** How many rows the song actually uses. */
-  rowCountOffset: 0xb48,
+  /**
+   * How many rows the song actually uses, as a **`u16be`**.
+   *
+   * **This said `0xb48` and called it one byte until 2026-10-03.** `0xb48` is the low half, which is
+   * the whole answer for every count a song can hold, so reading it was right by accident and
+   * writing it left the high half alone. The width comes from the firmware's own loader; the
+   * position closes the record, since `0x10 + 99 x 29` is `0xb47` exactly.
+   */
+  rowCountOffset: 0xb47,
   /** What happens after the last row — `END_LOOP` or `END_STOP`. */
   endModeOffset: 0xb49,
   /** The song's own tempo, `u16be`, BPM x `TEMPO_SCALE`. 120 BPM in every record seen. */
@@ -121,8 +175,13 @@ export const END_STOP = 0xfe;
 /**
  * The song currently selected on the instrument, zero-based. Offset from `layout.tailBase`.
  *
- * Outside the song table, 3,586 bytes before it. Identified by watching it read 0, then 1, then 2 as
- * songs were created, and return to 0 when song 1 was edited again.
+ * Outside the song table, 3,586 bytes before it — which, now that the array is known to begin one
+ * record earlier, puts it 514 bytes before the array rather than comfortably outside it. Identified
+ * by watching it read 0, then 1, then 2 as songs were created, and return to 0 when song 1 was
+ * edited again.
+ *
+ * Only ever read on a version 2 or 3 project, because `readSongs` refuses the rest, and only to
+ * choose which song tab opens first. A wrong answer costs a wrong default tab.
  */
 export const SELECTED_SONG_OFFSET = 0xde12;
 
@@ -178,6 +237,55 @@ function requireDn2(layout: ImageLayout): void {
     throw new Dn2SongError(
       "the song table is only established for the Digitone II. The Digitone 1 keeps its songs " +
         "elsewhere and in a different shape — see `dn1tail.ts`.",
+    );
+  }
+}
+
+/**
+ * Project object versions whose song array this module can place.
+ *
+ * 2 is the factory `PRESETS` and any instrument not yet updated; 3 is OS 1.10E. Both put song 0 at
+ * `tail + 0xec04`. OS 1.11 writes version 5 and is not here — see `requireKnownSongLayout`.
+ */
+export const SONG_LAYOUT_VERSIONS: readonly number[] = [2, 3];
+
+/**
+ * Refuse a project whose song array this module cannot locate.
+ *
+ * ## Why OS 1.11 is refused rather than read
+ *
+ * **It moved the array, and by how much is not settled.** One project captured on both firmwares
+ * shows every byte of song content landing exactly 512 later, which is the Outbox 8 block being
+ * inserted ahead of the array — the same thing OS 1.43 did to the Digitone 1, where `dn1tail.ts`
+ * already follows it. So `tail + 0xee04` for song 0 is the obvious answer.
+ *
+ * It is not good enough. At `tail + 0xee04` a clean 1.11 project holds float-shaped bytes, not the
+ * sixteen zeros a song's name field reads in every project ever looked at. Both candidate bases put
+ * something that is not a song in a slot the arithmetic wants to be one, so 1.11 did more than slide
+ * the array and nothing on disk says what. Two 1.11 projects agree, so it is not damage in one file.
+ *
+ * **Refusing is strictly better than what this did before.** Reading a 1.11 project at the old
+ * offsets reported all sixteen songs empty, every time, which told the rearrange guard that a
+ * project with an arrangement was safe to shuffle. A refusal reaches the user as `unknown`, which is
+ * what the guard's third state exists for.
+ *
+ * **One capture lifts this.** Put a song on a 1.11 instrument, give it a name and a tempo nobody
+ * else uses, save it, and the name's sixteen bytes name the array's base outright.
+ */
+export function requireKnownSongLayout(image: Uint8Array, layout: ImageLayout = DN2_LAYOUT): void {
+  requireDn2(layout);
+  const version = projectObjectVersion(image);
+  if (version === undefined) {
+    throw new Dn2SongError(
+      "this image has no project object at offset 0, so the storage version that places the song " +
+        "array cannot be read. The file is damaged, or it is not a Digitone project.",
+    );
+  }
+  if (!SONG_LAYOUT_VERSIONS.includes(version)) {
+    throw new Dn2SongError(
+      `this project declares storage version ${version}. The song array has been located for ` +
+        `versions ${SONG_LAYOUT_VERSIONS.join(" and ")} only: OS 1.11 writes version 5 and moves ` +
+        `the array, and where to is not established. Reading it here would report every song empty.`,
     );
   }
 }
@@ -244,14 +352,15 @@ export function readSong(
   index: number,
   layout: ImageLayout = DN2_LAYOUT,
 ): Song {
+  requireKnownSongLayout(image, layout);
   const record = songRecord(image, index, layout);
   const nameBytes = record.subarray(SONG.nameOffset, SONG.nameOffset + SONG.nameSize);
   const nul = nameBytes.indexOf(0);
   const endMode = record[SONG.endModeOffset]!;
 
-  // Clamped, because a count past the array would read into the trailer and beyond. A file claiming
-  // more rows than can exist is corrupt, and the honest response is to read what is there.
-  const declared = record[SONG.rowCountOffset]!;
+  // Clamped, because a count past the array would read into the meta block and beyond. A file
+  // claiming more rows than can exist is corrupt, and the honest response is to read what is there.
+  const declared = u16(record, SONG.rowCountOffset);
   const rowCount = Math.min(declared, SONG.rowCount);
 
   const rows: SongRow[] = [];
@@ -285,11 +394,18 @@ export function selectedSong(image: Uint8Array, layout: ImageLayout = DN2_LAYOUT
  * **The rearrange guard.** A song row names a pattern by slot, so moving patterns around can desync
  * an arrangement that nobody can see. Decided from the declared row count rather than by scanning
  * bytes: an unused slot reads 0 there in every capture, and a slot with rows says how many.
+ *
+ * **Checks all seventeen records**, including the one before song 0 that nothing else reads. What
+ * that record is for is unknown, so a row in it is a row this build cannot explain — and the guard
+ * is the one place where an unexplained row should count against the operation rather than be
+ * ignored. It reads as untouched in every corpus project, so this costs no false warning today.
  */
 export function isSongTableEmpty(image: Uint8Array, layout: ImageLayout = DN2_LAYOUT): boolean {
-  requireDn2(layout);
-  for (let i = 0; i < SONG_TABLE.count; i++) {
-    if (songRecord(image, i, layout)[SONG.rowCountOffset]! > 0) return false;
+  requireKnownSongLayout(image, layout);
+  const base = songTableBase(layout);
+  for (let i = -1; i < SONG_TABLE.count; i++) {
+    const at = base + i * SONG_TABLE.recordSize;
+    if (u16(image, at + SONG.rowCountOffset) > 0) return false;
   }
   return true;
 }
@@ -402,7 +518,9 @@ export function writeSongMeta(record: Uint8Array, meta: SongMeta): void {
   }
   must(meta.tempo, LIMITS.tempo, "song tempo");
   record.set(latin1Encode(meta.name, SONG.nameSize), SONG.nameOffset);
-  record[SONG.rowCountOffset] = meta.rowCount;
+  // A word, not a byte. The single byte this used to write was the low half, so a record that had
+  // somehow acquired a high byte kept it and went on claiming hundreds of rows.
+  putU16(record, SONG.rowCountOffset, meta.rowCount);
   record[SONG.endModeOffset] = meta.endMode;
   putU16(record, SONG.tempoOffset, Math.round(meta.tempo * TEMPO_SCALE));
 }
@@ -429,6 +547,10 @@ export function writeSong(
         `device plays a different arrangement from the one on screen.`,
     );
   }
+
+  // Checked before the copy, so a project whose array this build cannot place refuses without
+  // having allocated or changed anything.
+  requireKnownSongLayout(image, layout);
 
   const out = Uint8Array.from(image);
   const record = songRecord(out, index, layout);

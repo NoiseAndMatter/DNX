@@ -61,11 +61,20 @@ the size it says it is is never mistaken for a padded older one. When no candida
 terminator the read is refused, and the refusal names the three things it can be: a read cut short
 on the port, a firmware this build does not know, or compressed bytes.
 
-**The Digitone II is deliberately left alone.** 1.11 *appended* its 512 bytes past the terminator,
-so a 1.11 image still holds `BA CE F0 0C` at the 1.10E length and ends with something else. The
-marker identifies neither candidate there, and searching for it would truncate every 1.11 project
-to a 1.10E one. `test/os111.test.ts` caught that within minutes of the search being written for
-both families. `FAMILY_IMAGES` in `drive.ts` records the asymmetry per family.
+**The Digitone II is deliberately left alone**, though not for the reason first recorded.
+
+> [!warning] **Corrected 2026-10-03: the asymmetry is not real**
+> The claim was that 1.11 *appended* its 512 bytes past the terminator, so a 1.11 image still holds
+> `BA CE F0 0C` at the 1.10E length and ends with something else, leaving the marker unable to
+> identify either candidate. **The files say the opposite.** All 57 Digitone II images available end
+> with the terminator, and **not one** 1.11 image carries it at 12,889,600. 1.11 inserted its block at
+> the song array and carried the terminator along, exactly as 1.43 did on the Digitone 1.
+>
+> The search would therefore work on the Digitone II too. `terminatorEndsImage` stays `false` because
+> turning it on changes what a device read returns, which is its own change with its own evidence to
+> gather — starting with the still-open question below, which nobody has measured either way.
+
+`FAMILY_IMAGES` in `drive.ts` records the per-family switch and why it is where it is.
 
 ### Still open: whether a Digitone II over-reads the same way
 
@@ -364,12 +373,28 @@ Found by opening `/projects/4` off a Digitone II that had been updated to OS 1.1
 - **Every stored project was upgraded.** All 18 occupied slots read format `0059` and decode to
   **12,890,116** bytes. 1.10E wrote `0050` and 12,889,604. Nothing was re-saved by hand, so the
   instrument rewrote them itself.
-- **The 512 bytes are appended, and nothing before them moved.** Slot 4 (SKETCHPAD), read in stored
-  form, against the 1.10E copy of the same project in the private corpus: the header, all 128
-  patterns, all 128 kits and the whole old tail are **byte-identical**, and all 4,386 `BEEFBACE`
-  objects sit at the same offsets with the same versions.
-- The appended block is mostly zero: 68 non-zero bytes, holding **two new objects, both version 2**,
-  at `0xc4ae6f` and `0xc4afd6`.
+- **The 512 bytes are inserted at the song array, not appended** — see the correction below. The
+  header, all 128 patterns and all 128 kits *are* byte-identical, and every `BEEFBACE` object keeps
+  its offset, which is why every constant in `DN2_LAYOUT` holds for both sizes.
+
+> [!warning] **Corrected 2026-10-03: "nothing before them moved" was wrong, twice over**
+> The bullet above used to say the whole old tail was byte-identical and every object sat at the same
+> offset *with the same version*. Re-measured against the same pair of files:
+>
+> - **Tail object versions step up.** The working kit at `tailBase + 0` goes 3 to 4, and all 128 sound
+>   pool objects go 2 to 3. The project object at image offset 0 goes 3 to **5**.
+> - **The song array moves 512 bytes later.** Every byte of song content in `004 SKETCHPAD` lands
+>   exactly 512 on, and so does the object terminator. 1.11 writes its `BOB::bobConfigStorage_v0_t`
+>   Outbox 8 configuration into previously-zero space at `tailBase + 0xdf13` — 8 records of 22 bytes,
+>   the same structure and the same stride as the Digitone 1's — and everything past it slid.
+>
+> **Why the original check missed it:** its evidence was `BEEFBACE` offsets, and the song array carries
+> no object headers at all. A 52,224-byte region can move wholesale without a single object offset
+> changing. The two new "version-2 objects" at `0xc4ae6f` and `0xc4afd6` are inside what is now known
+> to be the shifted array, not an appended block.
+>
+> The consequence for DNX is in `docs/dn2-song-format.md`: it cannot read a song from any 1.11
+> project, and now refuses rather than reporting every song empty.
 
 What those objects are is **not established**. The firmware diff for 1.11 adds Outbox 8 and CV
 configuration, and a new `projectStorage_v14_t`, which makes project-level I/O settings the obvious

@@ -36,9 +36,15 @@ import {
   toggleRowMute,
 } from "@noiseandmatter/dnx-core/librarian/songedit.js";
 
-/** An image holding one song of `n` rows, each identifiable by its pattern. */
+/**
+ * An image holding one song of `n` rows, each identifiable by its pattern.
+ *
+ * Declares storage version 3, because the song reader refuses a project that does not say which
+ * firmware's layout it follows — OS 1.11 moved the array, so there is no safe default.
+ */
 function withSong(n: number, index = 0): Uint8Array {
   const image = new Uint8Array(DN2_LAYOUT.imageSize);
+  image.set([0xbe, 0xef, 0xba, 0xce, 0x00, 0x00, 0x00, 0x03], 0);
   return writeSong(image, index, {
     name: "A",
     rowCount: n,

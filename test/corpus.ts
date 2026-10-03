@@ -19,6 +19,8 @@
  *   <corpus>/01_DN1/01_Projects/*.dnprj      Digitone 1 projects
  *   <corpus>/01_DN1/02_Sounds/*.syx          Digitone 1 factory sound banks
  *   <corpus>/02_DN2/01_Projects/*.dn2prj     Digitone II projects
+ *   <corpus>/02_DN2/03_OS111/*.dn2prj        Digitone II projects saved by OS 1.11
+ *   <corpus>/02_DN2/04_Songs/*.dn2prj        Digitone II projects that contain a song
  *   <corpus>/02_DN2/reference_captures/*.syx native DN2 SysEx pattern captures
  */
 
@@ -140,3 +142,14 @@ export const DN1_SOUNDS = "01_DN1/02_Sounds";
 export const DN1_OS143 = "01_DN1/03_OS143";
 export const DN2_PROJECTS = "02_DN2/01_Projects";
 export const DN2_CAPTURES = "02_DN2/reference_captures";
+/** One project saved by OS 1.11, which moved the song meta block. See `dn2song.test.ts`. */
+export const DN2_OS111 = "02_DN2/03_OS111";
+/**
+ * Projects that actually contain a song.
+ *
+ * Kept apart from `DN2_PROJECTS` because they are the only answer to a specific question and
+ * nothing else in the corpus can answer it: not one project under `01_Projects` has a song row, so
+ * every song test there passes by finding nothing. A reader that returned an empty table for every
+ * input would have satisfied the whole suite until this folder existed.
+ */
+export const DN2_SONGS = "02_DN2/04_Songs";
