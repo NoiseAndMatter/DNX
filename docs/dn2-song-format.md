@@ -260,9 +260,16 @@ anywhere is one a rearrangement cannot desync.
 - **What record 0 is for.** A working copy, a seventeenth slot, or something else. It reads as an
   untouched song in every pre-1.11 project and as **all zeros, tempo included**, in every 1.11 one,
   which is one more thing nothing explains about it.
-- **What OS 1.12 did.** Released 30 September 2026, Outbox 8 routing only, no documented format
-  change. The Outbox block reserves 512 bytes and used 304, so new settings most likely fill the
-  reserve and move nothing. Unmeasured.
+- **Whether OS 1.12 moved anything in a real project.** Released 30 September 2026, Outbox 8 routing
+  only. **The firmware says it moves nothing**, measured on both MAIN OS images 2026-10-03: the same
+  94 storage types in each, `bobConfigStorage` still `_v0_t`, `projectStorage` still topping out at
+  `_v11`, and the project-length literals 12,890,116 and 12,889,604 appearing the same number of
+  times in both. 1.12's routing fits inside the 512 bytes the Outbox block already reserved and used
+  304 of.
+
+  What a type table cannot show is **field offsets inside a type**, so one project read from a 1.12
+  instrument is still the thing that settles it. That is now a ten-second check after the update
+  rather than an investigation.
 - **Whether `0xde12` is still the selected song on 1.11.** Unanswerable from files: every project
   available reads 0 there on both firmwares.
 - **Writing.** Nothing here has been written back to an instrument. A song edit cannot go over the
