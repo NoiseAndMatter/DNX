@@ -76,7 +76,26 @@ on the port, a firmware this build does not know, or compressed bytes.
 
 `FAMILY_IMAGES` in `drive.ts` records the per-family switch and why it is where it is.
 
-### Still open: whether a Digitone II over-reads the same way
+### Answered 2026-10-03: a Digitone II over-reads the same way
+
+`GLITCH_EXP slot7`, read off the updated instrument, declares **storage version 3 at the 1.11 image
+length**. Its object terminator sits at 12,889,600 with 512 bytes of slack after it, and its song
+array is at the version-3 base with all seventeen records intact. A pre-1.11 project read on 1.11
+arrives padded, exactly as a Digitone 1 project does on 1.43.
+
+**So `terminatorEndsImage: false` for the Digitone II is now wrong on both counts** — its stated
+reason was already false (see the correction above), and the case it was waiting for has happened.
+Today `imageFrom` hands such a read back at its declared length, so callers get a 12,889,604-byte
+version-3 project with 512 bytes of garbage on the end. Patterns, kits and the pool are unaffected,
+because their offsets do not depend on the length; **writing one back out is not**.
+
+`dn2song.ts` is safe either way: it places the song array by the project object's version, not by the
+image length, and this file is exactly why.
+
+**This is its own fix**, because it changes what every Digitone II device read returns. The original
+note is below.
+
+### Was: still open, whether a Digitone II over-reads the same way
 
 The firmware session found the same shape in DN2 1.11: a migration ladder whose last rung validates
 against 12,890,116, and a stored-slot transfer at `0x4012dae0` passing a hardcoded 12,890,116 to a
@@ -393,8 +412,8 @@ Found by opening `/projects/4` off a Digitone II that had been updated to OS 1.1
 > changing. The two new "version-2 objects" at `0xc4ae6f` and `0xc4afd6` are inside what is now known
 > to be the shifted array, not an appended block.
 >
-> The consequence for DNX is in `docs/dn2-song-format.md`: it cannot read a song from any 1.11
-> project, and now refuses rather than reporting every song empty.
+> The consequence for DNX is in `docs/dn2-song-format.md`: it had been reading every 1.11 project's
+> songs 512 bytes before where they are, and reporting all sixteen empty. It now adds the shift.
 
 What those objects are is **not established**. The firmware diff for 1.11 adds Outbox 8 and CV
 configuration, and a new `projectStorage_v14_t`, which makes project-level I/O settings the obvious

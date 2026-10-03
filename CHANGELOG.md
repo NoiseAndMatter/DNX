@@ -26,20 +26,20 @@ presets — because `1.0` would invite a reader to take those refusals for bugs.
 ### Fixed
 
 - **DNX was telling you a project from an updated Digitone II had no songs, whatever it held.**
-  OS 1.11 moved the song array, and DNX kept reading the place it used to be, which is now zeros. So
-  every one of the sixteen songs in every 1.11 project read as empty — the song panel showed sixteen
-  blank arrangements, and the warning that appears before you rearrange patterns said the project was
-  safe to shuffle when it may not have been. If your instrument has taken the 1.11 update, that was
-  every project on it.
+  OS 1.11 moved the song array 512 bytes down the file, and DNX kept reading the place it used to be,
+  which is now zeros. So every one of the sixteen songs in every 1.11 project read as empty — the
+  song panel showed sixteen blank arrangements, and the warning that appears before you rearrange
+  patterns said the project was safe to shuffle when it may not have been. If your instrument has
+  taken the update, that was every project on it.
 
-  DNX now says it cannot read them instead of saying there are none. Opening a 1.11 project warns
-  that songs cannot be checked, the song panel stays closed rather than showing sixteen empty tabs,
-  and the rearrange warning reports the arrangement as unknown. **Nothing about this is a loss of a
-  feature that worked** — the songs were never being read; they were being reported absent.
+  **Songs on 1.11 projects now read.** Where the array sits is decided by the storage version the
+  project itself declares, not by how long the file is — which matters, because a project saved
+  before the update and read off an updated instrument comes back at the new length with its songs
+  still at the old place. Both cases are in the test suite.
 
-  Where OS 1.11 put the array is not yet known well enough to read it. The arithmetic says 512 bytes
-  later, and at 512 later the first record holds something that is not a song, so DNX is not
-  guessing. One capture from a 1.11 instrument with a named song on it settles it.
+  A firmware DNX has not seen is refused rather than read at a guessed offset: the song panel stays
+  shut and the rearrange warning says the arrangement cannot be checked, instead of claiming there is
+  nothing there.
 
 - **A song's row count is two bytes, not one.** No song can have more than 99 rows, so reading one
   byte gave the right answer every time; writing one byte left the other half of the field alone.

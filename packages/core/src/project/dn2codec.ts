@@ -91,9 +91,9 @@ export const DN2_IMAGE_SIZE = 12_889_604;
  * > The old note's evidence was object offsets, and the song array carries no object headers at all,
  * > so a region that moved wholesale was invisible to the check that was run.
  *
- * `dn2song.ts` refuses to read songs from a 1.11 project rather than guess the new base: the
- * arithmetic says 512, and at 512 the first record's name field holds float-shaped bytes instead of
- * sixteen zeros, so 1.11 did more than slide the array. See `docs/dn2-song-format.md`.
+ * `dn2song.ts` adds that 512 to the song array's base on a version-5 project, and nothing else:
+ * the record's interior did not move. Confirmed field by field on two clean 1.11 captures, where
+ * all sixteen records read as untouched songs at the shifted base. See `docs/dn2-song-format.md`.
  *
  * 1.11 upgraded every stored project on the instrument it was installed on, so this is not an edge
  * case: on that machine it is the only size there is — which is also why the song gap matters. A
