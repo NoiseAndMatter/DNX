@@ -103,7 +103,12 @@ preview should number the selection. And **duplicates**: the single rename warns
 which is right for one deliberate name, but a scheme that silently produces sixteen identical
 names is a different problem and should probably refuse.
 
-## The paradigm: one project open, explorers as sources
+## The paradigm: one project open, explorers as sources - SUPERSEDED 2026-09-30
+
+> Replaced by **"Two panes, both editable"** below. Kept because it records why a single
+> editable project looked right, and because what it says about loading once and exporting once
+> still holds for each pane.
+
 
 **One project is open and being edited at a time.** Within it: move patterns around, replace kits,
 create kits, assign sounds to tracks.
@@ -119,6 +124,125 @@ device's own library is canonical and arrives with WebMIDI — see below.
 **This paradigm settles a question an earlier draft left open.** Because you load once, do many
 operations and export once, there is no chain of `MORNING_JAM(7).dn2prj` files. Where exported
 files land stops being a design problem.
+
+## Two panes, both editable — decided 2026-09-30
+
+**This supersedes "The paradigm: one project open, explorers as sources" above.** That section said
+you never hold two projects as peers, only one you are editing and a library you pull from. The
+manager now holds two, both editable, and a copy can go either way. The older section stays because
+it records why the read-only reading looked right, and because everything it says about loading
+once and exporting once still holds per pane.
+
+Chosen from three mockups (shelf, clipboard, split) in the design canvas. Split won.
+
+### Focus is derived, never a mode
+
+Each pane has a focus state. **Clicking sets it, and the user never has to set it deliberately.**
+Its only job is to answer "which pane?" for the tools that need an answer.
+
+| | consults focus? |
+|---|---|
+| drag and drop | **never.** A drag carries its own source and destination |
+| Operations buttons, `Ctrl+C` / `Ctrl+V` | yes, acting on the focused pane's selection |
+| Export, Write to device | yes, **and names the project in the button label** |
+| Undo, and the history timeline | no. One timeline spans both panes |
+
+**Focus must never block a drag.** A drag from the unfocused pane is legal with no preliminary
+click, which means drag handlers may not ask which pane is focused: a handler that asks will
+eventually refuse a drag it should have taken. The trap to avoid is a first `mousedown` that only
+focuses, leaving a second press to start the drag. One press does both.
+
+Two rules follow, because drag and selection are now independent:
+
+- Dragging a cell that is **not** in the selection drags that cell alone, and makes it the
+  selection.
+- Dragging a cell that **is** in the selection drags the whole selection.
+
+Without them, a drag from the unfocused pane would silently pick up a selection made elsewhere and
+no longer visible.
+
+**Implement focus as real DOM focus** (`:focus-within` on the pane), not as a variable the page
+maintains. Clicking, tabbing and keyboard navigation then set it with no code, the ring is the same
+affordance a keyboard user already has, and it cannot drift from what the browser believes. A
+separate "active pane" flag is a second source of truth, and the two will disagree.
+
+With nothing focused yet, pane-dependent controls are **disabled rather than guessing** at a
+default.
+
+**The mockup's `ACTING ON` badge is dropped.** It claims a mode, which is what this design is not.
+A focus ring makes the weaker and truer claim: buttons will act here.
+
+After a drag, **focus lands on the destination pane**: that is what changed, and what the user is
+most likely to undo or act on next.
+
+### The history tells the story, so the panes do not have to
+
+One interleaved timeline across both projects, in the order things happened. Each entry names
+**where it came from, where it landed, and what changed**, so a reader never has to remember which
+pane was focused at the time. Two stacks side by side would let the projects drift out of the real
+order, which is the opposite of what the timeline is for.
+
+Walking to a point in the timeline undoes or redoes everything after it, in both projects.
+`Session` already patches per image, so this is two sessions under one presentation-level list
+rather than a new undo engine.
+
+**Export and Write to device are the exception to all of this.** Undo cannot reach an instrument,
+so a stray click that moved focus must not silently retarget an irreversible write. They follow
+focus like everything else and say so in the label: `Write MORNING_JAM to device`.
+
+### Pool handling is already built
+
+A paste preserves the destination, carries the sound-locked presets the incoming pattern needs,
+reuses an identical sound already in the destination rather than duplicating it, and re-points
+every lock byte. That is `expand/merge.ts` `planPatternMerge`, hardware-validated, and
+`librarian/copy.ts` is a presentation layer over it since 2026-09-25.
+
+Repeated pasting is the only thing that fills the 128-slot pool. The plan reports it before
+anything is written, and the refusal is deliberate: a partial merge loses sounds silently, and the
+trigs still fire at whatever the pool holds at that index.
+
+### Songs: correct reasoning, blocked on a reader bug
+
+**A song row references a pattern by slot.** Replacing A1's content leaves every song structurally
+valid; it plays different music, which is the intent. That reasoning is right, and it is the reason
+a paste needs no song guard at all.
+
+**The operations that break a song are move and clear**, not replace. Move a pattern out of A1 and
+the row still says A1, now pointing at whatever was left behind. Those are what the flag is for.
+
+Songs live in one project, so a cross-pane paste can only endanger the **destination's** songs.
+
+> **The guard cannot be built until the song reader is fixed.** DNX cannot read a song from any OS
+> 1.11 project: the record's meta block moved by `-0xa00` in the version-3 to version-4 migration,
+> and the row count is a `u16be` that was recorded as a byte. Every song in a version-4 project
+> therefore reads as empty. A guard written today would find no songs and wave everything through,
+> which is worse than no guard because it looks like it checked. See
+> `dn_sysex/99_HardwareTest/dn2-sketchpad-2026-09-26/song-geometry-v4.md`.
+
+### Banks are cheaper than they look
+
+**A bank is not a storage unit.** There is no bank in the format, only sixteen consecutive pattern
+slots. `planPatternMerge` already takes a list of patterns and a landing mode, so copying a bank may
+need no engine work at all, only a gesture that selects sixteen slots.
+
+Two things it does need:
+
+- **A capacity check shown before it starts.** One pattern rarely troubles the pool; sixteen
+  plausibly will, because each one's locked presets must be carried and deduplicated.
+- **All or nothing.** Half a bank copied is worse than none. The merge plans before it applies, so
+  the whole sixteen-pattern plan can be computed and shown first.
+
+Home sounds are not a concern: they live inline in each kit and travel with it. Only locked sounds
+touch the pool.
+
+### Order of work
+
+1. **Fix the song reader** for version-4 records, with a test, and get a project with a song into
+   the corpus so the reader is exercised at all. Nothing in the 27-project corpus has one, which is
+   why this went unnoticed since the 2026-08-15 capture.
+2. The second pane, its focus state, and paste between panes.
+3. The song guard on move and clear.
+4. Banks.
 
 ## The first slice
 
@@ -205,17 +329,22 @@ song editor come later. This section records the constraint so it is not redisco
 Moving patterns within a project *is* rearrange mode, and the risk is that a song references
 pattern slots by index.
 
-- **DN1: guardable today.** The song table is located — `dn1tail.ts`, offset `0x2efc`, 17 records
+- **DN1: guardable today.** The song table is located: `dn1tail.ts`, offset `0x2efc`, 17 records
   of 2,560 bytes, 99 rows of 21. `isSongTableEmpty()` exists and is currently **called by
   nothing**; wiring it into the move path is a day-one job.
-- **DN2: not guardable.** The DN2 song table has never been located; `dn2-format.md` places song
-  mode among the ~98,800 unidentified tail bytes. **We cannot currently prove a DN2 pattern move
-  is safe with respect to songs.**
+- **DN2: located 2026-08-15, and not guardable for a different reason now.** This section used to
+  say the DN2 table had never been found. It was, by differential capture, and
+  `docs/dn2-song-format.md` records it: `tailBase + 0xec04`, 16 records of 3,072, 99 rows of 29.
+
+> **The DN2 reader is wrong for version-4 records, found 2026-09-27.** OS 1.11 moved the song
+> record's meta block by `-0xa00`, and the row count is a `u16be` that the capture recorded as a
+> byte because no song in it had more than 18 rows. So **every song in a 1.11 project reads as
+> empty**, which is why all 27 corpus projects report no songs. A guard built on the current reader
+> would pass every modern project without checking anything. Fixing the reader is step 1 of the
+> split-view order of work above.
 
 Since songs are deferred, the manager ships with the limitation **stated in the UI** rather than
-silently. Locating the table is one capture of the kind that has worked four times — build a short
-song on the device, export, diff a baseline — and it becomes a prerequisite the moment song
-support is real.
+silently.
 
 ## Principles
 
