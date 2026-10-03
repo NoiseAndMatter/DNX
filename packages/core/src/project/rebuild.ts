@@ -292,6 +292,12 @@ export function planRebuild(
   //
   // Settings is exempt: it has one slot by nature, so a second copy is a re-read rather than an
   // overflow, and the same later-wins rule that covers a repaired pattern covers it.
+  //
+  // **The refusal carries its evidence**, because the two cases it cannot separate leave different
+  // fingerprints and the person holding the capture is the only one who can see them. Issue #78 is
+  // a user reporting "197 pattern records for 128 slots" from a device read, where the plan asks
+  // for exactly 128 and nothing in that path retries — so neither of the two explanations this
+  // message offers fits, and the count alone gave nobody anywhere to start. See `Slots.evidence`.
   for (const [what, slots] of [["pattern", patterns], ["kit", kits], ["sound", sounds]] as const) {
     if (slots.seen > slots.size) {
       throw new RebuildError(
@@ -300,7 +306,7 @@ export function planRebuild(
           `project — a +Drive soundbank of 182 or 256 sounds looks exactly like this — or it is a ` +
           `project read plus a second pass over its failures. The two are indistinguishable from ` +
           `the bytes, so neither is guessed at: save a repaired second pass as its own capture, ` +
-          `and rebuild from a bank dump is not a thing this does.`,
+          `and rebuild from a bank dump is not a thing this does.\n\n${slots.evidence()}`,
       );
     }
   }
@@ -507,12 +513,16 @@ function expect(
 /**
  * Slots indexed by object number.
  *
- * Counts what it was offered as well as what it kept, because those differ in two different ways
- * and only one of them is benign: a re-read supersedes a slot, while a bank dump offers more
- * records than there are slots. `seen` is what lets the caller tell them apart.
+ * Counts what it was offered as well as what it kept. `seen` exceeding `size` is the saturation
+ * guard's trigger, and **it does not by itself say which of the two causes it was**: a wrapped
+ * bank dump and a second pass over failures both inflate it, which is why the refusal declines to
+ * choose. What it can do is hand over the shape, so somebody holding the capture can see which
+ * one they have.
  */
 class Slots {
   private readonly slots: (Placed | undefined)[];
+  /** How many records landed on each object number, including ones placed out of range. */
+  private readonly depth = new Map<number, number>();
   superseded = 0;
   seen = 0;
 
@@ -526,12 +536,47 @@ class Slots {
 
   put(index: number, placed: Placed, rejected: Rejected[], label: string): void {
     this.seen++;
+    this.depth.set(index, (this.depth.get(index) ?? 0) + 1);
     if (index < 0 || index >= this.slots.length) {
       rejected.push({ label, reason: `object number ${index} is outside 0..${this.size - 1}` });
       return;
     }
     if (this.slots[index] !== undefined) this.superseded++;
     this.slots[index] = placed;
+  }
+
+  /**
+   * What the overflow looks like, for a refusal somebody has to act on.
+   *
+   * The two causes the guard cannot separate still differ in shape, and the differences are only
+   * visible from here. **A wrapped bank** repeats a contiguous run from 0 upwards, every repeated
+   * number at depth 2, and the run length is the overflow exactly. **A second pass over failures**
+   * repeats whichever numbers failed, which is usually scattered rather than a run from zero.
+   * Anything else — one number very deep, numbers out of range, an overflow that does not match
+   * the repeated count — is neither, and that is worth knowing rather than being told one of two
+   * stories that both fit badly.
+   */
+  evidence(): string {
+    const repeated = [...this.depth.entries()].filter(([, n]) => n > 1).sort((a, b) => a[0] - b[0]);
+    const deepest = repeated.reduce((m, [, n]) => Math.max(m, n), 1);
+    const outOfRange = [...this.depth.keys()].filter((i) => i < 0 || i >= this.size);
+    const run = repeated.map(([i]) => i).every((i, k) => i === k);
+    const shown = repeated.slice(0, 12).map(([i, n]) => (n > 2 ? `${i}×${n}` : `${i}`)).join(", ");
+
+    return [
+      `  distinct object numbers: ${this.count}`,
+      `  repeated:                ${repeated.length}, deepest ${deepest} records on one number`,
+      `  superseded:              ${this.superseded}`,
+      `  out of range:            ${outOfRange.length}${outOfRange.length ? ` (${outOfRange.slice(0, 8).join(", ")})` : ""}`,
+      `  repeated numbers:        ${shown}${repeated.length > 12 ? `, … ${repeated.length - 12} more` : ""}`,
+      `  shape:                   ${
+        repeated.length === 0
+          ? "nothing repeated, so the overflow is entirely out of range"
+          : run && deepest === 2
+            ? "a contiguous run from 0 at depth 2, which is what a wrapped bank dump looks like"
+            : "scattered or uneven, which is not the wrapped-bank shape"
+      }`,
+    ].join("\n");
   }
 
   taken(): Placed[] {

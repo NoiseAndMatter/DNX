@@ -43,6 +43,42 @@ function capture(
 
 const donorDn2 = (): Uint8Array => new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
 
+/** The text of a refusal, since `assert.throws` hands back nothing to match against. */
+function refusal(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    assert.ok(error instanceof RebuildError, `expected a RebuildError, got ${String(error)}`);
+    return error.message;
+  }
+  throw new Error("expected a refusal and nothing was thrown");
+}
+
+/**
+ * A capture whose object numbers are given rather than counted from zero.
+ *
+ * `capture` numbers with `i & 0x7f`, which is the wrapped-bank shape and the only one it can
+ * make. The saturation refusal now describes the shape it saw, and telling a wrapped bank from a
+ * scattered second pass needs a capture that can be neither.
+ */
+function captureAt(
+  dumpType: number,
+  indices: readonly number[],
+  size: number,
+  fill: (index: number) => number,
+  productId: number = ProductId.DN2,
+): ReturnType<typeof parseFile> {
+  const parts = indices.map((objNr, i) =>
+    buildMessage({ productId, dumpType, objNr, payload: new Uint8Array(size).fill(fill(i)) }));
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.length;
+  }
+  return parseFile(all);
+}
+
 test("a PatternKit is split into its pattern and its kit, at the right offsets", () => {
   const plan = planRebuild(capture(0x50, 128, DN2_LAYOUT.patternSize + DN2_LAYOUT.kitSize, (i) => i));
 
@@ -143,6 +179,50 @@ test("more records than slots is refused, not placed by guess", () => {
     () => planRebuild(capture(0x53, 182, DN2.soundSize, (i) => i & 0xff)),
     (error: unknown) => error instanceof RebuildError && /saturates/.test(String(error)),
   );
+});
+
+test("the refusal carries the evidence, because the count alone names no cause", () => {
+  /*
+   * Issue #78: a user reported "197 pattern records for 128 slots" from a device read. The plan
+   * asks for exactly 128 and nothing in that path retries, so neither explanation the message
+   * offers fitted, and the count gave nobody anywhere to start. The refusal now hands over the
+   * shape so the person holding the capture can see which case they have.
+   */
+  const message = refusal(() => planRebuild(capture(0x53, 182, DN2.soundSize, (i) => i & 0xff)));
+
+  assert.match(message, /distinct object numbers: 128/);
+  assert.match(message, /repeated: +54, deepest 2 records on one number/);
+  assert.match(message, /superseded: +54/);
+  assert.match(message, /out of range: +0/);
+});
+
+test("a wrapped bank dump is named as one, and a scattered second pass is not", () => {
+  const bank = refusal(() => planRebuild(capture(0x53, 182, DN2.soundSize, (i) => i & 0xff)));
+  assert.match(bank, /a contiguous run from 0 at depth 2/);
+
+  // The same overflow, but on numbers a failed-and-retried read would repeat: scattered, not a
+  // run from zero. Same count, different shape, and the message must not claim it is a bank.
+  const retried = refusal(() => planRebuild([
+    ...captureAt(0x53, Array.from({ length: 128 }, (_, i) => i), DN2.soundSize, () => 0x11),
+    ...captureAt(0x53, [7, 23, 99, 120], DN2.soundSize, () => 0x22),
+  ]));
+  assert.match(retried, /distinct object numbers: 128/);
+  assert.match(retried, /repeated: +4, deepest 2 records on one number/);
+  assert.match(retried, /repeated numbers: +7, 23, 99, 120/);
+  assert.match(retried, /scattered or uneven, which is not the wrapped-bank shape/);
+});
+
+test("one object number arriving many times is reported as depth, not as a run", () => {
+  // True saturation, as the guard's own comment describes it: everything past the 127th reports 0.
+  const message = refusal(() => planRebuild(captureAt(
+    0x53,
+    [...Array.from({ length: 128 }, (_, i) => i), ...new Array<number>(20).fill(0)],
+    DN2.soundSize,
+    () => 0x33,
+  )));
+  assert.match(message, /repeated: +1, deepest 21 records on one number/);
+  assert.match(message, /repeated numbers: +0×21/);
+  assert.match(message, /scattered or uneven/);
 });
 
 test("a record of the wrong size is refused rather than written short", () => {
