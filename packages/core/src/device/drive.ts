@@ -298,11 +298,12 @@ function endsWithTerminator(body: Uint8Array, end: number): boolean {
 const PAYLOAD_HEADER = 31;
 
 /**
- * Object terminator. The last four bytes of a Digitone 1 image at either of its sizes.
+ * Object terminator. The last four bytes of a Digitone image, on both families and at every size.
  *
- * Checked rather than assumed, and the check is what found the asymmetry between the families:
- * every corpus image of both ends with these four bytes, and a Digitone II project saved by 1.11
- * does not.
+ * Checked rather than assumed: 57 of 57 Digitone II images and every Digitone 1 image in the corpus
+ * end with these four bytes, OS 1.11 and OS 1.43 included. **A 2026-09-14 reading had the Digitone II
+ * keeping its terminator at the 1.10E length and ending with something else; that is not what the
+ * files hold** — not one 1.11 image has these bytes at 12,889,600. See `FamilyImages`.
  */
 const TERMINATOR = Uint8Array.of(0xba, 0xce, 0xf0, 0x0c);
 
@@ -318,14 +319,20 @@ interface FamilyImages {
   /**
    * Whether the object terminator marks the end of an image of this family, at every size.
    *
-   * True on the Digitone 1, whose OS 1.43 inserted its 512 bytes at the song array and carried
-   * the terminator along with them. False on the Digitone II, whose OS 1.11 appended its 512
-   * after the terminator: a 1.11 image still holds `BACEF00C` at the 1.10E length, so the marker
-   * appears at both candidates and identifies neither. Measured on the 1.11 SKETCHPAD read.
+   * True on the Digitone 1, whose OS 1.43 inserted its 512 bytes at the song array and carried the
+   * terminator along with them.
    *
-   * A Digitone II read is therefore sliced to what it declares, exactly as before. If a pre-1.11
-   * project read on 1.11 turns out to arrive padded the way a Digitone 1 project does, this is
-   * where the fix goes, and it needs a measurement rather than an argument from symmetry.
+   * **False on the Digitone II for a reason that turned out to be wrong.** The 2026-09-14 reading of
+   * the 1.11 SKETCHPAD read had 1.11 appending its 512 bytes *after* the terminator, leaving
+   * `BACEF00C` at the 1.10E length so the marker identified neither candidate. Re-measured
+   * 2026-10-03 against every Digitone II image available: all 57 end with it, and **none** carries
+   * it at 12,889,600. 1.11 inserted its block at the song array exactly as 1.43 did on the other
+   * family, so the terminator is as good a marker here as there.
+   *
+   * It is left `false` anyway, because flipping it changes what a device read returns and that is a
+   * change with its own evidence to gather — including whether a Digitone II over-reads a pre-1.11
+   * project at all, which still nobody has measured. A Digitone II read is sliced to what it
+   * declares, exactly as before, and every image seen declares its real length.
    */
   terminatorEndsImage: boolean;
 }

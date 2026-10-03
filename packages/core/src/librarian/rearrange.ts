@@ -221,13 +221,14 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
         `Rearranging patterns may desync them.`,
     });
   } else if (songState === "unknown") {
-    // Unreachable for both families since the DN2's song table was located, and kept because the
-    // tri-state is the honest shape: a device whose songs we cannot find must not read as "empty".
+    // Reachable again since 2026-10-03: the song meta fields sit at different offsets depending on
+    // the project's storage version, so a version nothing has placed is one whose row counts cannot
+    // be read. A project whose songs we cannot find must not read as "empty".
     findings.push({
       severity: "warning",
       message:
-        `We cannot check this project for songs: this build cannot locate the ${device.name}'s ` +
-        `song table. If you use song mode, verify your songs after loading.`,
+        `We cannot check this project for songs: it was written by a firmware whose song layout ` +
+        `this build does not know. If you use song mode, verify your songs after loading.`,
     });
   }
 

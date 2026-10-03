@@ -21,6 +21,37 @@ Versions are `MAJOR.MINOR.PATCH-beta.N` while this is a beta. It stays `0.x` and
 DNX stops refusing things it should eventually do — the loaded project, Digitone II to Digitone 1
 presets — because `1.0` would invite a reader to take those refusals for bugs.
 
+## 0.9.0-beta.8 — 2026-10-03
+
+### Fixed
+
+- **DNX was telling you a project from an updated Digitone II had no songs, whatever it held.**
+  OS 1.11 moved the song array, and DNX kept reading the place it used to be, which is now zeros. So
+  every one of the sixteen songs in every 1.11 project read as empty — the song panel showed sixteen
+  blank arrangements, and the warning that appears before you rearrange patterns said the project was
+  safe to shuffle when it may not have been. If your instrument has taken the 1.11 update, that was
+  every project on it.
+
+  DNX now says it cannot read them instead of saying there are none. Opening a 1.11 project warns
+  that songs cannot be checked, the song panel stays closed rather than showing sixteen empty tabs,
+  and the rearrange warning reports the arrangement as unknown. **Nothing about this is a loss of a
+  feature that worked** — the songs were never being read; they were being reported absent.
+
+  Where OS 1.11 put the array is not yet known well enough to read it. The arithmetic says 512 bytes
+  later, and at 512 later the first record holds something that is not a song, so DNX is not
+  guessing. One capture from a 1.11 instrument with a named song on it settles it.
+
+- **A song's row count is two bytes, not one.** No song can have more than 99 rows, so reading one
+  byte gave the right answer every time; writing one byte left the other half of the field alone.
+  Nothing in the corpus was affected, and now nothing can be.
+
+### Changed
+
+- **The song safety check looks at seventeen records, not sixteen.** The array turns out to hold one
+  more record than the instrument shows songs for, sitting just before song 1. What it is for is not
+  known, so a row in it now counts against rearranging patterns rather than being ignored. It reads
+  as untouched in every project available, so in practice nothing new warns today.
+
 ## 0.9.0-beta.7 — 2026-09-21
 
 ### Fixed

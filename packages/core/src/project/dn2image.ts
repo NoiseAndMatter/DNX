@@ -32,8 +32,10 @@ export interface ImageLayout {
    * The decoded image size a blank or a template of this family has: the oldest one still written.
    *
    * **Not the only size an image of this family can be.** Test membership with `imageSizes`, or
-   * `fitsLayout`. OS 1.11 appended 512 bytes to the Digitone II image without moving anything,
-   * so one layout describes both, and an exact comparison against this refuses every 1.11 project.
+   * `fitsLayout`. OS 1.11 added 512 bytes to the Digitone II image without moving anything *this
+   * table names*, so one layout describes both, and an exact comparison against this refuses every
+   * 1.11 project. Inside the tail it is another story: the song array moved, and `dn2song.ts`
+   * carries that.
    */
   imageSize: number;
   /** Every decoded size this layout describes, oldest first. The offsets below hold for all. */
@@ -96,6 +98,41 @@ export const DN1_LAYOUT: ImageLayout = {
 /** Whether an image is one this layout describes, at any firmware's size for that family. */
 export function fitsLayout(image: Uint8Array, layout: ImageLayout): boolean {
   return layout.imageSizes.includes(image.length);
+}
+
+/**
+ * The storage version the **project object** declares, at the very front of the image.
+ *
+ * The first eight bytes of a decoded image are `BEEFBACE` and a `u32be`, and the sixteen after
+ * them are the project name — which is how this was identified without guessing: every corpus
+ * image reads a small integer there followed by the name the file is called.
+ *
+ * What it is for: the project object's version is what the instrument's loader migrates against,
+ * so it is the one number in the image that says which firmware's *layout* the contents follow.
+ * `dn2song.ts` keys the song record's meta offsets off it, because OS 1.11 moved them.
+ *
+ * Observed across 55 Digitone 1 and 33 Digitone II images:
+ *
+ * | family | version | image size | what wrote it |
+ * |---|---|---|---|
+ * | Digitone II | 2 | 12,889,604 | factory `PRESETS`, and any device not yet updated |
+ * | Digitone II | 3 | 12,889,604 | OS 1.10E |
+ * | Digitone II | 5 | 12,890,116 | OS 1.11 — **4 has never been seen on this family** |
+ * | Digitone 1 | 12 | 2,781,700 | OS 1.42A |
+ *
+ * **Returns `undefined` rather than guessing when the magic is absent**, because one real file in
+ * the author's backups has `DN1P` there and object versions of 254 and 3,335 further in. A damaged
+ * project must not read as version 0 and then be handled as though its layout were known.
+ *
+ * Preferred over the image length for anything layout-dependent. The two agree on every file seen,
+ * but length only distinguishes "grew by 512" and the Outbox block grew both families by exactly
+ * that — so a second change that moved something without changing the size would be invisible to
+ * it. `dn1tail.ts` keys off length because what moves there *is* the inserted block.
+ */
+export function projectObjectVersion(image: Uint8Array): number | undefined {
+  if (image.length < 8) return undefined;
+  if (image[0] !== 0xbe || image[1] !== 0xef || image[2] !== 0xba || image[3] !== 0xce) return undefined;
+  return ((image[4]! << 24) | (image[5]! << 16) | (image[6]! << 8) | image[7]!) >>> 0;
 }
 
 /** Pick the layout that matches a decoded image, by its size. */

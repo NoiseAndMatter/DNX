@@ -53,7 +53,7 @@ import {
 } from "../project/dn2pattern.js";
 import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
 import { isSongTableEmpty } from "../project/dn1tail.js";
-import { isSongTableEmpty as isDn2SongTableEmpty } from "../project/dn2song.js";
+import { Dn2SongError, isSongTableEmpty as isDn2SongTableEmpty } from "../project/dn2song.js";
 
 export type DeviceKind = "dn1" | "dn2";
 
@@ -276,9 +276,21 @@ const DN2: Device = {
    * unidentified tail bytes and the manager could not demonstrate a safety it did not have. It can
    * now: `dn2song.ts` reads each record's declared row count, and a project with no rows anywhere is
    * one a rearrangement cannot desync.
+   *
+   * **`unknown` became reachable again on 2026-10-03.** The row count's offset depends on the
+   * project's storage version, because OS 1.11 moved the meta block, so a project declaring a
+   * version nothing has placed is one whose count cannot be read. That is the case `SongState`'s own
+   * comment described as needing somewhere to go, and this is it. Only a refusal from `dn2song.ts`
+   * is caught: that is the one that means "we cannot tell", and anything else is a bug that should
+   * surface rather than be reported as a safety verdict.
    */
   songState(image) {
-    return isDn2SongTableEmpty(image, DN2_LAYOUT) ? "empty" : "occupied";
+    try {
+      return isDn2SongTableEmpty(image, DN2_LAYOUT) ? "empty" : "occupied";
+    } catch (error) {
+      if (error instanceof Dn2SongError) return "unknown";
+      throw error;
+    }
   },
 };
 

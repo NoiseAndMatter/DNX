@@ -75,15 +75,29 @@ export const DN2_IMAGE_SIZE = 12_889_604;
 /**
  * Decoded image size of a Digitone II project written by **OS 1.11**. Container format `"0059"`.
  *
- * 512 bytes longer than 1.10E's, and **nothing before them moved**. Measured 2026-09-14 on the
- * same project read both ways: the header, all 128 patterns, all 128 kits and the old tail are
- * byte-identical, and every `BEEFBACE` object sits at the same offset with the same version. The
- * appended block holds two new version-2 objects. The firmware's type table gained
- * `BOB::bobConfigStorage_v0_t` (BreakOutBoxSettings, the Outbox 8) in the same release, which is
- * the likeliest reading of them and is not yet confirmed.
+ * 512 bytes longer than 1.10E's. The header, all 128 patterns and all 128 kits are byte-identical
+ * and every `BEEFBACE` object keeps its offset, so every constant in `DN2_LAYOUT` holds for both.
+ *
+ * > **The tail is a different matter, and a 2026-09-14 note here said otherwise.** It recorded the
+ * > 512 bytes as appended with *nothing before them moved* and every object at the same version.
+ * > Both halves are wrong. Re-measured 2026-10-03: the tail objects keep their offsets but their
+ * > versions step up (the working kit 3 to 4, all 128 pool sounds 2 to 3), and **the song array
+ * > moves 512 bytes later** — `004 SKETCHPAD` on both firmwares puts every byte of song content
+ * > exactly 512 on, and the object terminator with it. 1.11 writes its `BOB::bobConfigStorage_v0_t`
+ * > Outbox 8 configuration into previously-zero space at `tailBase + 0xdf13`, 8 records of 22 bytes,
+ * > and everything after that point slid. **This is an insertion at the song array, exactly what OS
+ * > 1.43 did to the Digitone 1**, and `dn1tail.ts` already models that shape.
+ * >
+ * > The old note's evidence was object offsets, and the song array carries no object headers at all,
+ * > so a region that moved wholesale was invisible to the check that was run.
+ *
+ * `dn2song.ts` refuses to read songs from a 1.11 project rather than guess the new base: the
+ * arithmetic says 512, and at 512 the first record's name field holds float-shaped bytes instead of
+ * sixteen zeros, so 1.11 did more than slide the array. See `docs/dn2-song-format.md`.
  *
  * 1.11 upgraded every stored project on the instrument it was installed on, so this is not an edge
- * case: on that machine it is the only size there is.
+ * case: on that machine it is the only size there is — which is also why the song gap matters. A
+ * user who has taken the update has no project DNX can read a song from.
  */
 export const DN2_OS111_IMAGE_SIZE = 12_890_116;
 

@@ -69,7 +69,7 @@ import { chooseDevice, devicePicker } from "../choosedevice.js";
 import { recordWriteMessage } from "@noiseandmatter/dnx-core/device/safewrite.js";
 import { projectSlotEntries, writeProjectToDrive } from "../driveproject.js";
 import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
-import { type Song, readSongs, selectedSong } from "@noiseandmatter/dnx-core/project/dn2song.js";
+import { Dn2SongError, type Song, readSongs, selectedSong } from "@noiseandmatter/dnx-core/project/dn2song.js";
 import { projectName, writeProjectName } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   SONG_GRID,
@@ -601,12 +601,24 @@ let songsFolded = false;
  */
 let insightsOpen = false;
 
-/** The songs of the open project, or undefined when there is nothing to show. */
+/**
+ * The songs of the open project, or undefined when there is nothing to show.
+ *
+ * The refusal is caught rather than allowed out, because this is called from `render()`: a project
+ * whose storage version does not place the song meta fields would otherwise take the whole page
+ * down instead of one panel. `openProject` already says so in the status line, which is where
+ * somebody will read it — the panel just stays hidden.
+ */
 function currentSongs(): Song[] | undefined {
   const image = state.session?.image;
   if (!image) return undefined;
   if (layoutFor(image) !== DN2_LAYOUT) return undefined;
-  return readSongs(image);
+  try {
+    return readSongs(image);
+  } catch (error) {
+    if (error instanceof Dn2SongError) return undefined;
+    throw error;
+  }
 }
 
 /**
@@ -1723,13 +1735,13 @@ async function adopt(loaded: LoadedProject, from?: SlotOrigin): Promise<void> {
 
   render();
 
-  // The DN2's song table has never been located, so a rearrangement cannot be checked against
-  // songs. Say so once, on open, rather than after the work is done.
+  // A rearrangement cannot be checked against songs we cannot read. Say so once, on open, rather
+  // than after the work is done.
   const songs = device.songState(loaded.image);
   if (songs === "unknown") {
     status(
-      `${loaded.fileName} open. Songs cannot be checked on the ${device.name} — its song ` +
-        `table has never been located, so verify any songs after loading.`,
+      `${loaded.fileName} open. Songs cannot be checked — this project was written by a firmware ` +
+        `whose song layout this build does not know, so verify any songs after loading.`,
       "warn",
     );
   } else if (songs === "occupied") {
