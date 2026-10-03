@@ -1740,8 +1740,8 @@ async function adopt(loaded: LoadedProject, from?: SlotOrigin): Promise<void> {
   const songs = device.songState(loaded.image);
   if (songs === "unknown") {
     status(
-      `${loaded.fileName} open. Songs cannot be checked — this project was written by a firmware ` +
-        `whose song layout this build does not know, so verify any songs after loading.`,
+      `${loaded.fileName} open. Songs cannot be checked — this project's song area is not readable ` +
+        `by this build, so verify any songs after loading.`,
       "warn",
     );
   } else if (songs === "occupied") {
