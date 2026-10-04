@@ -14,16 +14,33 @@
  *
  * Not one project under `01_Projects` holds a song row, so every claim a synthetic fixture makes
  * about *where* a field lives is untested against hardware. That is how this module came to read the
- * low half of a word and to call a sixteen-record array complete. `DN2_SONGS` holds the one corpus
- * project with a real arrangement and `DN2_OS111` the one saved by OS 1.11; between them they are
- * the whole evidence base for the parts a synthetic image cannot test.
+ * module came to read the low half of a word and to call a sixteen-record array complete.
+ * `DN2_SONGS` holds the one corpus project with a real arrangement, and `DN2_OS111` holds what OS
+ * 1.11 writes. Between them they are the whole evidence base for the parts a synthetic image cannot
+ * test.
+ *
+ * `DN2_OS111` carries three files on purpose, and the third is the one that matters most:
+ * `GLITCH_EXP slot7 overread.bin` declares **storage version 3 at the 1.11 image length**, because
+ * a pre-1.11 project read off an updated instrument arrives with 512 bytes of slack. Its song array
+ * is at the version-3 base. Any check that placed the array by image length would read the wrong
+ * half of every one of its records, and would do so silently.
  */
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { CORPUS, DN2_OS111, DN2_PROJECTS, DN2_SONGS, NO_CORPUS, requireCorpusFiles } from "./corpus.js";
+import {
+  CORPUS,
+  DN2_OS111,
+  DN2_PROJECTS,
+  DN2_SONGS,
+  NO_CORPUS,
+  requireCorpusFile,
+  requireCorpusFiles,
+} from "./corpus.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { imageFrom } from "@noiseandmatter/dnx-core/device/drive.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { DN1_LAYOUT, DN2_LAYOUT, projectObjectVersion } from "@noiseandmatter/dnx-core/project/dn2image.js";
@@ -40,12 +57,14 @@ import {
   TEMPO_SCALE,
   SONG_LAYOUT_VERSIONS,
   SONG_RECORD_ZERO_OFFSET,
+  SONG_TABLE_SHIFT_1_11,
   isSongTableEmpty,
   mutedTracks,
   readSong,
   readSongs,
   requireKnownSongLayout,
   selectedSong,
+  songRecordZeroBase,
   songTableBase,
   writeSong,
 } from "@noiseandmatter/dnx-core/project/dn2song.js";
@@ -80,7 +99,7 @@ function putRow(
   row: number,
   f: { pattern: number; repeats: number; label: number; bpm: number; mute: number; length: number; swing?: number },
 ): void {
-  const at = songTableBase() + song * SONG_TABLE.recordSize + SONG.rowOffset + row * SONG.rowSize;
+  const at = songTableBase(image) + song * SONG_TABLE.recordSize + SONG.rowOffset + row * SONG.rowSize;
   const u16 = (o: number, v: number): void => { image[at + o] = (v >> 8) & 0xff; image[at + o + 1] = v & 0xff; };
   image[at + ROW.pattern] = f.pattern;
   image[at + ROW.repeatsLessOne] = f.repeats - 1;
@@ -94,7 +113,7 @@ function putRow(
 }
 
 function putSongHeader(image: Uint8Array, song: number, name: string, rowCount: number, endMode: number): void {
-  const at = songTableBase() + song * SONG_TABLE.recordSize;
+  const at = songTableBase(image) + song * SONG_TABLE.recordSize;
   for (let i = 0; i < name.length && i < SONG.nameSize; i++) image[at + i] = name.charCodeAt(i);
   // A word, as the firmware's own loader reads it. The byte this used to write was its low half.
   image[at + ROW_COUNT_AT] = (rowCount >> 8) & 0xff;
@@ -107,17 +126,19 @@ function putSongHeader(image: Uint8Array, song: number, name: string, rowCount: 
 // --- the arithmetic, which is where a slip would hide ------------------------------------------------
 
 test("the array ends exactly at the end of the image, and there are seventeen records", () => {
+  const image = emptyImage();
   // 16 x 3,072 from song 0 lands on the last byte with nothing left over — which is why the
   // sixteen-record reading survived for six weeks. **It is one record short.** A clean project has
   // seventeen tempo words at a stride of 3,072, the first one record before song 0, and seventeen
   // records from there also land on the last byte. The sixteen-record reading has to call that
   // seventeenth word a coincidence sitting exactly one stride before the array.
-  const end = songTableBase() + SONG_TABLE.count * SONG_TABLE.recordSize;
+  const end = songTableBase(image) + SONG_TABLE.count * SONG_TABLE.recordSize;
   assert.equal(end, DN2_LAYOUT.imageSize);
   assert.equal(SONG_TABLE.count * SONG_TABLE.recordSize, 49_152);
 
   assert.equal(SONG_RECORD_ZERO_OFFSET, 0xe004, "the array begins one record before song 0");
-  const arrayBytes = end - (DN2_LAYOUT.tailBase + SONG_RECORD_ZERO_OFFSET);
+  assert.equal(songRecordZeroBase(image), DN2_LAYOUT.tailBase + SONG_RECORD_ZERO_OFFSET);
+  const arrayBytes = end - songRecordZeroBase(image);
   assert.equal(arrayBytes, 17 * SONG_TABLE.recordSize, "seventeen records, no slack");
 });
 
@@ -183,7 +204,7 @@ test("repeats are one-based on the way out, zero-based on disk", () => {
   putSongHeader(image, 0, "R", 1, END_LOOP);
   putRow(image, 0, 0, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16 });
 
-  const at = songTableBase() + SONG.rowOffset + ROW.repeatsLessOne;
+  const at = songTableBase(image) + SONG.rowOffset + ROW.repeatsLessOne;
   assert.equal(image[at], 0, "one play is stored as zero");
   assert.equal(readSong(image, 0).rows[0]!.repeats, 1);
 });
@@ -209,7 +230,7 @@ test("swing is stored as an offset from 50%", () => {
   putRow(image, 0, 1, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16, swing: 80 });
   putRow(image, 0, 2, { pattern: 0, repeats: 1, label: 0, bpm: 120, mute: 0, length: 16 });
 
-  const at = songTableBase() + SONG.rowOffset + ROW.swing;
+  const at = songTableBase(image) + SONG.rowOffset + ROW.swing;
   assert.equal(image[at], 7, "57% is stored as 7");
   assert.equal(image[at + SONG.rowSize], 30, "80% is stored as 30");
 
@@ -238,12 +259,12 @@ test("tempo is exact at the device's 0.1 BPM resolution", () => {
   putRow(image, 0, 0, { pattern: 0, repeats: 1, label: 0, bpm: 135.1, mute: 0, length: 16 });
   putRow(image, 0, 1, { pattern: 0, repeats: 1, label: 0, bpm: 135.2, mute: 0, length: 16 });
 
-  const at = songTableBase() + SONG.rowOffset + ROW.tempo;
+  const at = songTableBase(image) + SONG.rowOffset + ROW.tempo;
   const raw = (image[at]! << 8) | image[at + 1]!;
   assert.equal(raw, 16_212);
   assert.equal(raw, 135.1 * TEMPO_SCALE);
 
-  const next = songTableBase() + SONG.rowOffset + SONG.rowSize + ROW.tempo;
+  const next = songTableBase(image) + SONG.rowOffset + SONG.rowSize + ROW.tempo;
   assert.equal(((image[next]! << 8) | image[next + 1]!) - raw, 12, "0.1 BPM is 12 raw units");
 
   const song = readSong(image, 0);
@@ -285,7 +306,7 @@ test("a Digitone 1 image is refused rather than read at DN2 offsets", () => {
   // The DN1 keeps songs somewhere else entirely. Reading it here would return plausible nonsense.
   const dn1 = new Uint8Array(DN1_LAYOUT.imageSize);
   assert.throws(() => isSongTableEmpty(dn1, DN1_LAYOUT), Dn2SongError);
-  assert.throws(() => songTableBase(DN1_LAYOUT), Dn2SongError);
+  assert.throws(() => songTableBase(dn1, DN1_LAYOUT), Dn2SongError);
 });
 
 test("the selected song index is read from outside the table", () => {
@@ -313,7 +334,7 @@ test("the guard also counts the record before song 0", () => {
   const image = emptyImage();
   assert.equal(isSongTableEmpty(image), true);
 
-  const zero = DN2_LAYOUT.tailBase + SONG_RECORD_ZERO_OFFSET;
+  const zero = songRecordZeroBase(image);
   image[zero + ROW_COUNT_AT + 1] = 1;
   assert.equal(isSongTableEmpty(image), false, "a row in the seventeenth record is still a row");
   assert.equal(DN2_DEVICE.songState(image), "occupied");
@@ -324,40 +345,57 @@ test("the guard also counts the record before song 0", () => {
 
 // --- which firmwares this can place, and what it refuses ----------------------------------------
 
-test("the storage versions with a located song array are the only ones read", () => {
-  assert.deepEqual([...SONG_LAYOUT_VERSIONS], [2, 3], "2 is pre-1.10E, 3 is OS 1.10E");
-  for (const version of SONG_LAYOUT_VERSIONS) {
-    requireKnownSongLayout(emptyImage(version));
-    assert.equal(readSongs(emptyImage(version)).length, SONG_TABLE.count);
+test("the array's position follows the project object's storage version", () => {
+  // Keyed off the version, never the image length. A pre-1.11 project read off a 1.11 instrument
+  // comes back at the 1.11 length with its array still at the version-3 base, so a length check
+  // would move it 512 bytes and read the wrong half of every record. `GLITCH_EXP slot7` is that
+  // file, and it is in the corpus.
+  assert.deepEqual([...SONG_LAYOUT_VERSIONS], [2, 3, 5], "2 pre-1.10E, 3 is 1.10E, 5 is 1.11");
+  assert.equal(SONG_TABLE_SHIFT_1_11, 0x200);
+
+  for (const version of [2, 3]) {
+    const image = emptyImage(version);
+    assert.equal(songTableBase(image), DN2_LAYOUT.tailBase + 0xec04, `version ${version}`);
+  }
+  const os111 = emptyImage(5);
+  assert.equal(songTableBase(os111), DN2_LAYOUT.tailBase + 0xee04, "OS 1.11 is 512 later");
+  assert.equal(readSongs(os111).length, SONG_TABLE.count);
+});
+
+test("an unplaced storage version is refused, not sorted onto the nearer side", () => {
+  // 4 has never been seen on a Digitone II: the family went 3 to 5. Guessing would be worse than
+  // refusing, because `writeSong` uses the same answer and the wrong side lands inside a record.
+  for (const version of [4, 6, 12]) {
+    const image = emptyImage(version);
+    assert.throws(() => requireKnownSongLayout(image), Dn2SongError, `version ${version}`);
+    assert.throws(() => readSongs(image), Dn2SongError);
+    assert.throws(() => isSongTableEmpty(image), Dn2SongError);
+    assert.equal(DN2_DEVICE.songState(image), "unknown");
   }
 });
 
-test("an OS 1.11 project is refused rather than read at the pre-1.11 offsets", () => {
-  // **The bug this change exists for.** OS 1.11 writes version 5 and moves the whole array; read at
-  // the old offsets it reported all sixteen songs empty, every time, so the rearrange guard called a
-  // project with an arrangement safe to shuffle. Refusing turns a confident wrong answer into
-  // "unknown", which is what the guard's third state is for.
-  const os111 = emptyImage(5);
-  assert.throws(() => requireKnownSongLayout(os111), Dn2SongError);
-  assert.throws(() => readSongs(os111), Dn2SongError);
-  assert.throws(() => isSongTableEmpty(os111), Dn2SongError);
-  assert.equal(DN2_DEVICE.songState(os111), "unknown");
-});
+test("a version-5 song round-trips through the shifted array", () => {
+  const image = emptyImage(5);
+  const written = writeSong(image, 0, {
+    name: "AFTER",
+    rowCount: 1,
+    endMode: END_STOP,
+    tempo: 96,
+    rows: [{ pattern: 7, repeats: 2, label: 5, tempo: 128, mute: 0, length: 64, swing: 50 }],
+  });
 
-test("writing refuses the same projects reading refuses, before copying anything", () => {
-  // A write that refused after the copy would still be correct, but the point of checking first is
-  // that `writeSong` is reached from the manager's song panel on every edit.
-  assert.throws(
-    () =>
-      writeSong(emptyImage(5), 0, {
-        name: "NO",
-        rowCount: 1,
-        endMode: END_STOP,
-        tempo: 120,
-        rows: [{ pattern: 0, repeats: 1, label: 0, tempo: 120, mute: 0, length: 16, swing: 50 }],
-      }),
-    Dn2SongError,
-  );
+  // Written 512 bytes on from where a version-3 project keeps song 0, and nothing left behind at
+  // the old place — which is what distinguishes the array moving from the array being copied.
+  const at = DN2_LAYOUT.tailBase + 0xee04;
+  assert.equal((written[at + ROW_COUNT_AT]! << 8) | written[at + ROW_COUNT_AT + 1]!, 1);
+  const old = DN2_LAYOUT.tailBase + 0xec04;
+  assert.equal((written[old + ROW_COUNT_AT]! << 8) | written[old + ROW_COUNT_AT + 1]!, 0);
+
+  const song = readSong(written, 0);
+  assert.equal(song.name, "AFTER");
+  assert.equal(song.rowCount, 1);
+  assert.equal(song.tempo, 96);
+  assert.equal(song.rows[0]!.pattern, 7);
 });
 
 test("a project with no object at offset 0 is refused, not read as version 0", () => {
@@ -374,6 +412,11 @@ test("a project with no object at offset 0 is refused, not read as version 0", (
 function imageOf(path: string): Uint8Array {
   const { payload } = parseProject(new Uint8Array(readFileSync(path)));
   return decodeProjectImage(payload.raw).image;
+}
+
+/** A whole project read off the +Drive, as `drive.ts` hands it back. */
+function driveCapture(path: string): Uint8Array {
+  return imageFrom(parsePayload(new Uint8Array(readFileSync(path))));
 }
 
 test("a real project's song reads exactly what the device stored", { skip: NO_CORPUS }, () => {
@@ -446,30 +489,115 @@ test("the array's seventeen records are what a clean project actually holds", { 
   );
 });
 
-test("an OS 1.11 project's array is somewhere this build will not guess", { skip: NO_CORPUS }, () => {
-  // The obvious answer is 512 later, because the Outbox 8 block was inserted ahead of the array just
-  // as OS 1.43 did on the Digitone 1. It is not good enough: at that base a clean 1.11 project holds
-  // float-shaped bytes where a song's name would be, so 1.11 did more than slide the array.
+test("every record of a clean OS 1.11 project reads as an untouched song", { skip: NO_CORPUS }, () => {
+  // **The measurement that placed the version-5 array.** `TEST_FX_LOCK` is a 1.11 project with no
+  // songs, read whole off the +Drive. At `tail + 0xee04` all sixteen records read as untouched
+  // songs in every field at once — no name, no rows, count 0, end mode 0, 120 BPM. A base that was
+  // 512 bytes out could not produce that in sixteen consecutive records.
   //
-  // This test pins the *evidence for refusing*, so that a later build which does place the array has
-  // to confront the same bytes rather than quietly assume them away.
-  const image = imageOf(requireCorpusFiles(DN2_OS111, ".dn2prj")[0]!);
+  // It is asserted field by field rather than through `readSong`, because `readSong` would answer
+  // from the same constant the test is trying to check.
+  const image = driveCapture(requireCorpusFile(DN2_OS111, "TEST_FX_LOCK slot9 os111.bin"));
   assert.equal(projectObjectVersion(image), 5);
-  assert.throws(() => readSongs(image), Dn2SongError);
+  assert.equal(image.length, DN2_LAYOUT.imageSize + 512);
+
+  const base = DN2_LAYOUT.tailBase + 0xee04;
+  assert.equal(songTableBase(image), base);
+  for (let r = 0; r < SONG_TABLE.count; r++) {
+    const rec = base + r * SONG_TABLE.recordSize;
+    const where = `record ${r}`;
+    assert.ok(image.subarray(rec, rec + SONG.nameSize).every((b) => b === 0), `${where}: name`);
+    assert.equal((image[rec + ROW_COUNT_AT]! << 8) | image[rec + ROW_COUNT_AT + 1]!, 0, `${where}: count`);
+    assert.equal(image[rec + SONG.endModeOffset], 0, `${where}: end mode`);
+    assert.equal(
+      (image[rec + SONG.tempoOffset]! << 8) | image[rec + SONG.tempoOffset + 1]!,
+      120 * TEMPO_SCALE,
+      `${where}: tempo`,
+    );
+    assert.ok(
+      image.subarray(rec + SONG.rowOffset, rec + ROW_COUNT_AT).every((b) => b === 0),
+      `${where}: rows`,
+    );
+  }
+  assert.equal(base + SONG_TABLE.count * SONG_TABLE.recordSize, image.length, "ends with the image");
+
+  // The seventeenth record survives the migration as all zeros, tempo included, where a pre-1.11
+  // project reads it as an untouched song at 120 BPM. Nothing explains that, and the guard does not
+  // need it to: zero rows is zero rows.
+  const zero = songRecordZeroBase(image);
+  assert.ok(image.subarray(zero, zero + SONG_TABLE.recordSize).every((b) => b === 0));
+
+  assert.equal(isSongTableEmpty(image), true);
+  assert.equal(DN2_DEVICE.songState(image), "empty");
+});
+
+test("a pre-1.11 project read off a 1.11 instrument keeps the old base", { skip: NO_CORPUS }, () => {
+  // **Why the version and not the length.** `GLITCH_EXP slot7` was read off an updated instrument
+  // and arrives at the 1.11 length with 512 bytes of slack: the object terminator sits at the 1.10E
+  // end, not at the end of the buffer. Its project object still says version 3 and its array is
+  // still at `tail + 0xec04`. Placing the array by image length would move it 512 bytes, and every
+  // record would be read from the middle of its neighbour.
+  const image = driveCapture(requireCorpusFile(DN2_OS111, "GLITCH_EXP slot7 overread.bin"));
+  assert.equal(projectObjectVersion(image), 3);
+  assert.equal(image.length, DN2_LAYOUT.imageSize + 512, "the length alone would say 1.11");
+
+  assert.deepEqual(
+    [...image.subarray(DN2_LAYOUT.imageSize - 4, DN2_LAYOUT.imageSize)],
+    [0xba, 0xce, 0xf0, 0x0c],
+    "the real image ends at the 1.10E length",
+  );
+  assert.equal(songTableBase(image), DN2_LAYOUT.tailBase + 0xec04, "version 3, so the old base");
+
+  // And the array is really there: seventeen untouched records from the version-3 base.
+  const zero = songRecordZeroBase(image);
+  for (let r = 0; r < 17; r++) {
+    const rec = zero + r * SONG_TABLE.recordSize;
+    assert.equal(
+      (image[rec + SONG.tempoOffset]! << 8) | image[rec + SONG.tempoOffset + 1]!,
+      120 * TEMPO_SCALE,
+      `record ${r}`,
+    );
+  }
+  assert.equal(DN2_DEVICE.songState(image), "empty");
+});
+
+test("the damaged 1.11 project reads, and the guard says it cannot tell", { skip: NO_CORPUS }, () => {
+  // `004 SKETCHPAD OS111` is the project whose song area the instrument itself damaged. Its
+  // seventeenth record declares 21,503 rows, **at the exact address the firmware's own loader reads
+  // before it crashes** — which is a third confirmation of the array's base, the record's size and
+  // the count's offset, arrived at from a disassembly rather than from these files.
+  const image = imageOf(requireCorpusFile(DN2_OS111, "004 SKETCHPAD OS111.dn2prj"));
+  assert.equal(projectObjectVersion(image), 5);
+
+  const wild = songRecordZeroBase(image) + ROW_COUNT_AT;
+  assert.equal((image[wild]! << 8) | image[wild + 1]!, 21_503);
+  assert.equal(wild, 0xc3ef4b, "the address the firmware session reported");
+
+  // The sixteen songs read fine and all declare nothing, so the panel still opens.
+  for (const song of readSongs(image)) {
+    assert.equal(song.rowCount, 0);
+    assert.deepEqual(song.rows, []);
+  }
+
+  // But the verdict is "cannot tell", not "this project has songs". There is no arrangement to
+  // warn about, and calling it empty would be just as much of a claim.
+  assert.throws(() => isSongTableEmpty(image), Dn2SongError);
+  assert.equal(DN2_DEVICE.songState(image), "unknown");
+});
+
+test("a count no song can have is refused by the guard, not reported as an arrangement", () => {
+  const image = emptyImage();
+  const at = songTableBase(image) + 3 * SONG_TABLE.recordSize + ROW_COUNT_AT;
+  image[at] = 0x53;
+  image[at + 1] = 0xff;
+  assert.throws(() => isSongTableEmpty(image), Dn2SongError);
   assert.equal(DN2_DEVICE.songState(image), "unknown");
 
-  // 512 longer than a pre-1.11 image, and the terminator still sits in the last four bytes.
-  assert.equal(image.length - DN2_LAYOUT.imageSize, 512);
-  assert.deepEqual([...image.subarray(image.length - 4)], [0xba, 0xce, 0xf0, 0x0c]);
-
-  // Sixteen untouched records end on the last byte, so the arithmetic alone would say the array
-  // slid 512 — and then the seventeenth slot's name field is not a name.
-  const slid = image.length - 17 * SONG_TABLE.recordSize;
-  assert.ok(
-    !image.subarray(slid + SONG_TABLE.recordSize, slid + SONG_TABLE.recordSize + SONG.nameSize)
-      .every((b) => b === 0),
-    "if this ever reads as sixteen zeros, the array has been located and the refusal can go",
-  );
+  // 99 is the most a song can hold, and that is an arrangement rather than damage.
+  image[at] = 0;
+  image[at + 1] = SONG.rowCount;
+  assert.equal(isSongTableEmpty(image), false);
+  assert.equal(DN2_DEVICE.songState(image), "occupied");
 });
 
 // --- the corpus, which must agree ----------------------------------------------------------------

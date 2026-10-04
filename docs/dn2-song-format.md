@@ -38,27 +38,47 @@ no name, no rows, 120 BPM — so nothing distinguishes "a working copy of the so
 device's own song list, so record 1 is still song 0; only `isSongTableEmpty` reads record 0, because
 a row there is a row this build cannot explain and the guard is where that should count.
 
-### 3. OS 1.11 moved the array, and DNX now refuses to read it rather than guess
+### 3. OS 1.11 moved the whole array 512 bytes later
 
 `004 SKETCHPAD` captured on both firmwares shows **every byte of song content landing exactly 512
-later**. That is the `BOB::bobConfigStorage_v0_t` Outbox 8 block being inserted ahead of the array —
-the same thing OS 1.43 did to the Digitone 1, where `dn1tail.ts` already follows it. On a 1.11 image
-the block sits at `tailBase + 0xdf13`, 8 records of 22 bytes, in space that was zero before.
+later** — 36 of 36, with the shift searched over `-0x2000 .. +0x2000` rather than assumed. That is
+the `BOB::bobConfigStorage_v0_t` Outbox 8 block being inserted ahead of the array, the same thing OS
+1.43 did to the Digitone 1, where `dn1tail.ts` already follows it. On a 1.11 image the block sits at
+`tailBase + 0xdf13`, 8 records of 22 bytes, in space that was zero before. The object terminator
+moves with the array.
 
-So `tailBase + 0xee04` for song 0 is the obvious answer, and it is **not good enough**: at that base
-a clean 1.11 project holds `1b b7 c6 e0 3f ff ff ff 40 00 40 00` where a song's name field would be,
-which is float-shaped data and not the sixteen zeros every project ever examined reads there. Both
-candidate bases put something that is not a song in a slot the arithmetic wants to be one, so 1.11
-did more than slide the array, and nothing on disk says what. Two separate 1.11 projects agree, so it
-is not damage in one file.
+**So song 0 is at `tailBase + 0xee04` on a project OS 1.11 wrote**, and the record's interior is
+unchanged.
 
-`dn2song.ts` therefore refuses a project whose storage version it cannot place. Before this it read
-1.11 projects at the old offsets and reported all sixteen songs empty every time, which told the
-rearrange guard that a project with an arrangement was safe to shuffle. The refusal surfaces as the
-guard's `unknown`, which is what that state exists for.
+Confirmed field by field on two clean 1.11 captures, `TEST_FX_LOCK` and `TRACK16PROBE`: at that base
+**all sixteen records read as untouched songs in every field at once** — no name, no rows, count 0,
+end mode 0, 120 BPM — and the sixteenth ends on the image's last byte. A base 512 bytes out could not
+produce that in sixteen consecutive records.
 
-**One capture lifts it.** Put a song on a 1.11 instrument, give it a name and a tempo nobody else
-uses, save it, and the name's sixteen bytes name the array's base outright.
+> **A first pass refused version 5 instead**, on the grounds that the first record's name field held
+> float-shaped bytes rather than sixteen zeros. That was true of the two 1.11 projects it had looked
+> at — a damaged one and one DNX had built — and false of the two sitting unexamined in the same
+> folder. *The sample you happen to have is not the sample.* Four captures existed; the conclusion
+> was drawn from two.
+
+**The seventeenth record survives as all zeros, tempo included**, where a pre-1.11 project reads it
+as an untouched song at 120 BPM. Nothing explains that. It costs the guard nothing: zero rows is zero
+rows.
+
+### 4. Why the version and not the image length
+
+`GLITCH_EXP slot7` is a project read off an updated instrument that **declares storage version 3 at
+the 1.11 image length**. Its object terminator sits at 12,889,600 — the 1.10E end — with 512 bytes of
+slack after it, and its song array is at the version-3 base with all seventeen records intact.
+
+**A pre-1.11 project read off a 1.11 instrument arrives padded**, exactly as a Digitone 1 project does
+on OS 1.43. Placing the array by image length would have moved that file's array 512 bytes and read
+every record from the middle of its neighbour. The project object's version is the thing that
+actually changed, so it is what the offsets key off.
+
+That also answers a question `KNOWN-ISSUES.md` recorded as open: **the Digitone II does over-read the
+same way.** `drive.ts` still slices a Digitone II read to its declared length, so an image like this
+one reaches callers with 512 bytes of slack on it. That is a separate bug and a separate fix.
 
 ### What an earlier analysis got wrong, and why
 
@@ -108,8 +128,8 @@ untouched records against a real project rather than against the constant derive
 
 | | |
 |---|---|
-| array offset | `tailBase + 0xe004` — before OS 1.11 |
-| song 0 | `tailBase + 0xec04`, i.e. array record 1 |
+| array offset | `tailBase + 0xe004` before OS 1.11, `+ 0xe204` from 1.11 |
+| song 0 | `tailBase + 0xec04`, i.e. array record 1; `+ 0xee04` from 1.11 |
 | song record | 3,072 bytes (`0xc00`) |
 | records | 17 |
 | songs the instrument names | 16 |
@@ -117,7 +137,9 @@ untouched records against a real project rather than against the constant derive
 | row | 29 bytes |
 
 The offsets above hold for **project storage versions 2 and 3**: anything before OS 1.10E, and 1.10E
-itself. OS 1.11 writes version 5 and is refused — see the correction above.
+itself. **Version 5 is OS 1.11 and adds 512 to the base**; the record's interior is identical. Version
+4 has never been seen on this family — it went 3 to 5 — and is refused rather than sorted onto the
+nearer side.
 
 ---
 
@@ -232,11 +254,22 @@ anywhere is one a rearrangement cannot desync.
 
 ## What is still open
 
-- **Where OS 1.11 put the array.** The one blocking question; see the correction at the top. Until it
-  is answered DNX cannot read a song from any project on an updated instrument, which on a machine
-  that has taken the update is every project it holds.
+- **A populated song on OS 1.11.** The array's base is settled on 32 empty records across two clean
+  captures, and the record's interior provably did not move — but no 1.11 project anywhere has a song
+  in it, so a *row* has never been read at the new base. `T50` on the test sheet is one save.
 - **What record 0 is for.** A working copy, a seventeenth slot, or something else. It reads as an
-  untouched song in every project available.
+  untouched song in every pre-1.11 project and as **all zeros, tempo included**, in every 1.11 one,
+  which is one more thing nothing explains about it.
+- **Whether OS 1.12 moved anything in a real project.** Released 30 September 2026, Outbox 8 routing
+  only. **The firmware says it moves nothing**, measured on both MAIN OS images 2026-10-03: the same
+  94 storage types in each, `bobConfigStorage` still `_v0_t`, `projectStorage` still topping out at
+  `_v11`, and the project-length literals 12,890,116 and 12,889,604 appearing the same number of
+  times in both. 1.12's routing fits inside the 512 bytes the Outbox block already reserved and used
+  304 of.
+
+  What a type table cannot show is **field offsets inside a type**, so one project read from a 1.12
+  instrument is still the thing that settles it. That is now a ten-second check after the update
+  rather than an investigation.
 - **Whether `0xde12` is still the selected song on 1.11.** Unanswerable from files: every project
   available reads 0 there on both firmwares.
 - **Writing.** Nothing here has been written back to an instrument. A song edit cannot go over the

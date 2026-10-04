@@ -227,8 +227,9 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
     findings.push({
       severity: "warning",
       message:
-        `We cannot check this project for songs: it was written by a firmware whose song layout ` +
-        `this build does not know. If you use song mode, verify your songs after loading.`,
+        `We cannot check this project for songs: its song area is not readable by this build — ` +
+        `either a firmware whose layout we do not know, or a damaged record. If you use song ` +
+        `mode, verify your songs after loading.`,
     });
   }
 
