@@ -116,6 +116,7 @@ import {
   type Entry,
   driveChecksum,
   ListingError,
+  STORED_FORM,
   StorageCode,
   u32,
   WRITE_CHUNK_SIZE,
@@ -123,6 +124,7 @@ import {
   writeCloseRequest,
   writeOpenRequest,
 } from "./storage.js";
+import { COMPRESSED_FLAG_OFFSET } from "../project/container.js";
 
 /**
  * Compute the checksum one chunk declares.
@@ -201,8 +203,13 @@ const DEFAULT_CHUNK_SIZE = WRITE_CHUNK_SIZE;
  * `00` is the raw, uncompressed image; `01` is the stored, compressed payload. Measured on the same
  * kit read both ways — `/kits/A/1` came back as 10,795 bytes with `00` here and **3,481 bytes with
  * `01`**, the two headers differing in this byte alone.
+ *
+ * **One number, two names.** `project/container.ts` defines the byte as part of the header and calls
+ * it the compression flag, which is what it is to a reader of the format. This layer calls it the
+ * form, which is what it is to a write: the stored form a `0x58` accepts. Both names are right for
+ * their layer and the number is defined once, which is the part that matters.
  */
-export const FORM_FLAG_OFFSET = 29;
+export const FORM_FLAG_OFFSET = COMPRESSED_FLAG_OFFSET;
 export const FORM_STORED = 0x01;
 export const FORM_RAW = 0x00;
 
@@ -228,6 +235,38 @@ export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
 /** The form the route in `path` stores. The compressed one for a route nobody has listed. */
 export function storedFormFor(path: string): number {
   return STORED_FORM_BY_ROOT[rootOf(path)] ?? FORM_STORED;
+}
+
+/**
+ * The trailing byte an open-for-read needs in order to return the form this route stores.
+ *
+ * `undefined` means omit it, which is how a raw body is asked for — omitting a byte and sending a
+ * zero are not the same thing here, and `STORED_FORM` says what is known about that.
+ *
+ * **Every read that will be compared against bytes DNX holds goes through this.** A read in the
+ * wrong form is not a failed read: it succeeds and returns different bytes, so the comparison
+ * reports a mismatch on a write that was fine, and a backup taken that way holds a file the write
+ * path refuses. Measured on `/waverider/5`, which answers the trailing `0x01` with a 428-byte
+ * compressed container in place of the 16,555 raw bytes that are byte-identical to the write.
+ *
+ * That is the same failure as 2026-08-15, when a backup was taken raw and could not be restored,
+ * and as 2026-09-07, when the verify read and the backup read disagreed because one had been fixed
+ * and the other had not. Three instances of one mistake: **a per-route decision applied at some of
+ * its sites.** So this is the only statement of it, and the sites call it rather than deciding.
+ */
+export function readFormFor(path: string): typeof STORED_FORM | undefined {
+  return storedFormFor(path) === FORM_STORED ? STORED_FORM : undefined;
+}
+
+/**
+ * The same answer as an object to spread into a read's options. An empty one asks for the raw form.
+ *
+ * Exists because the alternative at each call site is a ternary that evaluates `readFormFor` twice,
+ * and because a spread reads as one decision taken elsewhere, which is what it is.
+ */
+export function readFormOption(path: string): { form?: typeof STORED_FORM } {
+  const form = readFormFor(path);
+  return form === undefined ? {} : { form };
 }
 
 /** The first path segment, or "" for a path with none. */

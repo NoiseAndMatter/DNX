@@ -22,6 +22,14 @@ export interface BackupEntry {
   slot: number;
   name: string;
   bytes: number;
+  /**
+   * The form this file was read in, which is the form it must be written back in.
+   *
+   * A property of the route: the stock roots hold the compressed form and `/waverider` holds the
+   * raw one. Absent in files written before DNX recorded it, so a reader must fall back to the
+   * manifest's own `form` rather than assuming.
+   */
+  form?: "stored" | "raw";
 }
 
 export interface BackupManifest {
@@ -62,12 +70,22 @@ export interface BackupManifest {
    */
   skipped?: string[];
   /**
-   * The form every file was read in.
+   * The form the files were read in, across the whole backup.
    *
-   * Recorded because a raw-form backup cannot be restored, and a restore should say so plainly
-   * rather than failing at the write.
+   * Recorded because a backup read in the wrong form cannot be restored, and a restore should say
+   * so plainly rather than failing at the write.
+   *
+   * **`"stored"` while every entry agrees, `"mixed"` once they do not.** The form is a property of
+   * the route rather than of the backup: the three stock roots hold the compressed form and
+   * `/waverider` holds the raw one, so an instrument with a custom route yields both in one file.
+   * Every backup of a stock instrument still says `"stored"`, which is what an existing reader
+   * expects, and `"mixed"` is the signal to read `BackupEntry.form` per entry instead of trusting
+   * this one.
+   *
+   * A reader that only understands `"stored"` therefore refuses a mixed backup rather than
+   * restoring half of it in the wrong form, which is the behaviour worth having from an old reader.
    */
-  form: "stored";
+  form: "stored" | "mixed";
   entries: BackupEntry[];
 }
 

@@ -27,7 +27,7 @@
  *
  * ## Stored form, and why a raw backup is not a backup
  *
- * Every read here asks for `STORED_FORM`. The device answers the same path two ways: the stored
+ * Every read here asks for the form that route stores. The device answers the same path two ways: the stored
  * payload, or the expanded image. **Only the stored form can be written back** — `refuseWrongForm`
  * rejects the other at the door.
  *
@@ -61,7 +61,8 @@
  * that exists, so an empty one costs nothing to leave out.
  */
 
-import { STORED_FORM, wholeListing } from "./storage.js";
+import { wholeListing } from "./storage.js";
+import { readFormOption } from "./storagewrite.js";
 import { fileLengthFromHead } from "../project/container.js";
 import { BANKS } from "../project/naming.js";
 import { readStoredFile } from "./storagesession.js";
@@ -363,8 +364,11 @@ export async function backupDevice(
     try {
       const read = await readStoredFile(item.path, {
         transport,
-        // The whole reason this is a minute rather than an hour, and the only form a write accepts.
-        form: STORED_FORM,
+        // The whole reason this is a minute rather than an hour, and the form a write accepts on
+        // this route. **Per item, not per backup**: this walks whatever the device lists, so a
+        // modded instrument puts routes here that store a different form, and a backup taken in
+        // the wrong one holds a file the write path refuses. See `readFormOption`.
+        ...readFormOption(item.path),
         msgId: host.ids.reserve(IDS_FOR.wholeProject),
         totalFromHead: fileLengthFromHead,
         ...(item.kind === "projects"
@@ -397,7 +401,11 @@ export async function backupDevice(
       const bytes = wrap ? await host.wrapProject!(item.name, wrap, read.bytes) : read.bytes;
 
       files.push({ path: file, bytes });
-      entries.push({ file, source: item.path, slot: item.slot, name: item.name, bytes: bytes.length });
+      entries.push({
+        file, source: item.path, slot: item.slot, name: item.name, bytes: bytes.length,
+        // Recorded per entry because the form is the route's, and a restore writes back per entry.
+        form: readFormOption(item.path).form === undefined ? "raw" : "stored",
+      });
     } catch (error) {
       failed.push({ slot: item.slot, name: item.name, why: String(error) });
     }
@@ -431,7 +439,11 @@ export async function backupDevice(
         // Empty for every instrument known today. Present so a restore can tell "nothing else was
         // there" from "something else was there and this file does not have it".
         skipped: rest.skipped,
-        form: "stored",
+        // `"mixed"` the moment two routes disagree, which only a custom route can cause today.
+        // Derived rather than declared: a constant here was true until `/waverider` stored the raw
+        // form, and a manifest that states the wrong form is worse than one that omits it, because
+        // a restore acts on it.
+        form: entries.every((e) => e.form === "stored") ? "stored" : "mixed",
         entries,
       },
       files,
