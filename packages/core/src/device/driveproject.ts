@@ -58,6 +58,7 @@
  */
 
 import { type ConnectedDevice } from "./identify.js";
+import { readFormOption } from "./storagewrite.js";
 import { firstDifference, projectPath } from "../project/driveslot.js";
 
 export { firstDifference, projectPath };
@@ -65,7 +66,6 @@ import { type Entry, listRequest, wholeListing } from "./storage.js";
 import { IDS_FOR, type MessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
 import { type BackupHook, type ConfirmHook, type FileWriteReview, safeWriteFile } from "./safewrite.js";
-import { STORED_FORM } from "./storage.js";
 import { readStoredFile } from "./storagesession.js";
 
 export class DriveWriteError extends Error {}
@@ -272,7 +272,9 @@ async function readStoredForm(
 ): Promise<Uint8Array> {
   const file = await readStoredFile(projectPath(slot), {
     transport: device.api,
-    form: STORED_FORM,
+    // `/projects` stores the compressed form, so this is `STORED_FORM` either way. Asked rather
+    // than assumed, so that a reader meets one rule and a new route cannot inherit this one's.
+    ...readFormOption(projectPath(slot)),
     msgId: ids.reserve(IDS_FOR.wholeProject),
     timeoutMs: 20_000,
     onProgress: (_chunks, bytes) => onProgress(bytes),

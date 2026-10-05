@@ -59,21 +59,35 @@ test("a .dnx is a zip, and the manifest is the first thing in it", async () => {
   assert.equal(back.entries[0]!.source, "/projects/1");
 });
 
-test("the manifest records the form, because a raw backup cannot be restored", () => {
+test("the manifest records the form per entry, because the form belongs to the route", () => {
   /*
-   * The device answers one path two ways, and **only the stored form can be written back**;
-   * `refuseWrongForm` rejects the other at the write. A backup taken raw is unrestorable, and that
-   * has happened on hardware: 2026-08-15, a slot backed up as 12.9 MB of raw image, saved under a
-   * `.dn2prj` name it had no right to, rejected by the very function that produced it.
+   * The device answers one path two ways, and **a backup read in the wrong form cannot be
+   * written back**; `refuseWrongForm` rejects it. That has happened on hardware: 2026-08-15, a
+   * slot backed up as 12.9 MB of raw image, saved under a `.dn2prj` name it had no right to,
+   * rejected by the very function that produced it.
    *
-   * Recorded in the manifest so a restore can refuse early and say why, rather than failing at the
-   * last step of a long operation.
+   * It was recorded as one field for the whole backup, `form: "stored"`, which was true while
+   * every route stored the compressed form. `/waverider` stores the raw form, so a backup of a
+   * modded instrument holds both and that field became a claim the file cannot support. A restore
+   * acts on it, which makes a wrong value worse than an absent one.
+   *
+   * So the form is per entry, and the top-level field is derived: `"stored"` while the entries
+   * agree, `"mixed"` once they do not. A stock backup still reads `"stored"`, so an existing
+   * reader is unaffected, and one that only understands `"stored"` refuses a mixed file rather
+   * than restoring half of it in the wrong form.
    */
-  assert.equal(manifest().form, "stored");
+  assert.equal(manifest().form, "stored", "a stock backup is all one form, as it always was");
 
   const source = readFileSync(join(CORE, "device", "backup.ts"), "utf8");
-  assert.match(source, /form:\s*STORED_FORM/,
-    "every read must ask for the stored form; a raw one produces a backup nobody can restore");
+
+  // Derived from the entries rather than declared, which is the whole correction.
+  assert.doesNotMatch(source, /form:\s*"stored",/,
+    "a constant here states a form the backup may not have");
+  assert.match(source, /form:\s*entries\.every/);
+
+  // And every read asks the route, which `safewrite.test.ts` pins across the whole device layer.
+  assert.match(source, /readFormOption\(item\.path\)/,
+    "every read must ask the route's form; the wrong one produces a backup nobody can restore");
   assert.doesNotMatch(source.slice(source.indexOf("backupDevice")), /form:\s*undefined/);
 });
 

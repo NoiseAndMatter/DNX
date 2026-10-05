@@ -33,8 +33,9 @@
  */
 
 import { type ConfirmHook, type FileWriteReview, safeWriteFile } from "./safewrite.js";
+import { readFormOption } from "./storagewrite.js";
 import { readStoredFile } from "./storagesession.js";
-import { STORED_FORM, listRequest, wholeListing } from "./storage.js";
+import { listRequest, wholeListing } from "./storage.js";
 import { bankPath, slotPath } from "./library.js";
 import { renamePresetFile } from "./presetrename.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
@@ -115,7 +116,7 @@ export async function renamePresetOnDrive(options: RenamePresetOptions): Promise
   status(`Reading ${target.name}…`);
   const stored = await readStoredFile(path, {
     transport,
-    form: STORED_FORM,
+    ...readFormOption(path),
     msgId: host.ids.reserve(IDS_FOR.oneObject),
   });
 
@@ -156,7 +157,7 @@ export async function renamePresetOnDrive(options: RenamePresetOptions): Promise
     status(`Verifying: reading ${path} back…`);
     const back = await readStoredFile(path, {
       transport,
-      form: STORED_FORM,
+      ...readFormOption(path),
       msgId: host.ids.reserve(IDS_FOR.oneObject),
     });
     const wanted = decodeProjectImage(plan.bytes).image;

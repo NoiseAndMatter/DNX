@@ -92,8 +92,8 @@ import {
 } from "./deviceproject.js";
 import { WriteCode, verifyWrite } from "./dumpwrite.js";
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
-import { type ChunkChecksum, refuseUnlessEmpty, writeStoredFile } from "./storagewrite.js";
-import { STORED_FORM, WRITE_CHUNK_SIZE } from "./storage.js";
+import { type ChunkChecksum, readFormOption, refuseUnlessEmpty, writeStoredFile } from "./storagewrite.js";
+import { WRITE_CHUNK_SIZE } from "./storage.js";
 import { type Entry } from "./storage.js";
 import { type WritePermit } from "./writepermit.js";
 import { CONTAINER_SLOT_OFFSET } from "../project/container.js";
@@ -649,22 +649,29 @@ export async function safeWriteFile(
   const readBack = await readStoredFile(path, {
     transport,
     /*
-     * **`STORED_FORM`, for the same reason the backup read above needs it.**
+     * **The form this route stores, for the same reason the backup read above needs it.**
      *
-     * `readStoredFile` defaults to the raw expanded image, and `bytes` is the stored payload —
-     * `refuseWrongForm` guarantees it. Without this the comparison is a 10,795-byte image against a
-     * 3,481-byte payload, `compareStored` returns its length mismatch, and **`verified` is false
-     * for every file write that has ever run.**
+     * `readStoredFile` defaults to the raw expanded image, and `bytes` is whatever form the route
+     * holds — `refuseWrongForm` guarantees it. Read the wrong form and the comparison is a
+     * 10,795-byte image against a 3,481-byte payload, `compareStored` returns its length mismatch,
+     * and **`verified` is false for every write on that route.**
      *
      * Found 2026-09-07 by writing a sound to a Digitone II and diffing the round trip by hand: the
      * manual read passed `STORED_FORM` and found one byte differing, while `safeWriteFile` reported
      * a mismatch on the same write. The two disagreed because they were reading different files.
      *
-     * The identical omission was fixed on the backup read on 2026-08-15 and the note explaining it
-     * sits forty lines above this call. **A fix applied to one of two calls is half a fix**, and
-     * nothing failed loudly enough to say so: a false `verified` reads as a cautious tool.
+     * That was the second instance. The first was the backup read on 2026-08-15, and the note
+     * explaining it sits forty lines above this call: **a fix applied to one of two calls is half a
+     * fix**, and nothing failed loudly enough to say so, since a false `verified` reads as a
+     * cautious tool.
+     *
+     * The third was this line being a constant. `/waverider` stores the raw form, and it answers
+     * the trailing `0x01` with a 428-byte compressed container in place of the 16,555 raw bytes
+     * that are byte-identical to the write, so every good write there would have been called a
+     * failure. `readFormOption` is now the only place that decides, because the mistake each time was
+     * a per-route decision made at some of its sites.
      */
-    form: STORED_FORM,
+    ...readFormOption(path),
     ...(options.verifyMsgId === undefined ? {} : { msgId: options.verifyMsgId }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     onProgress: (_chunks, got) => progress(got, bytes.length, "verify"),
@@ -677,8 +684,9 @@ export async function safeWriteFile(
 /**
  * Read what a slot holds right now, as a file that can be written straight back.
  *
- * **`STORED_FORM`, and that is the whole point of the function.** The stored form is the form a
- * `0x58` accepts, so restoring is `safeWriteFile` in the other direction with no conversion step.
+ * **The route's own form, and that is the whole point of the function.** The form a route stores is
+ * the form a `0x58` accepts there, so restoring is `safeWriteFile` in the other direction with no
+ * conversion step.
  *
  * The first hardware run of this, 2026-08-15, did **not** pass it — `readStoredFile` defaults to
  * raw — and produced a 12,889,647-byte image with no container header, saved under a `.dn2prj`
@@ -693,7 +701,7 @@ async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
   const stamp = (options.now?.() ?? new Date()).toISOString().slice(0, 19).replaceAll(":", "-");
   const existing = await readStoredFile(options.path, {
     transport: options.transport,
-    form: STORED_FORM,
+    ...readFormOption(options.path),
     ...(options.verifyMsgId === undefined ? {} : { msgId: options.verifyMsgId }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
   });

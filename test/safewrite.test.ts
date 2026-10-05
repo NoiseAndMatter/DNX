@@ -857,30 +857,71 @@ test("the two bytes the instrument writes for itself are not reported as corrupt
   assert.equal(found[0]!.at, 40, "a real difference is still named, and named first");
 });
 
-test("every read of a file the writer touches asks for the stored form", () => {
+test("no read in the device layer decides a file's form for itself", () => {
   /*
-   * **A fix applied to one of two calls is half a fix.**
+   * **The same mistake three times, each time at some of its sites.**
    *
-   * `safeWriteFile` reads a file twice: once to back the destination up, once to verify the write.
-   * Both compare against `bytes`, which `refuseWrongForm` guarantees is the stored payload. The
-   * backup read was corrected on 2026-08-15 and the verify read was not, so `verified` was false
-   * for every file write that had ever run — a 10,795-byte image compared against a 3,481-byte
-   * payload, returning `compareStored`'s length mismatch.
+   * 1. 2026-08-15. The backup read defaulted to the raw image while the write wanted the stored
+   *    payload, so the backup was unrestorable. Fixed.
+   * 2. 2026-09-07. The verify read still defaulted, so `verified` was false for every file write
+   *    that had ever run: a 10,795-byte image compared against a 3,481-byte payload, returning
+   *    `compareStored`'s length mismatch. The note explaining the first fix sat forty lines above
+   *    the call that still needed it.
+   * 3. 2026-10-05. Both were then constants, `form: STORED_FORM`, which is right for the three
+   *    stock roots and wrong for `/waverider`: it stores the raw form and answers the trailing
+   *    `0x01` with a 428-byte compressed container in place of 16,555 raw bytes. Every good write
+   *    there would have been called a failure, and a backup would have held a file the write path
+   *    refuses.
    *
-   * Nothing failed loudly. A tool that reports a write as unverified reads as a cautious tool, and
-   * the note explaining the first fix sat forty lines above the call that still needed it.
+   * Nothing failed loudly in any of the three. A tool that reports a write as unverified reads as
+   * a cautious tool.
    *
-   * Read out of the source because both calls need a device. The property is that no
-   * `readStoredFile` inside this module defaults its form.
+   * So the rule is not "ask for the stored form" but **"ask `readFormOption`"**, and it is checked
+   * across the whole device layer rather than in the one file where it was last wrong. Read out of
+   * the source because every one of these calls needs a device.
    */
-  const source = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "core", "src", "device", "safewrite.ts"), "utf8");
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "core", "src", "device");
 
-  const calls = [...source.matchAll(/readStoredFile\(([\s\S]*?)\n  \}\);/g)];
-  assert.ok(calls.length >= 2, `found ${calls.length} readStoredFile calls; expected the backup and the verify`);
-  for (const [index, call] of calls.entries()) {
-    assert.match(call[0]!, /form:\s*STORED_FORM/,
-      `readStoredFile call ${index + 1} defaults to the raw image and compares it against a stored payload`);
+  /*
+   * **The subset is the reads whose bytes are compared with, or written back from, bytes DNX
+   * holds**, which is where a form mismatch becomes a false mismatch or an unrestorable backup. It
+   * is named rather than inferred, because no regex can see what a caller does with the result.
+   *
+   * `drive.ts` is not in it, and that is the distinction rather than an exemption: it reads a
+   * project for `decodeProjectImage`, which wants the raw expanded image, and omitting the flag is
+   * how raw is asked for. Nothing compares that read against a file DNX holds.
+   *
+   * Each module listed must still contain a call, so the list cannot rot into names of files that
+   * no longer read anything.
+   */
+  const roundTripping = ["safewrite.ts", "backup.ts", "renamepreset.ts", "driveproject.ts"];
+  const CALL = /await readStoredFile\(([\s\S]*?)\n(\s*)\}\);/g;
+
+  let checked = 0;
+  for (const file of roundTripping) {
+    const source = readFileSync(join(dir, file), "utf8");
+    const calls = [...source.matchAll(CALL)];
+    assert.ok(calls.length > 0, `${file} is listed as round-tripping but reads nothing`);
+
+    for (const call of calls) {
+      checked++;
+      assert.match(call[0]!, /readFormOption\(/,
+        `${file}: a readStoredFile call names its own form instead of asking readFormOption`);
+    }
+  }
+  assert.ok(checked >= 6, `only ${checked} round-tripping reads found`);
+
+  /*
+   * And one invariant with no exceptions anywhere in the layer: **no read hard-codes the stored
+   * form.** That constant means "the three stock roots" and says so nowhere, which is what made
+   * the third instance of this bug invisible.
+   */
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+    const source = readFileSync(join(dir, file), "utf8");
+    for (const call of source.matchAll(CALL)) {
+      assert.doesNotMatch(call[0]!, /form:\s*STORED_FORM/,
+        `${file}: a read hard-codes STORED_FORM, which is wrong on a route that stores raw`);
+    }
   }
 });
 
