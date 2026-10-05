@@ -24,6 +24,7 @@
  * The counter therefore starts at 1 and skips 0 when it wraps.
  */
 
+import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID } from "./messageids.js";
 import {
   type ApiFrame,
   RESPONSE_BIT,
@@ -40,7 +41,25 @@ export class DeviceTimeout extends Error {}
 export class SessionClosed extends Error {}
 
 /** The id field is a u16, and 0 is reserved to mean "not a response". */
-const MAX_ID = 0xffff;
+const MAX_ID = MAX_MESSAGE_ID;
+
+/**
+ * The lowest id this session will hand out, which is the same floor `MessageIds` uses.
+ *
+ * **It used to start at 1, and that quietly broke a detector.** `othertraffic.ts` warns that
+ * another application is on the MIDI port when a reply arrives whose id is below
+ * `FIRST_MESSAGE_ID`, on the stated grounds that such an id *cannot be ours*. This session is
+ * part of "ours" and was numbering from 1, so the probe's own capability queries went out as ids
+ * 4 to 11 and every probe run raised the warning against itself.
+ *
+ * Fixed here rather than in the detector, because the detector's premise is the one worth keeping
+ * true: **no part of DNX sends an id below the floor.** A check patched to excuse the one caller
+ * that broke the rule would have left the rule meaning nothing.
+ *
+ * Elektron Transfer was measured numbering 126 to 149 on 2026-09-16, which is what the floor
+ * leaves room for.
+ */
+const FIRST_ID = FIRST_MESSAGE_ID;
 
 export interface SessionOptions {
   /**
@@ -66,7 +85,7 @@ interface InFlight {
 }
 
 export class DeviceSession {
-  private nextId = 1;
+  private nextId = FIRST_ID;
   private readonly inFlight = new Map<number, InFlight>();
   private readonly timeoutMs: number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
@@ -195,13 +214,14 @@ export class DeviceSession {
     finish(entry);
   }
 
-  /** Next free id, skipping 0 and anything still outstanding. */
+  /** Next free id, staying above Transfer's range and skipping anything still outstanding. */
   private allocate(): number {
-    for (let tried = 0; tried < MAX_ID; tried++) {
+    const span = MAX_ID - FIRST_ID + 1;
+    for (let tried = 0; tried < span; tried++) {
       const id = this.nextId;
-      this.nextId = this.nextId >= MAX_ID ? 1 : this.nextId + 1;
+      this.nextId = this.nextId >= MAX_ID ? FIRST_ID : this.nextId + 1;
       if (!this.inFlight.has(id)) return id;
     }
-    throw new Error("no free message id: 65,535 requests are outstanding");
+    throw new Error(`no free message id: ${span.toLocaleString()} requests are outstanding`);
   }
 }

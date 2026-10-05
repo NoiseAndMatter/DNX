@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
 import { API_SELECTOR, Code, RESPONSE_BIT, deviceRequest, versionRequest } from "@noiseandmatter/dnx-core/device/api.js";
+import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID } from "@noiseandmatter/dnx-core/device/messageids.js";
+import { isForeignReply } from "../web/src/othertraffic.js";
 import {
   DeviceSession,
   DeviceTimeout,
@@ -200,6 +202,46 @@ test("a transport that throws rejects the request instead of leaking it", async 
   const session = new DeviceSession(failing, fake.options());
   await assert.rejects(session.request(Code.Device, deviceRequest), /port is not open/);
   assert.equal(session.pending, 0);
+});
+
+test("every id is above Transfer's range, because a detector depends on it", async () => {
+  /*
+   * **The premise another file rests on.** `othertraffic.ts` warns that a second application is on
+   * the MIDI port when a reply arrives whose id is below `FIRST_MESSAGE_ID`, on the stated grounds
+   * that such an id *cannot be ours*.
+   *
+   * This session numbered from 1 until 2026-10-05, so it was "ours" and below the floor at the
+   * same time. The probe's capability queries went out as ids 4 to 11 and **every probe run raised
+   * the warning against itself**, including during a hardware session where it stopped a write and
+   * sent somebody looking for an application that was not running.
+   *
+   * The fix went in the allocator rather than the detector: a check patched to excuse the one
+   * caller breaking the rule would have left the rule meaning nothing. This is the rule.
+   *
+   * Transfer was measured numbering 126 to 149 on 2026-09-16, which is what the floor leaves room
+   * for and why it is where it is.
+   */
+  const fake = new Fake();
+  const session = new DeviceSession(fake, fake.options());
+
+  // Enough to pass where the old counter would have been, and all in flight at once so the
+  // allocator cannot hand the same id out twice.
+  const waiting = Array.from({ length: 20 }, () => session.request(Code.Device, (id) => deviceRequest(id)));
+
+  const ids = fake.idsSent();
+  assert.equal(ids.length, 20);
+  for (const id of ids) {
+    assert.ok(id >= FIRST_MESSAGE_ID, `id ${id} is in Transfer's range and would read as foreign`);
+    assert.ok(id <= MAX_MESSAGE_ID, `id ${id} does not fit the u16 field`);
+  }
+  assert.equal(new Set(ids).size, 20, "an id in flight must not be handed out twice");
+  assert.equal(ids[0], FIRST_MESSAGE_ID, "the first id is the floor itself");
+
+  // And the detector agrees, which is the whole point of pinning this here.
+  for (const id of ids) assert.equal(isForeignReply(id), false, `id ${id} reads as somebody else's`);
+
+  session.close();
+  await Promise.allSettled(waiting);
 });
 
 // --- the multi-device requirement -----------------------------------------------------------
