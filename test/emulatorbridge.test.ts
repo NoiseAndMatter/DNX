@@ -117,40 +117,45 @@ test("a project slot's index is the device's own, and it counts from one", { ski
   }
 });
 
-test("asking for a page returns one fewer than asked, and declares only the page", { skip }, async () => {
+test("a page is a half-open window over index values, not a start and a count", { skip }, async () => {
   /*
-   * **Measured stock behaviour that nothing in DNX relies on, pinned so it is not rediscovered.**
+   * **This is why `Page` was renamed.** The field called `count` is the window's `end`, and the
+   * firmware's *router* applies it identically to every route, so no handler can change it.
    *
-   * `start=0, count=45` returns slots 1..44. The window is a 0-based position range over a
-   * 1-based slot space, so position 0 holds nothing and is silently lost.
-   *
-   * Worse for a caller: with a page, `declared` is the size of *this reply*; unpaged it is the
-   * size of the *directory*. So `complete`, which is `carried >= declared`, is trivially true for
-   * any page — a page would pass `requireWholeListing` as a whole listing.
-   *
-   * Nothing in core pages: every caller asks unpaged and only the Probe's manual control can send
-   * a page at all. This is recorded rather than fixed, because fixing paging with no caller is how
-   * a second wrong implementation gets written. It is also why the Waverider route declares the
-   * directory total on every page instead of copying this.
+   * It explains an observation DNX had carried for months as an oddity: `(0, 45)` on `/projects`
+   * returns 44 entries, because `[0, 45)` over a 1-based slot space loses position 0. Not an
+   * off-by-one in the device — an off-by-one in the name.
    */
   const io = await bridge();
-  const paged = parseListing((await io.request(listRequest(5, "/projects", { start: 0, count: 45 }), 5, TIMEOUT)).body);
+  const page = async (id: number, first: number, end: number) =>
+    parseListing((await io.request(listRequest(id, "/projects", { first, end }), id, TIMEOUT)).body);
 
-  assert.equal(paged.entries.length, 44, "asked for 45 from 0 and slot 0 does not exist");
-  assert.equal(paged.entries[0]!.index, 1);
-  assert.equal(paged.entries.at(-1)!.index, 44);
+  const low = await page(5, 0, 45);
+  assert.equal(low.entries[0]!.index, 1, "slot 0 does not exist, so [0,45) starts at 1");
+  assert.equal(low.entries.at(-1)!.index, 44);
+  assert.equal(low.entries.length, 44);
 
-  assert.equal(paged.declared, 44, "this page, not the directory");
-  assert.equal(paged.complete, true, "and so completeness means nothing for a paged reply");
+  // The end is clipped to the directory rather than refused.
+  const high = await page(6, 100, 145);
+  assert.equal(high.entries[0]!.index, 100);
+  assert.equal(high.entries.at(-1)!.index, 128);
+  assert.equal(high.next, 129, "the clipped end, which is where a caller resumes");
+
+  // A backwards window asks for nothing, which is what any empty range means.
+  const backwards = await page(7, 10, 5);
+  assert.equal(backwards.entries.length, 0);
+
+  // **`declared` is the page's own count, so completeness means nothing on a paged reply.**
+  assert.equal(low.declared, 44);
+  assert.equal(low.complete, true, "trivially, which is why core asks unpaged");
 });
 
-test("a route that does not exist says so, which is the Waverider baseline", { skip }, async () => {
-  // Until the firmware session's handler lands, this is what `/waverider` answers. When it stops
-  // saying "Invalid path" the route is live — and this test failing is the signal, which is why it
-  // asserts the refusal rather than tolerating either answer.
+test("stock has no /waverider route, and says so", { skip }, async () => {
+  // The baseline. On the modded image this becomes a listing — `waveriderroute.test.ts` runs that
+  // against the same parser, so the two files together say the route is the only difference.
   const io = await bridge();
   await assert.rejects(
-    async () => parseListing((await io.request(listRequest(6, "/waverider"), 6, TIMEOUT)).body),
+    async () => parseListing((await io.request(listRequest(8, "/waverider"), 8, TIMEOUT)).body),
     /Invalid path/,
   );
 });

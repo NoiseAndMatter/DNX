@@ -153,22 +153,28 @@ test("a list request is an API message carrying a NUL-terminated path", () => {
   assert.deepEqual([...frame.body], [...Uint8Array.from([...Buffer.from("projects", "latin1"), 0])]);
 });
 
-test("a page appends start AND count; an unpaged request appends neither", () => {
-  // Established on hardware one field at a time. A bare path returns everything. Adding a start
-  // alone came back `first 28, count 0` — twice, on two paths — because that asks for nothing.
+test("a page appends both bounds; an unpaged request appends neither", () => {
+  // Established on hardware one field at a time, and **the reading of it was wrong until
+  // 2026-10-05**: the second u32 is the window's end, not a count.
+  //
+  // The old note here said "adding a start alone came back `first 28, count 0`, twice, on two
+  // paths, because that asks for nothing". That observation was right and its explanation was
+  // not. `(28, 0)` is the window `[28, 0)`, which is empty for the same reason any backwards
+  // range is — nothing to do with a missing argument.
   assert.equal(decodeMessage(listRequest(1, "projects")).body.length, 9, "path only");
 
-  const paged = decodeMessage(listRequest(1, "projects", { start: 28, count: 1 })).body;
+  const paged = decodeMessage(listRequest(1, "projects", { first: 28, end: 29 })).body;
   assert.equal(paged.length, 17, "path + two u32");
-  assert.deepEqual([...paged.subarray(9)], [0, 0, 0, 28, 0, 0, 0, 1]);
+  assert.deepEqual([...paged.subarray(9)], [0, 0, 0, 28, 0, 0, 0, 29]);
 });
 
-test("start and count travel together, because a start alone asks for nothing", () => {
-  // The type is the guard: there is no way to express a start without a count, so the request the
-  // device answers with an empty page cannot be written by accident.
-  const page: Parameters<typeof listRequest>[2] = { start: 28, count: 1 };
-  assert.equal(page.start, 28);
-  assert.equal(page.count, 1);
+test("a backwards window is expressible, and asks for nothing", () => {
+  // Kept because it is what the device does, measured through the emulator: `(10, 5)` returns no
+  // entries and `next` 10. The type cannot forbid it — `first` and `end` are both plain numbers —
+  // so the thing to pin is that DNX sends exactly what it was given rather than quietly sorting
+  // the two, which would turn a caller's bug into a listing they did not ask for.
+  const backwards = decodeMessage(listRequest(1, "projects", { first: 10, end: 5 })).body;
+  assert.deepEqual([...backwards.subarray(9)], [0, 0, 0, 10, 0, 0, 0, 5]);
 });
 
 test("a path outside Windows-1252 is refused before it reaches the wire", () => {

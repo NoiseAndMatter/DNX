@@ -61,6 +61,15 @@ export interface BridgeOptions {
   cwd?: string;
   /** Emulator steps to wait after each call before giving up on a reply. */
   settle?: number;
+  /**
+   * Files to place on the emulator's otherwise blank +Drive, each at an **absolute** sector.
+   *
+   * How a store gets onto the card without a write path existing yet: the planner's own bytes are
+   * written to files and dropped at the sectors the plan names, so the firmware reads exactly what
+   * DNX would have sent. That is a sharper test than it sounds — it takes the transport out of the
+   * question entirely and leaves only "do these bytes mean to them what they mean to us".
+   */
+  cardExtents?: readonly { sector: number; file: string }[];
   /** How long to wait for the process to say it is ready. */
   startupMs?: number;
 }
@@ -162,6 +171,7 @@ export class EmulatorBridge implements ApiTransport {
       "--call-args", "2",
       "--capture", "0x401233f2:0:1",
       ...(options.settle === undefined ? [] : ["--settle", String(options.settle)]),
+      ...(options.cardExtents ?? []).flatMap((e) => ["--card-extent", `${e.sector}:${e.file}`]),
     ];
 
     const child = spawn(found.exe, args, {

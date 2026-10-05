@@ -63,10 +63,45 @@ export const StorageCode = {
 
 export type StorageCode = (typeof StorageCode)[keyof typeof StorageCode];
 
-/** A window into a directory. Both halves are required — see `listRequest`. */
+/**
+ * A window into a directory: **half-open over index values**, `[first, end)`.
+ *
+ * ## It was called `{ start, count }` and that was wrong
+ *
+ * **Measured 2026-10-05** through the firmware running in an emulator, which is the first time
+ * anybody sent a paged listing and looked at what came back:
+ *
+ * | request | entries | `declared` | `next` |
+ * |---|---|---|---|
+ * | `/projects` `(0, 45)` | slots **1..44** | 44 | 45 |
+ * | `/projects` `(100, 145)` | slots 100..128 | 29 | 129 |
+ * | `/waverider` `(0, 45)` | 0..44 | 45 | 45 |
+ * | `/waverider` `(250, 300)` | 250..255 | 6 | 256 |
+ * | `/waverider` `(10, 5)` | none | 0 | 10 |
+ *
+ * The second field is an **end, not a count**. Asking `/projects` for `(0, 45)` returns 44 entries
+ * because the window `[0, 45)` is over a 1-based slot space, so position 0 holds nothing. Calling
+ * it `count` made that look like an off-by-one in the device; it is an off-by-one in the name.
+ *
+ * Paging is done by the firmware's **router**, identically for every route, so a route's own
+ * handler never sees the window and cannot change any of this.
+ *
+ * ## Two consequences worth knowing before using it
+ *
+ * **`declared` is the page's own count, not the directory's.** Unpaged it is the directory total.
+ * So `Listing.complete`, which is `carried >= declared`, is **always true for a paged reply** and
+ * says nothing. Page until a page comes back empty, or do not page.
+ *
+ * **`next` is the clipped end**, so it is a safe place to resume from.
+ *
+ * Nothing in core pages — every caller asks unpaged, and only the Probe's manual control can send
+ * one. The fields are named correctly now so that the first caller that does page is not misled.
+ */
 export interface Page {
-  start: number;
-  count: number;
+  /** First index to include. */
+  first: number;
+  /** One past the last index to include. Clipped to the directory. */
+  end: number;
 }
 
 /**
@@ -94,8 +129,10 @@ export function listRequest(msgId: number, path: string, page?: Page): Uint8Arra
 
   const body = new Uint8Array(name.length + 8);
   body.set(name, 0);
-  body.set(u32Bytes(page.start), name.length);
-  body.set(u32Bytes(page.count), name.length + 4);
+  body.set(u32Bytes(page.first), name.length);
+  // **An end, not a count.** See `Page`; this field was called `count` until the window was
+  // measured, and the two agree only when `first` is zero and the directory is 0-based.
+  body.set(u32Bytes(page.end), name.length + 4);
   return encodeMessage(msgId, StorageCode.List, body);
 }
 
@@ -750,7 +787,12 @@ export interface Listing {
   next: number;
   /** Entries the device says the directory holds. May exceed `entries.length`; see `next`. */
   declared: number;
-  /** True when this page carried everything the device declared. */
+  /**
+   * True when this page carried everything the device declared.
+   *
+   * **Meaningless for a paged reply**, where `declared` is the page's own count — see `Page`. It
+   * answers the question it was written for, which is whether an *unpaged* listing was capped.
+   */
   complete: boolean;
 }
 
