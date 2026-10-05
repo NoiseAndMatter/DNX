@@ -233,7 +233,7 @@ async function readThenWrite(): Promise<void> {
     const file = await readStoredFile(source, {
       transport: apiTransport(output),
       // **Stored form, the only form a write accepts.** Read raw, /soundbanks/H/1 came back as 407
-      // uncompressed bytes and `refuseRawForm` refused the copy every time, so this control could
+      // uncompressed bytes and `refuseWrongForm` refused the copy every time, so this control could
       // not copy any file. Found in the first release test run, 2026-09-14.
       form: STORED_FORM,
       msgId: reserveMessageIds(IDS_FOR.wholeProject),

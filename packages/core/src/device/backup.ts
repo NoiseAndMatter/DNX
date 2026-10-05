@@ -28,7 +28,7 @@
  * ## Stored form, and why a raw backup is not a backup
  *
  * Every read here asks for `STORED_FORM`. The device answers the same path two ways: the stored
- * payload, or the expanded image. **Only the stored form can be written back** — `refuseRawForm`
+ * payload, or the expanded image. **Only the stored form can be written back** — `refuseWrongForm`
  * rejects the other at the door.
  *
  * This is not a precaution against a hypothetical. The first overwrite run on hardware, 2026-08-15,

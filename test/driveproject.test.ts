@@ -14,7 +14,7 @@ import { CORPUS, NO_CORPUS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
-import { FORM_FLAG_OFFSET, FORM_STORED, refuseRawForm } from "@noiseandmatter/dnx-core/device/storagewrite.js";
+import { FORM_FLAG_OFFSET, FORM_STORED, refuseWrongForm } from "@noiseandmatter/dnx-core/device/storagewrite.js";
 // The pure half, deliberately not reached through the module that imports Web MIDI.
 import { firstDifference, projectPath } from "@noiseandmatter/dnx-core/project/driveslot.js";
 
@@ -92,7 +92,7 @@ test("a rebuilt payload differs in bytes and agrees in image", { skip: files.len
  *
  * `buildPayload` copies the 31-byte container header verbatim, which is what carries the flag at
  * `+29`. If that ever stopped being true, every save to the +Drive would be refused by
- * `refuseRawForm` — correctly, but for a reason nobody would guess from the message.
+ * `refuseWrongForm` — correctly, but for a reason nobody would guess from the message.
  */
 test("an edited project is still in the stored form", { skip: files.length === 0 }, () => {
   for (const path of files.slice(0, 5)) {
@@ -107,6 +107,6 @@ test("an edited project is still in the stored form", { skip: files.length === 0
       `${path}: the container header was not preserved`,
     );
     // And the guard agrees, which is what the write path will actually consult.
-    assert.doesNotThrow(() => refuseRawForm(rebuilt, projectPath(12)));
+    assert.doesNotThrow(() => refuseWrongForm(rebuilt, projectPath(12)));
   }
 });
