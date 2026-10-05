@@ -261,7 +261,12 @@ test("every control that writes is marked, and every dangerous one has been cons
     "a dangerous button must either carry data-writes-device or be listed in DOES_NOT_WRITE with " +
       "a reason it cannot reach the instrument");
   assert.deepEqual(marked.sort(),
-    ["dodrivesave", "fileWrite", "libraryRename", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `tableWrite` joined on 2026-10-05: the only control that sends a file from this computer to
+    // the instrument. Everything else here moves bytes the device already has, which is why it is
+    // worth naming rather than letting it slip into the list unremarked.
+    // `tableDelete` is here because a delete changes the instrument as surely as a write, and it is
+    // the only control that destroys rather than replaces. Scoped to /waverider by construction.
+    ["dodrivesave", "fileWrite", "libraryRename", "tableDelete", "tableWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

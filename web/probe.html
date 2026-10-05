@@ -237,6 +237,49 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
       -->
       <input id="chunkSize" type="number" value="2048" min="16" max="65536" step="16" disabled title="Bytes per 0x58 write. Below the file size forces a multi-chunk write; above it forces one.">
       <button class="btn danger" data-writes-device id="fileWrite" disabled title="Read `file` and write it to `to`. The first +Drive write.">Read &rarr; write</button>
+
+      <!--
+        The only control in DNX that sends a file from this computer to the instrument.
+
+        Everything else here copies bytes the device already has: `Read -> write` reads a slot and
+        writes it elsewhere, and the manager writes a project it opened. A wavetable has never been
+        on the instrument, so it has to come from a file, and until this existed there was no way
+        to put one there.
+
+        The table is raw samples. `buildSlotFile` wraps it with its index entry and the container
+        the route expects, and computes the hash from the bytes rather than taking one, because the
+        device's commit cannot refuse a table whose hash disagrees with itself: it answers
+        "commit ok" and writes nothing.
+      -->
+      <label class="lbl" for="tableFile">table</label>
+      <input id="tableFile" type="file" accept=".bin,application/octet-stream" disabled title="Raw samples, int16 big-endian. Not a container: this wraps it.">
+      <label class="lbl" for="tableSlot">slot</label>
+      <input id="tableSlot" type="number" value="0" min="0" max="255" step="1" disabled title="/waverider slot, 0-based unlike /projects">
+      <label class="lbl" for="tableName">name</label>
+      <input id="tableName" type="text" value="Pulse narrowing" size="16" disabled title="Up to 63 bytes, stored in the index entry">
+      <!--
+        Geometry is typed rather than guessed. The length alone cannot tell 16 x 512 from 32 x 256,
+        and the player cuts the table up by these two numbers, so a wrong pair is a table read as
+        something else entirely. `buildSlotFile` refuses a pair that does not measure the file.
+      -->
+      <label class="lbl" for="tableWaves">waves</label>
+      <input id="tableWaves" type="number" value="16" min="1" max="4096" step="1" disabled title="Waves in the table. The pool plays 16 only.">
+      <label class="lbl" for="tablePoints">points</label>
+      <input id="tablePoints" type="number" value="512" min="1" max="65535" step="1" disabled title="Points per wave. The pool plays 512 only.">
+      <button class="btn danger" data-writes-device id="tableWrite" disabled title="Wrap the chosen file as a slot file and write it to /waverider/&lt;slot&gt;.">Write table</button>
+
+      <!--
+        **Deliberately only /waverider.** `deleteRequest` can address any path on the +Drive, and a
+        generic delete here would be the most destructive control DNX has ever offered: one typo
+        and a project is gone, with no trash on the instrument and usually no other copy.
+
+        A wavetable is the one thing we can always put back, because the source file is on this
+        computer and the slot is read and saved before anything is sent. Widening this needs a
+        reason and a way to undo it, not just a field that accepts more text.
+      -->
+      <label class="lbl" for="tableDeleteSlot">delete slot</label>
+      <input id="tableDeleteSlot" type="number" value="0" min="0" max="255" step="1" disabled title="/waverider slot to delete. This control cannot address any other route.">
+      <button class="btn danger" data-writes-device id="tableDelete" disabled title="Read the slot, save a copy, then delete it from /waverider. There is no undo on the instrument.">Delete table</button>
     </div>
   </section>
 </div>

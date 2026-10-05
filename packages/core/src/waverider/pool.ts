@@ -24,10 +24,10 @@
  *
  * ## Timing
  *
- * The pool fills five seconds after boot, and again after each commit or delete through
- * `/waverider`. A write is therefore silent for a moment after it lands, which is worth saying in
- * a status line: silence straight after a successful write is otherwise indistinguishable from a
- * failure.
+ * **Only the boot fill waits.** Five seconds after boot, and then on the next UI pass after each
+ * commit or delete through `/waverider`, which is about a second. A write is therefore briefly
+ * silent after it lands, which is worth a word in a status line: silence straight after a
+ * successful write is otherwise indistinguishable from a failure.
  *
  * Measured by the firmware session in the SHARC emulator, 2026-10-05, nine of nine. **The byte
  * order is still a hypothesis**: their check has store int16 big-endian agreeing with DDR int16
@@ -49,8 +49,14 @@ export const POOL_ENTRIES = 127;
 /** `TBL 0` and `TBL 1` are the baked tables; the pool starts here. */
 export const FIRST_POOL_TBL = 2;
 
-/** Seconds after a commit before the pool is refilled. */
-export const POOL_REFILL_SECONDS = 5;
+/**
+ * Seconds after **boot** before the pool is filled.
+ *
+ * A commit or a delete refills it on the next UI pass instead, about a second, so this is the
+ * figure for a power cycle and not for a write. The two were one number here until the firmware
+ * session corrected it, and the write path was telling people to wait five times too long.
+ */
+export const POOL_BOOT_FILL_SECONDS = 5;
 
 /** A geometry, as much of a table as this module needs to judge it. */
 export interface Geometry {

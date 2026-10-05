@@ -13,7 +13,7 @@ import {
   POOL_BYTES,
   POOL_ENTRIES,
   POOL_POINTS,
-  POOL_REFILL_SECONDS,
+  POOL_BOOT_FILL_SECONDS,
   POOL_WAVES,
   poolPlacement,
   unplayableReason,
@@ -27,7 +27,9 @@ test("the pool's limits, and the gap between stored and playable", () => {
   assert.equal(POOL_BYTES, 16_384);
   assert.equal(POOL_ENTRIES, 127);
   assert.equal(FIRST_POOL_TBL, 2, "TBL 0 and 1 are the baked tables");
-  assert.equal(POOL_REFILL_SECONDS, 5);
+  // **Boot only.** A commit refills on the next UI pass, about a second, and this number is not
+  // that one. They were conflated here and the write path told people to wait five times too long.
+  assert.equal(POOL_BOOT_FILL_SECONDS, 5);
 
   // **The gap, as arithmetic.** A slot holds thirty-two times what the pool loads, which is the
   // whole reason this module exists: the store was sized for a format that has not arrived.

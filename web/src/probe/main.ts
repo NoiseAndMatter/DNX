@@ -88,6 +88,8 @@ import { renderToolNav } from "../toolnav.js";
  */
 import "./drive.js";
 import "./drivefile.js";
+import "./writetable.js";
+import "./deletetable.js";
 import "./readproject.js";
 import "./writeback.js";
 import "./writeslot.js";
@@ -281,6 +283,12 @@ async function probe(): Promise<void> {
     $<HTMLInputElement>("chunkSize").disabled = false;
     $<HTMLButtonElement>("fileWrite").disabled = false;
     $<HTMLButtonElement>("fileRead").disabled = false;
+    // The wavetable control, enabled with the rest of the +Drive card. The write gate still has to
+    // be armed before the button does anything, like every other `data-writes-device` control.
+    for (const id of ["tableFile", "tableSlot", "tableName", "tableWaves", "tablePoints", "tableWrite",
+      "tableDeleteSlot", "tableDelete"]) {
+      $<HTMLInputElement>(id).disabled = false;
+    }
 
     // **`DirList` is now always attempted, whatever the device advertises.**
     //

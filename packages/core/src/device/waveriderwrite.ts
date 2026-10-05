@@ -27,7 +27,8 @@
  *
  * ## Silence is not failure here
  *
- * The pool refills five seconds after a commit, and only for tables of the one geometry it loads.
+ * The pool refills on the next UI pass after a commit, about a second, and only for tables of
+ * the one geometry it loads.
  * A caller is told both: `willPlay` for the geometry, and the delay in the status line, because a
  * table that is stored, verified and silent is otherwise indistinguishable from a failed write.
  */
@@ -39,7 +40,7 @@ import { type Entry, ListingError, listRequest, wholeListing } from "./storage.j
 import { IDS_FOR } from "./messageids.js";
 import { type PendingSlot, buildSlotFile } from "../waverider/slotfile.js";
 import { INDEX_ENTRIES } from "../waverider/layout.js";
-import { POOL_REFILL_SECONDS, unplayableReason } from "../waverider/pool.js";
+import { unplayableReason } from "../waverider/pool.js";
 
 /** The route. Zero-based, deliberately unlike `/projects`. */
 export const WAVERIDER = "/waverider";
@@ -188,7 +189,7 @@ export async function writeTableToSlot(options: WriteTableOptions): Promise<Writ
   if (problem === undefined) {
     status(
       unplayable === undefined
-        ? `Slot ${slot} written and confirmed. The pool reloads about ${POOL_REFILL_SECONDS} seconds from now, so give it a moment before listening.`
+        ? `Slot ${slot} written and confirmed. The pool reloads on the next pass, about a second, so give it a moment before listening.`
         : `Slot ${slot} written and confirmed, and it will not play yet: ${unplayable}`,
     );
   }
