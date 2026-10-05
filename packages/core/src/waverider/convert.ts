@@ -28,6 +28,12 @@
  *   source's own level and nothing else records it; two tables made from material at different
  *   levels are otherwise indistinguishable afterwards.
  *
+ * ## One job: samples in, bytes out
+ *
+ * The display name a table gets is `naming.ts`, not here. A name is not part of converting audio,
+ * and the two change for entirely different reasons — one when the DSP's format moves, the other
+ * when somebody decides what reads well on a small screen.
+ *
  * ## Symmetric, which is a decision and not an accident
  *
  * elk-herd packs its samples as `floor(f * 32767.5)`, which reaches both −32768 and +32767 — the
@@ -39,7 +45,7 @@
  * one day should find the discrepancy already explained rather than treat it as a bug.
  */
 
-import { WaveriderError } from "./store.js";
+import { WaveriderError } from "./errors.js";
 
 /** What a converted table is, before it is given a slot. */
 export interface ConvertedTable {
@@ -171,22 +177,4 @@ export function readTableSamples(payload: Uint8Array): Int16Array {
     out[i] = word >= 0x8000 ? word - 0x10000 : word;
   }
   return out;
-}
-
-/**
- * The name a table is given on the device, carrying Tonverk's convention for people to read.
- *
- * `_wt<points>` gives the wave size and a trailing `r` means no interpolation. **Nothing reads
- * this back** — the geometry lives in the index, and `store.ts` decodes the name as a label only.
- * It is written because a person looking at a +Drive listing on the instrument's screen has
- * nothing else to go on.
- *
- * Truncated to fit the entry's 64 bytes with the suffix intact, because the suffix is the part
- * that carries information and the stem is the part somebody can still recognise shortened.
- */
-export function tableName(stem: string, points: number, interpolate: boolean): string {
-  const suffix = `_wt${points}${interpolate ? "" : "r"}`;
-  const room = 64 - suffix.length;
-  const trimmed = stem.length > room ? stem.slice(0, room) : stem;
-  return `${trimmed}${suffix}`;
 }

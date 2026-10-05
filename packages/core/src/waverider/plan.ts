@@ -23,6 +23,12 @@
  * A caller must not reorder it, and `planWrite` is the only thing that builds it. The test asserts
  * the order rather than trusting the construction, because this is the rule that makes a cancelled
  * transfer survivable and it is one refactor away from being silently wrong.
+ *
+ * ## `describePlan` stays here
+ *
+ * It is the plan's own projection — the same value without its payloads — rather than a second
+ * job. It changes when `WritePlan` changes, which is the test that matters, and a twenty-line
+ * module beside the type it serialises would cost a file to say nothing.
  */
 
 import { xxHash32 } from "./xxhash32.js";
@@ -38,14 +44,10 @@ import {
   absolute,
   sectorsFor,
 } from "./layout.js";
-import {
-  type Superblock,
-  type TableEntry,
-  FORMAT_INT16_BE,
-  WaveriderError,
-  writeIndex,
-  writeSuperblock,
-} from "./store.js";
+import { type TableEntry, FORMAT_INT16_BE, writeIndex } from "./entries.js";
+import { WaveriderError } from "./errors.js";
+import { type Superblock, writeSuperblock } from "./superblock.js";
+import { validateIndex } from "./validate.js";
 
 /** One contiguous write, aligned to a sector and a whole number of sectors long. */
 export interface SectorWrite {
@@ -227,8 +229,13 @@ export function planWrite(options: {
     at += span;
   }
 
-  // `writeIndex` validates: overlap, bounds, alignment, geometry against length. A plan that would
-  // produce an index the firmware must not be asked to read does not get built.
+  /*
+   * **Judge, then encode.** `validate.ts` refuses overlap, bounds, alignment and a geometry that
+   * disagrees with the payload length; `entries.ts` only writes bytes. This is the composition,
+   * and it lives here because this is the only route to a write — see `entries.ts` on why the
+   * encoder stopped doing it itself.
+   */
+  validateIndex(entries);
   const indexBytes = writeIndex(entries);
 
   // The group that is **not** current, so a failure leaves the current one describing the store as
