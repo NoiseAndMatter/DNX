@@ -28,7 +28,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { EmulatorBridge, bridgePaths } from "../src/node/emulatorbridge.js";
 import { listRequest, parseListing } from "@noiseandmatter/dnx-core/device/storage.js";
-import { REGION_START } from "@noiseandmatter/dnx-core/waverider/layout.js";
+import { REGION_START, SLOT_BYTES } from "@noiseandmatter/dnx-core/waverider/layout.js";
 import { planWrite } from "@noiseandmatter/dnx-core/waverider/plan.js";
 
 const MODDED = process.env["DNX_WAVERIDER_FIRMWARE"];
@@ -134,7 +134,14 @@ test("an empty store lists 256 free slots, numbered from zero", { skip }, async 
 
     for (const entry of listing.entries) {
       assert.equal(entry.kind, "file");
-      assert.equal(entry.size, 16_384, "the slot's allocation, not a file length");
+      /*
+       * **The slot's allocation, not a file length**, which is why this is `SLOT_BYTES` rather than
+       * a number. The firmware reports it from the same stride DNX places tables on, so the two
+       * have to move together: this read 16,384 against the first build, when a slot was one v1
+       * table, and 524,288 once a slot became one Tonverk table at full resolution. Measured on
+       * wrroute10.
+       */
+      assert.equal(entry.size, SLOT_BYTES);
       // The two fields that would stop a write locally if they were wrong.
       assert.equal(entry.permissions, 0x007e);
       assert.equal(entry.writable, true);
