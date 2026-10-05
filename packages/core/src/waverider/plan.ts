@@ -147,6 +147,19 @@ function write(
  * the one the current index already records for that slot is not rewritten; it is reported in
  * `reused` instead. With fixed extents that is now the common case rather than a lucky one,
  * because nothing moves when the set changes: editing one table of twenty writes one table.
+ *
+ * ## A stride change is a full rewrite and nothing else
+ *
+ * The slot size moved from 128 KiB to 512 KiB on the day it was agreed, so this is not a
+ * hypothetical. Nothing special happens for it. The index a plan writes is built from `tables`
+ * alone, so it describes exactly the tables given at exactly this build's geometry; and every reuse
+ * check fails, because no table is where the old index says it is. The data is written once at the
+ * new places and the old sectors are left unreferenced, which they already are the moment the new
+ * superblock lands.
+ *
+ * **There is no migration path because there is nothing to migrate.** That falls out of putting the
+ * whole index in every write rather than amending the one on the card, and `waverider.test.ts` pins
+ * it with a store built at the old stride rather than trusting this paragraph.
  */
 export function planWrite(options: {
   current?: CurrentStore | undefined;

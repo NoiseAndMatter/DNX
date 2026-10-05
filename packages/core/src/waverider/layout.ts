@@ -105,15 +105,20 @@ export const DATA_START = 0x1000;
  *
  * ## The size, and why this one
  *
- * 128 KiB. A v1 table is 16 KiB, so this leaves room for a geometry eight times larger — 64 waves
- * of 1,024 points — before the format has to change at all. Anything beyond that is a new sample
- * format and the version field is there for it.
+ * 512 KiB, which is one table at Tonverk's largest native geometry: 64 waves of 4,096 points of
+ * int16 is 524,288 bytes, a slot exactly. **The owner set that target** (2026-10-05), and it is the
+ * right one because DNX stores a table at full resolution. A slot has to hold the largest table
+ * anybody would import, which is a different number from the largest the current DSP geometry
+ * plays. Today's v1 table is 16 KiB of it.
  *
- * The cost is space, which is what there is most of: all 256 slots end 34 MiB into the region,
- * **inside the 48 MiB pSLC**, on a card with 23 GiB on it. `layout.test` asserts that fit rather
- * than trusting this paragraph.
+ * What the DSP can hold and play at once is a different limit and not this one: its load area is
+ * 2 MB, four of the largest tables, and which tables are in it is decided when they are loaded.
+ *
+ * **128 KiB was agreed first and replaced before anything was written.** It held eight v1 tables and
+ * would have truncated the one import that matters. The replacement cost one constant and no
+ * migration, for the reason in `plan.ts`: a stride change is a full rewrite and nothing else.
  */
-export const SLOT_SECTORS = 0x100;
+export const SLOT_SECTORS = 0x400;
 
 /** Bytes reserved per slot: the allocation a listing reports, not a table's length. */
 export const SLOT_BYTES = SLOT_SECTORS * SECTOR;
@@ -125,6 +130,17 @@ export const SLOT_BYTES = SLOT_SECTORS * SECTOR;
  * superblock as `dataEnd`.
  */
 export const DATA_END = DATA_START + INDEX_ENTRIES * SLOT_SECTORS;
+
+/**
+ * How many slots are wholly inside the pSLC: 92, with slot 92 starting exactly on the boundary.
+ *
+ * **Derived, and no check here uses it.** 256 slots of 512 KiB end 130 MiB into the region and the
+ * pSLC ends 48 MiB in, so most of the store sits on TLC, which costs load speed and nothing else.
+ * That is the price of a stride big enough for a Tonverk table. This constant exists to be pinned
+ * against the shared document, and to answer somebody asking why a high slot loads slower than a
+ * low one.
+ */
+export const FAST_SLOTS = Math.floor((FAST_SECTORS - DATA_START) / SLOT_SECTORS);
 
 /** Where slot `n`'s extent begins, relative to the region. A function, never a search. */
 export function slotSector(slot: number): number {
