@@ -53,10 +53,15 @@ export async function linkIsAlive(link: DeviceLink, issue: (id: number) => numbe
   return frame !== undefined;
 }
 
-/** A page of a directory listing. Omitted entirely to ask for the whole thing. */
+/**
+ * A page of a directory listing. Omitted entirely to ask for the whole thing.
+ *
+ * Half-open over index values, `[first, end)` — the device's own shape, measured 2026-10-05. See
+ * `Page` in `device/storage.ts` for what that costs a caller who assumed a count.
+ */
 export interface ListingPage {
-  start: number;
-  count: number;
+  first: number;
+  end: number;
 }
 
 /**

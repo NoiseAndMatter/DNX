@@ -84,7 +84,7 @@ async function listPath(): Promise<void> {
     linkTo(output),
     listId,
     path,
-    count > 0 ? { start: from, count } : undefined,
+    count > 0 ? { first: from, end: from + count } : undefined,
     (error) => log.push(["Send failed", String(error)]),
   );
 
