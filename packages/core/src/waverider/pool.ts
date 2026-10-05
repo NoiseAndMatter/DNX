@@ -1,0 +1,102 @@
+/**
+ * What the DSP's wavetable pool will actually play, which is narrower than what a slot holds.
+ *
+ * **One job: the gap between stored and playable.** `slotfile.ts` builds what the store takes and
+ * `layout.ts` says where it goes; this says whether the instrument can currently make a sound with
+ * it. They are separate because they move for different reasons: the store's limits are the
+ * format's, and these are one firmware build's.
+ *
+ * ## The gap, and why DNX has to be the one to mention it
+ *
+ * | | the store | the pool |
+ * |---|---|---|
+ * | geometry | anything that fits a slot | 16 waves x 512 points only |
+ * | size | up to 512 KiB | 16 KiB |
+ * | how many | 256 slots | 127 entries, in slot order |
+ *
+ * So a 64 x 4,096 table imports, stores, verifies and stays silent, and `convert.ts` will happily
+ * produce one. A user meeting that without warning would reasonably read it as a broken write
+ * rather than an unplayed table, which makes it DNX's to say rather than the firmware's.
+ *
+ * The slot is 512 KiB on purpose even so: a table stored at full resolution is already right when
+ * the pool's geometry widens, and nothing has to be re-imported. The size is a bet on the format,
+ * and this module is the honesty about today.
+ *
+ * ## Timing
+ *
+ * The pool fills five seconds after boot, and again after each commit or delete through
+ * `/waverider`. A write is therefore silent for a moment after it lands, which is worth saying in
+ * a status line: silence straight after a successful write is otherwise indistinguishable from a
+ * failure.
+ *
+ * Measured by the firmware session in the SHARC emulator, 2026-10-05, nine of nine. **The byte
+ * order is still a hypothesis**: their check has store int16 big-endian agreeing with DDR int16
+ * little-endian inside one implementation, which is self-consistency rather than a measurement.
+ */
+
+import { FORMAT_INT16_BE } from "./entries.js";
+
+/** The only geometry the pool loads today. */
+export const POOL_WAVES = 16;
+export const POOL_POINTS = 512;
+
+/** And therefore this many bytes, of a slot's 524,288. */
+export const POOL_BYTES = POOL_WAVES * POOL_POINTS * 2;
+
+/** Pool entries the loader hands out, in slot order. */
+export const POOL_ENTRIES = 127;
+
+/** `TBL 0` and `TBL 1` are the baked tables; the pool starts here. */
+export const FIRST_POOL_TBL = 2;
+
+/** Seconds after a commit before the pool is refilled. */
+export const POOL_REFILL_SECONDS = 5;
+
+/** A geometry, as much of a table as this module needs to judge it. */
+export interface Geometry {
+  waves: number;
+  points: number;
+  sampleFormat?: number;
+}
+
+/**
+ * Why the pool will not play this table, or `undefined` when it will.
+ *
+ * A sentence rather than a flag, because every caller that asks this wants to tell somebody, and a
+ * boolean would have each of them writing the explanation again.
+ */
+export function unplayableReason(geometry: Geometry): string | undefined {
+  const { waves, points } = geometry;
+  const format = geometry.sampleFormat ?? FORMAT_INT16_BE;
+
+  if (format !== FORMAT_INT16_BE) {
+    return `sample format ${format} is not loaded; the pool reads format ${FORMAT_INT16_BE}`;
+  }
+  if (waves !== POOL_WAVES || points !== POOL_POINTS) {
+    return (
+      `${waves} x ${points} is stored but not played: the pool loads ${POOL_WAVES} x ` +
+        `${POOL_POINTS} only. The table is kept at full resolution and will play unchanged if the ` +
+        `pool's geometry widens.`
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Which `TBL` number each used slot becomes, and which get no number at all.
+ *
+ * The pool is handed out in slot order, so the 128th used slot onward is stored, listed and never
+ * played. `undefined` is that case, and it is the one a user filling the store would otherwise meet
+ * without warning.
+ *
+ * Takes the slots that are **in use**, in any order; the ordering is applied here so a caller
+ * cannot get it wrong by passing a listing in listing order.
+ */
+export function poolPlacement(usedSlots: Iterable<number>): Map<number, number | undefined> {
+  const ordered = [...new Set(usedSlots)].sort((a, b) => a - b);
+  const out = new Map<number, number | undefined>();
+  ordered.forEach((slot, nth) => {
+    out.set(slot, nth < POOL_ENTRIES ? FIRST_POOL_TBL + nth : undefined);
+  });
+  return out;
+}

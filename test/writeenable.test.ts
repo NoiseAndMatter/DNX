@@ -135,10 +135,29 @@ test("a core module that writes takes the switch from its host and calls it", ()
     "no core module calls a safe-write function; either the pattern stopped matching or the " +
       "workflows have not moved yet, and this test must be revisited either way");
 
+  /**
+   * Does this module take a gate, declaring it or naming a host type that does?
+   *
+   * The check used to be `/gate:\s*\(\)\s*=>\s*void/` on the module's own source, which is a proxy
+   * for "takes a gate" and held while every writer declared its own host type. `waveriderwrite.ts`
+   * imports `DriveWriteHost` instead, which takes a gate just as surely, and the proxy rejected it.
+   *
+   * **The property is taking one, not declaring one**, so a named host type is followed to the file
+   * that exports it and checked there. A module that names a type which does *not* declare a gate
+   * still fails, which is the half worth keeping.
+   */
+  const takesAGate = (source: string, all: readonly string[]): boolean => {
+    if (/gate:\s*\(\)\s*=>\s*void/.test(source)) return true;
+    const named = source.match(/host:\s*(\w+)/);
+    if (!named) return false;
+    const declaration = new RegExp(`interface\\s+${named[1]}\\s*\\{[^}]*gate:\\s*\\(\\)\\s*=>\\s*void`, "s");
+    return all.some((f) => declaration.test(readFileSync(f, "utf8")));
+  };
+
   for (const file of writers) {
     const source = readFileSync(file, "utf8");
     const name = file.replace(CORE, "packages/core/src");
-    assert.match(source, /gate:\s*\(\)\s*=>\s*void/,
+    assert.ok(takesAGate(source, files),
       `${name} writes without taking a gate from its host`);
     const gate = source.search(/\bhost\.gate\(\)/);
     const send = source.search(/\bsafeWrite(Records|File)\s*\(/);

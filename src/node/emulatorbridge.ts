@@ -70,6 +70,14 @@ export interface BridgeOptions {
    * question entirely and leaves only "do these bytes mean to them what they mean to us".
    */
   cardExtents?: readonly { sector: number; file: string }[];
+  /**
+   * A card-sized image as the base media, which the extents then lie over.
+   *
+   * Without it the card is zeros, which is enough for the `/waverider` region because nothing
+   * stock lives there. A **write** test wants a formatted +Drive underneath, so the stock
+   * directories the firmware reads on the way are real rather than empty.
+   */
+  cardImage?: string;
   /** How long to wait for the process to say it is ready. */
   startupMs?: number;
 }
@@ -171,6 +179,7 @@ export class EmulatorBridge implements ApiTransport {
       "--call-args", "2",
       "--capture", "0x401233f2:0:1",
       ...(options.settle === undefined ? [] : ["--settle", String(options.settle)]),
+      ...(options.cardImage === undefined ? [] : ["--card-image", options.cardImage]),
       ...(options.cardExtents ?? []).flatMap((e) => ["--card-extent", `${e.sector}:${e.file}`]),
     ];
 
