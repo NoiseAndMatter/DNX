@@ -36,18 +36,16 @@ import {
   absolute,
   sectorsFor,
 } from "@noiseandmatter/dnx-core/waverider/layout.js";
+import { type TableEntry, FORMAT_INT16_BE, readIndex, writeIndex } from "@noiseandmatter/dnx-core/waverider/entries.js";
+import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import {
-  type TableEntry,
-  FORMAT_INT16_BE,
   SUPERBLOCK_BYTES,
-  WaveriderError,
   currentGroup,
-  readIndex,
   readSuperblock,
-  validateIndex,
-  writeIndex,
   writeSuperblock,
-} from "@noiseandmatter/dnx-core/waverider/store.js";
+} from "@noiseandmatter/dnx-core/waverider/superblock.js";
+import { validateIndex } from "@noiseandmatter/dnx-core/waverider/validate.js";
+import { tableName } from "@noiseandmatter/dnx-core/waverider/naming.js";
 import {
   type PendingTable,
   describePlan,
@@ -57,7 +55,6 @@ import {
   FULL_SCALE,
   convertTable,
   readTableSamples,
-  tableName,
 } from "@noiseandmatter/dnx-core/waverider/convert.js";
 
 // --- the arithmetic, which is where a transcription slip hides ----------------------------------
@@ -396,6 +393,99 @@ test("the description carries everything needed to replay a plan, and none of th
     assert.match(w.hash, /^0x[0-9a-f]{8}$/);
   }
   assert.equal(JSON.stringify(described).includes("bytes"), false, "no payloads in the description");
+});
+
+test("the guard moved from the encoder to the planner, and did not get lost", () => {
+  // `writeIndex` used to validate. Splitting the codec from the policy put the import the other
+  // way round, and **a guard moving from a callee to a caller is exactly the kind of change that
+  // quietly loses one** — so both halves are pinned.
+  const bad: TableEntry[] = [
+    entryAt(0, DATA_START, table16k(1)),
+    entryAt(1, DATA_START + 8, table16k(2)),
+  ];
+
+  // The judge still refuses it.
+  assert.throws(() => validateIndex(bad), /overlap/);
+
+  // The encoder does not, and that is now deliberate rather than an oversight.
+  assert.doesNotThrow(() => writeIndex(bad), "the codec encodes what it is given");
+
+  // And the only route to a write asks the judge first.
+  assert.throws(
+    () => planWrite({ tables: [pending(0, 1), { ...pending(1, 2), points: 256 }] }),
+    /of int16 is/,
+  );
+});
+
+test("the plan's bytes are what a second implementation produced from the document alone", () => {
+  /*
+   * **These literals are not ours.** The firmware session implemented the store in Python from
+   * `waverider-store.md`, without reading this code, and replayed the plan below: the three write
+   * hashes, the superblock's 64 bytes and index entry 0's 128 bytes came out identical.
+   *
+   * So this is a cross-implementation vector rather than a round trip, which is the same upgrade
+   * the firmware's own xxHash32 values gave `xxhash32.test.ts`. If a field order or a padding rule
+   * moves on either side, one of the two builds breaks.
+   *
+   * The payload is chosen so one hash was already independently known: 16,384 bytes of
+   * `(i * 7) & 0xff` hashes to 0x831953bc, which the firmware's routine at 0x4014be0e produced
+   * under Unicorn. A disagreement there would mean the payload; one on the other two would mean
+   * the layout.
+   *
+   * **It still proves only that two readings of the document agree** — not that the document is
+   * right about the device. That waits for a table that sounds right.
+   */
+  const payload = new Uint8Array(16 * 512 * 2);
+  for (let i = 0; i < payload.length; i++) payload[i] = (i * 7) & 0xff;
+  assert.equal(xxHash32(payload), 0x831953bc, "the hash both sides already knew");
+
+  const plan = planWrite({
+    tables: [{
+      slot: 0, name: "RAMP7_wt512", waves: 16, points: 512, interpolate: true,
+      payload, sourceHash: 0x831953bc, sourceSize: 16_384, gain: 1,
+    }],
+  });
+
+  assert.deepEqual(
+    plan.writes.map((w) => [w.what, w.sector, w.length, w.hash]),
+    [
+      ["data", 4096, 16_384, 0x831953bc],
+      ["index", 1, 32_768, 0x8e82b3df],
+      ["superblock", 0, 512, 0x95eae26f],
+    ],
+  );
+
+  // The two records, as the rows in the message that was replayed — sixteen bytes a line, so a
+  // transcription slip shows up as a short line rather than hiding in a 256-character string.
+  const rows = (bytes: Uint8Array, length: number): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < length; i += 16) {
+      out.push([...bytes.subarray(i, i + 16)].map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join(" "));
+    }
+    return out;
+  };
+
+  const superblock = plan.writes.find((w) => w.what === "superblock")!.bytes;
+  assert.deepEqual(rows(superblock, SUPERBLOCK_BYTES), [
+    "57 52 54 42 00 01 00 40 00 00 00 01 00 00 00 01",
+    "00 00 01 00 00 00 00 80 8E 82 B3 DF 00 00 10 00",
+    "00 02 10 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 A6 36 F2 7E",
+  ]);
+  assert.ok(superblock.subarray(SUPERBLOCK_BYTES).every((b) => b === 0), "zero to the sector");
+
+  const index = plan.writes.find((w) => w.what === "index")!.bytes;
+  assert.deepEqual(rows(index, 128), [
+    "00 01 00 01 00 10 02 00 00 01 00 00 00 00 10 00",
+    "00 00 40 00 83 19 53 BC 83 19 53 BC 00 00 40 00",
+    "52 41 4D 50 37 5F 77 74 35 31 32 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+  ]);
+  assert.ok(index.subarray(128, 256).every((b) => b === 0), "entry 1 is free");
 });
 
 // --- the conversion ---------------------------------------------------------------------------------
