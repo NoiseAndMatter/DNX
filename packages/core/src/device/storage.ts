@@ -63,9 +63,6 @@ export const StorageCode = {
 
 export type StorageCode = (typeof StorageCode)[keyof typeof StorageCode];
 
-/** The two roots a Digitone 1 reported. */
-export const ROOTS = ["projects", "soundbanks"] as const;
-
 /** A window into a directory. Both halves are required — see `listRequest`. */
 export interface Page {
   start: number;

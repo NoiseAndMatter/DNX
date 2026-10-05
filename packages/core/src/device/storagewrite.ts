@@ -76,6 +76,17 @@
  * writes it itself**, so a caller does not have to fix it up, but a byte-for-byte round-trip check
  * has to expect it or it will read as corruption.
  *
+ * ## Not everything on the +Drive is an Elektron container — 2026-10-05
+ *
+ * `refuseRawForm` ran on every write, because for two months every write was a project, a kit or a
+ * sound. The Waverider store writes wavetables through a firmware route that stores bytes, and
+ * those bytes have no form flag at `+29` — so this module would have refused them **locally**,
+ * before the device was involved, with a message about LZ4 that has nothing to do with them.
+ *
+ * `PayloadKind` is how a caller says which it has. The default keeps every existing caller exactly
+ * as strict as it was, and the opt-out is refused on a container root so it cannot be used to turn
+ * the check off where the check is the point.
+ *
  * ## Empty slots only, refused rather than warned
  *
  * The listing says which slots are empty and which are protected (`Entry.occupied`,
@@ -133,6 +144,13 @@ export interface WriteStoredFileOptions {
    */
   permit: WritePermit;
   /**
+   * What these bytes are, which decides whether the stored-form check applies. See `PayloadKind`.
+   *
+   * Defaults to `elektron-container`, so every caller that existed before the Waverider store is
+   * unchanged and a new one has to say what it is doing.
+   */
+  payloadKind?: PayloadKind;
+  /**
    * Allow an occupied destination.
    *
    * Decided a layer up, where the backup is taken and the person is asked — `safeWriteFile` will
@@ -185,6 +203,40 @@ export const FORM_FLAG_OFFSET = 29;
 export const FORM_STORED = 0x01;
 
 /**
+ * What a write is carrying, which decides whether the stored-form check below applies.
+ *
+ * `elektron-container` is everything DNX has ever written: a project, a kit, a sound. Those have a
+ * form flag at `+29` and the +Drive refuses the raw one.
+ *
+ * `opaque` is a payload that is not an Elektron container at all and has no such flag. The
+ * Waverider store's wavetables are the first — ready-to-play PCM behind a header of our own
+ * design, written through a firmware route that stores bytes rather than objects.
+ *
+ * **The default is `elektron-container`, and that is deliberate.** A caller that forgets still gets
+ * the check; only the one caller that knows its payload is not a container opts out, at the place
+ * that knows it. Choosing by *path* was the other option and it is worse: a mistyped path would
+ * silently skip a check, and the one thing a safety check must not do is fail open on a typo.
+ */
+export type PayloadKind = "elektron-container" | "opaque";
+
+/**
+ * The +Drive roots that hold Elektron container objects.
+ *
+ * Used to refuse `opaque` where it cannot be true. Not used to *select* the check — see
+ * `PayloadKind` for why that direction is the wrong one.
+ *
+ * This replaces a `ROOTS` in `storage.ts` that listed two, said "the two roots a Digitone 1
+ * reported", and was imported by nothing. A Digitone II answers `/` with three, so it was dead and
+ * wrong at once. One home for the list, and it is the one with a caller.
+ */
+export const CONTAINER_ROOTS = ["projects", "soundbanks", "kits"] as const;
+
+/** The first path segment, or "" for a path with none. */
+function rootOf(path: string): string {
+  return path.replace(/^\/+/, "").split("/")[0] ?? "";
+}
+
+/**
  * Refuse to write the raw form, which the +Drive will not accept.
  *
  * **This cost most of a session.** `readStoredFile` omits the trailing byte on `0x54` and so gets
@@ -199,7 +251,28 @@ export const FORM_STORED = 0x01;
  * `storage.ts` had recorded the trailing byte's meaning months ago — *"a caller wanting a `.dnprj`
  * to save to disk wants exactly what Transfer asks for"* — and nothing connected that to writing.
  */
-export function refuseRawForm(bytes: Uint8Array, path: string): void {
+export function refuseRawForm(
+  bytes: Uint8Array,
+  path: string,
+  kind: PayloadKind = "elektron-container",
+): void {
+  if (kind === "opaque") {
+    /*
+     * **The exception cannot be used where it would matter.** An opaque write into `/projects` is a
+     * caller bug — those slots hold containers and the device will reject the bytes at the commit,
+     * after the whole file has gone over the wire. Refusing here keeps the opt-out honest: it
+     * excuses a route that stores bytes, not a caller that wants the check gone.
+     */
+    const root = rootOf(path);
+    if ((CONTAINER_ROOTS as readonly string[]).includes(root)) {
+      throw new ListingError(
+        `refusing to write ${path} as an opaque payload: /${root} holds Elektron container ` +
+          `objects, and the stored-form check exists for exactly that. Either these bytes are a ` +
+          `container, in which case do not pass "opaque", or the destination is wrong.`,
+      );
+    }
+    return;
+  }
   // Too short to carry a container header at all: not this function's business to judge.
   if (bytes.length <= FORM_FLAG_OFFSET) return;
   if (bytes[FORM_FLAG_OFFSET] === FORM_STORED) return;
@@ -274,7 +347,7 @@ export async function writeStoredFile(
 
   refuseUnlessEmpty(target, path, options.overwrite === true);
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
-  refuseRawForm(bytes, path);
+  refuseRawForm(bytes, path, options.payloadKind ?? "elektron-container");
 
   /** How much this transfer slices at. What each chunk *declares* is its own length — see below. */
   const chunkSize = Math.min(requested, bytes.length);

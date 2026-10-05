@@ -12,7 +12,13 @@ import { test } from "node:test";
 import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
 import { type Entry, StorageCode, driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
 import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
-import { FORM_FLAG_OFFSET, refuseRawForm, refuseUnlessEmpty, writeStoredFile } from "@noiseandmatter/dnx-core/device/storagewrite.js";
+import {
+  CONTAINER_ROOTS,
+  FORM_FLAG_OFFSET,
+  refuseRawForm,
+  refuseUnlessEmpty,
+  writeStoredFile,
+} from "@noiseandmatter/dnx-core/device/storagewrite.js";
 import { TEST_PERMIT } from "./permit.js";
 
 /**
@@ -293,6 +299,47 @@ test("the raw uncompressed form is refused, and the message says how to fix it",
 
   // Something too short to hold a container header is not this guard's business to judge.
   assert.doesNotThrow(() => refuseRawForm(new Uint8Array(4), "/kits/A/15"));
+});
+
+test("an opaque payload is allowed off the container roots, and refused on them", () => {
+  // The Waverider store writes wavetables through a firmware route that stores bytes rather than
+  // Elektron objects. They have no form flag at +29, so this guard would have refused them
+  // locally, with a message about LZ4 that has nothing to do with them.
+  const table = new Uint8Array(500).fill(7);
+  table[FORM_FLAG_OFFSET] = 0x00;
+
+  assert.doesNotThrow(() => refuseRawForm(table, "/waverider/0", "opaque"));
+
+  // **The opt-out cannot be used where the check is the point.** An opaque write into a container
+  // root is a caller bug, and the device would only say so at the commit — after the whole file
+  // has gone over the wire.
+  for (const root of CONTAINER_ROOTS) {
+    assert.throws(
+      () => refuseRawForm(table, `/${root}/A/15`, "opaque"),
+      /holds Elektron container objects/,
+      `${root} must not accept an opaque payload`,
+    );
+  }
+
+  // The default is unchanged, so every caller written before the Waverider store is as strict as
+  // it was. That is the property worth pinning: the new argument widens nothing by omission.
+  assert.throws(() => refuseRawForm(table, "/waverider/0"), /raw uncompressed form/);
+});
+
+test("the kind reaches the guard from writeStoredFile, not just from a direct call", async () => {
+  // A guard that only behaves correctly when called by hand is not a guard. This goes through the
+  // real entry point with a real transport and checks that nothing left the machine.
+  const io = accepting();
+  const table = new Uint8Array(500).fill(7);
+  table[FORM_FLAG_OFFSET] = 0x00;
+
+  await assert.rejects(
+    writeStoredFile("/projects/12", table, undefined, {
+      transport: io, target: entry(), permit: TEST_PERMIT, payloadKind: "opaque",
+    }),
+    /holds Elektron container objects/,
+  );
+  assert.deepEqual(io.sent, [], "refused before the transfer, as the raw-form check is");
 });
 
 test("a per-chunk function reaches the wire, because that hypothesis had to be tried", async () => {
