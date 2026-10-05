@@ -19,6 +19,7 @@
  * Elektron's. Correctness is defined as "decodes to the same image", not "same bytes".
  */
 
+import { COMPRESSED_FLAG_OFFSET } from "./container.js";
 import { crc32ZeroInit } from "./checksum.js";
 import { BLOCK_CHAIN_START, TRAILER_SIZE } from "./dn2codec.js";
 import { encodeBlockChain } from "./lz4encode.js";
@@ -26,16 +27,9 @@ import { encodeBlockChain } from "./lz4encode.js";
 const FOOTER_MAGIC = Uint8Array.of(0xaa, 0xa1, 0xda, 0xaa);
 
 /**
- * The header byte that says whether the body is compressed.
- *
- * **Named from evidence, not from a specification.** All 79 project files in the corpus — both
- * families, every firmware present — carry `0x01` here, and the one payload known to be
- * uncompressed, a project read straight off the +Drive, carries `0x00`. That correlation is
- * unanimous across 80 samples; what the byte is *called* remains unknown, and it does not need to
- * be. What matters is that every file a device has written says `0x01`, and everything this
- * function emits is compressed.
+ * The value this writer stamps at `COMPRESSED_FLAG_OFFSET`, since everything it emits is an LZ4
+ * chain. The offset and the evidence for it live in `container.js` beside the rest of the header.
  */
-const COMPRESSED_FLAG_OFFSET = 29;
 const COMPRESSED = 0x01;
 
 export class ProjectWriteError extends Error {}
