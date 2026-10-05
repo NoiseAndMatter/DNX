@@ -86,26 +86,70 @@ export const INDEX_SECTORS = INDEX_BYTES / SECTOR;
 export const DATA_START = 0x1000;
 
 /**
- * Last sector data may occupy, relative to the region, exclusive.
+ * Sectors reserved for each slot. **Slot `n` always lives at `DATA_START + n * SLOT_SECTORS`.**
  *
- * The region has no hard end in the document — it runs until the eMMC does — so this is DNX's
- * self-imposed ceiling rather than the device's, and it is written into every superblock as
- * `dataEnd`. 64 MiB past the start of data is more than three thousand v1 tables and comfortably
- * past the pSLC boundary, so the limit a plan actually meets is the index's 256 entries.
+ * ## Why a fixed stride rather than an allocator
+ *
+ * The first design packed extents contiguously in slot order and compacted, which keeps the store
+ * dense and was a mistake. **Compaction cannot be expressed one slot at a time**, and one slot at a
+ * time is how the device applies a change: delete slot 0 and everything shifts down, so slot 1 now
+ * wants sectors slot 0 still occupies and the device's overlap check refuses it. A general
+ * reordering has no safe order at all.
+ *
+ * With a fixed stride there is nothing to compact, **overlap is impossible by construction**, and
+ * the device's check stops being a search over the index and becomes arithmetic: *is this extent
+ * exactly slot n's?*
+ *
+ * It also removed a rule neither side had spotted — that a slot being rewritten must be excluded
+ * from its own overlap check — by removing the check.
+ *
+ * ## The size, and why this one
+ *
+ * 512 KiB, which is one table at Tonverk's largest native geometry: 64 waves of 4,096 points of
+ * int16 is 524,288 bytes, a slot exactly. **The owner set that target** (2026-10-05), and it is the
+ * right one because DNX stores a table at full resolution. A slot has to hold the largest table
+ * anybody would import, which is a different number from the largest the current DSP geometry
+ * plays. Today's v1 table is 16 KiB of it.
+ *
+ * What the DSP can hold and play at once is a different limit and not this one: its load area is
+ * 2 MB, four of the largest tables, and which tables are in it is decided when they are loaded.
+ *
+ * **128 KiB was agreed first and replaced before anything was written.** It held eight v1 tables and
+ * would have truncated the one import that matters. The replacement cost one constant and no
+ * migration, for the reason in `plan.ts`: a stride change is a full rewrite and nothing else.
  */
-export const DATA_END = DATA_START + 0x20000;
+export const SLOT_SECTORS = 0x400;
 
-/** Extents start on this boundary, in sectors. 8 x 512 = 4 KiB. */
-export const EXTENT_ALIGN = 8;
+/** Bytes reserved per slot: the allocation a listing reports, not a table's length. */
+export const SLOT_BYTES = SLOT_SECTORS * SECTOR;
 
-/** Round a sector count up to the next whole extent boundary. */
-export function alignExtent(sectors: number): number {
-  return Math.ceil(sectors / EXTENT_ALIGN) * EXTENT_ALIGN;
+/**
+ * One past the last sector data may occupy, relative to the region.
+ *
+ * The end of slot 255, so it falls out of the stride rather than being chosen. Written into every
+ * superblock as `dataEnd`.
+ */
+export const DATA_END = DATA_START + INDEX_ENTRIES * SLOT_SECTORS;
+
+/**
+ * How many slots are wholly inside the pSLC: 92, with slot 92 starting exactly on the boundary.
+ *
+ * **Derived, and no check here uses it.** 256 slots of 512 KiB end 130 MiB into the region and the
+ * pSLC ends 48 MiB in, so most of the store sits on TLC, which costs load speed and nothing else.
+ * That is the price of a stride big enough for a Tonverk table. This constant exists to be pinned
+ * against the shared document, and to answer somebody asking why a high slot loads slower than a
+ * low one.
+ */
+export const FAST_SLOTS = Math.floor((FAST_SECTORS - DATA_START) / SLOT_SECTORS);
+
+/** Where slot `n`'s extent begins, relative to the region. A function, never a search. */
+export function slotSector(slot: number): number {
+  return DATA_START + slot * SLOT_SECTORS;
 }
 
-/** How many sectors a payload of this many bytes occupies, rounded up to the alignment. */
+/** How many sectors a payload of this many bytes occupies. */
 export function sectorsFor(byteLength: number): number {
-  return alignExtent(Math.ceil(byteLength / SECTOR));
+  return Math.ceil(byteLength / SECTOR);
 }
 
 /** Absolute sector of a region-relative one, for a caller addressing the eMMC. */

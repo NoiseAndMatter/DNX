@@ -22,8 +22,11 @@ import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
 import {
   DATA_END,
   DATA_START,
+  FAST_SLOTS,
   ENTRY_BYTES,
-  EXTENT_ALIGN,
+  SLOT_BYTES,
+  SLOT_SECTORS,
+  slotSector,
   FAST_END,
   FAST_SECTORS,
   GROUP_A,
@@ -82,16 +85,44 @@ test("the layout closes on the document's numbers", () => {
   assert.equal(absolute(FAST_SECTORS), FAST_END);
 });
 
-test("an extent's span is rounded up to the alignment, not to the sector", () => {
-  // 16,384 bytes is 32 sectors exactly and already aligned.
-  assert.equal(sectorsFor(16_384), 32);
-  // One byte more takes a whole extent more, not one sector more — which is what keeps every
-  // start on the boundary without the allocator having to think about it.
-  assert.equal(sectorsFor(16_385), 40);
-  assert.equal(sectorsFor(1), EXTENT_ALIGN);
-  for (const bytes of [1, 512, 513, 4_096, 16_384, 16_385]) {
-    assert.equal(sectorsFor(bytes) % EXTENT_ALIGN, 0, `${bytes} bytes must span whole extents`);
+test("every slot has its own fixed extent, sized for the largest table anyone can import", () => {
+  // **The property the whole design rests on.** Slot n's sectors are arithmetic, so no two slots
+  // can overlap and there is nothing to allocate or compact.
+  assert.equal(SLOT_SECTORS, 0x400, "512 KiB");
+  assert.equal(SLOT_BYTES, 524_288);
+  assert.equal(slotSector(0), DATA_START);
+  assert.equal(slotSector(INDEX_ENTRIES - 1), 0x40c00, "the document's slot 255");
+  assert.equal(slotSector(INDEX_ENTRIES - 1) + SLOT_SECTORS, DATA_END, "the last slot ends the region");
+  assert.equal(DATA_END, 0x41000);
+  for (let n = 1; n < INDEX_ENTRIES; n++) {
+    assert.equal(slotSector(n), slotSector(n - 1) + SLOT_SECTORS);
   }
+
+  /*
+   * **The reason for the size, as arithmetic.** A slot holds one table at Tonverk's largest native
+   * geometry and not a byte more: 64 waves of 4,096 points of int16. That exactness is why 512 KiB
+   * rather than a round number near it, so it is worth an assertion. If `SLOT_BYTES` is ever
+   * raised, this line says what it was the size of.
+   */
+  assert.equal(64 * 4_096 * 2, SLOT_BYTES, "a maximal Tonverk table is a slot");
+  assert.equal(64 * 2_048 * 2, SLOT_BYTES / 2, "its default geometry is half a slot");
+  assert.equal(16 * 512 * 2, SLOT_BYTES / 32, "today's DSP geometry is a thirty-second of one");
+
+  /*
+   * **And the cost, which is that most of the store is not in the pSLC.** 130 MiB of slots against
+   * a 48 MiB fast region, so slots 0..91 are fast and the other 164 are on TLC. The earlier
+   * 128 KiB stride fitted entirely inside the pSLC, and that was the thing given up for a stride
+   * that holds a full-resolution import. Only load speed differs.
+   */
+  assert.equal(DATA_END * SECTOR, 136_314_880, "130 MiB");
+  assert.equal(FAST_SLOTS, 92, "the shared document's count");
+  assert.equal(slotSector(FAST_SLOTS), FAST_SECTORS, "slot 92 starts exactly on the boundary");
+  assert.ok(slotSector(FAST_SLOTS - 1) + SLOT_SECTORS <= FAST_SECTORS, "slot 91 is wholly inside");
+
+  // A payload's span is just sectors; there is no alignment to round to.
+  assert.equal(sectorsFor(16_384), 32);
+  assert.equal(sectorsFor(16_385), 33);
+  assert.equal(sectorsFor(1), 1);
 });
 
 // --- the superblock -----------------------------------------------------------------------------
@@ -116,7 +147,7 @@ function entryAt(slot: number, startSector: number, payload: Uint8Array): TableE
 const table16k = (fill: number): Uint8Array => new Uint8Array(16 * 512 * 2).fill(fill);
 
 test("a superblock round-trips, and is only valid against its own index", () => {
-  const index = writeIndex([entryAt(0, DATA_START, table16k(1))]);
+  const index = writeIndex([entryAt(0, slotSector(0), table16k(1))]);
   const sector = writeSuperblock(
     { generation: 7, entryCount: 1, dataStart: DATA_START, dataEnd: DATA_END },
     index,
@@ -136,12 +167,12 @@ test("a superblock round-trips, and is only valid against its own index", () => 
   // **The pairing is the safety property.** A superblock that validated against any index would
   // let a half-finished write be mistaken for a finished one, which is the exact failure the two
   // groups exist to prevent.
-  const other = writeIndex([entryAt(0, DATA_START, table16k(2))]);
+  const other = writeIndex([entryAt(0, slotSector(0), table16k(2))]);
   assert.equal(readSuperblock(sector, other), undefined, "a stale index must invalidate it");
 });
 
 test("every way a superblock can be invalid reads as invalid, not as something", () => {
-  const index = writeIndex([entryAt(3, DATA_START, table16k(1))]);
+  const index = writeIndex([entryAt(3, slotSector(3), table16k(1))]);
   const good = writeSuperblock(
     { generation: 1, entryCount: 1, dataStart: DATA_START, dataEnd: DATA_END },
     index,
@@ -194,7 +225,7 @@ test("the current group is the valid one with the higher generation, and A wins 
 // --- the index ------------------------------------------------------------------------------------
 
 test("an index round-trips, and a free slot is genuinely absent", () => {
-  const entries = [entryAt(0, DATA_START, table16k(1)), entryAt(5, DATA_START + 32, table16k(2))];
+  const entries = [entryAt(0, slotSector(0), table16k(1)), entryAt(5, slotSector(5), table16k(2))];
   const index = writeIndex(entries);
   assert.equal(index.length, INDEX_BYTES);
 
@@ -214,23 +245,23 @@ test("the no-interpolation flag survives being stored as its own negative", () =
   // The field on disk is "no interpolation"; the field in the type is "interpolate". A double
   // negative read the wrong way round plays every table with the wrong setting and nothing fails.
   for (const interpolate of [true, false]) {
-    const entry = { ...entryAt(0, DATA_START, table16k(1)), interpolate };
+    const entry = { ...entryAt(0, slotSector(0), table16k(1)), interpolate };
     assert.equal(readIndex(writeIndex([entry]))[0]!.interpolate, interpolate);
   }
 
-  const off = writeIndex([{ ...entryAt(0, DATA_START, table16k(1)), interpolate: false }]);
+  const off = writeIndex([{ ...entryAt(0, slotSector(0), table16k(1)), interpolate: false }]);
   assert.equal(off[1]! & 0b10, 0b10, "bit 1 set means no interpolation");
-  const on = writeIndex([{ ...entryAt(0, DATA_START, table16k(1)), interpolate: true }]);
+  const on = writeIndex([{ ...entryAt(0, slotSector(0), table16k(1)), interpolate: true }]);
   assert.equal(on[1]! & 0b10, 0, "and clear means interpolate");
 });
 
 test("the gain survives 16.16, and the name is truncated rather than overflowing", () => {
-  const entry = { ...entryAt(0, DATA_START, table16k(1)), gain: 2.5 };
+  const entry = { ...entryAt(0, slotSector(0), table16k(1)), gain: 2.5 };
   assert.equal(readIndex(writeIndex([entry]))[0]!.gain, 2.5);
 
   // A 64-byte field and a longer name: the entry after it must be untouched, which a naive
   // `set` of the whole string would not guarantee.
-  const long = { ...entryAt(0, DATA_START, table16k(1)), name: "x".repeat(200) };
+  const long = { ...entryAt(0, slotSector(0), table16k(1)), name: "x".repeat(200) };
   const index = writeIndex([long]);
   assert.equal(readIndex(index)[0]!.name.length, 64);
   assert.ok(index.subarray(ENTRY_BYTES, 2 * ENTRY_BYTES).every((b) => b === 0), "slot 1 untouched");
@@ -238,20 +269,35 @@ test("the gain survives 16.16, and the name is truncated rather than overflowing
 
 test("an index that would describe an unreadable store is refused, naming the entry", () => {
   const payload = table16k(1);
-  const ok = entryAt(0, DATA_START, payload);
+  const ok = entryAt(0, slotSector(0), payload);
   assert.doesNotThrow(() => validateIndex([ok]));
 
-  // Overlap, which is the rule that is about a pair rather than an entry.
-  assert.throws(
-    () => validateIndex([entryAt(0, DATA_START, payload), entryAt(1, DATA_START + 8, payload)]),
-    /overlap/,
-  );
+  // Two slots at their own extents is now the *valid* case: they cannot overlap.
+  assert.doesNotThrow(() => validateIndex([ok, entryAt(1, slotSector(1), payload)]));
 
-  // Alignment, bounds at both ends, and a slot claimed twice.
-  assert.throws(() => validateIndex([entryAt(0, DATA_START + 1, payload)]), /boundary/);
-  assert.throws(() => validateIndex([entryAt(0, DATA_START - EXTENT_ALIGN, payload)]), /inside the superblocks/);
-  assert.throws(() => validateIndex([entryAt(0, DATA_END - 8, payload)]), /past the region/);
-  assert.throws(() => validateIndex([ok, { ...ok, startSector: DATA_START + 32 }]), /two entries claim/);
+  /*
+   * **The one placement rule left.** Alignment, region bounds and overlap between entries were
+   * three separate rules while extents were allocated, and a fixed stride made all three
+   * impossible. A rule you can delete by changing the design beats a rule you enforce well.
+   *
+   * The message is phrased the way the device phrases it, so somebody who hits it from either
+   * side meets one vocabulary rather than two.
+   */
+  assert.throws(
+    () => validateIndex([entryAt(3, slotSector(2), payload)]),
+    new RegExp(
+      `slot 3 \\(TABLE 3\\): starts at 0x${slotSector(2).toString(16)}, ` +
+        `not its own 0x${slotSector(3).toString(16)}`,
+    ),
+  );
+  assert.throws(() => validateIndex([entryAt(0, slotSector(0) + 1, payload)]), /not its own/);
+
+  // Too big for its slot, and a slot claimed twice.
+  assert.throws(
+    () => validateIndex([{ ...ok, byteLength: SLOT_BYTES + 2, points: (SLOT_BYTES + 2) / 32 }]),
+    /does not fit a slot/,
+  );
+  assert.throws(() => validateIndex([ok, { ...ok }]), /two entries claim/);
 
   // **Geometry against length.** The geometry is what cuts the payload into waves, so a mismatch
   // is a table that will be read as something else entirely rather than one that fails to load.
@@ -337,14 +383,16 @@ test("a table that has not moved or changed is not rewritten", () => {
   assert.deepEqual(changed.writes.map((w) => w.what), ["data", "index", "superblock"]);
   assert.equal(changed.writes[0]!.slot, 1);
 
-  // Insert before them and everything after moves, so everything after is rewritten. That is the
-  // honest cost of a compacting layout, and the plan reports it rather than hiding it.
-  const inserted = planWrite({
-    current,
-    tables: [pending(0, 1), pending(1, 2), { ...pending(2, 3), slot: 2 }],
-  });
-  assert.deepEqual(inserted.reused, [0, 1], "slots 0 and 1 still land where they were");
+  /*
+   * **And adding one before the others costs one write.** Under the allocator this was the
+   * expensive case: inserting at a lower slot shifted every extent after it, so everything was
+   * rewritten. With a fixed stride nothing moves, which is most of why the stride is worth its
+   * space.
+   */
+  const inserted = planWrite({ current, tables: [pending(0, 1), pending(1, 2), pending(2, 3)] });
+  assert.deepEqual(inserted.reused, [0, 1], "the two that were already there");
   assert.equal(inserted.writes.filter((w) => w.what === "data").length, 1);
+  assert.equal(inserted.writes.find((w) => w.what === "data")!.sector, slotSector(2));
 });
 
 test("a plan's writes are whole sectors, correctly addressed, and hash their own bytes", () => {
@@ -357,9 +405,9 @@ test("a plan's writes are whole sectors, correctly addressed, and hash their own
   }
 
   const data = plan.writes.find((w) => w.what === "data")!;
-  assert.equal(data.sector, DATA_START);
+  assert.equal(data.sector, slotSector(0));
   assert.equal(data.absoluteSector, 0x601000);
-  assert.equal(data.length, 16_384, "a v1 table is 32 sectors");
+  assert.equal(data.length, 16_384, "a v1 table fills 32 of a slot's 256 sectors");
 
   const index = plan.writes.find((w) => w.what === "index")!;
   assert.equal(index.sector, GROUP_A.index);
@@ -373,8 +421,86 @@ test("a plan refuses what it cannot lay out, before building anything", () => {
     () => planWrite({ tables: [{ ...pending(0, 1), payload: new Uint8Array(0) }] }),
     /empty payload/,
   );
-  // The geometry has to agree with the payload, which `writeIndex` enforces for the plan too.
+  // The geometry has to agree with the payload, which the plan validates before encoding.
   assert.throws(() => planWrite({ tables: [{ ...pending(0, 1), points: 256 }] }), /of int16 is/);
+
+  // Too big for a slot — the only size rule a fixed stride leaves.
+  assert.throws(
+    () => planWrite({
+      tables: [{ ...pending(0, 1), waves: 1, points: SLOT_BYTES, payload: new Uint8Array(SLOT_BYTES + 2) }],
+    }),
+    /a slot holds/,
+  );
+
+  // And the table the size was chosen for goes through, which is the other half of that rule. A
+  // bound is only right if it admits the case it was measured from.
+  assert.doesNotThrow(() =>
+    planWrite({
+      tables: [{
+        ...pending(0, 1), waves: 64, points: 4_096, payload: new Uint8Array(SLOT_BYTES),
+      }],
+    }),
+  );
+});
+
+test("changing the slot stride is a full rewrite, and needs no migration code", () => {
+  /*
+   * **The stride already changed once**, from 128 KiB to 512 KiB on the day it was agreed, so this
+   * is a property that was exercised rather than imagined. It costs one constant because the index
+   * a plan writes is built from `tables` alone: it describes exactly the tables given, at exactly
+   * this build's geometry, and never amends the one on the card.
+   *
+   * Here the current store is at the old stride. Every reuse check fails, every table is written at
+   * its new place, and the resulting index is wholly at the new geometry, with no code that knows
+   * anything about the old one. The old data sectors are left unreferenced, which they are the
+   * moment the new superblock lands.
+   */
+  const OLD_SLOT_SECTORS = 0x100;
+  const atOldStride = [0, 1, 5].map((slot) =>
+    entryAt(slot, DATA_START + slot * OLD_SLOT_SECTORS, table16k(slot + 1)),
+  );
+  const index = writeIndex(atOldStride);
+  const superblock = readSuperblock(
+    // The old store's own `dataEnd`, which is where a reader could have derived its stride from.
+    writeSuperblock(
+      { generation: 4, entryCount: 3, dataStart: DATA_START, dataEnd: DATA_START + INDEX_ENTRIES * OLD_SLOT_SECTORS },
+      index,
+    ),
+    index,
+  )!;
+  assert.equal(superblock.dataEnd, 0x11000, "the store this build would have written yesterday");
+
+  const plan = planWrite({
+    current: { group: GROUP_A, superblock, entries: atOldStride },
+    // The same payloads, so only the geometry differs. `pending` fills a table with its slot + 1,
+    // matching `atOldStride` above, so a reuse is detected wherever the places still agree.
+    tables: [pending(0, 1), pending(1, 2), pending(5, 6)],
+  });
+
+  // The new index is wholly at the new geometry, with nothing carried over from the old one.
+  assert.deepEqual(
+    plan.entries.map((e) => e.startSector),
+    [slotSector(0), slotSector(1), slotSector(5)],
+  );
+
+  /*
+   * **And slot 0 is not rewritten**, which is the part worth pinning. Slot 0 starts at `DATA_START`
+   * under any stride, so its bytes are already in the right place and the reuse check says so.
+   *
+   * This assertion was `[]` when the test was written, on the reasoning that a stride change
+   * invalidates everything. It does not: the check compares a table's own extent and hash, so what
+   * gets rewritten is exactly what moved or changed, and a slot the two strides agree on is left
+   * alone. The cheaper plan is the correct one here, and it falls out of asking per entry rather
+   * than per store.
+   */
+  assert.equal(slotSector(0), DATA_START + 0 * OLD_SLOT_SECTORS, "the one place the strides agree");
+  assert.deepEqual(plan.reused, [0]);
+  assert.deepEqual(
+    plan.writes.filter((w) => w.what === "data").map((w) => [w.slot, w.sector]),
+    [[1, slotSector(1)], [5, slotSector(5)]],
+  );
+  assert.equal(plan.generation, 5, "a stride change is an ordinary generation, not a special one");
+  assert.equal(plan.group.name, "B", "and an ordinary swap to the other group");
 });
 
 test("the description carries everything needed to replay a plan, and none of the bytes", () => {
@@ -399,13 +525,15 @@ test("the guard moved from the encoder to the planner, and did not get lost", ()
   // `writeIndex` used to validate. Splitting the codec from the policy put the import the other
   // way round, and **a guard moving from a callee to a caller is exactly the kind of change that
   // quietly loses one** — so both halves are pinned.
+  // An entry whose extent is not its own slot's — the one placement rule left now that a fixed
+  // stride has made alignment, region bounds and overlap impossible.
   const bad: TableEntry[] = [
-    entryAt(0, DATA_START, table16k(1)),
-    entryAt(1, DATA_START + 8, table16k(2)),
+    entryAt(0, slotSector(0), table16k(1)),
+    entryAt(1, slotSector(4), table16k(2)),
   ];
 
   // The judge still refuses it.
-  assert.throws(() => validateIndex(bad), /overlap/);
+  assert.throws(() => validateIndex(bad), /not its own/);
 
   // The encoder does not, and that is now deliberate rather than an oversight.
   assert.doesNotThrow(() => writeIndex(bad), "the codec encodes what it is given");
@@ -426,6 +554,18 @@ test("the plan's bytes are what a second implementation produced from the docume
    * So this is a cross-implementation vector rather than a round trip, which is the same upgrade
    * the firmware's own xxHash32 values gave `xxhash32.test.ts`. If a field order or a padding rule
    * moves on either side, one of the two builds breaks.
+   *
+   * **Two fields have now moved twice**, both times `dataEnd` and the superblock's own hash, and
+   * both times for a change to the slot stride: 0x21000 under the allocator, 0x11000 at 128 KiB
+   * fixed slots, 0x41000 at 512 KiB. The three self-hashes are `0xa636f27e`, `0x22136de2` and the
+   * `0x80c77e1c` below. **The index is byte-identical through all of it**, because slot 0 starts at
+   * `DATA_START` whatever the stride is. So `0x8e82b3df` and entry 0's 128 bytes have never been
+   * in question, and the firmware session re-pins exactly two fields each time.
+   *
+   * Their encoder reproduced the 128 KiB superblock and keeps it as a vector at that `dataEnd`.
+   * **The 512 KiB one below is ours alone until they pin it**, which is a fact about today and not
+   * a doubt about the format: the two altered fields are a u32 from the document and a hash over
+   * the record, and a third reading would have to disagree with the first two to break it.
    *
    * The payload is chosen so one hash was already independently known: 16,384 bytes of
    * `(i * 7) & 0xff` hashes to 0x831953bc, which the firmware's routine at 0x4014be0e produced
@@ -451,7 +591,7 @@ test("the plan's bytes are what a second implementation produced from the docume
     [
       ["data", 4096, 16_384, 0x831953bc],
       ["index", 1, 32_768, 0x8e82b3df],
-      ["superblock", 0, 512, 0x95eae26f],
+      ["superblock", 0, 512, 0x80c77e1c],
     ],
   );
 
@@ -469,8 +609,8 @@ test("the plan's bytes are what a second implementation produced from the docume
   assert.deepEqual(rows(superblock, SUPERBLOCK_BYTES), [
     "57 52 54 42 00 01 00 40 00 00 00 01 00 00 00 01",
     "00 00 01 00 00 00 00 80 8E 82 B3 DF 00 00 10 00",
-    "00 02 10 00 00 00 00 00 00 00 00 00 00 00 00 00",
-    "00 00 00 00 00 00 00 00 00 00 00 00 A6 36 F2 7E",
+    "00 04 10 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "00 00 00 00 00 00 00 00 00 00 00 00 A3 07 CB C7",
   ]);
   assert.ok(superblock.subarray(SUPERBLOCK_BYTES).every((b) => b === 0), "zero to the sector");
 
