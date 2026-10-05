@@ -62,7 +62,7 @@ test("a .dnx is a zip, and the manifest is the first thing in it", async () => {
 test("the manifest records the form, because a raw backup cannot be restored", () => {
   /*
    * The device answers one path two ways, and **only the stored form can be written back**;
-   * `refuseRawForm` rejects the other at the write. A backup taken raw is unrestorable, and that
+   * `refuseWrongForm` rejects the other at the write. A backup taken raw is unrestorable, and that
    * has happened on hardware: 2026-08-15, a slot backed up as 12.9 MB of raw image, saved under a
    * `.dn2prj` name it had no right to, rejected by the very function that produced it.
    *

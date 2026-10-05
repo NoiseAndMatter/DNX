@@ -924,7 +924,7 @@ async function saveToDrive(): Promise<void> {
   try {
     // The compressed payload, exactly as an export writes into the ZIP. `buildPayload` copies the
     // 31-byte container header verbatim, which is what carries the stored-form flag the +Drive
-    // requires — see `refuseRawForm`.
+    // requires — see `refuseWrongForm`.
     const payload = buildPayload(file.payload.raw, session.image);
     const result = await writeProjectToDrive({
       device,

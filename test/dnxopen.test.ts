@@ -171,7 +171,7 @@ test("a backup from a newer DNX is refused rather than guessed at", async () => 
 test("a raw-form backup is refused at the door, not at the write", async () => {
   /*
    * **Only the stored form can be written back.** A raw project is 12,889,647 bytes with no
-   * container, and `refuseRawForm` rejects it at the instrument. Saying so when the file is opened
+   * container, and `refuseWrongForm` rejects it at the instrument. Saying so when the file is opened
    * is the difference between a sentence and a failed restore.
    */
   const packed = await packBackup(backup({ form: "raw" as BackupManifest["form"] }));

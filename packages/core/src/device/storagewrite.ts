@@ -50,7 +50,7 @@
  *
  * **The writer only accepts the stored form.** Handing it the raw one gets every chunk accepted and
  * then a commit that fails with `Footer was not processed` — an unguessable error, arriving after
- * the whole file has gone over the wire. `refuseRawForm` checks the shape before anything is sent.
+ * the whole file has gone over the wire. `refuseWrongForm` checks the shape before anything is sent.
  *
  * This was written down in `storage.ts` months ago, on `STORED_FORM`: *"a caller wanting a `.dnprj`
  * to save to disk wants exactly what Transfer asks for."* Nobody connected it to writing, and an
@@ -76,16 +76,26 @@
  * writes it itself**, so a caller does not have to fix it up, but a byte-for-byte round-trip check
  * has to expect it or it will read as corruption.
  *
- * ## Not everything on the +Drive is an Elektron container — 2026-10-05
+ * ## A route's stored form is a property of the route — 2026-10-05
  *
- * `refuseRawForm` ran on every write, because for two months every write was a project, a kit or a
- * sound. The Waverider store writes wavetables through a firmware route that stores bytes, and
- * those bytes have no form flag at `+29` — so this module would have refused them **locally**,
- * before the device was involved, with a message about LZ4 that has nothing to do with them.
+ * The check ran on every write expecting `01`, because for two months every write was a project, a
+ * kit or a sound, and those three routes store the compressed form.
  *
- * `PayloadKind` is how a caller says which it has. The default keeps every existing caller exactly
- * as strict as it was, and the opt-out is refused on a container root so it cannot be used to turn
- * the check off where the check is the point.
+ * **The Waverider store's slots hold the raw form**, and its container is a real Elektron container
+ * with a form flag like any other: `0x1D` reads `00` and its writer is defined to take exactly what
+ * a read returns, so a slot round-trips unchanged (firmware session, 2026-10-05). So the question
+ * is not whether the check applies but what it should expect, and that is `STORED_FORM_BY_ROOT`.
+ *
+ * This replaced a `PayloadKind` with an `"opaque"` value, added hours earlier on the belief that a
+ * slot stored bare bytes with no header. It was wrong about the format, and it put the decision in
+ * the wrong place: a caller had to remember to pass it, and forgetting produced a message about
+ * LZ4 aimed at a wavetable.
+ *
+ * **That earlier note argued against keying on the path**, on the grounds that a mistyped path
+ * would silently skip the check, and a safety check must never fail open on a typo. The objection
+ * was right and it is answered by the table's default rather than by abandoning the table: an
+ * unrecognised root expects the compressed form, exactly as every write did before this existed. A
+ * typo cannot skip the check; it gets the stricter of the two answers.
  *
  * ## Empty slots only, refused rather than warned
  *
@@ -144,13 +154,6 @@ export interface WriteStoredFileOptions {
    */
   permit: WritePermit;
   /**
-   * What these bytes are, which decides whether the stored-form check applies. See `PayloadKind`.
-   *
-   * Defaults to `elektron-container`, so every caller that existed before the Waverider store is
-   * unchanged and a new one has to say what it is doing.
-   */
-  payloadKind?: PayloadKind;
-  /**
    * Allow an occupied destination.
    *
    * Decided a layer up, where the backup is taken and the person is asked — `safeWriteFile` will
@@ -201,35 +204,31 @@ const DEFAULT_CHUNK_SIZE = WRITE_CHUNK_SIZE;
  */
 export const FORM_FLAG_OFFSET = 29;
 export const FORM_STORED = 0x01;
+export const FORM_RAW = 0x00;
 
 /**
- * What a write is carrying, which decides whether the stored-form check below applies.
+ * Which form each +Drive route stores, by first path segment.
  *
- * `elektron-container` is everything DNX has ever written: a project, a kit, a sound. Those have a
- * form flag at `+29` and the +Drive refuses the raw one.
+ * The three stock roots hold the compressed form: a kit read both ways came back as 10,795 bytes
+ * with `00` and 3,481 with `01`, and only `01` survives a commit. `/waverider` holds the raw form,
+ * because its writer takes what its reader returns and a slot round-trips unchanged.
  *
- * `opaque` is a payload that is not an Elektron container at all and has no such flag. The
- * Waverider store's wavetables are the first — ready-to-play PCM behind a header of our own
- * design, written through a firmware route that stores bytes rather than objects.
- *
- * **The default is `elektron-container`, and that is deliberate.** A caller that forgets still gets
- * the check; only the one caller that knows its payload is not a container opts out, at the place
- * that knows it. Choosing by *path* was the other option and it is worse: a mistyped path would
- * silently skip a check, and the one thing a safety check must not do is fail open on a typo.
+ * **An unlisted root expects the compressed form**, which is what every write expected before this
+ * table existed. So a new route is as strict as the old default until somebody measures it and adds
+ * a line, and a mistyped path meets the stricter answer rather than no answer. Adding a route here
+ * is a deliberate act with a measurement behind it; that is the whole design.
  */
-export type PayloadKind = "elektron-container" | "opaque";
+export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
+  projects: FORM_STORED,
+  soundbanks: FORM_STORED,
+  kits: FORM_STORED,
+  waverider: FORM_RAW,
+};
 
-/**
- * The +Drive roots that hold Elektron container objects.
- *
- * Used to refuse `opaque` where it cannot be true. Not used to *select* the check — see
- * `PayloadKind` for why that direction is the wrong one.
- *
- * This replaces a `ROOTS` in `storage.ts` that listed two, said "the two roots a Digitone 1
- * reported", and was imported by nothing. A Digitone II answers `/` with three, so it was dead and
- * wrong at once. One home for the list, and it is the one with a caller.
- */
-export const CONTAINER_ROOTS = ["projects", "soundbanks", "kits"] as const;
+/** The form the route in `path` stores. The compressed one for a route nobody has listed. */
+export function storedFormFor(path: string): number {
+  return STORED_FORM_BY_ROOT[rootOf(path)] ?? FORM_STORED;
+}
 
 /** The first path segment, or "" for a path with none. */
 function rootOf(path: string): string {
@@ -251,38 +250,31 @@ function rootOf(path: string): string {
  * `storage.ts` had recorded the trailing byte's meaning months ago — *"a caller wanting a `.dnprj`
  * to save to disk wants exactly what Transfer asks for"* — and nothing connected that to writing.
  */
-export function refuseRawForm(
-  bytes: Uint8Array,
-  path: string,
-  kind: PayloadKind = "elektron-container",
-): void {
-  if (kind === "opaque") {
-    /*
-     * **The exception cannot be used where it would matter.** An opaque write into `/projects` is a
-     * caller bug — those slots hold containers and the device will reject the bytes at the commit,
-     * after the whole file has gone over the wire. Refusing here keeps the opt-out honest: it
-     * excuses a route that stores bytes, not a caller that wants the check gone.
-     */
-    const root = rootOf(path);
-    if ((CONTAINER_ROOTS as readonly string[]).includes(root)) {
-      throw new ListingError(
-        `refusing to write ${path} as an opaque payload: /${root} holds Elektron container ` +
-          `objects, and the stored-form check exists for exactly that. Either these bytes are a ` +
-          `container, in which case do not pass "opaque", or the destination is wrong.`,
-      );
-    }
-    return;
-  }
+export function refuseWrongForm(bytes: Uint8Array, path: string): void {
   // Too short to carry a container header at all: not this function's business to judge.
   if (bytes.length <= FORM_FLAG_OFFSET) return;
-  if (bytes[FORM_FLAG_OFFSET] === FORM_STORED) return;
+
+  const want = storedFormFor(path);
+  const got = bytes[FORM_FLAG_OFFSET]!;
+  if (got === want) return;
+
+  const flag = `flag 0x${got.toString(16).padStart(2, "0")} at +${FORM_FLAG_OFFSET}`;
+
+  if (want === FORM_STORED) {
+    throw new ListingError(
+      `refusing to write ${path}: these bytes are the raw uncompressed form (${flag}), and ` +
+        `/${rootOf(path)} stores the compressed form. Read the source with STORED_FORM — the ` +
+        `trailing 0x01 on an 0x54 open — or build a payload with buildPayload. Sending the raw ` +
+        `form gets every chunk accepted and then "Footer was not processed" at the commit, which ` +
+        `is a long way to travel for a shape that can be checked here.`,
+    );
+  }
+
   throw new ListingError(
-    `refusing to write ${path}: these bytes are the raw uncompressed form (flag ` +
-      `0x${bytes[FORM_FLAG_OFFSET]!.toString(16).padStart(2, "0")} at +${FORM_FLAG_OFFSET}), and the ` +
-      `+Drive stores the compressed form. Read the source with STORED_FORM — the trailing 0x01 on ` +
-      `an 0x54 open — or build a payload with buildPayload. Sending the raw form gets every chunk ` +
-      `accepted and then "Footer was not processed" at the commit, which is a long way to travel ` +
-      `for a shape that can be checked here.`,
+    `refusing to write ${path}: these bytes are the compressed stored form (${flag}), and ` +
+      `/${rootOf(path)} stores the raw form. Its reader returns the raw bytes and its writer takes ` +
+      `what the reader returns, so a slot round-trips unchanged. Read the source without ` +
+      `STORED_FORM, which is the plain 0x54 open.`,
   );
 }
 
@@ -347,7 +339,7 @@ export async function writeStoredFile(
 
   refuseUnlessEmpty(target, path, options.overwrite === true);
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
-  refuseRawForm(bytes, path, options.payloadKind ?? "elektron-container");
+  refuseWrongForm(bytes, path);
 
   /** How much this transfer slices at. What each chunk *declares* is its own length — see below. */
   const chunkSize = Math.min(requested, bytes.length);

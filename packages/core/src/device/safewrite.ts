@@ -652,7 +652,7 @@ export async function safeWriteFile(
      * **`STORED_FORM`, for the same reason the backup read above needs it.**
      *
      * `readStoredFile` defaults to the raw expanded image, and `bytes` is the stored payload —
-     * `refuseRawForm` guarantees it. Without this the comparison is a 10,795-byte image against a
+     * `refuseWrongForm` guarantees it. Without this the comparison is a 10,795-byte image against a
      * 3,481-byte payload, `compareStored` returns its length mismatch, and **`verified` is false
      * for every file write that has ever run.**
      *
@@ -682,7 +682,7 @@ export async function safeWriteFile(
  *
  * The first hardware run of this, 2026-08-15, did **not** pass it — `readStoredFile` defaults to
  * raw — and produced a 12,889,647-byte image with no container header, saved under a `.dn2prj`
- * name, that `refuseRawForm` would have rejected on the way back in. A backup that cannot be
+ * name, that `refuseWrongForm` would have rejected on the way back in. A backup that cannot be
  * restored is not a backup, and it was the *only* thing standing where the empty-slot rule used
  * to. It also cost 6,294 round trips instead of 3.
  *

@@ -753,7 +753,7 @@ test("the backup holds what was in the slot, and is taken before the first byte 
   assert.deepEqual([...backups[0]!.bytes], [...payload(0x11)], "the old contents, not the new");
 
   // **The form, which the first hardware run got wrong.** `readStoredFile` defaults to raw, so a
-  // backup taken without asking is a 12.9 MB image that `refuseRawForm` rejects on the way back —
+  // backup taken without asking is a 12.9 MB image that `refuseWrongForm` rejects on the way back —
   // unrestorable, and the only thing standing where the empty-slot rule used to. The flag is the
   // last byte of the open request.
   const open = io.opens[0];
@@ -862,7 +862,7 @@ test("every read of a file the writer touches asks for the stored form", () => {
    * **A fix applied to one of two calls is half a fix.**
    *
    * `safeWriteFile` reads a file twice: once to back the destination up, once to verify the write.
-   * Both compare against `bytes`, which `refuseRawForm` guarantees is the stored payload. The
+   * Both compare against `bytes`, which `refuseWrongForm` guarantees is the stored payload. The
    * backup read was corrected on 2026-08-15 and the verify read was not, so `verified` was false
    * for every file write that had ever run — a 10,795-byte image compared against a 3,481-byte
    * payload, returning `compareStored`'s length mismatch.

@@ -75,7 +75,7 @@ export interface ReadStoredFileOptions {
    *
    * Raw is the default because it is what most of DNX wants: an image is the thing every edit,
    * diff and decode operates on. Ask for stored when the bytes are going to be **written back**,
-   * because that is the only form a `0x58` accepts — `refuseRawForm` rejects the other one at the
+   * because that is the only form a `0x58` accepts — `refuseWrongForm` rejects the other one at the
    * door, so a backup taken raw is a backup that cannot be restored.
    *
    * That is not hypothetical. The first overwrite run on hardware, 2026-08-15, backed up slot 13

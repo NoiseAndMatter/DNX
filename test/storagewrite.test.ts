@@ -13,9 +13,12 @@ import { type ApiFrame, RESPONSE_BIT, decodeMessage } from "@noiseandmatter/dnx-
 import { type Entry, StorageCode, driveChecksum } from "@noiseandmatter/dnx-core/device/storage.js";
 import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import {
-  CONTAINER_ROOTS,
+  FORM_RAW,
+  FORM_STORED,
+  STORED_FORM_BY_ROOT,
+  storedFormFor,
   FORM_FLAG_OFFSET,
-  refuseRawForm,
+  refuseWrongForm,
   refuseUnlessEmpty,
   writeStoredFile,
 } from "@noiseandmatter/dnx-core/device/storagewrite.js";
@@ -24,7 +27,7 @@ import { TEST_PERMIT } from "./permit.js";
 /**
  * Stamp the stored-form flag, so a fixture looks like something the +Drive would accept.
  *
- * `refuseRawForm` reads `+29`, and every fixture below is bytes-with-a-shape rather than a real
+ * `refuseWrongForm` reads `+29`, and every fixture below is bytes-with-a-shape rather than a real
  * container. Without this they would all be refused before reaching the code under test — which is
  * the guard working, and would make these tests about the guard instead of about chunking.
  */
@@ -295,51 +298,77 @@ test("the raw uncompressed form is refused, and the message says how to fix it",
   // And the stored form passes the same check.
   const ok = Uint8Array.from(raw);
   ok[FORM_FLAG_OFFSET] = 0x01;
-  assert.doesNotThrow(() => refuseRawForm(ok, "/kits/A/15"));
+  assert.doesNotThrow(() => refuseWrongForm(ok, "/kits/A/15"));
 
   // Something too short to hold a container header is not this guard's business to judge.
-  assert.doesNotThrow(() => refuseRawForm(new Uint8Array(4), "/kits/A/15"));
+  assert.doesNotThrow(() => refuseWrongForm(new Uint8Array(4), "/kits/A/15"));
 });
 
-test("an opaque payload is allowed off the container roots, and refused on them", () => {
-  // The Waverider store writes wavetables through a firmware route that stores bytes rather than
-  // Elektron objects. They have no form flag at +29, so this guard would have refused them
-  // locally, with a message about LZ4 that has nothing to do with them.
-  const table = new Uint8Array(500).fill(7);
-  table[FORM_FLAG_OFFSET] = 0x00;
+test("each route is checked against the form that route stores", () => {
+  const raw = new Uint8Array(500).fill(7);
+  raw[FORM_FLAG_OFFSET] = FORM_RAW;
+  const packed = Uint8Array.from(raw);
+  packed[FORM_FLAG_OFFSET] = FORM_STORED;
 
-  assert.doesNotThrow(() => refuseRawForm(table, "/waverider/0", "opaque"));
+  // A Waverider slot holds the raw form: its writer takes what its reader returns, so a slot
+  // round-trips unchanged. The same bytes that are right here are wrong on every stock route.
+  assert.doesNotThrow(() => refuseWrongForm(raw, "/waverider/0"));
+  assert.throws(() => refuseWrongForm(packed, "/waverider/0"), /stores the raw form/);
 
-  // **The opt-out cannot be used where the check is the point.** An opaque write into a container
-  // root is a caller bug, and the device would only say so at the commit — after the whole file
-  // has gone over the wire.
-  for (const root of CONTAINER_ROOTS) {
+  for (const root of ["projects", "soundbanks", "kits"]) {
+    assert.doesNotThrow(() => refuseWrongForm(packed, `/${root}/A/15`));
     assert.throws(
-      () => refuseRawForm(table, `/${root}/A/15`, "opaque"),
-      /holds Elektron container objects/,
-      `${root} must not accept an opaque payload`,
+      () => refuseWrongForm(raw, `/${root}/A/15`),
+      /raw uncompressed form/,
+      `${root} stores the compressed form`,
     );
   }
 
-  // The default is unchanged, so every caller written before the Waverider store is as strict as
-  // it was. That is the property worth pinning: the new argument widens nothing by omission.
-  assert.throws(() => refuseRawForm(table, "/waverider/0"), /raw uncompressed form/);
+  /*
+   * **An unlisted root gets the stricter answer, not no answer.**
+   *
+   * This is the objection the earlier `PayloadKind` was built to avoid: key the check on the path
+   * and a mistyped path skips it, which is the one thing a safety check must never do. The table's
+   * default answers it. `/projekts/1` is not a route, so it expects the compressed form, exactly
+   * as every write did before the table existed.
+   */
+  assert.equal(storedFormFor("/projekts/1"), FORM_STORED);
+  assert.equal(storedFormFor("/wavrider/0"), FORM_STORED);
+  assert.throws(() => refuseWrongForm(raw, "/projekts/1"), /raw uncompressed form/);
+
+  // The check keys on the root alone, so a bare root gets that root's form. Whether the path is
+  // addressable is the device's answer and not this function's: it judges the shape of the bytes.
+  assert.doesNotThrow(() => refuseWrongForm(raw, "/waverider"));
+
+  // Every listed route is one of the two forms and nothing else.
+  for (const [root, form] of Object.entries(STORED_FORM_BY_ROOT)) {
+    assert.ok(form === FORM_RAW || form === FORM_STORED, `${root}: ${form}`);
+    assert.equal(storedFormFor(`/${root}/0`), form);
+  }
 });
 
-test("the kind reaches the guard from writeStoredFile, not just from a direct call", async () => {
+test("the route's form reaches the guard from writeStoredFile, not just from a direct call", async () => {
   // A guard that only behaves correctly when called by hand is not a guard. This goes through the
   // real entry point with a real transport and checks that nothing left the machine.
   const io = accepting();
-  const table = new Uint8Array(500).fill(7);
-  table[FORM_FLAG_OFFSET] = 0x00;
+  const raw = new Uint8Array(500).fill(7);
+  raw[FORM_FLAG_OFFSET] = FORM_RAW;
 
   await assert.rejects(
-    writeStoredFile("/projects/12", table, undefined, {
-      transport: io, target: entry(), permit: TEST_PERMIT, payloadKind: "opaque",
+    writeStoredFile("/projects/12", raw, undefined, {
+      transport: io, target: entry(), permit: TEST_PERMIT,
     }),
-    /holds Elektron container objects/,
+    /raw uncompressed form/,
   );
-  assert.deepEqual(io.sent, [], "refused before the transfer, as the raw-form check is");
+  assert.deepEqual(io.sent, [], "refused before the transfer");
+
+  // And the same bytes go out on the route that stores them, which is the half a one-sided test
+  // would miss: a check that refuses everything also passes a refusal test.
+  const ok = accepting();
+  await writeStoredFile("/waverider/0", raw, undefined, {
+    transport: ok, target: entry(), permit: TEST_PERMIT,
+  });
+  assert.ok(ok.sent.length > 0, "the write reached the transport");
 });
 
 test("a per-chunk function reaches the wire, because that hypothesis had to be tried", async () => {
