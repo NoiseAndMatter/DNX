@@ -86,26 +86,54 @@ export const INDEX_SECTORS = INDEX_BYTES / SECTOR;
 export const DATA_START = 0x1000;
 
 /**
- * Last sector data may occupy, relative to the region, exclusive.
+ * Sectors reserved for each slot. **Slot `n` always lives at `DATA_START + n * SLOT_SECTORS`.**
  *
- * The region has no hard end in the document — it runs until the eMMC does — so this is DNX's
- * self-imposed ceiling rather than the device's, and it is written into every superblock as
- * `dataEnd`. 64 MiB past the start of data is more than three thousand v1 tables and comfortably
- * past the pSLC boundary, so the limit a plan actually meets is the index's 256 entries.
+ * ## Why a fixed stride rather than an allocator
+ *
+ * The first design packed extents contiguously in slot order and compacted, which keeps the store
+ * dense and was a mistake. **Compaction cannot be expressed one slot at a time**, and one slot at a
+ * time is how the device applies a change: delete slot 0 and everything shifts down, so slot 1 now
+ * wants sectors slot 0 still occupies and the device's overlap check refuses it. A general
+ * reordering has no safe order at all.
+ *
+ * With a fixed stride there is nothing to compact, **overlap is impossible by construction**, and
+ * the device's check stops being a search over the index and becomes arithmetic: *is this extent
+ * exactly slot n's?*
+ *
+ * It also removed a rule neither side had spotted — that a slot being rewritten must be excluded
+ * from its own overlap check — by removing the check.
+ *
+ * ## The size, and why this one
+ *
+ * 128 KiB. A v1 table is 16 KiB, so this leaves room for a geometry eight times larger — 64 waves
+ * of 1,024 points — before the format has to change at all. Anything beyond that is a new sample
+ * format and the version field is there for it.
+ *
+ * The cost is space, which is what there is most of: all 256 slots end 34 MiB into the region,
+ * **inside the 48 MiB pSLC**, on a card with 23 GiB on it. `layout.test` asserts that fit rather
+ * than trusting this paragraph.
  */
-export const DATA_END = DATA_START + 0x20000;
+export const SLOT_SECTORS = 0x100;
 
-/** Extents start on this boundary, in sectors. 8 x 512 = 4 KiB. */
-export const EXTENT_ALIGN = 8;
+/** Bytes reserved per slot: the allocation a listing reports, not a table's length. */
+export const SLOT_BYTES = SLOT_SECTORS * SECTOR;
 
-/** Round a sector count up to the next whole extent boundary. */
-export function alignExtent(sectors: number): number {
-  return Math.ceil(sectors / EXTENT_ALIGN) * EXTENT_ALIGN;
+/**
+ * One past the last sector data may occupy, relative to the region.
+ *
+ * The end of slot 255, so it falls out of the stride rather than being chosen. Written into every
+ * superblock as `dataEnd`.
+ */
+export const DATA_END = DATA_START + INDEX_ENTRIES * SLOT_SECTORS;
+
+/** Where slot `n`'s extent begins, relative to the region. A function, never a search. */
+export function slotSector(slot: number): number {
+  return DATA_START + slot * SLOT_SECTORS;
 }
 
-/** How many sectors a payload of this many bytes occupies, rounded up to the alignment. */
+/** How many sectors a payload of this many bytes occupies. */
 export function sectorsFor(byteLength: number): number {
-  return alignExtent(Math.ceil(byteLength / SECTOR));
+  return Math.ceil(byteLength / SECTOR);
 }
 
 /** Absolute sector of a region-relative one, for a caller addressing the eMMC. */

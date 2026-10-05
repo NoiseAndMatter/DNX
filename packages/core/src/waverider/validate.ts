@@ -4,7 +4,12 @@
  * **One job: judging, not encoding.** `entries.ts` knows what an entry is; this knows which
  * arrangements of them the firmware must never be asked to read. They are separate because they
  * change for different reasons — the record layout is fixed by the shared document, and these
- * rules grow every time somebody finds a new way to produce a bad extent.
+ * rules change whenever the layout's own rules do.
+ *
+ * They shrank once already. Alignment, region bounds and overlap between entries were three
+ * separate rules while extents were allocated; a fixed per-slot stride made all three impossible
+ * and left one — **an entry's extent must be its own slot's**. A rule you can delete by changing
+ * the design is worth more than a rule you enforce well.
  *
  * ## Why DNX checks at all when the firmware also does
  *
@@ -18,7 +23,7 @@
 
 import { type TableEntry, FORMAT_INT16_BE } from "./entries.js";
 import { WaveriderError } from "./errors.js";
-import { DATA_END, DATA_START, EXTENT_ALIGN, INDEX_ENTRIES, sectorsFor } from "./layout.js";
+import { INDEX_ENTRIES, SLOT_BYTES, slotSector } from "./layout.js";
 
 /**
  * Refuse an index that would describe something the firmware must not be asked to read.
@@ -58,33 +63,26 @@ export function validateIndex(entries: readonly TableEntry[]): void {
       }
     }
 
-    if (entry.startSector % EXTENT_ALIGN !== 0) {
+    /*
+     * **The extent is a function of the slot, so this is the only placement rule left.**
+     *
+     * It replaces three: alignment, bounds, and overlap between entries. All three were real when
+     * extents were allocated, and all three are impossible now — a slot's sectors are arithmetic,
+     * every slot's range is disjoint from every other's by construction, and the last slot ends on
+     * `DATA_END` by definition.
+     *
+     * Phrased as the device phrases it, so a user who sees both messages sees one vocabulary.
+     */
+    const expected = slotSector(entry.slot);
+    if (entry.startSector !== expected) {
       throw new WaveriderError(
-        `${where}: starts at sector ${entry.startSector}, which is not on the ${EXTENT_ALIGN}-sector boundary`,
+        `${where}: starts at 0x${entry.startSector.toString(16)}, not its own ` +
+          `0x${expected.toString(16)}`,
       );
     }
-    if (entry.startSector < DATA_START) {
+    if (entry.byteLength > SLOT_BYTES) {
       throw new WaveriderError(
-        `${where}: starts at sector ${entry.startSector}, inside the superblocks and indexes below ${DATA_START}`,
-      );
-    }
-    const end = entry.startSector + sectorsFor(entry.byteLength);
-    if (end > DATA_END) {
-      throw new WaveriderError(`${where}: ends at sector ${end}, past the region's ${DATA_END}`);
-    }
-  }
-
-  // Overlap, checked across the set rather than per entry, because it is the only rule that is
-  // about a pair. Sorted by start so the report names the two that actually collide.
-  const byStart = [...entries].sort((x, y) => x.startSector - y.startSector);
-  for (let i = 1; i < byStart.length; i++) {
-    const before = byStart[i - 1]!;
-    const after = byStart[i]!;
-    const beforeEnd = before.startSector + sectorsFor(before.byteLength);
-    if (after.startSector < beforeEnd) {
-      throw new WaveriderError(
-        `slot ${before.slot} occupies sectors ${before.startSector}..${beforeEnd - 1} and slot ` +
-          `${after.slot} starts at ${after.startSector}: the two extents overlap`,
+        `${where}: ${entry.byteLength} bytes does not fit a slot's ${SLOT_BYTES}`,
       );
     }
   }

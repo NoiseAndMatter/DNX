@@ -36,13 +36,13 @@ import {
   type Group,
   DATA_END,
   DATA_START,
-  FAST_SECTORS,
   GROUP_A,
   GROUP_B,
   INDEX_ENTRIES,
   SECTOR,
+  SLOT_BYTES,
   absolute,
-  sectorsFor,
+  slotSector,
 } from "./layout.js";
 import { type TableEntry, FORMAT_INT16_BE, writeIndex } from "./entries.js";
 import { WaveriderError } from "./errors.js";
@@ -80,8 +80,6 @@ export interface WritePlan {
   dataSectorsWritten: number;
   /** Tables whose data was skipped because the same bytes are already at the same place. */
   reused: number[];
-  /** True when any data lands past the pSLC boundary, where writes are slower. Not a refusal. */
-  crossesFastBoundary: boolean;
 }
 
 /** A table to place: everything but where it goes, which the plan decides. */
@@ -139,16 +137,16 @@ function write(
  * Pure. Nothing is sent, nothing is read, and the same inputs give the same plan — which is what
  * lets the firmware session replay it.
  *
- * ## Allocation: contiguous from the bottom, in slot order
+ * ## There is no allocation
  *
- * DNX is the master copy, so it lays the whole data region out afresh each time rather than
- * managing free space on the device. Simple, and it means the store never fragments.
+ * Slot `n`'s extent is `slotSector(n)`, always. The planner places nothing and chooses nothing a
+ * reader could disagree with — see `SLOT_SECTORS` for why the allocator was removed rather than
+ * fixed.
  *
- * **The cost is paid only where it is real.** A table whose payload hashes the same *and* lands on
- * the same sector as the one already there is not rewritten — its sectors are reported in `reused`
- * instead. So adding a table after the last one writes one table, and inserting one before the
- * others rewrites everything after it. That is the honest shape of a compacting layout, and the
- * plan says which happened rather than hiding it.
+ * **What survives is the part that was worth having.** A table whose payload hashes the same as
+ * the one the current index already records for that slot is not rewritten; it is reported in
+ * `reused` instead. With fixed extents that is now the common case rather than a lucky one,
+ * because nothing moves when the set changes: editing one table of twenty writes one table.
  */
 export function planWrite(options: {
   current?: CurrentStore | undefined;
@@ -180,23 +178,20 @@ export function planWrite(options: {
   const entries: TableEntry[] = [];
   const dataWrites: SectorWrite[] = [];
   const reused: number[] = [];
-  let at = DATA_START;
-  let crossesFastBoundary = false;
 
   for (const table of ordered) {
     const sampleFormat = table.sampleFormat ?? FORMAT_INT16_BE;
     const tableHash = xxHash32(table.payload);
-    const span = sectorsFor(table.payload.length);
+    const at = slotSector(table.slot);
 
-    if (at + span > DATA_END) {
+    // The only size rule left. A slot's extent cannot run past the region, because the last slot
+    // ends on `DATA_END` by definition — so what remains is whether the payload fits its slot.
+    if (table.payload.length > SLOT_BYTES) {
       throw new WaveriderError(
-        `slot ${table.slot} (${table.name}) would end at sector ${at + span}, past the region's ` +
-          `${DATA_END}. ${ordered.length} tables do not fit.`,
+        `slot ${table.slot} (${table.name}) is ${table.payload.length} bytes and a slot holds ` +
+          `${SLOT_BYTES}. A table that large needs a new sample format, not a bigger plan.`,
       );
     }
-    // Region-relative on both sides — `FAST_END` is absolute and comparing it here would be
-    // silently true for every plan.
-    if (at + span > FAST_SECTORS) crossesFastBoundary = true;
 
     entries.push({
       slot: table.slot,
@@ -213,9 +208,13 @@ export function planWrite(options: {
       gain: table.gain,
     });
 
-    // Already there, byte for byte, in the same place. The hash is the device's own definition of
-    // "the same bytes", so this is not a guess about what is on the card — it is what the current
-    // index says is on the card, which is the only claim DNX can make without re-reading it.
+    // Already there, byte for byte. The hash is the device's own definition of "the same bytes",
+    // so this is not a guess about what is on the card — it is what the current index says is on
+    // the card, which is the only claim DNX can make without re-reading it.
+    //
+    // `startSector` is still compared, although it cannot differ for a given slot today. It is the
+    // cheapest possible guard against a current index that disagrees with this build's layout,
+    // which is exactly what reading a store written by a future version would look like.
     const existing = byStart.get(table.slot);
     const unchanged =
       existing !== undefined &&
@@ -225,8 +224,6 @@ export function planWrite(options: {
 
     if (unchanged) reused.push(table.slot);
     else dataWrites.push(write("data", at, table.payload, table.slot));
-
-    at += span;
   }
 
   /*
@@ -261,7 +258,6 @@ export function planWrite(options: {
     entries,
     dataSectorsWritten: dataWrites.reduce((n, w) => n + w.length / SECTOR, 0),
     reused,
-    crossesFastBoundary,
   };
 }
 
@@ -277,7 +273,6 @@ export function describePlan(plan: WritePlan): {
   writes: { what: string; sector: number; absoluteSector: number; length: number; hash: string }[];
   dataSectorsWritten: number;
   reused: number[];
-  crossesFastBoundary: boolean;
 } {
   return {
     group: plan.group.name,
@@ -291,6 +286,5 @@ export function describePlan(plan: WritePlan): {
     })),
     dataSectorsWritten: plan.dataSectorsWritten,
     reused: plan.reused,
-    crossesFastBoundary: plan.crossesFastBoundary,
   };
 }
