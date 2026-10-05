@@ -15,6 +15,12 @@
  * is the only route to a write. A test asserts that it refuses an invalid set, because the guard
  * moving from a callee to a caller is exactly the kind of change that quietly loses one.
  *
+ * ## One record, and the block of them
+ *
+ * `writeEntry` encodes a single 128-byte entry and `writeIndex` places 256 of them. They were one
+ * function until `/waverider/<n>` turned out to carry its own entry ahead of its table, which is
+ * the second caller that earns the split.
+ *
  * ## The whole 256 are written every time
  *
  * Free entries included, as zeros, because the superblock hashes the index as one fixed block. A
@@ -142,22 +148,25 @@ const latin1Encode = (text: string, size: number): Uint8Array => {
  * The 256 entries are written whole every time, free ones as zeros, because the superblock hashes
  * the index as one fixed block.
  */
+export function writeEntry(entry: TableEntry): Uint8Array {
+  const out = new Uint8Array(ENTRY_BYTES);
+  putBe16(out, ENTRY.flags, FLAG_USED | (entry.interpolate ? 0 : FLAG_NO_INTERPOLATION));
+  putBe16(out, ENTRY.kind, KIND_WAVETABLE);
+  putBe16(out, ENTRY.waves, entry.waves);
+  putBe16(out, ENTRY.points, entry.points);
+  putBe16(out, ENTRY.sampleFormat, entry.sampleFormat);
+  putBe32(out, ENTRY.startSector, entry.startSector);
+  putBe32(out, ENTRY.byteLength, entry.byteLength);
+  putBe32(out, ENTRY.tableHash, entry.tableHash);
+  putBe32(out, ENTRY.sourceHash, entry.sourceHash);
+  putBe32(out, ENTRY.sourceSize, entry.sourceSize);
+  out.set(latin1Encode(entry.name, ENTRY.nameBytes), ENTRY.name);
+  putBe32(out, ENTRY.gain, Math.round(entry.gain * GAIN_SCALE));
+  return out;
+}
+
 export function writeIndex(entries: readonly TableEntry[]): Uint8Array {
   const index = new Uint8Array(INDEX_BYTES);
-  for (const entry of entries) {
-    const at = entry.slot * ENTRY_BYTES;
-    putBe16(index, at + ENTRY.flags, FLAG_USED | (entry.interpolate ? 0 : FLAG_NO_INTERPOLATION));
-    putBe16(index, at + ENTRY.kind, KIND_WAVETABLE);
-    putBe16(index, at + ENTRY.waves, entry.waves);
-    putBe16(index, at + ENTRY.points, entry.points);
-    putBe16(index, at + ENTRY.sampleFormat, entry.sampleFormat);
-    putBe32(index, at + ENTRY.startSector, entry.startSector);
-    putBe32(index, at + ENTRY.byteLength, entry.byteLength);
-    putBe32(index, at + ENTRY.tableHash, entry.tableHash);
-    putBe32(index, at + ENTRY.sourceHash, entry.sourceHash);
-    putBe32(index, at + ENTRY.sourceSize, entry.sourceSize);
-    index.set(latin1Encode(entry.name, ENTRY.nameBytes), at + ENTRY.name);
-    putBe32(index, at + ENTRY.gain, Math.round(entry.gain * GAIN_SCALE));
-  }
+  for (const entry of entries) index.set(writeEntry(entry), entry.slot * ENTRY_BYTES);
   return index;
 }
