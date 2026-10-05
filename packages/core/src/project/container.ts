@@ -62,6 +62,8 @@
  * two transports.
  */
 
+import { crc32ZeroInit } from "./checksum.js";
+
 export const CONTAINER_MAGIC = Uint8Array.of(0xac, 0x11, 0xd3, 0x03);
 export const FOOTER_MAGIC = Uint8Array.of(0xaa, 0xa1, 0xda, 0xaa);
 export const OBJECT_MAGIC = Uint8Array.of(0xbe, 0xef, 0xba, 0xce);
@@ -155,6 +157,117 @@ const HEAD_LENGTH_OFFSET = 25;
  * `0x1D` as well as on the length at `0x19`.
  */
 export const HEAD_LENGTH_MINIMUM = COMPRESSED_FLAG_OFFSET + 1;
+
+/** Bytes of container header before the body. The body starts here. */
+export const HEADER_BYTES = 0x1f;
+
+/** Bytes of trailer after the body: a check field, the body length, and the footer magic. */
+export const TRAILER_BYTES = 12;
+
+/** Field offsets in the header, as the four big-endian words plus the two bytes after them. */
+export const HEAD = {
+  magic: 0x00,
+  pair: 0x04,
+  device: 0x08,
+  formatVersion: 0x09,
+  contentKind: 0x0d,
+  objectVersion: 0x11,
+  index: 0x15,
+  bodyLength: 0x19,
+  compressed: 0x1d,
+  trailerLength: 0x1e,
+} as const;
+
+/** The `02 00 05 00` at `0x04`, in all 140 containers measured. */
+const PAIR = Uint8Array.of(0x02, 0x00, 0x05, 0x00);
+
+/** `0x08`: the device family. */
+export const DEVICE_BYTE = { dn1: 9, dn2: 15 } as const;
+
+/**
+ * Build a container around a body.
+ *
+ * **The counterpart to `parsePayload`, and the only place that writes these 31 bytes.** It exists
+ * because a second caller appeared: `waverider/slotfile.ts` wraps an index entry and a table for
+ * `/waverider/<n>`, and the alternative was a second copy of the framing in a module whose subject
+ * is wavetables.
+ *
+ * `project/write.ts` does not use it. `buildPayload` keeps a source container's header and
+ * replaces the body, which is a different operation: it preserves fields nobody has identified,
+ * and that is the right behaviour for a file a device wrote. This builds a header from named
+ * fields, for a body nothing on the device has seen before.
+ *
+ * The check field is CRC-32 seeded zero over the body, which is the firmware's own routine and not
+ * the usual pre-inverted CRC-32. `crc32ZeroInit` carries the evidence.
+ */
+export function buildContainer(options: {
+  body: Uint8Array;
+  contentKind: number;
+  objectVersion: number;
+  /** Zero-based, as the device stamps it: bank in the high byte of the low pair, slot in the low. */
+  index: number;
+  /** `DEVICE_BYTE.dn2` unless a Digitone 1 is the target. */
+  device?: number;
+  /** The four ASCII at `0x09`. */
+  formatVersion: string;
+  /** True only for an LZ4 chain. The flag is what Elektron Transfer trusts. */
+  compressed?: boolean;
+  /**
+   * What goes in the length field, when it is not `body.length`.
+   *
+   * For a compressed body the field is the **uncompressed** length, so a caller that compresses
+   * has to say what the body decompresses to. Omitted means the body is its own length, which is
+   * the only consistent answer for a raw one.
+   */
+  uncompressedLength?: number;
+}): Uint8Array {
+  const { body, contentKind, objectVersion, index, formatVersion } = options;
+  const compressed = options.compressed ?? false;
+  const declared = options.uncompressedLength ?? body.length;
+
+  if (formatVersion.length !== 4) {
+    throw new ProjectParseError(`format version "${formatVersion}" must be four characters`);
+  }
+  if (!compressed && options.uncompressedLength !== undefined && declared !== body.length) {
+    throw new ProjectParseError(
+      `a raw body of ${body.length} bytes cannot declare ${declared}: the field is the ` +
+        `uncompressed length and an uncompressed body is its own length`,
+    );
+  }
+
+  const out = new Uint8Array(HEADER_BYTES + body.length + TRAILER_BYTES);
+  out.set(CONTAINER_MAGIC, HEAD.magic);
+  out.set(PAIR, HEAD.pair);
+  out[HEAD.device] = options.device ?? DEVICE_BYTE.dn2;
+  for (let i = 0; i < 4; i++) out[HEAD.formatVersion + i] = formatVersion.charCodeAt(i);
+  writeBe32(out, HEAD.contentKind, contentKind);
+  writeBe32(out, HEAD.objectVersion, objectVersion);
+  writeBe32(out, HEAD.index, index);
+  writeBe32(out, HEAD.bodyLength, declared);
+  out[HEAD.compressed] = compressed ? 1 : 0;
+  out[HEAD.trailerLength] = TRAILER_BYTES;
+
+  out.set(body, HEADER_BYTES);
+
+  /*
+   * **The trailer measures the bytes present; the header declares the uncompressed length.** They
+   * are the same number for a raw body and differ for a compressed one, which is why `0x19` takes
+   * `declared` and this takes `body.length`. Measured across 140 containers: the field at `end-8`
+   * is `fileLength - 43` in every one of them, compressed or not.
+   */
+  const end = HEADER_BYTES + body.length;
+  writeBe32(out, end, crc32ZeroInit(body));
+  writeBe32(out, end + 4, body.length);
+  out.set(FOOTER_MAGIC, end + 8);
+  return out;
+}
+
+function writeBe32(out: Uint8Array, at: number, value: number): void {
+  out[at] = (value >>> 24) & 0xff;
+  out[at + 1] = (value >>> 16) & 0xff;
+  out[at + 2] = (value >>> 8) & 0xff;
+  out[at + 3] = value & 0xff;
+}
 
 /**
  * How long the whole file will be, from the first bytes of it.
