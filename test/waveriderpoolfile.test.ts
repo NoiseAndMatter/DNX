@@ -35,7 +35,9 @@ import {
   type PoolRecord,
   automaticPoolFile,
   buildPoolFile,
+  emptyPoolFile,
   hasStoredPool,
+  poolState,
   readPoolFile,
 } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import {
@@ -211,6 +213,35 @@ test("the automatic entries are the playable slots in store-slot order", () => {
   const many = automaticEntries(Array.from({ length: 200 }, (_, i) => i));
   assert.equal(many[POOL_ENTRIES - 1], POOL_ENTRIES - 1);
   assert.equal(many.length, POOL_ENTRIES);
+});
+
+test("an empty list is a different thing from an automatic one", () => {
+  // The owner's call for CREATE NEW, 2026-10-06: a new project's sound pool starts empty, so its
+  // wavetable pool does. The difference is audible — an empty list gives a sound the two built-ins
+  // and nothing else, where automatic gives it every playable table on the card.
+  const empty = readPoolFile(emptyPoolFile(7));
+  assert.equal(empty.automatic, false);
+  assert.equal(empty.entries.filter((e) => e !== undefined).length, 0);
+
+  const automatic = readPoolFile(automaticPoolFile(7));
+  assert.equal(automatic.automatic, true);
+
+  // They differ in the flags word and nowhere else, which is exactly why the flag is load-bearing.
+  const a = body(emptyPoolFile(7));
+  const b = body(automaticPoolFile(7));
+  const differing: number[] = [];
+  for (let i = 0; i < AT.hash; i++) if (a[i] !== b[i]) differing.push(i);
+  assert.deepEqual(differing, [AT.flags + 1]);
+});
+
+test("poolState names the three a read can describe", () => {
+  // A project saved before the lists: the firmware made this record up to answer the read.
+  assert.equal(poolState({ ...sample(), automatic: true, entries: [], generation: 0 }), "untouched");
+  // The same thing on purpose, and a stored fact.
+  assert.equal(poolState({ ...sample(), automatic: true, entries: [], generation: 2 }), "automatic");
+  // A list, which may hold nothing: what CREATE NEW writes.
+  assert.equal(poolState({ ...sample(), automatic: false, entries: [], generation: 2 }), "list");
+  assert.equal(poolState({ ...sample(), generation: 9 }), "list");
 });
 
 test("only a stored record has a generation", () => {
