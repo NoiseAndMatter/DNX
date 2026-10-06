@@ -24,12 +24,16 @@
  * project slot. Every field says which it carries, because `coarse - 1` and `coarse - 2` both look
  * right across most of the range.
  *
- * ## Absent means automatic, and that is a trap on the way back
+ * ## Three states, and the generation is what tells two of them apart
  *
  * A project with no record follows the **automatic pool**: every stored 16 x 512 table in
- * store-slot order, which is what every project does today. A read of such a project does not come
- * back empty. It comes back with the automatic flag set, `generation` 0, and **the entries filled
- * with what that project plays right now**.
+ * store-slot order, which is what every project did before the lists existed. A **new** project
+ * gets a stored **empty** list instead, decided by the owner on 2026-10-06 on the grounds that a
+ * new project's sound pool starts empty too. So an empty pool and an absent one are different
+ * things that read almost alike, and `poolState` is the one place that separates them.
+ *
+ * A read of a project with no record does not come back empty. It comes back with the automatic
+ * flag set, `generation` 0, and **the entries filled with what that project plays right now**.
  *
  * So a read is a description, not a template for a write. Read it, change one entry, write it back
  * with the flag still set, and the firmware ignores every entry: a write that reports success,
@@ -322,6 +326,40 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
  */
 export function automaticPoolFile(projectSlot: number): Uint8Array {
   return buildPoolFile({ projectSlot, automatic: true, entries: [], generation: 0 });
+}
+
+/**
+ * The record a **new project** gets: stored, not automatic, and holding nothing.
+ *
+ * The owner settled this on 2026-10-06, against the alternative of making CREATE NEW automatic:
+ * a new project's **sound** pool starts empty, so its wavetable pool does too. The instrument
+ * writes exactly this record when a project is created, so DNX reads it constantly and should be
+ * able to write it.
+ *
+ * It is not the same thing as `automaticPoolFile`, and the difference is audible: an empty list
+ * gives a sound nothing but the built-in Prim. and Harm. until tables are added, where an
+ * automatic one gives it every playable table on the card.
+ */
+export function emptyPoolFile(projectSlot: number): Uint8Array {
+  return buildPoolFile({ projectSlot, automatic: false, entries: [], generation: 0 });
+}
+
+/**
+ * Which of the three states a read describes.
+ *
+ * | | generation | automatic | what a sound reaches |
+ * |---|---|---|---|
+ * | `untouched` | 0 | yes | every playable table on the card, in store-slot order |
+ * | `automatic` | 1 or more | yes | the same, and the project says so on purpose |
+ * | `list` | 1 or more | no | exactly the entries, which may be none |
+ *
+ * `untouched` is a project saved before the lists existed, answered by a record the firmware made
+ * up to answer the read. It plays the same as `automatic` and is not the same fact, which is why
+ * the generation is the only thing that separates them.
+ */
+export function poolState(record: PoolRecord): "untouched" | "automatic" | "list" {
+  if (record.generation === 0) return "untouched";
+  return record.automatic ? "automatic" : "list";
 }
 
 /**
