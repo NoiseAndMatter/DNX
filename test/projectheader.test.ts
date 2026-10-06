@@ -33,7 +33,24 @@ import {
   fileLengthFromHead,
   parsePayload,
 } from "@noiseandmatter/dnx-core/project/container.js";
+import { CONTENT_KIND_WAVETABLE } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
+import { CONTENT_KIND_POOL } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { CORPUS, NO_CORPUS, SKIP_REASON } from "./corpus.js";
+
+/**
+ * Every content kind a capture may legitimately hold.
+ *
+ * `CONTENT_KIND` is **Elektron's** three and stays that way. The custom firmware's two live in
+ * their own modules by design, and they belong here because a capture of a `/waverider` or
+ * `/wavepool` read is a container the device wrote: without them, the first such capture dropped
+ * into the corpus fails this sweep for a file that is entirely correct. A pool vector put there
+ * by hand is what found that.
+ */
+const KNOWN_KINDS = new Set<number>([
+  ...Object.values(CONTENT_KIND),
+  CONTENT_KIND_WAVETABLE,
+  CONTENT_KIND_POOL,
+]);
 
 const skip = NO_CORPUS ? SKIP_REASON : false;
 
@@ -183,8 +200,8 @@ test("the header's constants hold over every container the device wrote", { skip
     const kind = contentKind(raw)!;
     kinds.add(kind);
     assert.ok(
-      Object.values(CONTENT_KIND).includes(kind as 1 | 3 | 5),
-      `${where}: content kind ${kind} is not one of ${Object.values(CONTENT_KIND).join(", ")}`,
+      KNOWN_KINDS.has(kind),
+      `${where}: content kind ${kind} is not one of ${[...KNOWN_KINDS].join(", ")}`,
     );
     assert.deepEqual([...raw.subarray(4, 8)], [0x02, 0x00, 0x05, 0x00], `${where}: 0x04`);
     assert.equal(raw[0x1e], TRAILER, `${where}: 0x1E is the trailer's length`);
