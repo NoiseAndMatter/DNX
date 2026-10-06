@@ -34,7 +34,13 @@ import { changedRuns, diffImages, summarise } from "@noiseandmatter/dnx-core/pro
 const args = process.argv.slice(2);
 const noiseAt = args.indexOf("--noise");
 const noisePath = noiseAt >= 0 ? args[noiseAt + 1] : undefined;
-const files = args.filter((a, i) => a !== "--noise" && i !== noiseAt + 1 && !a.startsWith("--"));
+/*
+ * `noiseAt` is `-1` when there is no `--noise`, and `i !== noiseAt + 1` then excluded **index 0**,
+ * so the first file was dropped and the tool answered with its own usage line. The flag's argument
+ * is only a position when the flag is there, which is what the first clause now says.
+ */
+const noiseArgAt = noiseAt >= 0 ? noiseAt + 1 : -1;
+const files = args.filter((a, i) => i !== noiseArgAt && !a.startsWith("--"));
 
 if (files.length !== 2) {
   console.error("usage: npm run projectdiff -- <baseline> <changed> [--noise <nullsave>]");
