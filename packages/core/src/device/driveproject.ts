@@ -59,9 +59,10 @@
 
 import { type ConnectedDevice } from "./identify.js";
 import { readFormOption } from "./storagewrite.js";
-import { firstDifference, projectPath } from "../project/driveslot.js";
+import { compareImages, firstDifference, projectPath } from "../project/driveslot.js";
 
-export { firstDifference, projectPath };
+export { compareImages, firstDifference, projectPath };
+export type { ImageComparison } from "../project/driveslot.js";
 import { type Entry, listRequest, wholeListing } from "./storage.js";
 import { IDS_FOR, type MessageIds } from "./messageids.js";
 import { decodeProjectImage } from "../project/dn2codec.js";
@@ -126,6 +127,13 @@ export interface WriteProjectResult {
   verified: boolean;
   /** Why not, when `verified` is false. */
   problem?: string;
+  /**
+   * Something true about a verified write that the caller should still see.
+   *
+   * Today that is the one case: every byte sent read back unchanged and the stored form is longer,
+   * which is what an OS that grew the image does with a project saved by an older one.
+   */
+  note?: string;
 }
 
 export interface WriteProjectOptions {
@@ -233,21 +241,44 @@ export async function writeProjectToDrive(
     };
   }
 
-  const at = firstDifference(decoded, image);
+  /*
+   * `compareImages`, not `firstDifference`. The latter short-circuits on a length mismatch and
+   * returns the shorter length, and this used to print that as an offset: a clean write of a
+   * pre-1.11 project to a 1.11 instrument was reported as *"a different image, first difference at
+   * byte 12,889,604 of 12,889,604"*, the two numbers equal because no byte had been compared.
+   */
+  const comparison = compareImages(decoded, image);
+  const sent = image.length.toLocaleString();
   return {
     slot,
     cancelled: false,
     written: result.written,
     chunks: result.chunks,
     committed: true,
-    verified: at === undefined,
-    ...(at === undefined
-      ? {}
-      : {
+    verified: comparison.kind === "equal" || comparison.kind === "longer",
+    ...(comparison.kind === "differs"
+      ? {
           problem:
             `the project read back decodes to a different image — first difference at byte ` +
-            `${at.toLocaleString()} of ${image.length.toLocaleString()}`,
-        }),
+            `${comparison.at.toLocaleString()} of ${sent}`,
+        }
+      : {}),
+    ...(comparison.kind === "shorter"
+      ? {
+          problem:
+            `the project read back is ${comparison.by.toLocaleString()} bytes short: it agrees ` +
+            `with all ${(image.length - comparison.by).toLocaleString()} bytes it has and then ` +
+            `stops, where ${sent} were sent`,
+        }
+      : {}),
+    ...(comparison.kind === "longer"
+      ? {
+          note:
+            `all ${sent} bytes sent read back unchanged, and the stored form carries ` +
+            `${comparison.by.toLocaleString()} more after them. An instrument whose OS grew the ` +
+            `image does this to a project saved by an older one.`,
+        }
+      : {}),
   };
 }
 
