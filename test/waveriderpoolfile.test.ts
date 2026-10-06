@@ -1,17 +1,23 @@
 /**
  * `/wavepool/<project slot>` as a file: the record, the container, and every refusal.
  *
- * ## What this does not prove
+ * ## The firmware agrees, byte for byte
  *
- * **There is no second implementation yet.** `waveriderslotfile.test.ts` can check DNX against
- * bytes the firmware session's generator produced and their emulator accepted; the pool route is a
- * proposal (`dn2_firmware/docs/for-dnx-waverider-pool.md`, revision 3) and nothing on the
- * instrument answers it. So this pins the layout against the document, by hand, and pins the
- * behaviour against itself. It cannot say the firmware agrees.
+ * Three files this codec built were written to the instrument's `/wavepool` route on the
+ * `waverider-pool2` build in digikit's emulator and read straight back. **All 555 bytes of each
+ * read-back equal what `buildPoolFile` produces for the same record at generation 1**, container,
+ * record, hash and trailer CRC alike, and their reader accepted all three. The negative control
+ * matters as much: the same file with one hash byte flipped was refused by the firmware, the slot
+ * read back as having no record, and the comparison failed at byte 44. So the comparison can fail.
  *
- * The field positions below are therefore written out as literals rather than taken from `RECORD`,
- * so that a mistake in the module is not also the mistake in the test. When the firmware has a
- * build, a reference record from it replaces the hand-written half of this file.
+ * The literals below are from those read-backs (`dn2_firmware/out/wavepool_vectors/`), so they are
+ * bytes a second implementation produced rather than a second reading of the same document. The
+ * field positions are still written out rather than taken from `RECORD`, so that a mistake in the
+ * module is not also the mistake in the test.
+ *
+ * **One limit on the automatic vector.** The card had an empty store, so `automatic-slot0` reads
+ * back with no entries filled and compares as sent. With tables stored, an automatic read fills
+ * the entries from the store, and that case is not pinned here.
  *
  * ## The one that matters
  *
@@ -322,3 +328,88 @@ test("the two copies of a pool record are in different erase groups", () => {
     "a band does not spill into the next erase group",
   );
 });
+
+/**
+ * What the firmware read back, for the three files this codec built.
+ *
+ * From `dn2_firmware/out/wavepool_vectors/`, written to the instrument's `/wavepool` route on the
+ * `waverider-pool2` build and read straight back. The generation is the firmware's: it ignores
+ * what a writer sends and stamps `current + 1`, which is 1 for a first write.
+ */
+const FIRMWARE_VECTORS = [
+  {
+    file: "explicit-slot3.bin",
+    record: { projectSlot: 3, automatic: false, entries: [3, undefined, 0], generation: 1 },
+    header: [
+      0xac, 0x11, 0xd3, 0x03, 0x02, 0x00, 0x05, 0x00, 0x0f, 0x30, 0x30, 0x35, 0x39, 0x00, 0x00,
+      0x00, 0x50, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x02, 0x00, 0x00,
+      0x0c,
+    ],
+    recordHead: [
+      0x57, 0x52, 0x50, 0x4c, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00,
+      0x00, 0x00, 0x03, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff,
+    ],
+    recordHash: [0x0e, 0xe9, 0x09, 0xd2],
+    trailer: [0xc3, 0x4b, 0x8c, 0x1e, 0x00, 0x00, 0x02, 0x00, 0xaa, 0xa1, 0xda, 0xaa],
+    whole: 0xde3946fd,
+  },
+  {
+    file: "automatic-slot0.bin",
+    record: { projectSlot: 0, automatic: true, entries: [], generation: 1 },
+    header: [
+      0xac, 0x11, 0xd3, 0x03, 0x02, 0x00, 0x05, 0x00, 0x0f, 0x30, 0x30, 0x35, 0x39, 0x00, 0x00,
+      0x00, 0x50, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+      0x0c,
+    ],
+    recordHead: [
+      0x57, 0x52, 0x50, 0x4c, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+      0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    ],
+    recordHash: [0xcb, 0xed, 0xfd, 0x26],
+    trailer: [0x29, 0xb5, 0x1e, 0x85, 0x00, 0x00, 0x02, 0x00, 0xaa, 0xa1, 0xda, 0xaa],
+    whole: 0xe59a75e7,
+  },
+  {
+    file: "full-slot128.bin",
+    record: {
+      projectSlot: 128,
+      automatic: false,
+      entries: Array.from({ length: POOL_ENTRIES }, (_, j) => (j * 2) % 256),
+      generation: 1,
+    },
+    header: [
+      0xac, 0x11, 0xd3, 0x03, 0x02, 0x00, 0x05, 0x00, 0x0f, 0x30, 0x30, 0x35, 0x39, 0x00, 0x00,
+      0x00, 0x50, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x02, 0x00, 0x00,
+      0x0c,
+    ],
+    recordHead: [
+      0x57, 0x52, 0x50, 0x4c, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0x00, 0x01, 0x00, 0x7f, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x04, 0x00, 0x06,
+    ],
+    recordHash: [0x59, 0xe2, 0xc3, 0xda],
+    trailer: [0xb8, 0x25, 0x29, 0x64, 0x00, 0x00, 0x02, 0x00, 0xaa, 0xa1, 0xda, 0xaa],
+    whole: 0x1cc3b647,
+  },
+] as const;
+
+for (const vector of FIRMWARE_VECTORS) {
+  test(`${vector.file}: the firmware's read-back is what this codec builds`, () => {
+    const built = buildPoolFile(vector.record);
+    assert.equal(built.length, FILE_BYTES);
+
+    // Row by row first, so a failure says which part moved rather than only that something did.
+    assert.deepEqual([...built.subarray(0, 31)], [...vector.header], "container header");
+    assert.deepEqual([...body(built).subarray(0, 24)], [...vector.recordHead], "record head");
+    assert.deepEqual([...body(built).subarray(AT.hash, AT.hash + 4)], [...vector.recordHash], "record hash");
+    assert.deepEqual([...built.subarray(FILE_BYTES - 12)], [...vector.trailer], "container trailer");
+
+    // Then the whole file, which is the part the rows above cannot cover: 512 bytes of entries.
+    assert.equal(xxHash32(built) >>> 0, vector.whole, "the whole 555 bytes");
+
+    // And it reads back as the record it was built from.
+    const read = readPoolFile(built);
+    assert.equal(read.projectSlot, vector.record.projectSlot);
+    assert.equal(read.automatic, vector.record.automatic);
+    assert.equal(read.generation, 1, "the firmware stamps current + 1, and a first write is 1");
+  });
+}
