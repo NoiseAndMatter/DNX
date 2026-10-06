@@ -11,16 +11,16 @@
  * Library tab's pool pane is built against it and needs no hardware.
  *
  * ```
- * container header 31 B      kind 0x50, version 1, index p, length 512, raw
- * record          512 B      "WRPL", the 127 store slots, a count and a hash
+ * container header 31 B      kind 0x50, version 2, index p, length 512, raw
+ * record          512 B      "WRPL", the 128 store slots, a count and a hash
  * trailer          12 B      as every other container
  * ```
  *
  * ## A pool holds store slots, and a sound holds a pool index
  *
  * A sound's `TBL` is a **coarse** value: 0 and 1 are the built-in Prim. and Harm., and `c >= 2` is
- * **pool index** `c - 2`, displayed as **shown slot** `c - 1`. The pool record says which **store
- * slot** sits at each pool index. Four numbers for one table, and this module adds the fifth, the
+ * **pool index** `c - 2`, displayed as **shown slot** `c - 1`, and `c` runs to 129 for the 128th.
+ * The pool record says which **store slot** sits at each pool index. Four numbers for one table, and this module adds the fifth, the
  * project slot. Every field says which it carries, because `coarse - 1` and `coarse - 2` both look
  * right across most of the range.
  *
@@ -79,8 +79,19 @@ import {
  */
 export const CONTENT_KIND_POOL = 0x50;
 
-/** The record format's own version, in the container's object-version field. */
-export const POOL_FORMAT_VERSION = 1;
+/**
+ * The record format DNX **writes**: version 2, 128 entries.
+ *
+ * Carried in two fields that must agree, the container's object version at `0x11` and the
+ * record's own u16 at offset 4. **If only one of them moved, a reader checking the other would
+ * take a v2 record for a v1 and read entry 127 out of what it believes is reserved** — the exact
+ * error a version field exists to prevent, arriving through the version field. So both move, and
+ * both are checked.
+ */
+export const POOL_FORMAT_VERSION = 2;
+
+/** Entries each version carries. Version 1 is read and never written. */
+export const ENTRIES_BY_VERSION: Readonly<Record<number, number>> = { 1: 127, 2: POOL_ENTRIES };
 
 /**
  * The four ASCII at `0x09`.
@@ -118,10 +129,13 @@ export const RECORD = {
   entriesInUse: 12,
   flags: 14,
   entries: 16,
-  /** Where the entries end and the reserved zeros begin. */
-  reserved: 16 + POOL_ENTRIES * 2,
   hash: 508,
 } as const;
+
+/** Where the entries end and the reserved zeros begin, which the version decides. */
+export function reservedFrom(version: number): number {
+  return RECORD.entries + (ENTRIES_BY_VERSION[version] ?? POOL_ENTRIES) * 2;
+}
 
 /** One project's pool, with the derived fields left to this module. */
 export interface PoolRecord {
@@ -192,6 +206,9 @@ export function buildPoolFile(record: PoolRecord): Uint8Array {
   // **Computed, never passed**, as `slotfile.ts` computes its table hash and for the same reason.
   putBe16(body, RECORD.entriesInUse, used.length);
   putBe16(body, RECORD.flags, automatic ? FLAG_AUTOMATIC : 0);
+  // Written at `POOL_FORMAT_VERSION`, which is 2 and therefore all 128. A v1 record is read and
+  // never written: the firmware converts one on its first write, losslessly, because 127 entries
+  // have exactly one 128-entry meaning.
   for (let j = 0; j < POOL_ENTRIES; j++) {
     putBe16(body, RECORD.entries + j * 2, entries[j] ?? NO_TABLE);
   }
@@ -227,9 +244,11 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
       `content kind 0x${(kind ?? 0).toString(16)} is not a pool record's 0x${CONTENT_KIND_POOL.toString(16)}`,
     );
   }
-  const version = containerObjectVersion(bytes);
-  if (version !== POOL_FORMAT_VERSION) {
-    throw new WaveriderError(`pool format version ${version} is not ${POOL_FORMAT_VERSION}`);
+  const version = containerObjectVersion(bytes) ?? 0;
+  if (ENTRIES_BY_VERSION[version] === undefined) {
+    throw new WaveriderError(
+      `pool format version ${version} is not one of ${Object.keys(ENTRIES_BY_VERSION).join(", ")}`,
+    );
   }
   if (containerIsCompressed(bytes) !== false) {
     throw new WaveriderError("the body must be raw; this one says it is an LZ4 chain");
@@ -243,9 +262,16 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
       throw new WaveriderError('the record does not begin "WRPL"');
     }
   }
+  /*
+   * **Both version fields, and they must agree with each other as well as be known.** They
+   * describe the same thing, and a record where they differ is one where a reader's answer
+   * depends on which field it happened to consult.
+   */
   const recordVersion = be16(body, RECORD.version);
-  if (recordVersion !== POOL_FORMAT_VERSION) {
-    throw new WaveriderError(`the record says version ${recordVersion}, not ${POOL_FORMAT_VERSION}`);
+  if (recordVersion !== version) {
+    throw new WaveriderError(
+      `the container says pool version ${version} and the record says ${recordVersion}`,
+    );
   }
   const projectSlot = be16(body, RECORD.projectSlot);
   if (projectSlot >= PROJECT_SLOTS) {
@@ -275,29 +301,32 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
     );
   }
 
-  for (let at = RECORD.reserved; at < RECORD.hash; at++) {
+  const carried = ENTRIES_BY_VERSION[version]!;
+  for (let at = reservedFrom(version); at < RECORD.hash; at++) {
     if (body[at] !== 0) {
       throw new WaveriderError(
         `project slot ${projectSlot}: byte ${at} is reserved and zero in version ` +
-          `${POOL_FORMAT_VERSION}, and it is 0x${body[at]!.toString(16)}`,
+          `${version}, and it is 0x${body[at]!.toString(16)}`,
       );
     }
   }
 
-  const entries: (number | undefined)[] = [];
-  for (let j = 0; j < POOL_ENTRIES; j++) {
+  /*
+   * **One shape for callers, whatever the bytes said.** A v1 record carries 127 and the 128th
+   * comes back empty, so nothing above this line learns to ask which version it is holding —
+   * which is how `coarse - 1` and `coarse - 2` came to be confused.
+   */
+  const entries: (number | undefined)[] = new Array<number | undefined>(POOL_ENTRIES).fill(undefined);
+  for (let j = 0; j < carried; j++) {
     const value = be16(body, RECORD.entries + j * 2);
-    if (value === NO_TABLE) {
-      entries.push(undefined);
-      continue;
-    }
+    if (value === NO_TABLE) continue;
     if (value >= INDEX_ENTRIES) {
       throw new WaveriderError(
         `project slot ${projectSlot}, pool index ${j}: store slot ${value} is outside ` +
           `0..${INDEX_ENTRIES - 1}, and it is not 0x${NO_TABLE.toString(16)} for none`,
       );
     }
-    entries.push(value);
+    entries[j] = value;
   }
 
   // Checked for every record, automatic or not: a read always carries a count that matches what it

@@ -60,6 +60,7 @@ import { FORMAT_VERSION as STORE_ASCII } from "@noiseandmatter/dnx-core/waveride
 import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
 import { HEAD, HEADER_BYTES, TRAILER_BYTES } from "@noiseandmatter/dnx-core/project/container.js";
+import { crc32ZeroInit } from "@noiseandmatter/dnx-core/project/checksum.js";
 
 /** Hand-written offsets, from the document and not from the module. */
 const AT = {
@@ -70,7 +71,7 @@ const AT = {
   entriesInUse: 12,
   flags: 14,
   entries: 16,
-  reservedFrom: 270,
+  reservedFrom: 272,
   hash: 508,
 } as const;
 
@@ -149,7 +150,7 @@ test("the record's fields sit where the document says", () => {
   assert.equal(be16(record, AT.entries + 2 * 2), NO_TABLE);
   assert.equal(be16(record, AT.entries + 5 * 2), 255);
 
-  assert.equal(AT.entries + POOL_ENTRIES * 2, AT.reservedFrom, "127 entries end at 270");
+  assert.equal(AT.entries + POOL_ENTRIES * 2, AT.reservedFrom, "128 entries end at 272");
   for (let at = AT.reservedFrom; at < AT.hash; at++) {
     assert.equal(record[at], 0, `byte ${at} is reserved and zero`);
   }
@@ -280,9 +281,12 @@ test("a read refuses a file that is not a pool record", () => {
     (error: unknown) => error instanceof WaveriderError && /not a pool record/.test(error.message),
   );
 
-  const wrongVersion = Uint8Array.from(good);
-  wrongVersion[HEAD.objectVersion + 3] = 2;
-  assert.throws(() => readPoolFile(wrongVersion), WaveriderError);
+  const unknownVersion = Uint8Array.from(good);
+  unknownVersion[HEAD.objectVersion + 3] = 3;
+  assert.throws(
+    () => readPoolFile(unknownVersion),
+    (error: unknown) => error instanceof WaveriderError && /not one of 1, 2/.test(error.message),
+  );
 
   const compressed = Uint8Array.from(good);
   compressed[HEAD.compressed] = 1;
@@ -311,7 +315,14 @@ test("a read refuses a record whose own fields disagree", () => {
     () => readPoolFile(tamper(good, (r) => void (r[AT.magic] = 0x58))),
     (error: unknown) => error instanceof WaveriderError && /WRPL/.test(error.message),
   );
-  assert.throws(() => readPoolFile(tamper(good, (r) => void (r[AT.version + 1] = 2))), WaveriderError);
+  // The two version fields describe one thing, so a record where they differ is one whose meaning
+  // depends on which field a reader happens to consult. Both say 2 here; making the record say 1
+  // is a disagreement, not an old record.
+  assert.throws(
+    () => readPoolFile(tamper(good, (r) => void (r[AT.version + 1] = 1))),
+    (error: unknown) =>
+      error instanceof WaveriderError && /container says pool version 2 and the record says 1/.test(error.message),
+  );
   assert.throws(
     () => readPoolFile(tamper(good, (r) => void (r[AT.entriesInUse + 1] = 2))),
     (error: unknown) => error instanceof WaveriderError && /counts 2 entries/.test(error.message),
@@ -405,7 +416,8 @@ const FIRMWARE_VECTORS = [
     record: {
       projectSlot: 128,
       automatic: false,
-      entries: Array.from({ length: POOL_ENTRIES }, (_, j) => (j * 2) % 256),
+      // 127, not POOL_ENTRIES: this is what a version 1 record holds, and the constant has moved.
+      entries: Array.from({ length: 127 }, (_, j) => (j * 2) % 256),
       generation: 1,
     },
     header: [
@@ -423,24 +435,61 @@ const FIRMWARE_VECTORS = [
   },
 ] as const;
 
+/**
+ * The same record in version 1: 127 entries, both version fields at 1, and the 128th entry's two
+ * bytes back among the reserved zeros.
+ *
+ * Written here rather than imported because **DNX does not produce version 1 any more**, and the
+ * point of these three cases is that it still *reads* what earlier builds wrote. If this
+ * conversion is wrong, the literals below stop matching, which is what makes them worth keeping.
+ */
+function asVersion1(v2: Uint8Array): Uint8Array {
+  const out = Uint8Array.from(v2);
+  const record = body(out);
+  out[HEAD.objectVersion + 3] = 1;
+  record[AT.version + 1] = 1;
+  record[AT.entries + 127 * 2] = 0;
+  record[AT.entries + 127 * 2 + 1] = 0;
+
+  const hash = xxHash32(record.subarray(0, AT.hash));
+  for (let i = 0; i < 4; i++) record[AT.hash + i] = (hash >>> (24 - i * 8)) & 0xff;
+
+  const crc = crc32ZeroInit(record);
+  for (let i = 0; i < 4; i++) out[FILE_BYTES - 12 + i] = (crc >>> (24 - i * 8)) & 0xff;
+  return out;
+}
+
 for (const vector of FIRMWARE_VECTORS) {
-  test(`${vector.file}: the firmware's read-back is what this codec builds`, () => {
-    const built = buildPoolFile(vector.record);
+  test(`${vector.file}: a version 1 record the firmware wrote still reads`, () => {
+    const built = asVersion1(buildPoolFile(vector.record));
     assert.equal(built.length, FILE_BYTES);
 
-    // Row by row first, so a failure says which part moved rather than only that something did.
+    // Row by row against their bytes first, so a failure says which part moved.
     assert.deepEqual([...built.subarray(0, 31)], [...vector.header], "container header");
     assert.deepEqual([...body(built).subarray(0, 24)], [...vector.recordHead], "record head");
     assert.deepEqual([...body(built).subarray(AT.hash, AT.hash + 4)], [...vector.recordHash], "record hash");
     assert.deepEqual([...built.subarray(FILE_BYTES - 12)], [...vector.trailer], "container trailer");
 
-    // Then the whole file, which is the part the rows above cannot cover: 512 bytes of entries.
+    // Then whole, which is the part the rows cannot cover: 500-odd bytes of entries.
     assert.equal(xxHash32(built) >>> 0, vector.whole, "the whole 555 bytes");
 
-    // And it reads back as the record it was built from.
+    // And the reader takes it, reporting one shape whatever the bytes said.
     const read = readPoolFile(built);
     assert.equal(read.projectSlot, vector.record.projectSlot);
     assert.equal(read.automatic, vector.record.automatic);
-    assert.equal(read.generation, 1, "the firmware stamps current + 1, and a first write is 1");
+    assert.equal(read.generation, 1);
+    assert.equal(read.entries.length, POOL_ENTRIES, "128 entries from a 127-entry record");
+    assert.equal(read.entries[POOL_ENTRIES - 1], undefined, "the 128th is empty in a v1 record");
   });
 }
+
+test("version 1 is read and never written", () => {
+  const v2 = buildPoolFile({ projectSlot: 3, automatic: false, entries: [3], generation: 0 });
+  assert.equal(be32(v2, HEAD.objectVersion), POOL_FORMAT_VERSION);
+  assert.equal(be16(body(v2), AT.version), POOL_FORMAT_VERSION);
+  assert.equal(POOL_FORMAT_VERSION, 2);
+
+  // The 128th entry exists in what we write, and is where v1 keeps its first reserved zeros.
+  assert.equal(be16(body(v2), AT.entries + 127 * 2), NO_TABLE);
+  assert.equal(readPoolFile(asVersion1(v2)).entries.length, POOL_ENTRIES);
+});

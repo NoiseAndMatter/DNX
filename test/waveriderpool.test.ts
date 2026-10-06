@@ -25,7 +25,9 @@ test("the pool's limits, and the gap between stored and playable", () => {
   assert.equal(POOL_WAVES, 16);
   assert.equal(POOL_POINTS, 512);
   assert.equal(POOL_BYTES, 16_384);
-  assert.equal(POOL_ENTRIES, 127);
+  // 128 since 2026-10-06, to match the 128-sound pool. A record written by a build from before
+  // that holds 127, and `poolfile.ts` reads one of those as 128 with the last entry empty.
+  assert.equal(POOL_ENTRIES, 128);
   assert.equal(FIRST_POOL_TBL, 2, "TBL 0 and 1 are the baked tables");
   // **Boot only.** A commit refills on the next UI pass, about a second, and this number is not
   // that one. They were conflated here and the write path told people to wait five times too long.

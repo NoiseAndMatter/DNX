@@ -52,8 +52,15 @@ export const POOL_POINTS = 512;
 /** And therefore this many bytes, of a slot's 524,288. */
 export const POOL_BYTES = POOL_WAVES * POOL_POINTS * 2;
 
-/** Pool entries the loader hands out, in slot order. */
-export const POOL_ENTRIES = 127;
+/**
+ * Pool entries the loader hands out, in slot order.
+ *
+ * **128 since 2026-10-06**, to match the 128-sound pool, which is the owner's reason for it. It
+ * was 127, and a record written by a build from before that holds 127: `poolfile.ts` reads one of
+ * those and reports the 128th as empty, so nothing above this line has to know which it came
+ * from.
+ */
+export const POOL_ENTRIES = 128;
 
 /** `TBL 0` and `TBL 1` are the baked tables; the pool starts here. */
 export const FIRST_POOL_TBL = 2;
