@@ -16,7 +16,7 @@ import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js
 import { buildPayload } from "@noiseandmatter/dnx-core/project/write.js";
 import { FORM_FLAG_OFFSET, FORM_STORED, refuseWrongForm } from "@noiseandmatter/dnx-core/device/storagewrite.js";
 // The pure half, deliberately not reached through the module that imports Web MIDI.
-import { firstDifference, projectPath } from "@noiseandmatter/dnx-core/project/driveslot.js";
+import { compareImages, firstDifference, projectPath } from "@noiseandmatter/dnx-core/project/driveslot.js";
 
 test("a slot addresses the path the device resolves", () => {
   // `/projects/1` opens and `/projects/PRESETS` does not: the device turns the last segment into a
@@ -35,6 +35,41 @@ test("a difference is reported at the byte it happens", () => {
   const b = Uint8Array.from(a);
   b[42] = 9;
   assert.equal(firstDifference(a, b), 42);
+});
+
+test("the length short-circuit returns an index no byte was compared at", () => {
+  // The trap `compareImages` exists for. These disagree on every byte they share and the answer is
+  // still the shorter length, so that number cannot be read as an offset.
+  const back = new Uint8Array(10).fill(0xaa);
+  const sent = new Uint8Array(8).fill(0x55);
+  assert.equal(firstDifference(back, sent), 8);
+  assert.deepEqual(compareImages(back, sent), { kind: "differs", at: 0 });
+});
+
+test("compareImages separates the four things a read-back can be", () => {
+  const sent = new Uint8Array(100).fill(3);
+
+  assert.deepEqual(compareImages(Uint8Array.from(sent), sent), { kind: "equal" });
+
+  const changed = Uint8Array.from(sent);
+  changed[64] = 4;
+  assert.deepEqual(compareImages(changed, sent), { kind: "differs", at: 64 });
+
+  // Every byte sent came back and the stored form carries more: a 1.11 instrument holding a
+  // project an older OS saved. This is the case that was reported as a different image.
+  assert.deepEqual(compareImages(new Uint8Array(100 + 512).fill(3), sent), {
+    kind: "longer",
+    by: 512,
+  });
+
+  assert.deepEqual(compareImages(sent.subarray(0, 90), sent), { kind: "shorter", by: 10 });
+});
+
+test("a difference inside the overlap beats any length relation", () => {
+  const sent = new Uint8Array(100).fill(3);
+  const longerAndWrong = new Uint8Array(612).fill(3);
+  longerAndWrong[7] = 9;
+  assert.deepEqual(compareImages(longerAndWrong, sent), { kind: "differs", at: 7 });
 });
 
 test("a length mismatch is a difference, not a crash", () => {

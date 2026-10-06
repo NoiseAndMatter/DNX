@@ -971,7 +971,10 @@ async function saveToDrive(): Promise<void> {
     status(
       `Saved to +Drive slot ${slot} — ${result.written.toLocaleString()} bytes in ` +
         `${result.chunks} chunk(s), read back and decoded to the same project.` +
-        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was copied to this computer first.` : ""),
+        (replacing ? ` It replaced ${replacing.name || "the project that was there"}, which was copied to this computer first.` : "") +
+        // Said on a verified write too, because the alternative is silence about a stored form
+        // that is not the size we sent, and that silence is how the first one read as a failure.
+        (result.note ? ` ${result.note}` : ""),
       "ok",
     );
   } catch (error) {
