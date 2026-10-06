@@ -230,6 +230,13 @@ export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
   soundbanks: FORM_STORED,
   kits: FORM_STORED,
   waverider: FORM_RAW,
+  /**
+   * Measured 2026-10-06 in digikit's emulator on the `waverider-pool2` build: three pool files
+   * DNX built were written and read straight back, and the container's `0x1D` is `0` both ways.
+   * **An emulator running the real firmware, not hardware** — said plainly because this table's
+   * rule is that a route goes in once somebody has measured it, and what was measured matters.
+   */
+  wavepool: FORM_RAW,
 };
 
 /** The form the route in `path` stores. The compressed one for a route nobody has listed. */

@@ -531,6 +531,13 @@ export interface SafeFileWriteOptions {
    * rather than inferred: nothing should be able to arrive at "do not check" by accident.
    */
   skipVerify?: boolean;
+  /**
+   * Offsets this route's device writes for itself. See `compareStored`.
+   *
+   * A route that needs this is saying *a correct write cannot read back identical here*, which is
+   * a claim worth making explicitly rather than by widening the comparison for everyone.
+   */
+  stamped?: ReadonlySet<number>;
 }
 
 export interface SafeFileWriteResult {
@@ -677,7 +684,7 @@ export async function safeWriteFile(
     onProgress: (_chunks, got) => progress(got, bytes.length, "verify"),
   });
 
-  const mismatches = compareStored(bytes, readBack.bytes);
+  const mismatches = compareStored(bytes, readBack.bytes, options.stamped ?? new Set());
   return { ...result, cancelled: false, mismatches, verified: mismatches.length === 0 };
 }
 
@@ -731,7 +738,20 @@ async function currentContents(options: SafeFileWriteOptions): Promise<Backup> {
  * offset is a finding — it is how `+24` was identified in the first place — and a boolean would
  * throw that away.
  */
-export function compareStored(sent: Uint8Array, readBack: Uint8Array): Mismatch[] {
+export function compareStored(
+  sent: Uint8Array,
+  readBack: Uint8Array,
+  /**
+   * Offsets **this route's** device writes for itself, which a correct write differs at.
+   *
+   * Empty for every stock route. `/wavepool` needs it: the firmware stamps the generation and
+   * recomputes both the record hash and the container's CRC, so a correct pool write can never
+   * read back byte-identical. Excusing those and nothing else is what makes `verified` mean *the
+   * entries I sent are the entries it holds*, which is the only proof that route has — see
+   * `wavepoolwrite.ts`.
+   */
+  stamped: ReadonlySet<number> = new Set(),
+): Mismatch[] {
   if (sent.length !== readBack.length) {
     return [
       {
@@ -747,6 +767,7 @@ export function compareStored(sent: Uint8Array, readBack: Uint8Array): Mismatch[
     if (sent[i] === readBack[i]) continue;
     // The two bytes the instrument writes for itself. See `CONTAINER_BANK_OFFSET`.
     if (i === CONTAINER_SLOT_OFFSET || i === CONTAINER_BANK_OFFSET) continue;
+    if (stamped.has(i)) continue;
     differing.push(i);
     if (differing.length >= 8) break;
   }
