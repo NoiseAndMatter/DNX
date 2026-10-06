@@ -66,8 +66,14 @@ export interface Group {
  * alignment of the *data* extents is a different and much weaker requirement, met because the
  * controller handles 512-byte writes and the metadata is where the risk is.
  */
+export const ERASE_GROUP_SECTORS = 0x400;
+
 export const GROUP_A: Group = { name: "A", superblock: 0, index: 1 };
-export const GROUP_B: Group = { name: "B", superblock: 0x400, index: 0x401 };
+export const GROUP_B: Group = {
+  name: "B",
+  superblock: ERASE_GROUP_SECTORS,
+  index: ERASE_GROUP_SECTORS + 1,
+};
 export const GROUPS: readonly Group[] = [GROUP_A, GROUP_B];
 
 /** Entries the index always holds, used or not. The index is a fixed size. */
@@ -84,6 +90,47 @@ export const INDEX_SECTORS = INDEX_BYTES / SECTOR;
 
 /** First sector data may occupy, relative to the region. Clear of both groups. */
 export const DATA_START = 0x1000;
+
+/**
+ * Project slots a pool record can belong to: `0` the working project, `1..128` as `/projects`
+ * numbers them.
+ *
+ * Here rather than in `poolfile.ts` because it is what sizes the two bands below. The record's own
+ * fields are that module's.
+ */
+export const PROJECT_SLOTS = 129;
+
+/**
+ * Where one project's pool record lives, relative to the region: `POOL_A_BASE + p`, with its
+ * second copy at `POOL_B_BASE + p`.
+ *
+ * The 2,048 sectors between group B's index and `DATA_START` are unused, and they are exactly two
+ * erase groups, `0x800..0xC00` and `0xC00..0x1000`. One band goes in each.
+ *
+ * ## The separation is an erase group, not a round number
+ *
+ * The firmware session's first draft put a record's two copies in neighbouring sectors. The second
+ * put them 256 sectors apart, at `0x800 + p` and `0x900 + p`, which was DNX's suggestion and was
+ * **still wrong for the reason DNX gave for it**: `HC_ERASE_GRP_SIZE` on this eMMC is `0x400`
+ * sectors, so both bands sat inside one erase group and a torn erase would take both copies.
+ * Alternating between two copies buys something only when one failure cannot reach both.
+ *
+ * `GROUP_A` and `GROUP_B` say exactly this for the index, which is where the figure came from.
+ * Being 256 sectors apart looked like it honoured them and did not, which is the familiar shape:
+ * arithmetic that closes against the number you happened to be looking at.
+ */
+export const POOL_A_BASE = 2 * ERASE_GROUP_SECTORS;
+export const POOL_B_BASE = 3 * ERASE_GROUP_SECTORS;
+
+/**
+ * The sector of one copy of a project's pool record, relative to the region.
+ *
+ * Arithmetic only, as `slotSector` is: whether the project slot is one that exists is
+ * `poolfile.ts`'s to refuse, and this module stays free of imports.
+ */
+export function poolRecordSector(group: Group["name"], projectSlot: number): number {
+  return (group === "A" ? POOL_A_BASE : POOL_B_BASE) + projectSlot;
+}
 
 /**
  * Sectors reserved for each slot. **Slot `n` always lives at `DATA_START + n * SLOT_SECTORS`.**
