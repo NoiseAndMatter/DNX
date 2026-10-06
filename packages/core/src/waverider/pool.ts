@@ -12,7 +12,7 @@
  * |---|---|---|
  * | geometry | anything that fits a slot | 16 waves x 512 points only |
  * | size | up to 512 KiB | 16 KiB |
- * | how many | 256 slots | 127 entries, in slot order |
+ * | how many | 256 slots | 128 entries, in slot order (127 before 2026-10-06) |
  *
  * So a 64 x 4,096 table imports, stores, verifies and stays silent, and `convert.ts` will happily
  * produce one. A user meeting that without warning would reasonably read it as a broken write

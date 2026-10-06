@@ -151,7 +151,7 @@ export interface PoolRecord {
    * The **store slot** at each **pool index**, `undefined` where the pool index holds nothing.
    *
    * `undefined` rather than `0xFFFF`, so nothing can mistake the absence for store slot 65,535.
-   * Shorter than 127 on the way in, always 127 on the way out.
+   * Shorter than a full pool on the way in, always `POOL_ENTRIES` on the way out.
    */
   entries: readonly (number | undefined)[];
   /**
