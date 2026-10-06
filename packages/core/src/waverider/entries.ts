@@ -126,6 +126,16 @@ export function readIndex(indexBytes: Uint8Array): TableEntry[] {
   return out;
 }
 
+/**
+ * A name as the index stores it: Windows-1252, padded with NULs, in the entry's 64 bytes.
+ *
+ * Exported because the rename route writes an entry's name and nothing else, and a second copy of
+ * *how a name becomes bytes* is how a rename and a write come to disagree about a character.
+ */
+export function encodeEntryName(name: string): Uint8Array {
+  return latin1Encode(name, ENTRY.nameBytes);
+}
+
 const latin1Encode = (text: string, size: number): Uint8Array => {
   const out = new Uint8Array(size);
   for (let i = 0; i < Math.min(text.length, size); i++) {
