@@ -22,6 +22,15 @@
  * the pool's geometry widens, and nothing has to be re-imported. The size is a bet on the format,
  * and this module is the honesty about today.
  *
+ * ## Slot order is the automatic pool, and soon it is only the default
+ *
+ * `poolPlacement` and `automaticEntries` describe the pool the firmware builds for a project that
+ * has no pool of its own: every playable table in store-slot order. Every project does that today.
+ * Once the `/wavepool` records land, a project with a record of its own ignores this entirely, so
+ * these two functions answer *what a project with no record plays*, and `poolfile.ts` answers the
+ * rest. They also say what shifts: an upload into a free store slot below the others moves every
+ * later pool index, and only a stored record pins them.
+ *
  * ## Timing
  *
  * **Only the boot fill waits.** Five seconds after boot, and then on the next UI pass after each
@@ -105,4 +114,25 @@ export function poolPlacement(usedSlots: Iterable<number>): Map<number, number |
     out.set(slot, nth < POOL_ENTRIES ? FIRST_POOL_TBL + nth : undefined);
   });
   return out;
+}
+
+/**
+ * The automatic pool as a pool record's entries: the **store slot** at each **pool index**.
+ *
+ * `poolPlacement` read the other way round, and the second caller that earns it: a read of
+ * `/wavepool/<p>` for a project with no record of its own comes back with exactly this, synthesised
+ * by the firmware, so DNX can say what a project plays before any record exists and can check a
+ * read against what it expected.
+ *
+ * Takes the slots whose tables the pool will **play**, in any order, which is a narrower set than
+ * the slots in use: `unplayableReason` is the judge, and a stored table of the wrong geometry is
+ * not in the automatic pool at all.
+ */
+export function automaticEntries(playableSlots: Iterable<number>): (number | undefined)[] {
+  const ordered = [...new Set(playableSlots)].sort((a, b) => a - b).slice(0, POOL_ENTRIES);
+  const entries: (number | undefined)[] = new Array<number | undefined>(POOL_ENTRIES).fill(undefined);
+  ordered.forEach((slot, index) => {
+    entries[index] = slot;
+  });
+  return entries;
 }
