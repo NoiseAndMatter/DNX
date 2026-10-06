@@ -269,6 +269,22 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
       <button class="btn danger" data-writes-device id="tableWrite" disabled title="Wrap the chosen file as a slot file and write it to /waverider/&lt;slot&gt;.">Write table</button>
 
       <!--
+        **The batch, for filling a pool rather than trying one table.** Seventy-five tables through
+        the single control above is seventy-five dialogs and seventy-five hand-typed slot numbers,
+        which is how slot 37 ends up holding the table meant for 38.
+
+        It asks **once**, and the one question names every slot it will touch. That is a smaller
+        relaxation than it looks: the targets must all be empty in a listing taken at that moment,
+        so nothing can be overwritten and there is nothing to back up. Each write still passes the
+        gate on its own, so switching WRITE off mid-run stops the rest.
+      -->
+      <label class="lbl" for="tableFiles">batch</label>
+      <input id="tableFiles" type="file" multiple accept=".bin,.raw,application/octet-stream" disabled title="Several raw tables at once. The name comes from the file; the geometry from the fields above.">
+      <label class="lbl" for="tableFirstSlot">from slot</label>
+      <input id="tableFirstSlot" type="number" value="3" min="0" max="255" step="1" disabled title="File i goes to this slot plus i. Every one of them must be empty.">
+      <button class="btn danger" data-writes-device id="tableWriteAll" disabled title="Write every chosen file to consecutive slots, asking once.">Write all</button>
+
+      <!--
         **Deliberately only /waverider.** `deleteRequest` can address any path on the +Drive, and a
         generic delete here would be the most destructive control DNX has ever offered: one typo
         and a project is gone, with no trash on the instrument and usually no other copy.

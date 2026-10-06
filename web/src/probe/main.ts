@@ -89,6 +89,7 @@ import { renderToolNav } from "../toolnav.js";
 import "./drive.js";
 import "./drivefile.js";
 import "./writetable.js";
+import "./batchtables.js";
 import "./deletetable.js";
 import "./readproject.js";
 import "./writeback.js";
