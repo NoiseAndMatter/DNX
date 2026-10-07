@@ -49,6 +49,25 @@
 .applied { margin: .3rem 0 0; padding-left: 1.1rem; }
 .applied li { margin: .2rem 0; color: var(--muted); }
 
+/*
+ * A pool slot whose table was deleted.
+ *
+ * It already draws dashed amber, because the mode hands the grid `supported: false` — the paint
+ * for *there is something here I cannot read*, which is what a MISSING entry is. **Salmon on the
+ * name is the second half of the distinction**: an unreadable pattern is a format DNX does not
+ * know, and this is a sound of yours that now plays the wrong thing. They must not read alike.
+ */
+.slot.missing .nm { color: var(--salmon); font-weight: 600; }
+.slot.missing .tc { color: var(--salmon); }
+
+/* The store row a selected pool slot names. Marked, not selected: the user picked the cell. */
+.libtable tbody tr.landing { box-shadow: inset 3px 0 0 var(--amber); }
+.libtable td.use { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Each warning the wavetable note carries. The pool's faults are not the page's status line. */
+#wavepoolNote p { margin: .35rem 0; }
+#wavepoolNote .warn { color: var(--salmon); }
+
 /* Findings sit under the pool they describe, never beside the library. */
 #findings { margin-top: .8rem; }
 #findings li { margin: .2rem 0; }
@@ -107,6 +126,21 @@
     </div>
   </section>
 
+  <!--
+    Sounds or wavetables, and it is a mode rather than a fifth tool.
+
+    The owner picked this placement over a standing page: the two collections ask the same two
+    questions this page is already shaped around — what is in use, and where is the one I made last
+    week. The cost is that "library" stops meaning only Elektron presets, which is said here in as
+    many words rather than left to be discovered.
+  -->
+  <section class="section">
+    <div class="tabs" id="libraryMode" role="tablist" aria-label="Which collection this page shows">
+      <button type="button" class="tab" id="modeSounds" role="tab" aria-selected="true">Sounds</button>
+      <button type="button" class="tab" id="modeWavetables" role="tab" aria-selected="false">Wavetables</button>
+    </div>
+  </section>
+
   <div class="panes">
 
     <!--
@@ -119,6 +153,22 @@
       <div class="grid" id="poolGrid" hidden></div>
       <div class="grid" id="patternGrid" hidden></div>
       <div class="plan hint" id="findings">Open a project to audit its pool.</div>
+
+      <!--
+        The wavetable pool, which is **not in the project file**: it is a record on the +Drive, one
+        per project slot. So this half has a project selector where the preset pool needs none, and
+        it can show the pool of a project nobody has opened — including the working one, the only
+        pool with a second writer.
+      -->
+      <div class="bar" id="wavepoolBar" hidden>
+        <span class="lbl">Pool of</span>
+        <select id="wavepoolProject" disabled title="Which project's wavetable pool to read">
+          <option value="0">Working project</option>
+        </select>
+        <button class="btn" id="wavepoolRefresh" disabled title="Read the pool and the store again">Refresh</button>
+      </div>
+      <div class="grid" id="wavepoolGrid" hidden></div>
+      <div class="plan hint" id="wavepoolNote" hidden></div>
     </section>
 
     <!--
@@ -130,7 +180,7 @@
       onto pool cells — `GridDrag.bind` takes any element.
     -->
     <section class="section pane">
-      <h2 data-help="library/library-search">+Drive library <span class="count" id="librarySub">— connect an instrument</span></h2>
+      <h2 data-help="library/library-search"><span id="libraryTitle">+Drive library</span> <span class="count" id="librarySub">— connect an instrument</span></h2>
       <div class="tabs" id="libraryTabs" hidden></div>
       <div class="libfind" id="libraryFind" hidden>
         <input type="search" id="librarySearch" placeholder="Search name, machine, tag, slot…" autocomplete="off">
@@ -148,6 +198,8 @@
       </div>
       <div class="tagchips" id="libraryTags" hidden></div>
       <div class="libtablewrap" id="libraryGrid" hidden></div>
+      <!-- The wavetable store: 256 slots, shared by every project, with no banks and no tags. -->
+      <div class="libtablewrap" id="wavestoreGrid" hidden></div>
     </section>
 
     <!--
@@ -164,7 +216,7 @@
 
   </div>
 
-  <section class="section">
+  <section class="section" id="soundsLegend">
     <div class="legend">
       <span><i class="sw occupied"></i>holds a preset or kit</span>
       <span><i class="sw sel"></i>selected</span>
