@@ -287,6 +287,7 @@ async function probe(): Promise<void> {
     // The wavetable control, enabled with the rest of the +Drive card. The write gate still has to
     // be armed before the button does anything, like every other `data-writes-device` control.
     for (const id of ["tableFile", "tableSlot", "tableName", "tableWaves", "tablePoints", "tableWrite",
+      "tableFiles", "tableFirstSlot", "tableWriteAll",
       "tableDeleteSlot", "tableDelete"]) {
       $<HTMLInputElement>(id).disabled = false;
     }
