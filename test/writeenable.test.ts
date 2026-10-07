@@ -270,7 +270,9 @@ test("every control that writes is marked, and every dangerous one has been cons
     // It is gated per write, not per run, so the switch still stops it part-way; and it refuses
     // the whole run unless every target slot is empty in a listing taken at that moment, which is
     // what leaves nothing to overwrite and nothing to back up.
-    ["dodrivesave", "fileWrite", "libraryRename", "tableDelete", "tableWrite", "tableWriteAll", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `poolWrite` joined on 2026-10-07. It writes a project's pool list, carrying the generation
+    // it read so the instrument refuses a write that would discard a front-panel edit.
+    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

@@ -296,6 +296,28 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
       <label class="lbl" for="tableDeleteSlot">delete slot</label>
       <input id="tableDeleteSlot" type="number" value="0" min="0" max="255" step="1" disabled title="/waverider slot to delete. This control cannot address any other route.">
       <button class="btn danger" data-writes-device id="tableDelete" disabled title="Read the slot, save a copy, then delete it from /waverider. There is no undo on the instrument.">Delete table</button>
+
+      <!--
+        **The pool list, which is the project's and not the store's.** A table in the store plays
+        nothing until a pool entry names it, so this is the other half of the wavetable work.
+
+        The list is typed rather than built, because a pool of 128 entries from 78 tables cannot
+        be checked by eye in any other form: `0-77, 0-46, 20, 4, 46` can be counted and read back,
+        and a button labelled "fill the pool" cannot.
+
+        The write carries the generation it read, so the instrument refuses it if somebody changed
+        the pool on the front panel in between. That refusal is silent, like every refusal on this
+        route, so the proof is the entries coming back — and on a conflict the card says which
+        entries moved, because ADD TO POOL writes several at once and "it changed" would not tell
+        anyone what overwriting would discard.
+      -->
+      <label class="lbl" for="poolProject">pool project</label>
+      <input id="poolProject" type="number" value="0" min="0" max="128" step="1" disabled title="0 is the working project; 1-128 are /projects slots.">
+      <label class="lbl" for="poolList">entries</label>
+      <input id="poolList" type="text" size="26" value="" placeholder="0-77, 0-46, 20, 4, 46" disabled title="Store slots, ranges like 3-9, and . for an empty entry.">
+      <label class="lbl" for="poolAutomatic">automatic</label>
+      <input id="poolAutomatic" type="checkbox" disabled title="Write the automatic pool instead of a list: every playable table in store order. The entries box is ignored.">
+      <button class="btn danger" data-writes-device id="poolWrite" disabled title="Write this project's pool list, carrying the generation just read so a concurrent edit is refused.">Write pool</button>
     </div>
   </section>
 </div>

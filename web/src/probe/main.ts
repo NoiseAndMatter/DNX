@@ -90,6 +90,7 @@ import "./drive.js";
 import "./drivefile.js";
 import "./writetable.js";
 import "./batchtables.js";
+import "./writepool.js";
 import "./deletetable.js";
 import "./readproject.js";
 import "./writeback.js";
@@ -288,6 +289,7 @@ async function probe(): Promise<void> {
     // be armed before the button does anything, like every other `data-writes-device` control.
     for (const id of ["tableFile", "tableSlot", "tableName", "tableWaves", "tablePoints", "tableWrite",
       "tableFiles", "tableFirstSlot", "tableWriteAll",
+      "poolProject", "poolList", "poolAutomatic", "poolWrite",
       "tableDeleteSlot", "tableDelete"]) {
       $<HTMLInputElement>(id).disabled = false;
     }
