@@ -237,6 +237,17 @@ export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
    * rule is that a route goes in once somebody has measured it, and what was measured matters.
    */
   wavepool: FORM_RAW,
+  /**
+   * Stated by the firmware session's own spec (`for-dnx-modinfo.md` rev 2: *the record, in the
+   * transfer container, raw, 256 bytes*) and checked in digikit's emulator against the image byte
+   * for byte. **Not hardware, and not DNX's own measurement** — said plainly, because this table's
+   * rule is that a route goes in once somebody has measured it and what was measured matters.
+   *
+   * The route is read-only: the session refuses a write to it with `Write: Permission denied`. It
+   * is here because a read in the wrong form succeeds and returns different bytes, which would
+   * reach the codec as a hash mismatch on a healthy record.
+   */
+  modinfo: FORM_RAW,
 };
 
 /** The form the route in `path` stores. The compressed one for a route nobody has listed. */
