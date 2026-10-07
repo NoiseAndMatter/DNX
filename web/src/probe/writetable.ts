@@ -36,8 +36,39 @@ import { requireWriteEnabled } from "../writeenable.js";
 import { confirmFileWrite } from "../safewriteui.js";
 import { pageMessageIds } from "../messageids.js";
 import { writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import { type PendingSlot } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
+
+/**
+ * The `PendingSlot` for one already-converted file.
+ *
+ * Exported because the batch control builds the same thing for each of its files, and a second
+ * copy of *what a table's index entry says about itself* is how two controls come to disagree
+ * about the gain or the source hash. The hash is still computed inside `buildSlotFile`; this only
+ * records what the table was made from.
+ */
+export function pendingFrom(
+  table: Uint8Array,
+  slot: number,
+  name: string,
+  waves: number,
+  points: number,
+): PendingSlot {
+  return {
+    slot,
+    name,
+    waves,
+    points,
+    interpolate: true,
+    table,
+    // The file is already converted samples, so nothing was scaled and the source is the table
+    // itself. A gain of 1 says "no level change applied", which is the truth here.
+    sourceHash: xxHash32(table),
+    sourceSize: table.length,
+    gain: 1,
+  };
+}
 
 let writing = false;
 
@@ -93,19 +124,7 @@ async function writeTable(): Promise<void> {
         gate: requireWriteEnabled,
         confirm: confirmFileWrite,
       },
-      table: {
-        slot,
-        name,
-        waves,
-        points,
-        interpolate: true,
-        table,
-        // The file is already converted samples, so nothing was scaled and the source is the table
-        // itself. A gain of 1 says "no level change applied", which is the truth here.
-        sourceHash: xxHash32(table),
-        sourceSize: table.length,
-        gain: 1,
-      },
+      table: pendingFrom(table, slot, name, waves, points),
       onStatus: (message) => status(message),
       timeoutMs: 60_000,
     });

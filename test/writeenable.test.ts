@@ -266,7 +266,11 @@ test("every control that writes is marked, and every dangerous one has been cons
     // worth naming rather than letting it slip into the list unremarked.
     // `tableDelete` is here because a delete changes the instrument as surely as a write, and it is
     // the only control that destroys rather than replaces. Scoped to /waverider by construction.
-    ["dodrivesave", "fileWrite", "libraryRename", "tableDelete", "tableWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `tableWriteAll` joined on 2026-10-06 and is the only one that asks **once** for many writes.
+    // It is gated per write, not per run, so the switch still stops it part-way; and it refuses
+    // the whole run unless every target slot is empty in a listing taken at that moment, which is
+    // what leaves nothing to overwrite and nothing to back up.
+    ["dodrivesave", "fileWrite", "libraryRename", "tableDelete", "tableWrite", "tableWriteAll", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 
