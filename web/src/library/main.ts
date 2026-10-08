@@ -75,6 +75,7 @@ import {
 import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
 import { renamePresetOnDrive } from "./renamepreset.js";
+import { wireWavetables } from "./wavetables.js";
 import { NAME_SIZE } from "@noiseandmatter/dnx-core/librarian/rename.js";
 import {
   type BankCache,
@@ -119,6 +120,16 @@ interface State {
   session?: Session;
   audit?: PoolAudit;
   device?: ConnectedDevice;
+  /**
+   * The +Drive slot the open project came from, when it came from one.
+   *
+   * **Only the Wavetables mode needs it**, and it needs it because a wavetable pool is not in the
+   * project file: it is a record on the +Drive addressed by project slot. A project opened from a
+   * file has no slot, which is why this is optional rather than defaulted to the working project —
+   * reading slot 0's pool for a project that came off disk would show somebody another project's
+   * tables.
+   */
+  openSlot?: number;
   bank?: LibraryBank;
   bankLetter: string;
   /** The library row last clicked, and which bank it was in. Rename acts on it. */
@@ -198,7 +209,7 @@ async function loadProject(file: File): Promise<void> {
  * audit, the cleared history and the rendering happen once. Two copies of this would be two answers
  * to "is this project usable", and the one that drifted would be the one nobody was looking at.
  */
-function adopt(loaded: LoadedProject, label: string): void {
+function adopt(loaded: LoadedProject, label: string, driveSlot?: number): void {
   const device = deviceFor(loaded.image);
 
   /*
@@ -219,6 +230,10 @@ function adopt(loaded: LoadedProject, label: string): void {
   }
 
   state.project = loaded;
+  // Cleared for a file and set for a +Drive slot, every time: a stale slot here would point the
+  // Wavetables pane at the pool of whatever was opened before.
+  if (driveSlot === undefined) delete state.openSlot;
+  else state.openSlot = driveSlot;
   // A fresh session per project: the history describes edits to *this* image, and carrying one
   // across would offer to undo a step into a project that never had it done.
   state.session = new Session(loaded.image);
@@ -504,6 +519,7 @@ async function openDriveProject(): Promise<void> {
       image: opened.image,
     },
     `${project.name} · slot ${project.index}`,
+    project.index,
   );
   $<HTMLButtonElement>("export").disabled = false;
 }
@@ -1241,6 +1257,50 @@ $("export").addEventListener("click", () => {
 
 $("kind").addEventListener("change", () => {
   clearShownBank(`— press Browse to list ${kind()}s`);
+});
+
+// --- sounds or wavetables ------------------------------------------------------------------------
+
+/**
+ * The wavetable half of this page, which owns a mode of the same two panes.
+ *
+ * It asks the instrument rather than the open project, because a wavetable pool is a record on the
+ * +Drive and not part of a project file. `wavetables.ts` has the rest.
+ */
+const wavetables = wireWavetables({
+  device: () => state.device,
+  openSlot: () => state.openSlot,
+  status,
+});
+
+/** Which mode the page is in. Sounds, until somebody asks for the other. */
+let wavetableMode = false;
+
+function setMode(wavetable: boolean): void {
+  wavetableMode = wavetable;
+  // `aria-selected`, which is both the correct state for a tab and the attribute the shared
+  // stylesheet paints a selected tab from. A class would look right and say nothing to a reader.
+  for (const [id, on] of [["modeSounds", !wavetable], ["modeWavetables", wavetable]] as const) {
+    $(id).setAttribute("aria-selected", String(on));
+  }
+
+  if (!wavetable) {
+    // Hands the panes back first, then redraws Sounds mode: the restore puts each element back the
+    // way Sounds mode had it, and the render fills whatever the project and the bank now say.
+    void wavetables.show(false);
+    render();
+    renderLibrary();
+    return;
+  }
+  wavetables.show(true).catch(report);
+}
+
+$("modeSounds").addEventListener("click", () => {
+  if (wavetableMode) setMode(false);
+});
+
+$("modeWavetables").addEventListener("click", () => {
+  if (!wavetableMode) setMode(true);
 });
 
 // --- finding one of 256 --------------------------------------------------------------------------
