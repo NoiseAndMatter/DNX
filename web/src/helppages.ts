@@ -350,7 +350,10 @@ The page says so when that happens rather than leaving you to check the column.`
     key: "library",
     title: "Library",
     intro: `A project's **sound pool** beside the instrument's **+Drive library**. The pool is where
-a preset has to be for a trig to preset-lock it; the library is where 2,048 of them live.`,
+a preset has to be for a trig to preset-lock it; the library is where 2,048 of them live.
+
+The tabs above the left pane switch between **Sounds** and **Wavetables**. The wavetable sections
+are at the end of this page.`,
     sections: [
       {
         id: "pool-vs-library",
@@ -419,6 +422,100 @@ this reason. A Digitone's presets can still be browsed, tagged, searched and ren
         body: `**Search** filters by name. **Occupied only** hides empty slots, which is most of a
 library most of the time. **Refresh** re-reads the instrument.`,
         image: { src: "help/library-search.png", alt: "A search narrowing a bank to 90 of its 256 slots, the tag chips re-counted against the match, and the presets that matched" },
+      },
+      {
+        id: "wavetable-modes",
+        heading: "The Wavetables mode",
+        body: `See which wavetables a project can play, and which slots on the instrument they come
+from.
+
+Before you start:
+
+- A Digitone II whose firmware carries the wavetable store.
+- **WRITE** can stay off. This mode only reads.
+
+1. Press **Connect an instrument…**.
+2. Press **Wavetables**, above the left pane.
+3. Pick a project from **POOL OF**.
+
+The left pane is that project's **wavetable pool**: 128 slots, each naming a store slot. The right
+pane is the instrument's **wavetable store**: 256 slots, one table each, shared by every project.
+
+A sound's **TBL** setting picks a pool slot, and that pool slot names a store slot. A sound never
+points at the store directly.`,
+        image: { src: "help/wavetables-pane.png", alt: "The Wavetables mode: a project's 128-slot wavetable pool on the left, the instrument's 256-slot store on the right, and store rows saying which pool slot each table is in" },
+      },
+      {
+        heading: "Store slot, pool slot, and the number in a sound",
+        body: `Set **TBL** on a sound to one more than the pool slot you want.
+
+Every table in the pool has three numbers:
+
+- **Store slot, 0 to 255.** Where the table sits on the instrument.
+- **Pool slot, 1 to 128.** Where it sits in this project's pool.
+- **The number in a sound.** The pool slot plus one. The first values of **TBL** are the
+  instrument's built-in waveforms.
+
+One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows its store slot
+and its pool slot.`,
+      },
+      {
+        id: "wavetable-pool-kinds",
+        heading: "The three kinds of pool",
+        body: `Check which kind of pool a project has before you upload a table to the instrument.
+
+The line under the pool says which kind it is:
+
+- **No pool of its own.** Nobody has written one. The instrument plays every stored table in
+  store-slot order.
+- **Automatic.** The same order, written down.
+- **A list.** Somebody chose these slots, on the instrument or in DNX.
+
+An upload into a lower store slot moves every later slot. A list stays where it is. In the other
+two kinds, sounds keep their **TBL** numbers and play whatever moved into them.`,
+      },
+      {
+        heading: "When a cell says MISSING",
+        body: `**MISSING** means the pool names a store slot that is empty. The table was deleted
+and the entry still points at it, so a sound set to that pool slot plays a built-in waveform.
+
+To fix it:
+
+1. Press **Refresh**. It re-reads the pool and the store together.
+2. If the cell still says MISSING, write a table into that store slot, or set the sound to a
+   different pool slot.
+
+DNX leaves the entry alone. Clearing it would leave a hole for the next add to drop into, and the
+sound would then play an unrelated table. Adding a table skips a MISSING entry and fills the first
+free one.`,
+        image: { src: "help/wavetables-missing.png", alt: "A pool cell naming a store slot that is empty, reading MISSING, with a note saying the table was deleted and the slot now plays the built-in waveform" },
+      },
+      {
+        id: "wavetable-limits",
+        heading: "What this mode cannot tell you",
+        body: `Three things the pane does not show.
+
+- **The shape of a table.** How many waves it holds, and how long each wave is, is not in a
+  listing.
+- **How big a table is.** Every slot reports the same fixed size whatever it holds.
+- **Which sounds use a pool slot.** That needs every sound of a saved project read, and the
+  project open on the instrument stays unsaved until you save it.
+
+A table of a shape the pool cannot play shows no name on the instrument and makes no sound. It is
+still stored.`,
+      },
+      {
+        heading: "When an instrument has no wavetables",
+        body: `Pressing **Wavetables** asks the instrument what it has. Three replies:
+
+- **It has them.** The mode reads the store.
+- **It does not.** This firmware has no wavetable store.
+- **It could not be asked.** A timeout, a port held by another program, or a reply that made no
+  sense. Press **Wavetables** again.
+
+If the third keeps coming back, close Elektron Transfer and Overbridge, then try again. Some
+instruments answer without saying which parts they have. The mode then stays off and the warning
+stays on screen.`,
       },
     ],
   },

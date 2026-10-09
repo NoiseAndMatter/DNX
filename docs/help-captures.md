@@ -9,13 +9,20 @@ Until a PNG is on disk, its slot renders a labelled placeholder carrying the sec
 That is harmless and deliberate: **sections are written before the shots are taken**, so a page
 half-captured reads as in progress rather than broken.
 
-## Capture status, 2026-09-07
+## Capture status, 2026-10-09
 
-**22 of the 22 referenced PNGs exist.** 9 pages, 32 sections, 22 screenshot slots. Counted from the
+**22 of the 24 referenced PNGs exist.** 9 pages, 38 sections, 24 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-The two Library shots came last, because both are the instrument's +Drive pane and it holds nothing
-until a **Digitone II** answers. They were taken against `/soundbanks/A`, 256 slots read.
+The two outstanding ones are both the Library's **Wavetables** mode, added 2026-10-09. They need an
+instrument whose firmware carries the wavetable store. `wavetables-missing.png` needs one thing
+more: a pool entry naming a store slot that is empty, which means deleting a stored table that a
+pool names. **That is a write, so it waits for a session where the owner is arming writes anyway.**
+It is the only shot in the manifest that cannot be taken by reading.
+
+The two Library preset shots came last in the first round, because both are the instrument's +Drive
+pane and it holds nothing until a **Digitone II** answers. They were taken against `/soundbanks/A`,
+256 slots read.
 
 `test/helppages.test.ts` fails when a referenced file has no row here, so this table cannot fall
 behind the pages.
@@ -60,6 +67,8 @@ closing step. Re-open any suspect image before committing it.
 | `insights-compare.png` | Insights | Comparing patterns | captured |
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
+| `wavetables-pane.png` | Library | The Wavetables mode | outstanding, needs a wavetable firmware |
+| `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, needs a pool entry whose table was deleted |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
 | `probe-drive.png` | Probe | The +Drive | captured |
@@ -99,11 +108,13 @@ pending costs a reader nothing; a picture of an empty box costs them the belief 
 
 ## Sections with no screenshot, on purpose
 
-Eleven of the 32 sections carry no image. A section explaining a rule rather than a surface does not
+Fifteen of the 38 sections carry no image. A section explaining a rule rather than a surface does not
 need one, and an invented picture is worse than none: *Nothing leaves this machine*, *What DNX will
 not do*, *Apply, then export or write*, *What it writes*, *Writing*, *Every write backs up first*,
 *If something goes wrong*, *A .dnx is a zip*, *What manifest.json is for*, and *Why the write switch
-is not in here*.
+is not in here*. Four of the wavetable sections are the same case: *Store slot, pool slot, and the
+number in a sound*, *The three kinds of pool*, *What this mode cannot tell you*, and *When an
+instrument has no wavetables*.
 
 **Add a section rather than a sentence** when a new concept arrives, so it gets its own slot instead
 of being folded into a paragraph belonging to a picture of something else.
