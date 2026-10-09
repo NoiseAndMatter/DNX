@@ -35,10 +35,15 @@
  *
  * **Bit `0x08` is retired.** It meant `delete` in rev 1, and since every build with the store can
  * delete, the flag said nothing. Nothing infers anything from it, set or clear.
+ *
+ * The rule covers the capability *word*. A bit that gates a field, as `playable` gates bytes
+ * 248..251, makes those bytes data, and `readPlayable` says why data is refused where a bit is
+ * not.
  */
 
 import { be16, be32 } from "./bytes.js";
 import { WaveriderError } from "./errors.js";
+import type { PlayableBounds } from "./pool.js";
 import { xxHash32 } from "./xxhash32.js";
 import {
   CONTAINER_MAGIC,
@@ -82,8 +87,35 @@ export const INFO = {
   commit: 56,
   modCount: 68,
   mods: 72,
+  /** Where the mod array stops. The four bytes from here are the playable bounds. */
   reserved: 248,
 } as const;
+
+/**
+ * The playable bounds, which occupy the first four of the bytes `reserved` used to cover.
+ *
+ * Read **only** when the `playable` capability is set, so a build from before the bounds existed
+ * is not read as declaring `0 x 1 x 1`. The points are logs so that one byte each covers 64..4096.
+ */
+export const PLAYABLE = {
+  maxWaves: 248,
+  minLog2Points: 249,
+  maxLog2Points: 250,
+  flags: 251,
+} as const;
+
+/**
+ * The shortest record that can be carrying the bounds.
+ *
+ * The four bounds bytes end at 252 and the hash is the four bytes before the end, so a 252-byte
+ * record has its hash *on top of them*. Reading that as `64, 6, 12, 1` by coincidence is unlikely;
+ * reading it as a crossed range and refusing a healthy record is not, which is the failure this
+ * line exists to stop.
+ */
+const PLAYABLE_NEEDS = PLAYABLE.flags + 1 + 4;
+
+/** Bit 0 of `PLAYABLE.flags`: a table's points must be a power of two. */
+export const PLAYABLE_POWER_OF_TWO = 0x01;
 
 const TEXT = { os: 8, buildTag: 24, commit: 12 } as const;
 
@@ -112,6 +144,15 @@ export const CAPABILITY = {
   poolCas: 0x10,
   /** The instrument has its own wavetable page, so the working project's pool has two writers. */
   page: 0x20,
+  /**
+   * The pool's geometry is this build's to declare, and bytes 248..251 declare it.
+   *
+   * Without it a table plays at 16 x 512 and nothing else, which is every build in the field. The
+   * bit is what separates *this build has not told us* from *this build plays only that pair*, and
+   * DNX needs the distinction because a false *stored but not played* on a table that plays is a
+   * warning that sends somebody re-importing a table that was fine.
+   */
+  playable: 0x40,
 } as const;
 
 /** `0x08` meant `delete` in rev 1 and said nothing. Named so that nothing reuses it. */
@@ -123,6 +164,7 @@ const KNOWN_CAPABILITIES =
   CAPABILITY.rename |
   CAPABILITY.poolCas |
   CAPABILITY.page |
+  CAPABILITY.playable |
   RETIRED_CAPABILITY;
 
 export interface ModInfoMod {
@@ -138,6 +180,7 @@ export interface ModInfoCapabilities {
   rename: boolean;
   poolCas: boolean;
   page: boolean;
+  playable: boolean;
 }
 
 export interface ModInfo {
@@ -181,6 +224,16 @@ export interface ModInfo {
   modCount: number;
   /** The mods this reader could reach, in order. */
   mods: ModInfoMod[];
+  /**
+   * What geometries this build's pool plays, where it says so.
+   *
+   * Absent on a build without the `playable` capability, and absent on one that sets the bit in a
+   * record too short to hold the bytes. Absent means **the 16 x 512 rule**, which `pool.ts`
+   * applies: unlike `poolSlots` there is an honest default here, because the spec names it.
+   */
+  playable?: PlayableBounds;
+  /** Flag bits of byte 251 outside the ones below. Reported, never acted on, as `unknown` is. */
+  unknownPlayableFlags?: number;
 }
 
 /** NUL-terminated, Windows-1252 like every other name in the store. */
@@ -190,6 +243,69 @@ function text(record: Uint8Array, at: number, length: number): string {
   const field = record.subarray(at, at + length);
   const nul = field.indexOf(0);
   return latin1.decode(nul === -1 ? field : field.subarray(0, nul)).trimEnd();
+}
+
+/**
+ * The bounds, or nothing when this build does not carry them.
+ *
+ * ## Why a crossed range is refused when an unknown capability bit is not
+ *
+ * The capability word grows by design and an unknown bit costs a feature, so ignoring one is
+ * right. These four bytes are **data**: three of them describe one range, and a range whose ends
+ * cross is not a value a reader can half-understand. Taking `maxWaves` of 0 at face value would
+ * have DNX tell somebody that a table which plays does not, and quietly falling back to 16 x 512
+ * would say the same thing with no trace of why. So this refuses, and a caller shows *could not
+ * ask* — which loses the pane and never prints a wrong warning. That is `poolfile.ts`'s rule, and
+ * the bounds belong to its side of the line rather than to the capability word's.
+ *
+ * A record that sets the bit but is too short to hold the bytes is a different case and not an
+ * error: it is a build that grew the word before it grew the record, and the fallback is honest.
+ */
+function readPlayable(
+  record: Uint8Array,
+  bytes: number,
+  capabilities: number,
+): Pick<ModInfo, "playable" | "unknownPlayableFlags"> {
+  if ((capabilities & CAPABILITY.playable) === 0) return {};
+  if (bytes < PLAYABLE_NEEDS || record.length < PLAYABLE_NEEDS) return {};
+
+
+  const maxWaves = record[PLAYABLE.maxWaves]!;
+  const minLog2 = record[PLAYABLE.minLog2Points]!;
+  const maxLog2 = record[PLAYABLE.maxLog2Points]!;
+  const flags = record[PLAYABLE.flags]!;
+
+  if (maxWaves < 1) {
+    throw new WaveriderError(
+      `the record reports the playable capability and ${maxWaves} as the most waves the pool ` +
+        `plays, which is a pool that plays nothing`,
+    );
+  }
+  if (minLog2 > maxLog2) {
+    throw new WaveriderError(
+      `the record reports playable points from 2^${minLog2} to 2^${maxLog2}, which is a range ` +
+        `whose ends cross`,
+    );
+  }
+  /*
+   * 31 rather than 30: the shift is the limit, and a bound a slot cannot hold is the firmware's
+   * claim to make. `unplayableReason` then refuses every table for being under the minimum, which
+   * is visible and traceable, where a silent clamp here would not be.
+   */
+  if (maxLog2 > 31) {
+    throw new WaveriderError(`the record reports 2^${maxLog2} playable points, which is not a size`);
+  }
+
+  const unknownFlags = flags & ~PLAYABLE_POWER_OF_TWO;
+  return {
+    playable: {
+      maxWaves,
+      minPoints: 2 ** minLog2,
+      maxPoints: 2 ** maxLog2,
+      pointsPowerOfTwo: (flags & PLAYABLE_POWER_OF_TWO) !== 0,
+    },
+    ...(unknownFlags === 0 ? {} : { unknownPlayableFlags: unknownFlags }),
+  };
 }
 
 /**
@@ -228,6 +344,7 @@ export function readModInfo(record: Uint8Array): ModInfo {
   }
 
   const capabilities = be32(record, INFO.capabilities);
+  const playable = readPlayable(record, bytes, capabilities);
   const modCount = record[INFO.modCount]!;
   const room = Math.floor((Math.min(bytes, INFO.reserved) - INFO.mods) / MOD_BYTES);
   const mods: ModInfoMod[] = [];
@@ -249,6 +366,7 @@ export function readModInfo(record: Uint8Array): ModInfo {
       rename: (capabilities & CAPABILITY.rename) !== 0,
       poolCas: (capabilities & CAPABILITY.poolCas) !== 0,
       page: (capabilities & CAPABILITY.page) !== 0,
+      playable: (capabilities & CAPABILITY.playable) !== 0,
     },
     unknown: capabilities & ~KNOWN_CAPABILITIES,
     poolSlots: be16(record, INFO.poolSlots),
@@ -262,6 +380,7 @@ export function readModInfo(record: Uint8Array): ModInfo {
     commit: text(record, INFO.commit, TEXT.commit),
     modCount,
     mods,
+    ...playable,
   };
 }
 

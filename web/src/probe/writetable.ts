@@ -38,6 +38,7 @@ import { pageMessageIds } from "../messageids.js";
 import { writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
 import { type PendingSlot } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { askPlayableBounds } from "./waveriderbounds.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
 
 /**
@@ -99,7 +100,10 @@ async function writeTable(): Promise<void> {
   const name = $<HTMLInputElement>("tableName").value.trim();
 
   const table = new Uint8Array(await picked.arrayBuffer());
-  const unplayable = unplayableReason({ waves, points });
+  // Asked before the card is built, so "will it play" is this build's answer rather than the rule
+  // of the builds that came before it.
+  const playable = await askPlayableBounds(output);
+  const unplayable = unplayableReason({ waves, points }, playable.bounds);
 
   verdictCard("Writing a table…", [
     ["File", `${picked.name} — ${table.length.toLocaleString()} bytes`],
@@ -107,6 +111,7 @@ async function writeTable(): Promise<void> {
     ["Name", name],
     ["Geometry", `${waves} x ${points}`],
     ["Hash", `0x${xxHash32(table).toString(16).padStart(8, "0")} — computed here, not taken`],
+    ["The pool plays", playable.why],
     ["Will it play", unplayable ?? "yes, the pool loads this geometry"],
     ["Guard", "the slot must be empty in a fresh listing, and the listing must show it afterwards"],
   ]);
@@ -125,6 +130,7 @@ async function writeTable(): Promise<void> {
         confirm: confirmFileWrite,
       },
       table: pendingFrom(table, slot, name, waves, points),
+      ...(playable.bounds === undefined ? {} : { playable: playable.bounds }),
       onStatus: (message) => status(message),
       timeoutMs: 60_000,
     });

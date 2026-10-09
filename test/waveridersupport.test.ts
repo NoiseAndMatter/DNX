@@ -277,7 +277,7 @@ test("a feature needs both its bit and its route", () => {
   // exists. Where they would not, a pool pane whose route is absent fails when somebody uses it.
   const noRoute = featuresFrom(["waverider"], {
     version: 1, bytes: 256, capabilities: 0x3f, unknown: 0,
-    can: { store: true, pool: true, rename: true, poolCas: true, page: true },
+    can: { store: true, pool: true, rename: true, poolCas: true, page: true, playable: false },
     poolSlots: 128, poolRecordVersion: 2, storeSlots: 256,
     poolNameChars: 15, shownNameChars: 14, imageId: 1,
     os: "1.11", buildTag: "t", commit: "c", modCount: 0, mods: [],
@@ -285,4 +285,44 @@ test("a feature needs both its bit and its route", () => {
 
   assert.equal(noRoute.pool, false, "the bit is set and the route is not listed");
   assert.equal(noRoute.tab, true);
+});
+
+test("the playable bounds pass through, and their absence is a rule rather than a gap", () => {
+  const base = {
+    version: 1, bytes: 256, unknown: 0,
+    poolSlots: 128, poolRecordVersion: 2, storeSlots: 256,
+    poolNameChars: 15, shownNameChars: 14, imageId: 1,
+    os: "1.11", buildTag: "t", commit: "c", modCount: 0, mods: [],
+  };
+  const can = { store: true, pool: true, rename: true, poolCas: true, page: true };
+  const roots = ["waverider", "wavepool"];
+
+  const reported = featuresFrom(roots, {
+    ...base,
+    capabilities: 0x77,
+    can: { ...can, playable: true },
+    playable: { maxWaves: 64, minPoints: 64, maxPoints: 4_096, pointsPowerOfTwo: true },
+  });
+  assert.deepEqual(reported.playable, {
+    maxWaves: 64,
+    minPoints: 64,
+    maxPoints: 4_096,
+    pointsPowerOfTwo: true,
+  });
+
+  // **Undefined means 16 x 512, which `unplayableReason` applies.** Unlike `poolSlots` there is an
+  // honest default here, because the spec names it, so nothing downstream has to resolve this.
+  const notReported = featuresFrom(roots, {
+    ...base,
+    capabilities: 0x37,
+    can: { ...can, playable: false },
+  });
+  assert.equal(notReported.playable, undefined);
+  assert.equal(notReported.capabilitiesKnown, true, "the build answered; it answered 16 x 512");
+
+  // And a build with no record at all. The same undefined, with `capabilitiesKnown` false beside
+  // it, which is how a page tells "this build plays that pair" from "nobody said".
+  const noRecord = featuresFrom(roots);
+  assert.equal(noRecord.playable, undefined);
+  assert.equal(noRecord.capabilitiesKnown, false);
 });

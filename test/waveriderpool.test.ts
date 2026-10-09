@@ -15,6 +15,8 @@ import {
   POOL_POINTS,
   POOL_BOOT_FILL_SECONDS,
   POOL_WAVES,
+  type PlayableBounds,
+  playableGeometryPhrase,
   poolPlacement,
   unplayableReason,
 } from "@noiseandmatter/dnx-core/waverider/pool.js";
@@ -51,9 +53,75 @@ test("a table the pool will not play says so, and says what happens to it instea
   assert.match(biggest!, /full resolution and will play unchanged/,
     "a reason that only says no leaves the user thinking the write failed");
 
-  assert.match(unplayableReason({ waves: 8, points: 512 })!, /loads 16 x 512 only/);
-  assert.match(unplayableReason({ waves: 16, points: 1_024 })!, /loads 16 x 512 only/);
+  assert.match(unplayableReason({ waves: 8, points: 512 })!, /plays 16 x 512 only/);
+  assert.match(unplayableReason({ waves: 16, points: 1_024 })!, /plays 16 x 512 only/);
   assert.match(unplayableReason({ waves: 16, points: 512, sampleFormat: 2 })!, /sample format 2/);
+});
+
+/** Stage 3b's bounds, as `/modinfo` reports them. */
+const STAGE_3B: PlayableBounds = {
+  maxWaves: 64,
+  minPoints: 64,
+  maxPoints: 4_096,
+  pointsPowerOfTwo: true,
+};
+
+test("a build that reports its own bounds is judged by those and not by 16 x 512", () => {
+  // The three tables in store slots 78..81 on the owner's instrument. Every one of them is silent
+  // under the rule above and plays under these bounds, which is the whole point of the capability:
+  // DNX was printing "stored but not played" about tables that play.
+  assert.equal(unplayableReason({ waves: 64, points: 2_048 }, STAGE_3B), undefined);
+  assert.equal(unplayableReason({ waves: 64, points: 512 }, STAGE_3B), undefined);
+  assert.equal(unplayableReason({ waves: 16, points: 2_048 }, STAGE_3B), undefined);
+
+  // The ends of the range, both inclusive, and one wave is always allowed.
+  assert.equal(unplayableReason({ waves: 1, points: 64 }, STAGE_3B), undefined);
+  assert.equal(unplayableReason({ waves: 64, points: 4_096 }, STAGE_3B), undefined);
+
+  // And the same geometry still plays under the old rule, so widening never takes one away.
+  assert.equal(unplayableReason({ waves: 16, points: 512 }, STAGE_3B), undefined);
+});
+
+test("bounds are bounds: outside them a table is still stored and silent", () => {
+  assert.match(unplayableReason({ waves: 65, points: 512 }, STAGE_3B)!, /1 to 64 waves/);
+  assert.match(unplayableReason({ waves: 0, points: 512 }, STAGE_3B)!, /1 to 64 waves/);
+  assert.match(unplayableReason({ waves: 16, points: 32 }, STAGE_3B)!, /64 to 4096 points/);
+  assert.match(unplayableReason({ waves: 16, points: 8_192 }, STAGE_3B)!, /64 to 4096 points/);
+
+  // Inside the range and not a power of two, which the flag is there to refuse.
+  const odd = unplayableReason({ waves: 16, points: 1_536 }, STAGE_3B);
+  assert.match(odd!, /a power of two/);
+  // The same geometry on a build whose flag is clear. Nothing else about the bounds changed.
+  assert.equal(
+    unplayableReason({ waves: 16, points: 1_536 }, { ...STAGE_3B, pointsPowerOfTwo: false }),
+    undefined,
+  );
+
+  // The format is judged before the geometry either way: a format the pool cannot read is not a
+  // geometry problem, and saying it is would send somebody resizing a table.
+  assert.match(
+    unplayableReason({ waves: 64, points: 2_048, sampleFormat: 2 }, STAGE_3B)!,
+    /sample format 2/,
+  );
+});
+
+test("one phrase says what a build plays, so no two places word it differently", () => {
+  assert.equal(playableGeometryPhrase(), "16 x 512 only");
+  assert.equal(
+    playableGeometryPhrase(STAGE_3B),
+    "1 to 64 waves of 64 to 4096 points, the points a power of two",
+  );
+  // A build that plays one point count says so without pretending to be a range.
+  assert.equal(
+    playableGeometryPhrase({ ...STAGE_3B, minPoints: 512, maxPoints: 512 }),
+    "1 to 64 waves of 512 points, the points a power of two",
+  );
+
+  // The reason uses it, which is what keeps them from drifting.
+  assert.match(
+    unplayableReason({ waves: 128, points: 512 }, STAGE_3B)!,
+    new RegExp(`plays ${playableGeometryPhrase(STAGE_3B)}\.`),
+  );
 });
 
 test("the pool is handed out in slot order, and runs out at 127", () => {

@@ -40,7 +40,7 @@ import { type Entry, ListingError, listRequest, wholeListing } from "./storage.j
 import { IDS_FOR } from "./messageids.js";
 import { type PendingSlot, buildSlotFile } from "../waverider/slotfile.js";
 import { INDEX_ENTRIES } from "../waverider/layout.js";
-import { unplayableReason } from "../waverider/pool.js";
+import { type PlayableBounds, unplayableReason } from "../waverider/pool.js";
 
 /** The route. Zero-based, deliberately unlike `/projects`. */
 export const WAVERIDER = "/waverider";
@@ -65,6 +65,15 @@ export interface WriteTableOptions {
   table: PendingSlot;
   /** Allow a slot that already holds a table. Requires `onBackup`. */
   overwrite?: boolean;
+  /**
+   * What this instrument's pool plays, from `askWaveriderSupport`. Omitted means the 16 x 512 rule.
+   *
+   * **Taken rather than read here.** This path has a transport and could ask `/modinfo` itself, and
+   * that would put the capability gate in the write primitive, where a second copy of the rule
+   * would drift from `featuresFrom`. A caller that has asked passes the answer; one that has not
+   * gets the older rule, which is right for the builds that have no record at all.
+   */
+  playable?: PlayableBounds;
   onBackup?: BackupHook;
   onStatus?: (message: string) => void;
   onProgress?: (done: number, total: number, stage: "write" | "verify" | "backup") => void;
@@ -128,7 +137,7 @@ export async function writeTableToSlot(options: WriteTableOptions): Promise<Writ
   // Built before anything is asked or sent, so a table the firmware would refuse is refused here
   // and the person is never asked about a write that cannot work.
   const bytes = buildSlotFile(table);
-  const unplayable = unplayableReason(table);
+  const unplayable = unplayableReason(table, options.playable);
 
   const target = await entryForSlot(transport, slot, host.ids.reserve(IDS_FOR.oneMessage), timeoutMs);
 
