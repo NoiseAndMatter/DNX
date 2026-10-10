@@ -460,6 +460,25 @@ One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows
 and its pool slot.`,
       },
       {
+        heading: "Seeing what a table looks like",
+        body: `Click a row in the **+Drive wavetables** pane to draw that table.
+
+A name does not tell you whether a table is bright or hollow, and two can share one. The preview
+under the store draws **every frame of the table at once**, stacked front to back, so the shape is
+there to read.
+
+1. Click any occupied row in the right pane.
+2. Drag **Position** to pick one frame out of the stack.
+
+The frame you pick is drawn bright, with a dashed line under it; the rest stay dim. **Position**
+is the same number a sound's **WT.POS** sets, so frame 24 of 64 is what you hear at a position of
+0.365.
+
+- Reading one table costs one read from the instrument. Picking it again afterwards is free.
+- **Refresh** forgets every table it has read.
+- Nothing here changes the instrument, and **Position** moves only the drawing.`,
+      },
+      {
         id: "wavetable-pool-kinds",
         heading: "The three kinds of pool",
         body: `Check which kind of pool a project has before you upload a table to the instrument.

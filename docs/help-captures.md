@@ -11,7 +11,7 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-10-09
 
-**22 of the 24 referenced PNGs exist.** 9 pages, 38 sections, 24 screenshot slots. Counted from the
+**22 of the 24 referenced PNGs exist.** 9 pages, 39 sections, 24 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
 The two outstanding ones are both the Library's **Wavetables** mode, added 2026-10-09. They need an
@@ -19,6 +19,14 @@ instrument whose firmware carries the wavetable store. `wavetables-missing.png` 
 more: a pool entry naming a store slot that is empty, which means deleting a stored table that a
 pool names. **That is a write, so it waits for a session where the owner is arming writes anyway.**
 It is the only shot in the manifest that cannot be taken by reading.
+
+**A third is owed but not yet in the manifest.** *Seeing what a table looks like*, added
+2026-10-10 with the wavetable preview, describes a surface rather than a rule, so by the test
+above it should carry a picture. It has no `image` yet because the drawing needs a table: an
+instrument with the wavetable store, a slot with something in it, and the preview open on that
+slot. Reading is enough to take it — no write — so it goes with the next session that has the
+instrument to hand. A slot is deliberately not reserved for it here: a row in the manifest
+naming a file nobody has taken is what `test/helppages.test.ts` exists to catch.
 
 The two Library preset shots came last in the first round, because both are the instrument's +Drive
 pane and it holds nothing until a **Digitone II** answers. They were taken against `/soundbanks/A`,
@@ -108,7 +116,8 @@ pending costs a reader nothing; a picture of an empty box costs them the belief 
 
 ## Sections with no screenshot, on purpose
 
-Fifteen of the 38 sections carry no image. A section explaining a rule rather than a surface does not
+Fifteen of the 39 sections carry no image on purpose, and one more is waiting for hardware
+(above). A section explaining a rule rather than a surface does not
 need one, and an invented picture is worse than none: *Nothing leaves this machine*, *What DNX will
 not do*, *Apply, then export or write*, *What it writes*, *Writing*, *Every write backs up first*,
 *If something goes wrong*, *A .dnx is a zip*, *What manifest.json is for*, and *Why the write switch
