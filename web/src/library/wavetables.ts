@@ -34,6 +34,7 @@
 
 import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
+import { installHelpMarkers } from "../helpmarker.js";
 import { renderGrid, type SlotView } from "../grid.js";
 import { pageMessageIds } from "../messageids.js";
 import { type StatusWriter } from "../statusbar.js";
@@ -105,6 +106,13 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * *Wavetable pool* over the preset pool. Found by opening the page and pressing both tabs.
    */
   const titlesBefore = new Map<string, string>();
+  /**
+   * And where the two panes' `?` markers pointed.
+   *
+   * Same bug as the titles, one layer down. The marker on the left heading opened *Why both are on
+   * one page*, about the preset pool, under a heading reading **Wavetable pool**.
+   */
+  const helpBefore = new Map<HTMLElement, string>();
 
   const projects = (): HTMLSelectElement => $<HTMLSelectElement>("wavepoolProject");
 
@@ -112,6 +120,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     const box = $("wavepoolNote");
     box.hidden = false;
     box.innerHTML = html;
+    // The note's own `?` is a child of the box, so writing `innerHTML` deletes it. Put it back
+    // here: this is the only place the box's contents are set.
+    installHelpMarkers(box.parentElement ?? box);
   }
 
   function hideOurs(): void {
@@ -176,6 +187,38 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   }
 
   const TITLES = ["leftTitle", "poolSub", "libraryTitle", "librarySub"] as const;
+
+  /** The `h2` a pane's title span sits in, which is what carries the `?`. */
+  function headingOf(titleId: string): HTMLElement {
+    const h2 = $(titleId).closest("h2");
+    if (!(h2 instanceof HTMLElement)) {
+      throw new Error(`#${titleId} is no longer inside a heading, so its ? cannot be retargeted`);
+    }
+    return h2;
+  }
+
+  /**
+   * Point one block's `?` somewhere else, remembering where it pointed.
+   *
+   * The marker is rebuilt. `installHelpMarkers` closes over the target when it makes the button, so
+   * changing the attribute on its own leaves a `?` that still opens the old section.
+   */
+  function helpFor(host: HTMLElement, target: string): void {
+    if (!helpBefore.has(host)) helpBefore.set(host, host.dataset["help"] ?? "");
+    host.dataset["help"] = target;
+    host.querySelector(":scope > .helpq")?.remove();
+    installHelpMarkers(host.parentElement ?? host);
+  }
+
+  /** And put each of them back, on the way out. */
+  function restoreHelp(): void {
+    for (const [host, was] of helpBefore) {
+      host.dataset["help"] = was;
+      host.querySelector(":scope > .helpq")?.remove();
+      installHelpMarkers(host.parentElement ?? host);
+    }
+    helpBefore.clear();
+  }
 
   function heading(left: string, leftSub: string, right: string, rightSub: string): void {
     $("leftTitle").textContent = left;
@@ -389,9 +432,12 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         $(id).hidden = true;
       }
       for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
+      helpFor(headingOf("leftTitle"), "library/wavetable-modes");
+      helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
     } else {
       for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
       for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
+      restoreHelp();
       hideOurs();
       return;
     }
