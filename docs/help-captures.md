@@ -9,16 +9,20 @@ Until a PNG is on disk, its slot renders a labelled placeholder carrying the sec
 That is harmless and deliberate: **sections are written before the shots are taken**, so a page
 half-captured reads as in progress rather than broken.
 
-## Capture status, 2026-10-09
+## Capture status, 2026-10-12
 
-**22 of the 24 referenced PNGs exist.** 9 pages, 39 sections, 24 screenshot slots. Counted from the
+**23 of the 24 referenced PNGs exist.** 9 pages, 39 sections, 24 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-The two outstanding ones are both the Library's **Wavetables** mode, added 2026-10-09. They need an
-instrument whose firmware carries the wavetable store. `wavetables-missing.png` needs one thing
-more: a pool entry naming a store slot that is empty, which means deleting a stored table that a
-pool names. **That is a write, so it waits for a session where the owner is arming writes anyway.**
-It is the only shot in the manifest that cannot be taken by reading.
+The one outstanding shot is the Library's **When a cell says MISSING**. It needs a pool entry
+naming a store slot that is empty, which means deleting a stored table that a pool names. **That is
+a write, so it waits for a session where the owner is arming writes anyway.** It is the only shot in
+the manifest that cannot be taken by reading.
+
+`wavetables-pane.png` was taken 2026-10-09 against a Digitone II whose firmware carries the
+wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
+reach main and render a placeholder there. The count below is what catches that, which is why it is
+counted from `web/help/` rather than written down.
 
 **A third is owed but not yet in the manifest.** *Seeing what a table looks like*, added
 2026-10-10 with the wavetable preview, describes a surface rather than a rule, so by the test
@@ -75,7 +79,7 @@ closing step. Re-open any suspect image before committing it.
 | `insights-compare.png` | Insights | Comparing patterns | captured |
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
-| `wavetables-pane.png` | Library | The Wavetables mode | outstanding, needs a wavetable firmware |
+| `wavetables-pane.png` | Library | The Wavetables mode | captured |
 | `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, needs a pool entry whose table was deleted |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
