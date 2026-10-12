@@ -44,6 +44,8 @@
   --dim: #556366;
   --teal: #79b8ac;
   --teal-dim: #2f4a47;
+  /* Between `--teal` and `--teal-dim`: the frames either side of the one being pointed at. */
+  --teal-mid: #4e7a73;
   --amber: #c8a06a;
   --salmon: #cf6f62;
   --steel: #6f95b5;
@@ -986,4 +988,39 @@ body.app.insights .slot { cursor: pointer; }
  */
 .bar .btn[aria-pressed="true"] {
   border-color: var(--teal-dim); color: var(--teal); background: #1d2726;
+}
+
+/*
+ * The wavetable preview: a stack of every frame in the chosen table.
+ *
+ * Laid out as three rows of a flex column — a header strip that names what is drawn, the drawing
+ * itself, and the position control — because the drawing is the only part that should take the
+ * slack when the pane is tall, and `flex: 1` on one child says that once.
+ *
+ * The stage has a **minimum height rather than an aspect ratio**. The box the SVG reports changes
+ * with the view and with how tall the table's own peaks are, and a fixed ratio would letterbox one
+ * table and crop another; `preserveAspectRatio` already fits the drawing inside whatever height
+ * this gives it.
+ */
+.wfpanel { margin-top: .75rem; display: flex; flex-direction: column; gap: .7rem; }
+.wfhead { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
+.wflabel { font-size: .66rem; letter-spacing: .08em; text-transform: uppercase;
+  font-weight: 600; color: var(--teal); }
+.wfmeta { font-family: ui-monospace, Consolas, monospace; font-size: .72rem; color: var(--muted); }
+.wfspacer { flex-grow: 1; }
+.wfstage { min-height: 16rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 3px; padding: .6rem; display: flex; }
+.wfstage svg { width: 100%; height: auto; max-height: 24rem; }
+.wfstage .wfempty { margin: auto; color: var(--muted); font-size: .8rem; text-align: center;
+  max-width: 28rem; line-height: 1.5; }
+.wfcontrols { display: flex; align-items: center; gap: .8rem; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 3px; padding: .6rem .75rem; }
+.wfcontrols .lbl { margin: 0; white-space: nowrap; }
+.wfcontrols input[type="range"] { flex-grow: 1; min-height: 2.75rem; accent-color: var(--teal); }
+.wfpos { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--fg);
+  min-width: 11rem; text-align: right; }
+@media (max-width: 40rem) {
+  .wfcontrols { flex-wrap: wrap; }
+  .wfpos { min-width: 0; text-align: left; }
 }

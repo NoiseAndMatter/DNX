@@ -200,6 +200,41 @@
       <div class="libtablewrap" id="libraryGrid" hidden></div>
       <!-- The wavetable store: 256 slots, shared by every project, with no banks and no tags. -->
       <div class="libtablewrap" id="wavestoreGrid" hidden></div>
+
+      <!--
+        **What the table actually looks like, which no row can say.**
+
+        A store row gives a slot and a name. Two tables called `WR test` differ in the only way that
+        matters once they are in a pool, and the instrument's own display shows one frame at a time.
+        Stacking every frame front to back is the one picture that answers "is this the bright one
+        or the hollow one" without loading it into a sound.
+
+        **It costs a file read per table**, which is why it draws the chosen slot and not all 256,
+        and why the store table still carries no geometry column: the geometry here is read from
+        the slot that was asked for, and claiming it for every row would be 256 reads nobody asked
+        for.
+
+        There is no Play control. This mode is read-only by construction, and the two things Play
+        could mean — synthesising the table in the browser, or driving the instrument's pool
+        position — are a new capability and a device write respectively.
+      -->
+      <div class="wfpanel" id="wavePreview" hidden>
+        <div class="wfhead">
+          <span class="wflabel">Wavetable preview</span>
+          <span class="wfmeta" id="wavePreviewWhere"></span>
+          <span class="wfspacer"></span>
+          <span class="wfmeta" id="wavePreviewGeom"></span>
+        </div>
+        <div class="wfstage" id="wavePreviewStage"></div>
+        <div class="wfcontrols">
+          <label class="lbl" for="wavePreviewPos">Position</label>
+          <input
+            id="wavePreviewPos" type="range" min="1" max="2" step="1" value="1"
+            title="Which frame of the table to pick out of the stack"
+          >
+          <span class="wfpos" id="wavePreviewPosLabel"></span>
+        </div>
+      </div>
     </section>
 
     <!--

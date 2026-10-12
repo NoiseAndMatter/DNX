@@ -36,7 +36,7 @@ import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devic
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
 import { renderGrid, type SlotView } from "../grid.js";
-import { pageMessageIds } from "../messageids.js";
+import { IDS_FOR, pageMessageIds, reserveMessageIds } from "../messageids.js";
 import { type StatusWriter } from "../statusbar.js";
 import {
   type PoolReading,
@@ -47,6 +47,10 @@ import {
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 import { type PoolCell, describePool } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { type SlotFile, readSlotFile } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
+import { waterfall } from "@noiseandmatter/dnx-core/waverider/waterfall.js";
+import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { paintWaterfall } from "./waterfallview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 
 /**
@@ -71,7 +75,13 @@ const SOUNDS_ONLY = [
 ] as const;
 
 /** Elements this mode owns. */
-const OURS = ["wavepoolBar", "wavepoolGrid", "wavepoolNote", "wavestoreGrid"] as const;
+const OURS = [
+  "wavepoolBar",
+  "wavepoolGrid",
+  "wavepoolNote",
+  "wavestoreGrid",
+  "wavePreview",
+] as const;
 
 export interface WavetableHost {
   /** The instrument, when one is connected. */
@@ -342,6 +352,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       tr.addEventListener("click", () => {
         pickedSlot = slot.slot;
         renderStore();
+        void showPreview(slot.slot);
       });
       body.append(tr);
     }
@@ -355,6 +366,139 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       "+Drive wavetables",
       `— ${used} of ${reading.store.length} slots used, shared by every project`,
     );
+  }
+
+
+  /**
+   * Tables already read, by store slot.
+   *
+   * **Cached because the read is the expensive part and the slot cannot change under us** — a
+   * `/waverider` slot is only written by this application, behind the write gate, and Refresh
+   * clears this along with everything else. Clicking back and forth between two tables after that
+   * costs nothing, which is exactly the comparison the preview is for.
+   */
+  const tables = new Map<number, SlotFile>();
+  /** Which frame each slot's slider is on, so going back to a table returns to where you were. */
+  const frameOf = new Map<number, number>();
+  /** The slot currently drawn, so the slider knows what it is moving. */
+  let previewSlot: number | undefined;
+  /** One read at a time, so a fast double click cannot interleave two slot reads. */
+  let previewBusy = false;
+
+  const stage = (): HTMLElement => $("wavePreviewStage");
+  const slider = (): HTMLInputElement => $<HTMLInputElement>("wavePreviewPos");
+
+  /** A sentence in the stage instead of a drawing. */
+  function previewMessage(text: string): void {
+    const box = document.createElement("p");
+    box.className = "wfempty";
+    box.textContent = text;
+    stage().replaceChildren(box);
+  }
+
+  /**
+   * Draw whatever `previewSlot` names, or say why there is nothing to draw.
+   *
+   * Separated from the read so moving the slider redraws without asking the instrument again.
+   */
+  function drawPreview(): void {
+    const panel = $("wavePreview");
+    const slot = previewSlot;
+    if (slot === undefined) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+
+    const file = tables.get(slot);
+    const where = $("wavePreviewWhere");
+    const geom = $("wavePreviewGeom");
+    const label = $("wavePreviewPosLabel");
+
+    if (!file) {
+      where.textContent = `store ${slot}`;
+      geom.textContent = "";
+      label.textContent = "";
+      slider().disabled = true;
+      return;
+    }
+
+    const { entry, table } = file;
+    const inPool = reading?.summary.byStoreSlot.get(slot) ?? [];
+    where.textContent =
+      `store ${slot} · ${entry.name || "unnamed"}` +
+      (inPool.length === 0
+        ? " · not in this pool"
+        : ` · pool slot ${inPool.map((index) => index + 1).join(", ")}`);
+    geom.textContent =
+      `${entry.waves} waves x ${entry.points} points · ` +
+      `${entry.byteLength.toLocaleString()} bytes · gain ${entry.gain.toFixed(2)}`;
+
+    const frame = Math.max(0, Math.min(entry.waves - 1, frameOf.get(slot) ?? 0));
+    frameOf.set(slot, frame);
+
+    const control = slider();
+    control.disabled = entry.waves < 2;
+    control.min = "1";
+    control.max = String(Math.max(2, entry.waves));
+    control.value = String(frame + 1);
+    label.textContent =
+      `frame ${frame + 1} / ${entry.waves}` +
+      (entry.waves < 2 ? "" : ` · ${(frame / (entry.waves - 1)).toFixed(3)}`);
+
+    try {
+      paintWaterfall(stage(), waterfall(table, entry, frame), {
+        current: frame,
+        waves: entry.waves,
+      });
+    } catch (error) {
+      // A table whose geometry does not measure its bytes is a real thing on a +Drive, and the
+      // view refuses it by name rather than drawing a wave that is not there.
+      previewMessage(`This table cannot be drawn. ${String(error)}`);
+    }
+  }
+
+  /** Read one store slot's table and draw it. */
+  async function showPreview(slot: number): Promise<void> {
+    const device = host.device();
+    previewSlot = slot;
+
+    const row = reading?.store.find((entry) => entry.slot === slot);
+    if (row && !row.occupied) {
+      $("wavePreview").hidden = false;
+      $("wavePreviewWhere").textContent = `store ${slot}`;
+      $("wavePreviewGeom").textContent = "";
+      $("wavePreviewPosLabel").textContent = "";
+      slider().disabled = true;
+      previewMessage("That slot is empty, so there is no table to draw.");
+      return;
+    }
+    if (tables.has(slot)) {
+      drawPreview();
+      return;
+    }
+    if (!device || previewBusy) return;
+
+    $("wavePreview").hidden = false;
+    slider().disabled = true;
+    previewMessage(`Reading store slot ${slot}…`);
+    previewBusy = true;
+    try {
+      const file = await readStoredFile(`/waverider/${slot}`, {
+        transport: apiTransport(device),
+        msgId: reserveMessageIds(IDS_FOR.oneObject),
+      });
+      tables.set(slot, readSlotFile(file.bytes));
+      // Only draw if the chosen slot is still this one: a click during the read wins.
+      if (previewSlot === slot) drawPreview();
+    } catch (error) {
+      if (previewSlot === slot) {
+        previewMessage(`Store slot ${slot} could not be read. ${String(error)}`);
+      }
+      host.status(`Could not read store slot ${slot}: ${String(error)}`, "warn");
+    } finally {
+      previewBusy = false;
+    }
   }
 
   async function fillProjects(device: ConnectedDevice): Promise<void> {
@@ -396,6 +540,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     try {
       host.status(`Reading the wavetable store and the pool of project slot ${projectSlot}…`);
       picked = undefined;
+      previewSlot = undefined;
+      tables.clear();
+      frameOf.clear();
+      $("wavePreview").hidden = true;
       reading = await readPool({
         transport: apiTransport(device),
         ids: pageMessageIds,
@@ -488,6 +636,14 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
   $("wavepoolRefresh").addEventListener("click", () => {
     void refresh();
+  });
+  // `input` rather than `change`, so dragging the slider sweeps the stack instead of jumping once
+  // on release. Redrawing is local arithmetic on a table already in hand; nothing is asked of the
+  // instrument here.
+  slider().addEventListener("input", () => {
+    if (previewSlot === undefined) return;
+    frameOf.set(previewSlot, Number(slider().value) - 1);
+    drawPreview();
   });
 
   return { show, refresh };
