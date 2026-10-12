@@ -72,6 +72,41 @@ test("the pane itself still reaches no write path", () => {
   assert.deepEqual(found, [], "a write path reached straight from the pane; it belongs in importstage.ts");
 });
 
+test("the write control is enabled by the panel, not only by its own handler", () => {
+  /*
+   * **This test exists because the feature shipped unreachable and everything else passed.**
+   *
+   * `wavimportWrite` carries `disabled` in the markup. The only line clearing it sat inside
+   * `writeAll`, which cannot run until the button is pressed, so the button could never be
+   * pressed and the whole write path was dead. The suite was green: the other tests read the
+   * source for the names they wanted and found them.
+   *
+   * The rule that catches it is that the **render** decides the control's state. A control whose
+   * `disabled` is only ever restored at the end of its own run has nothing that can first turn it
+   * on. This is the same shape as the "Save to +Drive" button that shipped hidden with nothing to
+   * unhide it, so it is worth a standing check rather than a memory.
+   */
+  assert.match(
+    PAGE,
+    /id="wavimportWrite"[^>]*\sdisabled/,
+    "if this control no longer ships disabled, this test is guarding nothing — rewrite it",
+  );
+
+  const start = STAGING.indexOf("function renderPanel(");
+  assert.ok(start > 0, "renderPanel has been renamed; this check no longer guards anything");
+  // The next function declared at the same indent ends it. These all sit inside `wireImport`.
+  const rest = STAGING.slice(start + 1);
+  const end = rest.search(/\n {2}(?:async )?function /);
+  const body = end === -1 ? rest : rest.slice(0, end);
+
+  assert.match(
+    body,
+    /wavimportWrite"\)\.disabled =/,
+    "renderPanel must decide whether the write control can be pressed; otherwise nothing can " +
+      "turn it on and the feature is unreachable",
+  );
+});
+
 test("the one write the mode has is gated per write and asks once", () => {
   /*
    * **This is the test that replaced the read-only one, and it has to assert presence.** The names

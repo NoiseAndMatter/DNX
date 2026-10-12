@@ -53,7 +53,6 @@ import {
   stemFromFileName,
 } from "@noiseandmatter/dnx-core/waverider/importplan.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
-import { isPowerOfTwo } from "@noiseandmatter/dnx-core/waverider/spectral.js";
 
 /** The drag type for moving a staged table, so a drop can tell one from a file. */
 const MOVE_TYPE = "application/x-dnx-staged-slot";
@@ -66,8 +65,21 @@ export interface ImportHost {
   /** What the instrument says it will play. */
   bounds(): FitBounds;
   status: StatusWriter;
-  /** Read the pool and the store again, after a write. */
-  refresh(): Promise<void>;
+  /**
+   * Redraw from what the pane already holds.
+   *
+   * For staging changes, which touch nothing on the instrument: a drop, a move, a removal.
+   */
+  redraw(): void;
+  /**
+   * Ask the instrument again.
+   *
+   * **Only after a write**, and it has to be a real read. Redrawing from the reading in hand would
+   * leave the slots that were just written still showing as free, and `occupied` still saying they
+   * are available to stage onto. Nothing could be overwritten, because the write re-lists at the
+   * moment of asking, but the pane would be describing an instrument that no longer exists.
+   */
+  reread(): Promise<void>;
 }
 
 export interface ImportStaging {
@@ -86,8 +98,6 @@ interface Staged {
   stem: string;
   decoded: DecodedFile;
   geometry: Geometry;
-  /** Whether the sample count divided into this shape exactly. */
-  exact: boolean;
   /** What the proposal said, kept so the note can show it after an override. */
   proposed: string;
 }
@@ -135,6 +145,20 @@ export function wireImport(host: ImportHost): ImportStaging {
 
     $("wavimportCount").textContent =
       `${staged.size} staged ${staged.size === 1 ? "table" : "tables"}, nothing sent`;
+
+    /*
+     * **The write control is enabled from here and nowhere else.**
+     *
+     * It ships `disabled` in the markup, and for a while nothing ever removed that: the only line
+     * clearing it sat inside `writeAll`, which cannot run until the button is pressed. The whole
+     * write path was unreachable and every test still passed, because the tests read the source
+     * rather than the page. Driving it from the state the panel already has is what makes that
+     * impossible to repeat.
+     *
+     * The red WRITE switch is a separate gate and sets `aria-disabled`, not this, so the two do
+     * not fight.
+     */
+    $<HTMLButtonElement>("wavimportWrite").disabled = staged.size === 0 || writing;
 
     const entry = picked === undefined ? undefined : staged.get(picked);
     const body = $("wavimportBody");
@@ -200,12 +224,6 @@ export function wireImport(host: ImportHost): ImportStaging {
           `count may not be the file's own. A WAV is read exactly.</p>`,
       );
     }
-    if (!bounds.pointsPowerOfTwo || isPowerOfTwo(entry.geometry.points)) {
-      // Nothing to say: the instrument's rule is met.
-    } else {
-      notes.push(`<p class="warn">This instrument needs the points to be a power of two.</p>`);
-    }
-
     $("wavimportNote").innerHTML = notes.join("");
   }
 
@@ -283,7 +301,6 @@ export function wireImport(host: ImportHost): ImportStaging {
           stem: stemFromFileName(file.name),
           decoded,
           geometry: proposal.geometry,
-          exact: proposal.exact,
           proposed: proposal.reason,
         });
         picked ??= slot;
@@ -302,7 +319,7 @@ export function wireImport(host: ImportHost): ImportStaging {
 
     replan();
     renderPanel();
-    await host.refresh();
+    host.redraw();
   }
 
   /** Move a staged table to another slot, which is how a mis-drop is corrected. */
@@ -318,7 +335,7 @@ export function wireImport(host: ImportHost): ImportStaging {
     if (picked === from) picked = to;
     replan();
     renderPanel();
-    await host.refresh();
+    host.redraw();
   }
 
   /** The one question, then the writes. */
@@ -451,7 +468,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       $<HTMLButtonElement>("wavimportWrite").disabled = false;
       replan();
       renderPanel();
-      await host.refresh();
+      await host.reread();
     }
   }
 
@@ -529,7 +546,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       stopAudition();
       replan();
       renderPanel();
-      void host.refresh();
+      host.redraw();
     });
     $("wavimportClear").addEventListener("click", () => {
       staged.clear();
@@ -537,7 +554,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       stopAudition();
       replan();
       renderPanel();
-      void host.refresh();
+      host.redraw();
     });
     $("wavimportWrite").addEventListener("click", () => {
       void writeAll();

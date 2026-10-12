@@ -134,10 +134,13 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       new Set((reading?.store ?? []).filter((slot) => slot.occupied).map((slot) => slot.slot)),
     bounds: (): FitBounds => storeBounds(),
     status: host.status,
-    refresh: async () => {
+    redraw: () => {
       renderStore();
-      await Promise.resolve();
     },
+    // The mode's own refresh, which reads the pool and the store from the instrument. A write
+    // changes what is out there, so redrawing the reading in hand would show the slots that were
+    // just written as still free.
+    reread: refresh,
   });
 
   /**

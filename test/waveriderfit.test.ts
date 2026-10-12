@@ -15,7 +15,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  STAGE3D_BOUNDS,
   STOCK_BOUNDS,
   fitToGeometry,
   proposeGeometry,
@@ -41,14 +40,22 @@ function peak(a: ArrayLike<number>): number {
   return worst;
 }
 
-test("the bounds constants say what each build plays", () => {
-  // Read out of modinfo.c by the firmware session on 2026-10-13. Bytes from an instrument win.
-  assert.deepEqual(STAGE3D_BOUNDS, {
-    maxWaves: 64,
-    minPoints: 64,
-    maxPoints: 4096,
-    pointsPowerOfTwo: true,
-  });
+/**
+ * What stage3d reports, as the firmware session read it out of `modinfo.c` on 2026-10-13.
+ *
+ * Byte 248 is 64, 249 is 6 (log2 of 64), 250 is 12 (log2 of 4,096), 251 is 1 for the
+ * points-are-a-power-of-two rule. **A fixture, and it lives here rather than in the library**,
+ * because the pane reads these bytes from the instrument now and a hard-coded copy in `fit.ts`
+ * was something a caller could reach for instead of asking.
+ */
+const STAGE3D_BOUNDS: FitBounds = {
+  maxWaves: 64,
+  minPoints: 64,
+  maxPoints: 4096,
+  pointsPowerOfTwo: true,
+};
+
+test("the stock fallback is the one geometry a build without the capability plays", () => {
   assert.equal(STOCK_BOUNDS.minPoints, 512);
   assert.equal(STOCK_BOUNDS.maxPoints, 512);
   assert.equal(STOCK_BOUNDS.maxWaves, 16);
@@ -92,6 +99,32 @@ test("a recording that divides into nothing is proposed a shape and told it will
   assert.equal(proposal.geometry.points, 4096);
   assert.equal(proposal.geometry.waves, 11);
   assert.match(proposal.reason, /resampled to fit/);
+});
+
+test("a shape that divides but is not played says so, rather than blaming the file", () => {
+  /*
+   * **Found by dropping a real file on the page, not by the suite.** A 16 x 2048 export is 32,768
+   * samples, which divides by 2,048 perfectly. On a stock build the only allowed length is 512 and
+   * 64 frames is over the limit, so the proposal falls through to its inexact path — correctly.
+   * The message, though, said the count was not a whole number of frames at any conventional
+   * length, which is false and sends somebody off to re-export a file that was already right.
+   */
+  const proposal = proposeGeometry(16 * 2048, STOCK_BOUNDS);
+  assert.equal(proposal.exact, false);
+  assert.deepEqual(proposal.geometry, { waves: 16, points: 512 });
+
+  assert.match(proposal.reason, /divides exactly as/);
+  assert.match(proposal.reason, /16 x 2048/);
+  assert.doesNotMatch(
+    proposal.reason,
+    /not a whole number of frames/,
+    "this file divides perfectly; the limit is the instrument's, and the message must say which",
+  );
+
+  // And a count that genuinely divides into nothing still gets the other sentence.
+  const ragged = proposeGeometry(44_100, STOCK_BOUNDS);
+  assert.equal(ragged.exact, false);
+  assert.match(ragged.reason, /not a whole number of frames/);
 });
 
 test("a proposal never leaves the bounds it was given", () => {

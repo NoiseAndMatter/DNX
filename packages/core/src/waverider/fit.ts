@@ -68,20 +68,6 @@ export interface Geometry {
 export type FitBounds = PlayableBounds;
 
 /**
- * What stage3d reports, as the firmware session read it out of `modinfo.c` on 2026-10-13.
- *
- * Byte 248 is 64, 249 is 6 (log2 of 64), 250 is 12 (log2 of 4,096), 251 is 1 for the
- * points-are-a-power-of-two rule. **Bytes read back from an instrument win over this constant** —
- * it is here so a test and a dry run have something real to use, not as a substitute for asking.
- */
-export const STAGE3D_BOUNDS: FitBounds = {
-  maxWaves: 64,
-  minPoints: 64,
-  maxPoints: 4096,
-  pointsPowerOfTwo: true,
-};
-
-/**
  * The one geometry a build reporting no playable capability loads.
  *
  * Expressed as bounds so it can be passed anywhere bounds are wanted. Note that a stock build
@@ -173,12 +159,36 @@ export function proposeGeometry(sampleCount: number, bounds: FitBounds): Geometr
     Math.min(...candidates),
   );
   const waves = Math.min(bounds.maxWaves, Math.max(1, Math.round(sampleCount / points)));
+
+  /*
+   * **Say which of the two things went wrong, because they call for opposite actions.**
+   *
+   * Reaching here means no *allowed* shape divided the count, and that happens two ways. Either
+   * nothing divides it at all, and the file is not a wavetable export, or something divides it
+   * perfectly and this build will not play that shape. Reporting the second as the first tells
+   * somebody holding a correct 64 x 2048 table that their file does not divide, and they go and
+   * re-export a file that was already right. Seen on a stock build, where the only allowed length
+   * is 512 and a 16 x 2048 file lands here.
+   */
+  const divides = CONVENTIONAL_POINTS.filter((candidate) => sampleCount % candidate === 0)
+    .map((candidate) => `${sampleCount / candidate} x ${candidate}`);
+  // Three at most. A count like 32,768 divides seven ways, and listing all of them turns a useful
+  // sentence into a wall nobody reads. They are already in order of how likely each is to be what
+  // the file actually is, so the first few are the ones worth naming.
+  const named = divides.slice(0, 3).join(" or ");
+  const others = divides.length - 3;
+
   return {
     geometry: { waves, points },
     exact: false,
     reason:
-      `${sampleCount.toLocaleString()} samples is not a whole number of frames at any conventional ` +
-      `cycle length, so this is ${waves} frames of ${points} points with the source resampled to fit.`,
+      divides.length === 0
+        ? `${sampleCount.toLocaleString()} samples is not a whole number of frames at any ` +
+          `conventional cycle length, so this is ${waves} frames of ${points} points with the ` +
+          `source resampled to fit.`
+        : `${sampleCount.toLocaleString()} samples divides exactly as ${named}` +
+          `${others > 0 ? ` and ${others} other shapes` : ""}, and this instrument plays none of ` +
+          `them, so this is ${waves} frames of ${points} points with the source resampled to fit.`,
   };
 }
 
