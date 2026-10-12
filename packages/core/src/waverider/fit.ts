@@ -48,6 +48,7 @@
  */
 
 import { WaveriderError } from "./errors.js";
+import { POOL_POINTS, POOL_WAVES, type PlayableBounds } from "./pool.js";
 import { isPowerOfTwo, resampleCycle } from "./spectral.js";
 
 /** Frames, and points per frame. */
@@ -59,21 +60,12 @@ export interface Geometry {
 /**
  * What the instrument says it will play.
  *
- * Deliberately a plain shape owned by this file rather than an import from the capability reader.
- * A caller that has read `/modinfo` fills it from those bytes; a caller talking to a build that
- * reports nothing fills it from what that build plays. Either way this file does not need to know
- * where the numbers came from, and does not acquire a dependency on how they are reported.
+ * **The judge's own type, not a second one.** `unplayableReason` decides whether a table plays and
+ * takes `PlayableBounds`; this file decides what shape to make and takes the same thing. They were
+ * briefly two identical shapes in two files, which is the arrangement where one of them gains a
+ * field and the other quietly stops agreeing with it.
  */
-export interface FitBounds {
-  /** Most frames the player will load. */
-  maxWaves: number;
-  /** Fewest points per frame. */
-  minPoints: number;
-  /** Most points per frame. */
-  maxPoints: number;
-  /** Whether `points` must be a power of two. */
-  pointsPowerOfTwo: boolean;
-}
+export type FitBounds = PlayableBounds;
 
 /**
  * What stage3d reports, as the firmware session read it out of `modinfo.c` on 2026-10-13.
@@ -98,9 +90,9 @@ export const STAGE3D_BOUNDS: FitBounds = {
  * make it.
  */
 export const STOCK_BOUNDS: FitBounds = {
-  maxWaves: 16,
-  minPoints: 512,
-  maxPoints: 512,
+  maxWaves: POOL_WAVES,
+  minPoints: POOL_POINTS,
+  maxPoints: POOL_POINTS,
   pointsPowerOfTwo: true,
 };
 

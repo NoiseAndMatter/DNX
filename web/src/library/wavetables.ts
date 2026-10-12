@@ -36,7 +36,7 @@ import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devic
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
 import { renderGrid, type SlotView } from "../grid.js";
-import { pageMessageIds } from "../messageids.js";
+import { IDS_FOR, pageMessageIds, reserveMessageIds } from "../messageids.js";
 import { type StatusWriter } from "../statusbar.js";
 import {
   type PoolReading,
@@ -47,9 +47,15 @@ import {
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 import { type PoolCell, describePool } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { type SlotFile, readSlotFile } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
+import { waterfall } from "@noiseandmatter/dnx-core/waverider/waterfall.js";
+import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { paintWaterfall } from "./waterfallview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import { wireImport } from "./importstage.js";
+import { auditionTable, stopAudition } from "./tableaudio.js";
+import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
 
 /**
  * Elements that belong to Sounds mode and have no meaning in this one.
@@ -73,7 +79,14 @@ const SOUNDS_ONLY = [
 ] as const;
 
 /** Elements this mode owns. */
-const OURS = ["wavepoolBar", "wavepoolGrid", "wavepoolNote", "wavestoreGrid", "wavimport"] as const;
+const OURS = [
+  "wavepoolBar",
+  "wavepoolGrid",
+  "wavepoolNote",
+  "wavestoreGrid",
+  "wavePreview",
+  "wavimport",
+] as const;
 
 export interface WavetableHost {
   /** The instrument, when one is connected. */
@@ -128,16 +141,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
 
   /**
-   * What this instrument will play, as far as this build can tell.
+   * What this instrument will play, as the instrument reported it.
    *
-   * **`STOCK_BOUNDS` until the capability bits are read.** `/modinfo` carries the playable bounds,
-   * 64 frames and 64 to 4,096 points on stage3d, and the reader for them is on
-   * `feat/modinfo-playable-bounds`, not merged. Until it is, `unplayableReason` also judges against
-   * 16 x 512 only, so proposing anything wider here would stage tables this same pane would then
-   * call unplayable. The two widen together, and this is the one line that does it.
+   * `support.features.playable` is absent on a build that does not report the capability, and the
+   * fallback is then the one `unplayableReason` applies with no bounds: 16 x 512 and nothing else.
+   * **Taking the same fallback is what keeps the two from disagreeing** — proposing a shape this
+   * pane would then call unplayable is the failure this function exists to avoid, and it is the
+   * failure that was live while the capability reader was unmerged.
    */
   function storeBounds(): FitBounds {
-    return STOCK_BOUNDS;
+    return support?.state === "supported" ? support.features.playable ?? STOCK_BOUNDS : STOCK_BOUNDS;
   }
   /**
    * And where the two panes' `?` markers pointed.
@@ -377,6 +390,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       tr.addEventListener("click", () => {
         pickedSlot = slot.slot;
         renderStore();
+        void showPreview(slot.slot);
       });
       body.append(tr);
     }
@@ -396,6 +410,149 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       `— ${used} of ${reading.store.length} slots used, shared by every project · drag audio ` +
         `files onto a free slot to import`,
     );
+  }
+
+
+  /**
+   * Tables already read, by store slot.
+   *
+   * **Cached because the read is the expensive part and the slot cannot change under us** — a
+   * `/waverider` slot is only written by this application, behind the write gate, and Refresh
+   * clears this along with everything else. Clicking back and forth between two tables after that
+   * costs nothing, which is exactly the comparison the preview is for.
+   */
+  const tables = new Map<number, SlotFile>();
+  /** Which frame each slot's slider is on, so going back to a table returns to where you were. */
+  const frameOf = new Map<number, number>();
+  /** The slot currently drawn, so the slider knows what it is moving. */
+  let previewSlot: number | undefined;
+  /** One read at a time, so a fast double click cannot interleave two slot reads. */
+  let previewBusy = false;
+
+  const stage = (): HTMLElement => $("wavePreviewStage");
+  const slider = (): HTMLInputElement => $<HTMLInputElement>("wavePreviewPos");
+
+  /** A sentence in the stage instead of a drawing. */
+  function previewMessage(text: string): void {
+    const box = document.createElement("p");
+    box.className = "wfempty";
+    box.textContent = text;
+    stage().replaceChildren(box);
+  }
+
+  /**
+   * Draw whatever `previewSlot` names, or say why there is nothing to draw.
+   *
+   * Separated from the read so moving the slider redraws without asking the instrument again.
+   */
+  function drawPreview(): void {
+    const panel = $("wavePreview");
+    const slot = previewSlot;
+    if (slot === undefined) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+
+    const file = tables.get(slot);
+    const where = $("wavePreviewWhere");
+    const geom = $("wavePreviewGeom");
+    const label = $("wavePreviewPosLabel");
+
+    if (!file) {
+      where.textContent = `store ${slot}`;
+      geom.textContent = "";
+      label.textContent = "";
+      slider().disabled = true;
+      return;
+    }
+
+    const { entry, table } = file;
+    const inPool = reading?.summary.byStoreSlot.get(slot) ?? [];
+    where.textContent =
+      `store ${slot} · ${entry.name || "unnamed"}` +
+      (inPool.length === 0
+        ? " · not in this pool"
+        : ` · pool slot ${inPool.map((index) => index + 1).join(", ")}`);
+    geom.textContent =
+      `${entry.waves} waves x ${entry.points} points · ` +
+      `${entry.byteLength.toLocaleString()} bytes · gain ${entry.gain.toFixed(2)}`;
+
+    const frame = Math.max(0, Math.min(entry.waves - 1, frameOf.get(slot) ?? 0));
+    frameOf.set(slot, frame);
+
+    const control = slider();
+    control.disabled = entry.waves < 2;
+    control.min = "1";
+    control.max = String(Math.max(2, entry.waves));
+    control.value = String(frame + 1);
+    label.textContent =
+      `frame ${frame + 1} / ${entry.waves}` +
+      (entry.waves < 2 ? "" : ` · ${(frame / (entry.waves - 1)).toFixed(3)}`);
+
+    try {
+      paintWaterfall(stage(), waterfall(table, entry, frame), {
+        current: frame,
+        waves: entry.waves,
+      });
+    } catch (error) {
+      // A table whose geometry does not measure its bytes is a real thing on a +Drive, and the
+      // view refuses it by name rather than drawing a wave that is not there.
+      previewMessage(`This table cannot be drawn. ${String(error)}`);
+    }
+  }
+
+  /** Read one store slot's table and draw it. */
+  async function showPreview(slot: number): Promise<void> {
+    /*
+     * **A staged row is not a table on the instrument, and the import panel owns it.**
+     *
+     * Both this and the staging's own row handler are bound to the same `<tr>`, so which of them
+     * runs is a question about event phases rather than about intent. Asking here instead makes it
+     * intent: without this, clicking a staged row would ask the instrument for a slot that is
+     * empty and report the failure as though the table were missing.
+     */
+    if (staging.staged().has(slot)) return;
+
+    const device = host.device();
+    previewSlot = slot;
+
+    const row = reading?.store.find((entry) => entry.slot === slot);
+    if (row && !row.occupied) {
+      $("wavePreview").hidden = false;
+      $("wavePreviewWhere").textContent = `store ${slot}`;
+      $("wavePreviewGeom").textContent = "";
+      $("wavePreviewPosLabel").textContent = "";
+      slider().disabled = true;
+      previewMessage("That slot is empty, so there is no table to draw.");
+      return;
+    }
+    if (tables.has(slot)) {
+      drawPreview();
+      return;
+    }
+    if (!device || previewBusy) return;
+
+    $("wavePreview").hidden = false;
+    slider().disabled = true;
+    previewMessage(`Reading store slot ${slot}…`);
+    previewBusy = true;
+    try {
+      const file = await readStoredFile(`/waverider/${slot}`, {
+        transport: apiTransport(device),
+        msgId: reserveMessageIds(IDS_FOR.oneObject),
+      });
+      tables.set(slot, readSlotFile(file.bytes));
+      // Only draw if the chosen slot is still this one: a click during the read wins.
+      if (previewSlot === slot) drawPreview();
+    } catch (error) {
+      if (previewSlot === slot) {
+        previewMessage(`Store slot ${slot} could not be read. ${String(error)}`);
+      }
+      host.status(`Could not read store slot ${slot}: ${String(error)}`, "warn");
+    } finally {
+      previewBusy = false;
+    }
   }
 
   async function fillProjects(device: ConnectedDevice): Promise<void> {
@@ -437,6 +594,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     try {
       host.status(`Reading the wavetable store and the pool of project slot ${projectSlot}…`);
       picked = undefined;
+      previewSlot = undefined;
+      tables.clear();
+      frameOf.clear();
+      $("wavePreview").hidden = true;
       reading = await readPool({
         transport: apiTransport(device),
         ids: pageMessageIds,
@@ -531,6 +692,61 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
   $("wavepoolRefresh").addEventListener("click", () => {
     void refresh();
+  });
+  // `input` rather than `change`, so dragging the slider sweeps the stack instead of jumping once
+  // on release. Redrawing is local arithmetic on a table already in hand; nothing is asked of the
+  // instrument here.
+  slider().addEventListener("input", () => {
+    if (previewSlot === undefined) return;
+    frameOf.set(previewSlot, Number(slider().value) - 1);
+    drawPreview();
+    // A slider drag while a note is sounding would otherwise leave the sound on the frame it
+    // started from, which reads as the picture and the sound disagreeing.
+    stopAudition();
+  });
+
+  /**
+   * Hear the table that is drawn.
+   *
+   * **This mode stayed read-only when the preview arrived, and Play was left out because the two
+   * things it could mean were a new capability and a device write.** The first is now built, so
+   * this synthesises the table in the browser and sends nothing: the instrument does not move, the
+   * sequencer does not start, and no pool position changes. Driving the instrument's own position
+   * is still a write and still not here.
+   *
+   * It plays the stored int16 at the geometry the entry declares, which is what the player reads,
+   * so what you hear is the table rather than an idealised version of it.
+   */
+  async function auditionDrawn(sweep: boolean): Promise<void> {
+    const slot = previewSlot;
+    const file = slot === undefined ? undefined : tables.get(slot);
+    if (!file) {
+      host.status("Click a table in the store first.", "warn");
+      return;
+    }
+    const { entry, table } = file;
+    const started = await auditionTable(
+      {
+        samples: readTableSamples(table),
+        waves: entry.waves,
+        points: entry.points,
+        fullScale: 32_767,
+      },
+      { sweep, frame: frameOf.get(slot!) ?? 0 },
+    );
+    if (!started) {
+      host.status("The browser would not start audio. Click the page and try again.", "warn");
+    }
+  }
+
+  $("wavePreviewPlay").addEventListener("click", () => {
+    void auditionDrawn(false);
+  });
+  $("wavePreviewSweep").addEventListener("click", () => {
+    void auditionDrawn(true);
+  });
+  $("wavePreviewStop").addEventListener("click", () => {
+    stopAudition();
   });
 
   return { show, refresh };

@@ -202,6 +202,48 @@
       <div class="libtablewrap" id="wavestoreGrid" hidden></div>
 
       <!--
+        **What the table actually looks like, which no row can say.**
+
+        A store row gives a slot and a name. Two tables called `WR test` differ in the only way that
+        matters once they are in a pool, and the instrument's own display shows one frame at a time.
+        Stacking every frame front to back is the one picture that answers "is this the bright one
+        or the hollow one" without loading it into a sound.
+
+        **It costs a file read per table**, which is why it draws the chosen slot and not all 256,
+        and why the store table still carries no geometry column: the geometry here is read from
+        the slot that was asked for, and claiming it for every row would be 256 reads nobody asked
+        for.
+
+        **Play arrived on 2026-10-13 and the reason it was absent no longer holds.** It was left
+        out because the two things it could mean were a new capability and a device write: the
+        first of those is now built, so Play synthesises the table in this browser and nothing is
+        sent to the instrument. It reads the table the way the player does, interpolating between
+        samples and between frames and wrapping each cycle, because a preview that read it
+        differently would make a wrong table sound correct. Driving the instrument's own pool
+        position is still a device write and still not here.
+      -->
+      <div class="wfpanel" id="wavePreview" hidden>
+        <div class="wfhead">
+          <span class="wflabel">Wavetable preview</span>
+          <span class="wfmeta" id="wavePreviewWhere"></span>
+          <span class="wfspacer"></span>
+          <span class="wfmeta" id="wavePreviewGeom"></span>
+        </div>
+        <div class="wfstage" id="wavePreviewStage"></div>
+        <div class="wfcontrols">
+          <label class="lbl" for="wavePreviewPos">Position</label>
+          <input
+            id="wavePreviewPos" type="range" min="1" max="2" step="1" value="1"
+            title="Which frame of the table to pick out of the stack"
+          >
+          <span class="wfpos" id="wavePreviewPosLabel"></span>
+          <button class="btn" id="wavePreviewPlay" title="Hear the frame the slider is on, at middle C. Nothing is sent to the instrument.">Play</button>
+          <button class="btn" id="wavePreviewSweep" title="Hear the table travel from its first frame to its last">Sweep</button>
+          <button class="btn" id="wavePreviewStop" title="Stop the audition">Stop</button>
+        </div>
+      </div>
+
+      <!--
         **Staging, not a dialog.** Audio files dropped on a store slot land here as pending rows and
         nothing is converted or sent until Write asks once, naming every slot. A sheet per file
         would be seventy-five sheets for a pool fill, which is the problem the probe's batch control

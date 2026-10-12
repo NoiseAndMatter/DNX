@@ -460,6 +460,27 @@ One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows
 and its pool slot.`,
       },
       {
+        heading: "Seeing what a table looks like",
+        body: `Click a row in the **+Drive wavetables** pane to draw that table.
+
+A name does not tell you whether a table is bright or hollow, and two can share one. The preview
+under the store draws **every frame of the table at once**, stacked front to back, so the shape is
+there to read.
+
+1. Click any occupied row in the right pane.
+2. Drag **Position** to pick one frame out of the stack.
+
+The frame you pick is drawn bright, with a dashed line under it; the rest stay dim. **Position**
+is the same number a sound's **WT.POS** sets, so frame 24 of 64 is what you hear at a position of
+0.365.
+
+- Reading one table costs one read from the instrument. Picking it again afterwards is free.
+- **Refresh** forgets every table it has read.
+- **Play** sounds the frame you picked, and **Sweep** travels the whole table. Both are
+  synthesised here, so nothing reaches the instrument and the sequencer does not move.
+- Nothing in this pane changes the instrument, and **Position** moves only the drawing.`,
+      },
+      {
         id: "wavetable-import",
         heading: "Putting a wavetable on the instrument",
         body: `Drop audio files onto the store, check them, and write them in one go.

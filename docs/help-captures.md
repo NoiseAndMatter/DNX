@@ -11,7 +11,7 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-10-13
 
-**23 of the 25 referenced PNGs exist.** 9 pages, 40 sections, 25 screenshot slots. Counted from the
+**23 of the 25 referenced PNGs exist.** 9 pages, 41 sections, 25 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
 Two outstanding shots, both of which need the instrument in a state only a write produces.
@@ -26,6 +26,14 @@ two. Both wait for a session at the instrument.
 wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
 reach main and render a placeholder there. The count below is what catches that, which is why it is
 counted from `web/help/` rather than written down.
+
+**A third is owed but not yet in the manifest.** *Seeing what a table looks like*, added
+2026-10-10 with the wavetable preview, describes a surface rather than a rule, so by the test
+above it should carry a picture. It has no `image` yet because the drawing needs a table: an
+instrument with the wavetable store, a slot with something in it, and the preview open on that
+slot. Reading is enough to take it — no write — so it goes with the next session that has the
+instrument to hand. A slot is deliberately not reserved for it here: a row in the manifest
+naming a file nobody has taken is what `test/helppages.test.ts` exists to catch.
 
 The two Library preset shots came last in the first round, because both are the instrument's +Drive
 pane and it holds nothing until a **Digitone II** answers. They were taken against `/soundbanks/A`,
@@ -116,7 +124,8 @@ pending costs a reader nothing; a picture of an empty box costs them the belief 
 
 ## Sections with no screenshot, on purpose
 
-Fifteen of the 38 sections carry no image. A section explaining a rule rather than a surface does not
+Fifteen of the 39 sections carry no image on purpose, and one more is waiting for hardware
+(above). A section explaining a rule rather than a surface does not
 need one, and an invented picture is worse than none: *Nothing leaves this machine*, *What DNX will
 not do*, *Apply, then export or write*, *What it writes*, *Writing*, *Every write backs up first*,
 *If something goes wrong*, *A .dnx is a zip*, *What manifest.json is for*, and *Why the write switch

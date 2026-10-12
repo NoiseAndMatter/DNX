@@ -47,6 +47,7 @@ import { pageMessageIds } from "../messageids.js";
 import { writeTableToSlot, WAVERIDER } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
 import { INDEX_ENTRIES } from "@noiseandmatter/dnx-core/waverider/layout.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { askPlayableBounds } from "./waveriderbounds.js";
 
 let running = false;
 
@@ -120,7 +121,10 @@ async function writeAll(): Promise<void> {
   }
 
   const total = picked.reduce((n, f) => n + f.size, 0);
-  const unplayable = unplayableReason({ waves, points });
+  // One ask for the whole run: every file in it is read as the same geometry, so one answer
+  // decides the sentence for all of them.
+  const playable = await askPlayableBounds(output);
+  const unplayable = unplayableReason({ waves, points }, playable.bounds);
   const ok = await askConfirm({
     title: `Write ${picked.length} tables to ${WAVERIDER}/${first}..${last}?`,
     body: [
@@ -129,6 +133,7 @@ async function writeAll(): Promise<void> {
         `${nameOf(picked[picked.length - 1]!)} to slot ${last}.`,
       `Every one of those slots is empty in a listing taken just now, so nothing is overwritten ` +
         `and there is no undo to need.`,
+      `This build's pool plays ${playable.why}.`,
       `Each is read as ${waves} x ${points}` +
         (unplayable === undefined ? ", which the pool plays." : `. ${unplayable}`),
       `This is the only question. Each write still checks the WRITE switch, so switching it off ` +
@@ -163,6 +168,7 @@ async function writeAll(): Promise<void> {
           confirm: () => Promise.resolve(true),
         },
         table: pendingFrom(bytes, slot, name, waves, points),
+        ...(playable.bounds === undefined ? {} : { playable: playable.bounds }),
         timeoutMs: 60_000,
       });
 

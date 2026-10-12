@@ -44,6 +44,8 @@ interface Built {
   poolSlots?: number;
   mods?: { id: string; hash: number }[];
   modCount?: number;
+  /** Bytes 248..251, written only when asked, as a build before the bounds leaves them zero. */
+  playable?: { maxWaves: number; minLog2: number; maxLog2: number; flags: number };
   /** Leave the hash wrong on purpose. */
   breakHash?: boolean;
 }
@@ -74,9 +76,18 @@ function record(over: Built = {}): Uint8Array {
     ascii(b, 72 + i * 16, mod.id);
     put32(b, 72 + i * 16 + 12, mod.hash);
   });
+  if (over.playable) {
+    b[248] = over.playable.maxWaves;
+    b[249] = over.playable.minLog2;
+    b[250] = over.playable.maxLog2;
+    b[251] = over.playable.flags;
+  }
   put32(b, bytes - 4, xxHash32(b.subarray(0, bytes - 4)) ^ (over.breakHash === true ? 1 : 0));
   return b;
 }
+
+/** Stage 3b's own numbers: 1..64 waves, 64..4096 points, a power of two. */
+const STAGE_3B = { maxWaves: 64, minLog2: 6, maxLog2: 12, flags: 0x01 } as const;
 
 test("every field the spec names reads back", () => {
   const info = readModInfo(record());
@@ -93,15 +104,99 @@ test("every field the spec names reads back", () => {
   assert.equal(info.buildTag, "wr-modinfo");
   assert.equal(info.commit, "a97b3ca08f+", "a trailing + means uncommitted changes, so it is kept");
 
-  // 0x37 is store | pool | rename | the retired bit | pool_cas | page.
+  // 0x37 is store | pool | rename | the retired bit | pool_cas | page. Not playable: 0x37 is
+  // every bit a build before the bounds sets, which is every build in the field.
   assert.deepEqual(info.can, {
     store: true,
     pool: true,
     rename: true,
     poolCas: true,
     page: true,
+    playable: false,
   });
   assert.equal(info.unknown, 0);
+  assert.equal(info.playable, undefined, "no bit, so no bounds, whatever 248..251 hold");
+});
+
+test("the playable bounds come from bytes 248..251, and only with the bit", () => {
+  const withBit = readModInfo(
+    record({ capabilities: 0x37 | CAPABILITY.playable, playable: STAGE_3B }),
+  );
+
+  assert.equal(withBit.can.playable, true);
+  assert.deepEqual(withBit.playable, {
+    maxWaves: 64,
+    minPoints: 64,
+    maxPoints: 4_096,
+    pointsPowerOfTwo: true,
+  });
+  assert.equal(withBit.unknown, 0, "0x40 is a bit DNX knows now, so it is not reported as unknown");
+  assert.equal(withBit.unknownPlayableFlags, undefined);
+
+  // The same bytes with the bit clear. Zero in 248..251 would decode to a pool that plays nothing,
+  // which is why the bit and not the bytes decides whether they are read at all.
+  const noBit = readModInfo(record({ capabilities: 0x37, playable: STAGE_3B }));
+  assert.equal(noBit.playable, undefined);
+});
+
+test("a flag bit DNX does not know is reported and not acted on", () => {
+  const info = readModInfo(
+    record({
+      capabilities: 0x37 | CAPABILITY.playable,
+      playable: { ...STAGE_3B, flags: 0x01 | 0x80 },
+    }),
+  );
+
+  assert.equal(info.playable?.pointsPowerOfTwo, true);
+  assert.equal(info.unknownPlayableFlags, 0x80);
+});
+
+test("the bit set on a record too short for the bounds falls back rather than failing", () => {
+  // A build that grew the capability word before it grew the record. The bytes are not there, and
+  // the 16 x 512 rule is the honest reading, so this is not an error.
+  const info = readModInfo(record({ capabilities: 0x37 | CAPABILITY.playable, bytes: 200 }));
+
+  assert.equal(info.can.playable, true, "the word says so and the word is what arrived");
+  assert.equal(info.playable, undefined, "and the bounds are not there to read");
+});
+
+test("a 252-byte record does not read its own hash as the bounds", () => {
+  // The bounds end at 252 and the hash is the last four bytes, so at 252 they are the same bytes.
+  const info = readModInfo(record({ capabilities: 0x37 | CAPABILITY.playable, bytes: 252 }));
+
+  assert.equal(info.playable, undefined);
+});
+
+test("bounds that contradict themselves are refused, where an unknown capability bit is not", () => {
+  // Three of these bytes describe one range. A reader that half-understands a range tells somebody
+  // a table which plays does not, so this follows the pool record's rule and not the word's.
+  const nothingPlays = { ...STAGE_3B, maxWaves: 0 };
+  assert.throws(
+    () => readModInfo(record({ capabilities: CAPABILITY.playable, playable: nothingPlays })),
+    WaveriderError,
+  );
+
+  const crossed = { ...STAGE_3B, minLog2: 12, maxLog2: 6 };
+  assert.throws(
+    () => readModInfo(record({ capabilities: CAPABILITY.playable, playable: crossed })),
+    WaveriderError,
+  );
+
+  const notASize = { ...STAGE_3B, maxLog2: 40 };
+  assert.throws(
+    () => readModInfo(record({ capabilities: CAPABILITY.playable, playable: notASize })),
+    WaveriderError,
+  );
+
+  // One point of a range is not a contradiction: a build that plays 512 only would say so.
+  const single = { ...STAGE_3B, minLog2: 9, maxLog2: 9 };
+  const ok = readModInfo(record({ capabilities: CAPABILITY.playable, playable: single }));
+  assert.deepEqual(ok.playable, {
+    maxWaves: 64,
+    minPoints: 512,
+    maxPoints: 512,
+    pointsPowerOfTwo: true,
+  });
 });
 
 test("a mod with no code hash is absent rather than zero", () => {

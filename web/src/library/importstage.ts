@@ -167,7 +167,12 @@ export function wireImport(host: ImportHost): ImportStaging {
             `stored gain, so this table plays at full level whatever the file's own was.</p>`,
         );
       }
-      const unplayable = unplayableReason({ waves: entry.geometry.waves, points: entry.geometry.points });
+      // The instrument's own bounds, not the fallback: judging the staged shape against a
+      // narrower rule than the one it was proposed under would contradict the proposal.
+      const unplayable = unplayableReason(
+        { waves: entry.geometry.waves, points: entry.geometry.points },
+        bounds,
+      );
       notes.push(
         unplayable === undefined
           ? `<p class="ok">The pool plays this geometry.</p>`
@@ -369,8 +374,13 @@ export function wireImport(host: ImportHost): ImportStaging {
       return;
     }
 
+    const judgeBounds = host.bounds();
     const unplayable = entries.filter(
-      (entry) => unplayableReason({ waves: entry.geometry.waves, points: entry.geometry.points }) !== undefined,
+      (entry) =>
+        unplayableReason(
+          { waves: entry.geometry.waves, points: entry.geometry.points },
+          judgeBounds,
+        ) !== undefined,
     );
     const bytes = plans.reduce((total, one) => total + one.pending.table.length, 0);
     const lines = [
