@@ -9,15 +9,18 @@ Until a PNG is on disk, its slot renders a labelled placeholder carrying the sec
 That is harmless and deliberate: **sections are written before the shots are taken**, so a page
 half-captured reads as in progress rather than broken.
 
-## Capture status, 2026-10-12
+## Capture status, 2026-10-13
 
-**23 of the 24 referenced PNGs exist.** 9 pages, 38 sections, 24 screenshot slots. Counted from the
+**23 of the 25 referenced PNGs exist.** 9 pages, 40 sections, 25 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-The one outstanding shot is the Library's **When a cell says MISSING**. It needs a pool entry
-naming a store slot that is empty, which means deleting a stored table that a pool names. **That is
-a write, so it waits for a session where the owner is arming writes anyway.** It is the only shot in
-the manifest that cannot be taken by reading.
+Two outstanding shots, both of which need the instrument in a state only a write produces.
+
+**When a cell says MISSING** needs a pool entry naming a store slot that is empty, which means
+deleting a stored table that a pool names. **Putting a wavetable on the instrument** needs files
+staged on free store slots, which needs a connected instrument and a wavetable file to drop; the
+staging itself sends nothing, so that one can be taken with **WRITE** off and is the easier of the
+two. Both wait for a session at the instrument.
 
 `wavetables-pane.png` was taken 2026-10-09 against a Digitone II whose firmware carries the
 wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
@@ -72,6 +75,7 @@ closing step. Re-open any suspect image before committing it.
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
 | `wavetables-pane.png` | Library | The Wavetables mode | captured |
+| `wavetables-import.png` | Library | Putting a wavetable on the instrument | outstanding |
 | `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, needs a pool entry whose table was deleted |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |

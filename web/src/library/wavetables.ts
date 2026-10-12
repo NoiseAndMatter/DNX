@@ -48,6 +48,8 @@ import {
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 import { type PoolCell, describePool } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
+import { wireImport } from "./importstage.js";
 
 /**
  * Elements that belong to Sounds mode and have no meaning in this one.
@@ -71,7 +73,7 @@ const SOUNDS_ONLY = [
 ] as const;
 
 /** Elements this mode owns. */
-const OURS = ["wavepoolBar", "wavepoolGrid", "wavepoolNote", "wavestoreGrid"] as const;
+const OURS = ["wavepoolBar", "wavepoolGrid", "wavepoolNote", "wavestoreGrid", "wavimport"] as const;
 
 export interface WavetableHost {
   /** The instrument, when one is connected. */
@@ -106,6 +108,37 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * *Wavetable pool* over the preset pool. Found by opening the page and pressing both tabs.
    */
   const titlesBefore = new Map<string, string>();
+
+  /**
+   * Staging imports onto the store, which is the only thing in this mode that writes.
+   *
+   * Handed accessors rather than the reading itself, so it cannot hold a stale copy of a listing
+   * this module re-reads on every Refresh.
+   */
+  const staging = wireImport({
+    device: () => host.device(),
+    occupied: () =>
+      new Set((reading?.store ?? []).filter((slot) => slot.occupied).map((slot) => slot.slot)),
+    bounds: (): FitBounds => storeBounds(),
+    status: host.status,
+    refresh: async () => {
+      renderStore();
+      await Promise.resolve();
+    },
+  });
+
+  /**
+   * What this instrument will play, as far as this build can tell.
+   *
+   * **`STOCK_BOUNDS` until the capability bits are read.** `/modinfo` carries the playable bounds,
+   * 64 frames and 64 to 4,096 points on stage3d, and the reader for them is on
+   * `feat/modinfo-playable-bounds`, not merged. Until it is, `unplayableReason` also judges against
+   * 16 x 512 only, so proposing anything wider here would stage tables this same pane would then
+   * call unplayable. The two widen together, and this is the one line that does it.
+   */
+  function storeBounds(): FitBounds {
+    return STOCK_BOUNDS;
+  }
   /**
    * And where the two panes' `?` markers pointed.
    *
@@ -322,6 +355,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       const inPool = reading.summary.byStoreSlot.get(slot.slot) ?? [];
       const tr = document.createElement("tr");
       tr.className = slot.occupied ? "occupied" : "free";
+      // How `importstage.decorate` finds the row for a staged slot after a re-render.
+      tr.dataset.slot = String(slot.slot);
       if (slot.slot === pickedSlot) {
         tr.classList.add("selected");
         tr.setAttribute("aria-selected", "true");
@@ -345,6 +380,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       });
       body.append(tr);
     }
+    // After the rows exist, so a staged table is marked on the row it will land on rather than
+    // listed beside the store.
+    staging.decorate(body);
     table.append(body);
     where.append(table);
 
@@ -353,7 +391,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       "Wavetable pool",
       `— ${reading.summary.tables} of ${POOL_ENTRIES} used`,
       "+Drive wavetables",
-      `— ${used} of ${reading.store.length} slots used, shared by every project`,
+      // The drop is the only way to import and the panel that explains it does not exist until
+      // something is staged, so the one place a first-time user is already looking has to say so.
+      `— ${used} of ${reading.store.length} slots used, shared by every project · drag audio ` +
+        `files onto a free slot to import`,
     );
   }
 
@@ -438,10 +479,12 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
       for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
       restoreHelp();
+      staging.show(false);
       hideOurs();
       return;
     }
 
+    staging.show(true);
     $("wavepoolBar").hidden = false;
     const device = host.device();
     if (!device) {

@@ -30,6 +30,14 @@ import { looksLikeWav, mixToMono, readWavFile } from "@noiseandmatter/dnx-core/w
 
 /** What a dropped file turned out to be. */
 export interface DecodedFile {
+  /**
+   * The file's own bytes, kept for `PendingSlot.sourceHash`.
+   *
+   * The hash records **the file the table was made from**, so it has to be of these rather than of
+   * the converted payload: the same WAV imported at two geometries is one source, and a re-import
+   * of it at the same geometry should be recognisable as one.
+   */
+  bytes: Uint8Array;
   /** Mono, nominally -1..1, though float WAV may exceed it. */
   samples: Float32Array;
   /** The file's own rate on the WAV path, the context's on the fallback. */
@@ -70,6 +78,7 @@ export async function decodeTableFile(file: File): Promise<DecodedFile> {
     const wav = readWavFile(bytes);
     const { samples, peak, firstChannelPeak } = mixToMono(wav.channels);
     return {
+      bytes,
       samples,
       sampleRate: wav.sampleRate,
       channels: wav.channels.length,
@@ -98,6 +107,7 @@ export async function decodeTableFile(file: File): Promise<DecodedFile> {
   const { samples, peak, firstChannelPeak } = mixToMono(channels);
 
   return {
+    bytes,
     samples,
     sampleRate: buffer.sampleRate,
     channels: buffer.numberOfChannels,

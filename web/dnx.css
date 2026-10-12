@@ -760,6 +760,39 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .libtable .unread { color: var(--dim); font-style: italic; }
 .libtable .untagged { color: var(--dim); }
 
+/*
+ * Staged wavetable imports, drawn on the store's own rows.
+ *
+ * Amber, which this language already uses for the kit: a staged table is **not yet a thing on the
+ * instrument**, and borrowing teal would make a pending row read as an occupied one at a glance.
+ * Dashed, for the same reason the probe's pending states are: the edge of something provisional.
+ */
+.libtable tbody tr.pending td { color: var(--amber); }
+.libtable tbody tr.pending { cursor: grab; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.pending.selected { background: #2a2419; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.pending td.name { color: var(--amber); font-weight: 600; }
+.pendingmark {
+  font-size: .62rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border: 1px dashed var(--amber);
+  border-radius: 2px;
+  padding: 0 .25rem;
+  margin-right: .3rem;
+  vertical-align: .05rem;
+}
+/* The whole store says it will take a drop, because a row-by-row hover would be 256 listeners. */
+.libtablewrap.dropping { outline: 2px dashed var(--amber); outline-offset: -2px; }
+
+/* The staging panel sits under the store it stages onto, never beside the pool. */
+.section.import { margin-top: .6rem; }
+.section.import .bar { margin-top: .4rem; }
+.section.import .count { color: var(--amber); }
+#wavimportNote .warn { color: var(--salmon); }
+#wavimportNote .ok { color: var(--teal); }
+#wavimportNote p { margin: .35rem 0; }
+#wavimportNote code { color: var(--amber); }
+
 /* ---- progress, in the status bar ------------------------------------------------------
  *
  * Inserted into `#status` by `progress.ts` and removed when the work finishes, so no page needed

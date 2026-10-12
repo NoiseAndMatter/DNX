@@ -5,8 +5,12 @@
  * module reaches most of its elements through lists of names — so a typo in one of those lists
  * typechecks, renders, and throws the moment somebody presses the tab.
  *
- * The second promise is that this mode reads and never writes, which is what let it ship before the
- * confirmation and backup path for ADD TO POOL and DELETE existed.
+ * The second promise has changed. The mode shipped read-only, which is what let it arrive before
+ * the confirmation path existed; on 2026-10-13 it gained one write, the staged wavetable import. So
+ * the promise is now **where** the write lives and what it passes through: the pane itself still
+ * reaches no write path, and the module that does is gated per write and asks once. A test that
+ * only looked for the old absence would now pass by finding nothing, because the names moved to a
+ * neighbouring file.
  */
 
 import assert from "node:assert/strict";
@@ -17,6 +21,7 @@ import { test } from "node:test";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(resolve(HERE, "../web/src/library/wavetables.ts"), "utf8");
+const STAGING = readFileSync(resolve(HERE, "../web/src/library/importstage.ts"), "utf8");
 const PAGE = readFileSync(resolve(HERE, "../web/library.html"), "utf8");
 
 /** The element ids in a `const NAME = [...] as const` list. */
@@ -48,13 +53,12 @@ test("the mode owns its own elements and hides nobody else's", () => {
   assert.deepEqual(both, [], "these ids are claimed by both modes");
 });
 
-test("nothing in this mode writes to the instrument", () => {
+test("the pane itself still reaches no write path", () => {
   /*
-   * The mode shipped read-only on purpose: ADD TO POOL, CLEAR SLOT, DELETE and Rename each need
-   * the confirmation and backup path every write in DNX goes through, and the reading is worth
-   * having before them — it is what can say *this slot plays Prim. because its table was deleted*.
-   *
-   * When the write half lands this test changes to require the permit, rather than being deleted.
+   * ADD TO POOL, CLEAR SLOT, DELETE and Rename are still not built here, and the one write that
+   * does exist lives in `importstage.ts` rather than in this file. Keeping the pane itself clean is
+   * what makes that single entry point reviewable: a second write added straight into the renderer
+   * would not have to pass anything this file's neighbour passes.
    */
   const writers = [
     "writeStoredFile",
@@ -65,5 +69,35 @@ test("nothing in this mode writes to the instrument", () => {
     "deleteRequest",
   ];
   const found = writers.filter((name) => SOURCE.includes(name));
-  assert.deepEqual(found, [], "the Wavetables mode is read-only; these reach a write path");
+  assert.deepEqual(found, [], "a write path reached straight from the pane; it belongs in importstage.ts");
+});
+
+test("the one write the mode has is gated per write and asks once", () => {
+  /*
+   * **This is the test that replaced the read-only one, and it has to assert presence.** The names
+   * it looks for moved out of `wavetables.ts` when staging was extracted, so the old absence check
+   * started passing for the wrong reason — the file it read no longer contained the thing it was
+   * written to forbid.
+   *
+   * Three properties, each of which has been got wrong somewhere before:
+   *
+   * - The gate is passed to **every** write, not checked once before the run. That is what makes
+   *   the WRITE switch a stop button rather than a starting gun.
+   * - The run asks once, naming every slot, which is the relaxation `batchtables.ts` argues for.
+   * - The per-write confirm that answers yes is **not exported**, so nothing else can pick up a
+   *   hook that says yes without asking.
+   */
+  assert.match(STAGING, /writeTableToSlot/, "the staging module should be the one that writes");
+  assert.match(STAGING, /gate: requireWriteEnabled/, "each write must pass the gate itself");
+  assert.match(STAGING, /askConfirm\(/, "the run must ask once before writing");
+
+  const yes = /confirm: \(\) => Promise\.resolve\(true\)/;
+  assert.match(STAGING, yes, "the per-write confirm should answer yes after the single question");
+  assert.ok(
+    !/export\s+(const|function)\s+\w*[Cc]onfirm/.test(STAGING),
+    "a confirm hook that answers yes without asking must stay local to this module",
+  );
+
+  // And the listing is read at the moment of asking, not taken from what the pane already has.
+  assert.match(STAGING, /readStoreListing/, "the empty-slot check must use a fresh listing");
 });

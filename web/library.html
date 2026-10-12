@@ -200,6 +200,42 @@
       <div class="libtablewrap" id="libraryGrid" hidden></div>
       <!-- The wavetable store: 256 slots, shared by every project, with no banks and no tags. -->
       <div class="libtablewrap" id="wavestoreGrid" hidden></div>
+
+      <!--
+        **Staging, not a dialog.** Audio files dropped on a store slot land here as pending rows and
+        nothing is converted or sent until Write asks once, naming every slot. A sheet per file
+        would be seventy-five sheets for a pool fill, which is the problem the probe's batch control
+        exists to avoid, and it turns the safeguard into something people click through rather than
+        a question they read.
+
+        The geometry is typed because a length cannot tell 16 x 512 from 32 x 256, and the player
+        cuts the table up by those two numbers, so a wrong pair is a table read as something else.
+      -->
+      <div class="section import" id="wavimport" hidden>
+        <h2 data-help="library/wavetable-import">Staged for import <span class="count" id="wavimportCount"></span></h2>
+        <div class="plan hint" id="wavimportNote"></div>
+        <div id="wavimportBody" hidden>
+          <!-- The ? sits on the geometry row, which is where "what is a point" gets asked. -->
+          <div class="bar" data-help="library/wavetable-shape">
+            <label class="lbl" for="wavimportName">name</label>
+            <input id="wavimportName" type="text" size="18" title="The stem. The stored name gets the _wt convention appended.">
+            <label class="lbl" for="wavimportWaves">waves</label>
+            <input id="wavimportWaves" type="number" min="1" max="64" step="1" title="Frames in the table.">
+            <label class="lbl" for="wavimportPoints">points</label>
+            <input id="wavimportPoints" type="number" min="64" max="4096" step="1" title="Points per frame. A power of two.">
+          </div>
+          <div class="bar">
+            <button class="btn" id="wavimportPlay" title="Hear this table at middle C">Play</button>
+            <button class="btn" id="wavimportSweep" title="Hear it travel from the first frame to the last">Sweep</button>
+            <button class="btn" id="wavimportStop" title="Stop the audition">Stop</button>
+            <button class="btn" id="wavimportRemove" title="Take this one off the staging list">Remove</button>
+          </div>
+        </div>
+        <div class="bar">
+          <button class="btn danger" data-writes-device id="wavimportWrite" disabled title="Write every staged table, asking once and naming every slot">Write staged tables</button>
+          <button class="btn" id="wavimportClear" title="Discard the whole staging list. Nothing was sent.">Discard all</button>
+        </div>
+      </div>
     </section>
 
     <!--

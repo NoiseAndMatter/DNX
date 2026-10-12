@@ -272,7 +272,13 @@ test("every control that writes is marked, and every dangerous one has been cons
     // what leaves nothing to overwrite and nothing to back up.
     // `poolWrite` joined on 2026-10-07. It writes a project's pool list, carrying the generation
     // it read so the instrument refuses a write that would discard a front-panel edit.
-    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `wavimportWrite` joined on 2026-10-13 and is the first write control outside the probe. It
+    // sends the staged wavetable imports from the Library, and it is the second control that asks
+    // once for many writes: same rule as `tableWriteAll`, gated per write so the switch stops it
+    // part-way, and refusing the whole run unless every target is empty in a listing read at the
+    // moment of asking. The Library having a write at all is the change worth noticing here — that
+    // pane shipped read-only, and `librarywavetables.test.ts` says what now stands in its place.
+    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

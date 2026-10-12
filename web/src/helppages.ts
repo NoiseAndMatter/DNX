@@ -460,6 +460,48 @@ One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows
 and its pool slot.`,
       },
       {
+        id: "wavetable-import",
+        heading: "Putting a wavetable on the instrument",
+        body: `Drop audio files onto the store, check them, and write them in one go.
+
+Before you start:
+
+- A Digitone II whose firmware carries the wavetable store.
+- **WRITE** on, in the tool row.
+- Elektron Transfer and Overbridge closed.
+
+1. Press **Wavetables**, then pick a project from **POOL OF**.
+2. Drag audio files from your computer onto a free slot in the **+Drive wavetables** list.
+3. The slots turn amber and read **staged**. Nothing has been sent.
+4. Click a staged row. Set **name**, **waves** and **points**, and press **Play** to hear it, or
+   **Sweep** to hear it travel from the first frame to the last.
+5. Press **Write staged tables**. One question names every slot it is about to write.
+
+To put a staged table somewhere else, drag its row onto another free slot. **Remove** takes one off
+the list, **Discard all** clears it, and leaving the mode discards everything staged.
+
+A **WAV** file is read exactly as it is. Any other format is handed to the browser, which may change
+the number of samples it has, and the panel says when that happened.`,
+        image: { src: "help/wavetables-import.png", alt: "Three audio files staged on free store slots, marked amber and reading staged, with the panel below showing the name, the waves and points, and the Play and Write staged tables buttons" },
+      },
+      {
+        id: "wavetable-shape",
+        heading: "Choosing the shape of a table",
+        body: `**waves** is how many frames the table holds. **points** is how long each frame is.
+
+DNX reads how long the file is and proposes a shape. The panel says whether the length divided
+exactly or whether the file has to be stretched to fit.
+
+- **It divided exactly.** The file is very likely already that shape.
+- **Several shapes divide most files**, so the proposal is a convention rather than a measurement.
+  Change the numbers when you know better.
+- **A shape this instrument does not play** is still written and still listed, and it makes no
+  sound. The panel says so before you write, not after.
+
+Every import is made as loud as it can be. The instrument does not undo that, so two tables made
+from differently recorded files come out equally loud.`,
+      },
+      {
         id: "wavetable-pool-kinds",
         heading: "The three kinds of pool",
         body: `Check which kind of pool a project has before you upload a table to the instrument.
