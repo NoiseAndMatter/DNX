@@ -49,6 +49,10 @@
  * - **The compare-and-swap unknown** means assuming the firmware does *not* refuse a stale write.
  *   So DNX warns **before** a pool write that a concurrent edit cannot be detected, rather than
  *   afterwards that one was.
+ * - **The playable bounds unknown mean 16 x 512**, and that is not a guess dressed as a default:
+ *   the spec says a build without the bit plays that pair and nothing else. The rule bites the
+ *   other way too, which is why it is worth stating: assuming the *wider* bounds would suppress a
+ *   warning on every build in the field.
  */
 
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
@@ -56,6 +60,7 @@ import { type MessageIds, IDS_FOR } from "./messageids.js";
 import { ListingError, listRequest, wholeListing } from "./storage.js";
 import { readFormOption } from "./storagewrite.js";
 import { MODINFO_PATH, type ModInfo, readModInfoFile } from "../waverider/modinfo.js";
+import type { PlayableBounds } from "../waverider/pool.js";
 import { WaveriderError } from "../waverider/errors.js";
 
 /** Root names, as the `/` listing gives them: no leading slash. */
@@ -97,6 +102,14 @@ export interface WaveriderFeatures {
   poolSlots?: number;
   /** Characters a name keeps in the pool and shows on the instrument, where the record says. */
   nameChars?: { pool: number; shown: number };
+  /**
+   * The geometries this build's pool plays, `undefined` where the build did not say.
+   *
+   * **`undefined` has a meaning here, unlike `poolSlots`.** It is the 16 x 512 rule of every build
+   * before the capability, which is the fallback the spec names, so `unplayableReason` applies it
+   * and a caller passes this field straight through without resolving anything.
+   */
+  playable?: PlayableBounds;
 }
 
 export type WaveriderSupport =
@@ -168,6 +181,7 @@ export function featuresFrom(roots: readonly string[], info?: ModInfo): Waveride
     capabilitiesKnown: true,
     poolSlots: info.poolSlots,
     nameChars: { pool: info.poolNameChars, shown: info.shownNameChars },
+    ...(info.playable === undefined ? {} : { playable: info.playable }),
   };
 }
 
