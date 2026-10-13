@@ -32,6 +32,7 @@
 
 import { type Song, type SongRow, LABELS, LIMITS, mutedTracks } from "@noiseandmatter/dnx-core/project/dn2song.js";
 import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
+import { type StoredPattern } from "@noiseandmatter/dnx-core/librarian/device.js";
 
 /**
  * The drag controller, reduced to what a song row needs.
@@ -129,12 +130,15 @@ export interface SongLevelHooks {
 
 export interface SongEditHooks {
   /**
-   * The name of the pattern in a slot, or `undefined` when it has none.
+   * What the pattern in a slot turns out to be: a name, nothing to show, or an index this project
+   * cannot have.
    *
    * Passed in rather than read here. This module draws and decides nothing — resolving a name means
-   * summarising a pattern record, which is the librarian's job and needs the device.
+   * summarising a pattern record, which is the librarian's job and needs the device. The third
+   * answer is why this is not a `string | undefined`: a row naming a pattern that does not exist is
+   * damage, and it must not be drawn as an unnamed pattern.
    */
-  patternNameFor: (slot: number) => string | undefined;
+  patternFor: (slot: number) => StoredPattern;
   /** So a row can be a drop target for a pattern, and a drag source for reordering. */
   drag: RowDragBinder;
   onField: (row: number, field: EditableField, value: number) => void;
@@ -191,23 +195,60 @@ const COLUMNS = ["Row", "Pattern", "Label", "Plays", "Length", "Tempo", "Swing",
  *
  * An unnamed pattern gets nothing rather than a placeholder — every factory pattern is unnamed, and
  * a column of "—" would be sixteen rows of noise.
+ *
+ * **A damaged row shows the raw number**, not `patternName`. For an index no bank holds that
+ * function answers `?5`, which looks like a pattern somebody could go and find; 196 is the number
+ * actually in the file and the only one worth showing to whoever has to repair the row.
  */
-function patternCell(slot: number, name: string | undefined): HTMLTableCellElement {
+function patternCell(slot: number, pattern: StoredPattern): HTMLTableCellElement {
   const td = document.createElement("td");
-  td.className = "ptn";
+  td.className = pattern.kind === "outOfRange" ? "ptn damaged" : "ptn";
 
   const id = document.createElement("span");
   id.className = "ptnid";
-  id.textContent = patternName(slot);
+  id.textContent = pattern.kind === "outOfRange" ? String(pattern.index) : patternName(slot);
   td.append(id);
 
-  if (name !== undefined && name.trim() !== "" && name !== "—") {
+  if (pattern.kind === "named" || pattern.kind === "outOfRange") {
     const label = document.createElement("span");
-    label.className = "ptnname";
-    label.textContent = name;
+    label.className = pattern.kind === "named" ? "ptnname" : "ptnbad";
+    label.textContent = pattern.kind === "named" ? pattern.name : "not in this project";
     td.append(label);
   }
   return td;
+}
+
+/**
+ * The sentence above a song whose rows name patterns the project does not have.
+ *
+ * `undefined` when there is nothing wrong, so the caller draws nothing rather than an empty
+ * reassurance. Exported because it is the part worth testing: the rendering around it is a few
+ * `append` calls, and the wording is the feature.
+ *
+ * Three things it has to do, each learned from the row that caused it:
+ *
+ * - **Say the project is damaged**, in those words. Somebody looking at a blank name assumes DNX
+ *   cannot read their file; this is not that, and the difference decides what they do next.
+ * - **Name the rows**, because that is what they have to go and look at on the instrument.
+ * - **Say what still works.** The file opens, every other row is right, and it can still be saved.
+ *   A notice that only alarms makes people stop touching a project that is mostly fine.
+ */
+export function describeDamage(
+  damaged: readonly { row: number; index: number }[],
+  patternCount: number,
+): string | undefined {
+  if (damaged.length === 0) return undefined;
+
+  // Row numbers as the panel shows them, 1-based, and the stored number beside each so it can be
+  // compared with what the instrument displays.
+  const where = damaged.map((one) => `row ${one.row + 1} names ${one.index}`).join(", ");
+  return (
+    `This song is damaged. ${damaged.length === 1 ? "One row points" : `${damaged.length} rows point`} ` +
+    `at a pattern this project does not have: ${where}. A project holds ${patternCount} patterns, ` +
+    `numbered 0 to ${patternCount - 1}. Everything else here was read normally and the project can ` +
+    `still be saved; set ${damaged.length === 1 ? "that row" : "those rows"} to a real pattern, ` +
+    `here or on the instrument, to repair it.`
+  );
 }
 
 /**
@@ -349,6 +390,16 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
     return;
   }
 
+  /**
+   * Rows naming a pattern the project does not have, collected while drawing.
+   *
+   * Gathered here rather than in a pass of its own because the answer comes from `patternFor`,
+   * which costs a pattern summary per row: asking twice to keep the loop tidy would double the
+   * reading of every song on every render.
+   */
+  const damaged: { row: number; index: number }[] = [];
+  let patternCount = 0;
+
   const table = document.createElement("table");
   table.className = "libtable songtable";
 
@@ -373,9 +424,15 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
       // grid cell is. `GridDrag.bind` takes any element, which is why the table could gain the
       // gesture without inventing a second one.
       hooks.drag.bind(tr, SONG_GRID, i);
+      const pattern = hooks.patternFor(row.pattern);
+      if (pattern.kind === "outOfRange") {
+        damaged.push({ row: i, index: pattern.index });
+        patternCount = pattern.count;
+        tr.classList.add("damagedrow");
+      }
       tr.append(
         cell(String(i + 1), "num"),
-        patternCell(row.pattern, hooks.patternNameFor(row.pattern)),
+        patternCell(row.pattern, pattern),
         labelCell(i, row, (value) => hooks.onField(i, "label", value)),
         numberCell(i, "repeats", row.repeats, LIMITS.repeats, 1, (v) => hooks.onField(i, "repeats", v)),
         numberCell(i, "length", row.length, LIMITS.length, 1, (v) => hooks.onField(i, "length", v)),
@@ -387,6 +444,8 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
     } else {
       tr.append(
         cell(String(i + 1), "num"),
+        // No hooks means no device, so there is nothing here that can say whether the index is one
+        // this project has. The editing path above is the one that reports damage.
         cell(patternName(row.pattern)),
         cell(describeLabel(row)),
         cell(`${row.repeats}x`, "num"),
@@ -400,6 +459,20 @@ export function renderSongRows(host: HTMLElement, song: Song, hooks?: SongEditHo
     tbody.append(tr);
   }
   table.append(tbody);
+
+  /*
+   * **Above the table, not beside the row.** A damaged row is already marked where it is, but the
+   * song panel folds and the table scrolls, so the mark alone can be off screen while somebody
+   * wonders why a row looks odd. The sentence goes where the panel starts.
+   */
+  const notice = describeDamage(damaged, patternCount);
+  if (notice !== undefined) {
+    const warn = document.createElement("p");
+    warn.className = "warn";
+    warn.setAttribute("role", "status");
+    warn.textContent = notice;
+    host.append(warn);
+  }
 
   const wrap = document.createElement("div");
   wrap.className = "libtablewrap";

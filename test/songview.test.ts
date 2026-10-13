@@ -13,6 +13,7 @@ import {
   LABEL_NAMES,
   describeLabel,
   describeMutes,
+  describeDamage,
   describeSong,
   songTabs,
 } from "../web/src/manager/songview.js";
@@ -101,4 +102,39 @@ test("swing is shown as a percentage, matching the instrument", () => {
   // says 57%.
   assert.equal(row({ swing: 57 }).swing, 57);
   assert.equal(SWING_BASE, 50);
+});
+
+test("a song row naming a pattern the project does not have is called damage, in those words", () => {
+  /*
+   * **The notice the owner asked for on 2026-10-13.** Before this, a row holding 196 drew a blank
+   * name — the same thing every unnamed factory pattern draws — so the one row that needed
+   * attention was the least conspicuous on the page.
+   *
+   * Three properties, each one a thing the sentence is for:
+   *
+   * - It says *damaged*. Somebody seeing a blank assumes DNX cannot read their file; that is a
+   *   different problem with a different next step.
+   * - It names the row and the stored number, because that is what they go and look at.
+   * - It says what still works. A notice that only alarms makes people stop touching a project
+   *   that is mostly fine, and this one is: the file opened and can still be saved.
+   */
+  const one = describeDamage([{ row: 3, index: 196 }], 128);
+  assert.ok(one, "a damaged row must produce a notice");
+  assert.match(one, /damaged/i);
+  assert.match(one, /row 4/, "rows are named as the panel numbers them, from 1");
+  assert.match(one, /196/, "the stored number is what they compare against the instrument");
+  assert.match(one, /128 patterns/);
+  assert.match(one, /can\s+still be saved/, "it must say the project is not lost");
+});
+
+test("the notice counts rows rather than claiming one, and says nothing when nothing is wrong", () => {
+  // Silence is the answer for a healthy song: an "all rows fine" line on every project would be
+  // noise, and noise is what gets skipped when it finally says something.
+  assert.equal(describeDamage([], 128), undefined);
+
+  const many = describeDamage([{ row: 0, index: 196 }, { row: 5, index: 200 }], 128);
+  assert.ok(many);
+  assert.match(many, /2 rows point/);
+  assert.match(many, /row 1 names 196/);
+  assert.match(many, /row 6 names 200/);
 });

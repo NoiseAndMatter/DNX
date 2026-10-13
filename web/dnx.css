@@ -952,6 +952,15 @@ body.app > main.split > .side {
 .songtable td.ptn { white-space: nowrap; }
 .songtable .ptnid { font-weight: 600; color: var(--teal); }
 .songtable .ptnname { color: var(--muted); margin-left: .45rem; font-size: .72rem; }
+/*
+  A row naming a pattern the project does not have. Amber rather than salmon: the file is
+  damaged, not about to be destroyed, and every other row on the page is fine. The raw stored
+  number sits where a pattern name like A5 normally does, so the column still scans.
+*/
+.songtable td.ptn.damaged .ptnid { color: var(--amber); }
+.songtable .ptnbad { color: var(--amber); margin-left: .45rem; font-size: .72rem; font-style: italic; }
+.songtable tr.damagedrow td { background: rgba(200, 160, 106, .07); }
+#songRows p.warn { color: var(--amber); margin: 0 0 .5rem; font-size: .78rem; line-height: 1.45; }
 /* Sixteen chips, so muting is a click on a numbered track exactly as it is on the instrument. */
 .songtable td.mutes { white-space: nowrap; line-height: 1; }
 .mutechip {
