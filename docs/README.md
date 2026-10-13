@@ -1,6 +1,6 @@
 # What is in `docs/`
 
-Twenty-seven files, and they are not the same kind of thing. This says which, and which three to
+Twenty-eight files, and they are not the same kind of thing. This says which, and which three to
 read first.
 
 Elektron publishes no format documentation for the Digitone family. Everything here was derived
@@ -42,6 +42,7 @@ The reason anybody else would want this repository. All current.
 | [`help-captures.md`](help-captures.md) | The in-app help's screenshot slots, which exist and which are outstanding |
 | [`device-probing.md`](device-probing.md) | Talking to an instrument over SysEx, and what it does when you get it wrong |
 | [`emulator-tests.md`](emulator-tests.md) | Running the tests that put DNX in front of the firmware's own handlers, and what a green run there does not prove |
+| [`jobs-pane.md`](jobs-pane.md) | The live progress pane beside Claude Code, and the three ways a job reports itself |
 | [`analysis.md`](analysis.md) | The musical analysis subsystem, and the boundary that keeps it testable |
 
 ## Live tracking

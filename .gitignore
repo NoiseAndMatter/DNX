@@ -1,5 +1,8 @@
 node_modules/
 dist/
+
+# The progress pane's job files: live state of this machine's runs, not of the project.
+out/progress/
 *.tsbuildinfo
 .DS_Store
 

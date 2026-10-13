@@ -30,10 +30,11 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import { type ApiFrame, decodeMessage } from "@noiseandmatter/dnx-core/device/api.js";
 import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { Job } from "./progress/job.js";
 
 export class BridgeError extends Error {}
 
@@ -193,8 +194,33 @@ export class EmulatorBridge implements ApiTransport {
     let noise = "";
     child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
 
+    /*
+     * **Reported, because this is where the time goes.** Booting the OS is about 25 s and every
+     * test starts its own, so a run of the emulator suite is minutes of a terminal saying nothing.
+     * The pane (`npm run jobs`) shows which boot is in flight and what the emulator last said.
+     *
+     * The job ends when the boot ends, not when the bridge closes: what is worth watching is the
+     * wait, and a job that stayed open for the whole test would say nothing after the first
+     * second. Nothing here can fail the boot — every write in `record.ts` is swallowed.
+     */
+    const job = Job.start(`emulator boot: ${basename(found.firmware)}`, {
+      step: "booting the OS",
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      // The emulator's last line of noise, the only thing that says where a slow boot is.
+      const text = chunk.toString().trimEnd();
+      const last = text.slice(text.lastIndexOf("\n") + 1).trim();
+      if (last) job.update({ detail: last.slice(0, 200) });
+    });
+
     const bridge = new EmulatorBridge(child);
-    await bridge.ready(options.startupMs ?? 60_000, () => noise);
+    try {
+      await bridge.ready(options.startupMs ?? 60_000, () => noise);
+    } catch (error: unknown) {
+      job.end({ failed: true, detail: String(error).slice(0, 200) });
+      throw error;
+    }
+    job.end({ detail: "ready" });
     return bridge;
   }
 

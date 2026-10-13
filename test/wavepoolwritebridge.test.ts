@@ -30,7 +30,7 @@ import { readPoolRecord } from "@noiseandmatter/dnx-core/device/wavepoolread.js"
 import { MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
 import { listRequest, wholeListing } from "@noiseandmatter/dnx-core/device/storage.js";
 import { buildPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
-import { writeStoredFile } from "@noiseandmatter/dnx-core/device/storagewrite.js";
+import { safeWriteFile } from "@noiseandmatter/dnx-core/device/safewrite.js";
 
 const MODDED = process.env["DNX_WAVERIDER_FIRMWARE"];
 const skip = !MODDED || bridgePaths({ firmware: MODDED }) === undefined
@@ -105,9 +105,15 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
    * discard the first. The firmware cannot report the refusal — like every refusal on this route
    * it answers `commit ok` and writes nothing — so the only way to see it is to read the entries.
    *
-   * The stale token has to go on the wire directly. `writePool` re-reads and sends the current
-   * generation, which is the right behaviour and precisely what makes it the wrong tool for
-   * producing a stale write.
+   * The stale token has to go on the wire directly, because `writePool` re-reads and sends the
+   * current generation, which is the right behaviour and precisely what makes it the wrong tool
+   * for producing a stale write.
+   *
+   * **Through `safeWriteFile`, not through `writeStoredFile`.** The primitive takes a
+   * `WritePermit` that only `safewrite.ts` can mint, and a test reaching past that is the exact
+   * shortcut the permit exists to stop; `writepermit.ts` says so in as many words. The first
+   * draft of this test did reach past it and the root typecheck refused it, which is the design
+   * working on its own author.
    */
   await withBridge(async (bridge) => {
     const projectSlot = 9;
@@ -140,17 +146,23 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
     const target = listing.entries.find((e) => e.index === projectSlot);
     assert.ok(target, "the /wavepool listing does not carry this project slot");
 
-    await writeStoredFile(
-      `/wavepool/${projectSlot}`,
-      buildPoolFile({
+    await safeWriteFile({
+      transport: bridge,
+      name: `pool ${projectSlot}`,
+      path: `/wavepool/${projectSlot}`,
+      bytes: buildPoolFile({
         projectSlot,
         automatic: false,
         entries: [99, 98, 97],
         generation: mine.generation,
       }),
-      undefined,
-      { transport: bridge, target, overwrite: true, timeoutMs: TIMEOUT },
-    );
+      target: target,
+      overwrite: true,
+      gate: () => {},
+      confirm: async () => true,
+      onBackup: () => {},
+      timeoutMs: TIMEOUT,
+    });
 
     const afterStale = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
     assert.deepEqual(afterStale.entries.slice(0, 3), [40, 41, undefined],
@@ -182,17 +194,23 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
     const target2 = listing2.entries.find((e) => e.index === projectSlot);
     assert.ok(target2, "the /wavepool listing lost this project slot");
 
-    await writeStoredFile(
-      `/wavepool/${projectSlot}`,
-      buildPoolFile({
+    await safeWriteFile({
+      transport: bridge,
+      name: `pool ${projectSlot}`,
+      path: `/wavepool/${projectSlot}`,
+      bytes: buildPoolFile({
         projectSlot,
         automatic: false,
         entries: [99, 98, 97],
         generation: moved.generation,
       }),
-      undefined,
-      { transport: bridge, target: target2, overwrite: true, timeoutMs: TIMEOUT },
-    );
+      target: target2,
+      overwrite: true,
+      gate: () => {},
+      confirm: async () => true,
+      onBackup: () => {},
+      timeoutMs: TIMEOUT,
+    });
 
     const afterControl = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
     assert.deepEqual(afterControl.entries.slice(0, 3), [99, 98, 97],
