@@ -58,7 +58,13 @@ import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
-import { auditionTable, stopAudition } from "./tableaudio.js";
+import {
+  auditionFrame,
+  auditionTable,
+  auditionVolume,
+  setAuditionVolume,
+  stopAudition,
+} from "./tableaudio.js";
 import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
 
 /**
@@ -461,6 +467,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   let previewSlot: number | undefined;
   /** One read at a time, so a fast double click cannot interleave two slot reads. */
   let previewBusy = false;
+  /**
+   * The animation frame driving the marker while a note sounds, so it can be cancelled.
+   *
+   * The drawing follows the **audio clock**, not a timer started beside it: a sweep rendered at
+   * 3 seconds and a `setInterval` counting to 3 seconds drift apart within one note, and a marker
+   * that arrives at the last frame before the sound does reads as a bug in the table.
+   */
+  let following = 0;
+  /** The frame the slider was on before an audition moved it, so it can be put back. */
+  let frameBeforeAudition: number | undefined;
 
   const stage = (): HTMLElement => $("wavePreviewStage");
   const slider = (): HTMLInputElement => $<HTMLInputElement>("wavePreviewPos");
@@ -732,6 +748,11 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   // instrument here.
   slider().addEventListener("input", () => {
     if (previewSlot === undefined) return;
+    // **Before stopping the note, not after.** The follow loop puts the slider back where the
+    // audition found it when the sound ends; a drag is the person taking it over, so the saved
+    // position is dropped and the loop has nothing to restore. Without this, dragging mid-sweep
+    // moved the marker and then snapped it back a frame later.
+    frameBeforeAudition = undefined;
     frameOf.set(previewSlot, Number(slider().value) - 1);
     drawPreview();
     // A slider drag while a note is sounding would otherwise leave the sound on the frame it
@@ -751,6 +772,47 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * It plays the stored int16 at the geometry the entry declares, which is what the player reads,
    * so what you hear is the table rather than an idealised version of it.
    */
+  /**
+   * Move the drawing with the sound, until the sound stops.
+   *
+   * A sweep travels, so the marker and the slider travel with it and the stack lights up frame by
+   * frame. A held note does not travel — the frame it is on is the frame it stays on — so what
+   * this does there is mark the stage as sounding and leave the marker where it is. Animating a
+   * number that is not moving would be a lie about what is coming out of the speakers.
+   */
+  function followAudition(): void {
+    const slot = previewSlot;
+    const file = slot === undefined ? undefined : tables.get(slot);
+    if (!file) return;
+
+    $("wavePreviewStage").classList.add("sounding");
+
+    const step = (): void => {
+      const at = auditionFrame();
+      if (at === undefined) {
+        // Ended or stopped. Put the slider back where the person left it and redraw once.
+        following = 0;
+        $("wavePreviewStage").classList.remove("sounding");
+        if (frameBeforeAudition !== undefined && slot !== undefined) {
+          frameOf.set(slot, frameBeforeAudition);
+          frameBeforeAudition = undefined;
+          if (previewSlot === slot) drawPreview();
+        }
+        return;
+      }
+
+      const whole = Math.round(at);
+      if (slot !== undefined && frameOf.get(slot) !== whole) {
+        frameOf.set(slot, whole);
+        if (previewSlot === slot) drawPreview();
+      }
+      following = requestAnimationFrame(step);
+    };
+
+    if (following !== 0) cancelAnimationFrame(following);
+    following = requestAnimationFrame(step);
+  }
+
   async function auditionDrawn(sweep: boolean): Promise<void> {
     const slot = previewSlot;
     const file = slot === undefined ? undefined : tables.get(slot);
@@ -770,7 +832,12 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     );
     if (!started) {
       host.status("The browser would not start audio. Click the page and try again.", "warn");
+      return;
     }
+    // Remembered before the marker starts moving, so Stop or the end of the note puts the slider
+    // back rather than leaving it wherever the sweep happened to finish.
+    frameBeforeAudition = frameOf.get(slot!) ?? 0;
+    followAudition();
   }
 
   $("wavePreviewPlay").addEventListener("click", () => {
@@ -781,6 +848,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
   $("wavePreviewStop").addEventListener("click", () => {
     stopAudition();
+  });
+
+  /*
+   * The level, which belongs to the page rather than to a table: it stays where it was put for the
+   * next audition and for the staged import's own Play, both of which go through the same gain.
+   */
+  const volume = $<HTMLInputElement>("wavePreviewVolume");
+  volume.value = String(Math.round(auditionVolume() * 100));
+  volume.addEventListener("input", () => {
+    setAuditionVolume(Number(volume.value) / 100);
   });
 
   return { show, refresh };

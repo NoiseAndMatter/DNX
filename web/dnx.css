@@ -1059,9 +1059,51 @@ body.app.insights .slot { cursor: pointer; }
 .wfcontrols { display: flex; align-items: center; gap: .8rem; background: var(--panel);
   border: 1px solid var(--line); border-radius: 3px; padding: .6rem .75rem; }
 .wfcontrols .lbl { margin: 0; white-space: nowrap; }
-.wfcontrols input[type="range"] { flex-grow: 1; min-height: 2.75rem; accent-color: var(--teal); }
+/*
+  The row has to fit: a label, a slider, a readout, three buttons and a second slider. Wrapping
+  is the safety net, but the real fix is that **both sliders may shrink** — a flex item's default
+  `min-width: auto` is its content width, which for a range input is a browser-chosen minimum
+  that refuses to go below about 8rem. That refusal is what pushed the volume off the right edge.
+*/
+.wfcontrols { flex-wrap: wrap; }
+.wfcontrols input[type="range"] { flex: 1 1 6rem; min-width: 0; min-height: 2.75rem; }
+.wfcontrols input.wfvol { flex: 0 1 6rem; }
+
+/*
+  A pointer over a line, not a puck on a rail.
+
+  The position slider names a frame in a stack drawn directly above it, so the control should
+  point at it. A round thumb has no direction and sits on the line rather than indicating a
+  place on it. `appearance: none` is required first: with it left alone the browser draws its own
+  control and every rule below is ignored.
+*/
+.wfcontrols input[type="range"] {
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.wfcontrols input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px; background: var(--line); border-radius: 1px;
+}
+.wfcontrols input[type="range"]::-moz-range-track {
+  height: 2px; background: var(--line); border-radius: 1px;
+}
+/* Apex down, touching the line: `margin-top` of minus the full height puts the tip on the track. */
+.wfcontrols input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 9px; margin-top: -9px;
+  background: var(--teal); border: 0; clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.wfcontrols input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 9px; transform: translateY(-5px);
+  background: var(--teal); border: 0; clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.wfcontrols input[type="range"]:focus-visible::-webkit-slider-thumb { background: var(--focus); }
+.wfcontrols input[type="range"]:focus-visible::-moz-range-thumb { background: var(--focus); }
+/* The volume pointer is the quieter of the two: it is not pointing at anything drawn. */
+.wfcontrols input.wfvol::-webkit-slider-thumb { background: var(--teal-dim); }
+.wfcontrols input.wfvol::-moz-range-thumb { background: var(--teal-dim); }
+/* While a note sounds, the marker follows the audio rather than the pointer. */
+.wfstage.sounding { border-color: var(--teal-dim); }
 .wfpos { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--fg);
-  min-width: 11rem; text-align: right; }
+  min-width: 9.5rem; text-align: right; flex-shrink: 0; }
 @media (max-width: 40rem) {
   .wfcontrols { flex-wrap: wrap; }
   .wfpos { min-width: 0; text-align: left; }

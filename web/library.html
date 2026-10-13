@@ -238,15 +238,22 @@
         </div>
         <div class="wfstage" id="wavePreviewStage"></div>
         <div class="wfcontrols">
-          <label class="lbl" for="wavePreviewPos">Position</label>
+          <label class="lbl" for="wavePreviewPos">P:</label>
           <input
-            id="wavePreviewPos" type="range" min="1" max="2" step="1" value="1"
+            id="wavePreviewPos" aria-label="Position in the table" type="range" min="1" max="2" step="1" value="1"
             title="Which frame of the table to pick out of the stack"
           >
           <span class="wfpos" id="wavePreviewPosLabel"></span>
           <button class="btn" id="wavePreviewPlay" title="Hear the frame the slider is on, at middle C. Nothing is sent to the instrument.">Play</button>
           <button class="btn" id="wavePreviewSweep" title="Hear the table travel from its first frame to its last">Sweep</button>
           <button class="btn" id="wavePreviewStop" title="Stop the audition">Stop</button>
+          <!--
+            One level for the page, not one per table. Narrow and fixed, because the position
+            slider beside it is the one that should take the spare width.
+          -->
+          <label class="lbl" for="wavePreviewVolume">V:</label>
+          <input class="wfvol" id="wavePreviewVolume" aria-label="Audition volume" type="range" min="0" max="100" step="1" value="80"
+                 title="How loud an audition plays in this browser. Nothing is sent to the instrument.">
         </div>
       </div>
 
