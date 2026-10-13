@@ -26,7 +26,9 @@ import { test } from "node:test";
 import { EmulatorBridge, bridgePaths } from "../src/node/emulatorbridge.js";
 import { MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
 import { deleteTableSlot } from "@noiseandmatter/dnx-core/device/waveriderdelete.js";
-import { WAVERIDER, writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import { WAVERIDER, slotPath, writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
+import { pendingFromSlotFile, readSlotFile } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { listRequest, wholeListing } from "@noiseandmatter/dnx-core/device/storage.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
 
@@ -172,5 +174,72 @@ test("an empty slot is reported rather than deleted", { skip }, async () => {
     assert.equal(result.deleted, false);
     assert.match(result.problem ?? "", /already empty/);
     assert.equal(asked, false, "nobody should be asked about deleting nothing");
+  });
+});
+
+test("a deleted table can be put back from its copy, byte for byte", { skip }, async () => {
+  /*
+   * **The two-way door.** The owner's instruction on 2026-10-14, weighing the bulk erase: *make it
+   * a two way door*. A delete saves the bytes the instrument returned, and until `pendingFromSlotFile`
+   * nothing in DNX could read one back — the copy was a file only a hex editor could use, and the
+   * delete was a one-way trip dressed up as a reversible one.
+   *
+   * This is the whole loop against the firmware: write, delete keeping the copy, restore from the
+   * copy, and compare what comes back with what was there. Not "the restore reported success" —
+   * the table itself, sample for sample, and the entry the index holds for it.
+   */
+  await withBridge(async (bridge) => {
+    const slot = 13;
+    const original = pending(slot, "ROUND TRIP");
+
+    await writeTableToSlot({ transport: bridge, host, table: original, timeoutMs: TIMEOUT });
+    const before = readSlotFile(
+      (await readStoredFile(slotPath(slot), {
+        transport: bridge,
+        msgId: new MessageIds().reserve(4),
+        timeoutMs: TIMEOUT,
+      })).bytes,
+    );
+
+    let copy: Uint8Array | undefined;
+    const deleted = await deleteTableSlot({
+      transport: bridge,
+      host,
+      slot,
+      onBackup: (backup) => { copy = backup.bytes; },
+      timeoutMs: TIMEOUT,
+    });
+    assert.equal(deleted.deleted, true, "the delete did not take, so the restore proves nothing");
+    assert.ok(copy, "no copy was handed over");
+    assert.equal(await occupied(bridge, slot), false);
+
+    // The copy, read back into something writable. No conversion, no resampling, no renaming.
+    const restored = pendingFromSlotFile(copy, slot);
+    assert.equal(restored.name, "ROUND TRIP");
+    assert.equal(restored.waves, 16);
+    assert.equal(restored.points, 512);
+    assert.deepEqual([...restored.table], [...original.table], "the restore altered the samples");
+
+    const written = await writeTableToSlot({
+      transport: bridge, host, table: restored, timeoutMs: TIMEOUT,
+    });
+    assert.equal(written.listed, true, "the restored table did not land");
+
+    const after = readSlotFile(
+      (await readStoredFile(slotPath(slot), {
+        transport: bridge,
+        msgId: new MessageIds().reserve(4),
+        timeoutMs: TIMEOUT,
+      })).bytes,
+    );
+    assert.deepEqual([...after.table], [...before.table], "the table came back different");
+    assert.equal(after.entry.name, before.entry.name);
+    assert.equal(after.entry.waves, before.entry.waves);
+    assert.equal(after.entry.points, before.entry.points);
+    // The hashes describe the audio the table was first made from, so a restore must carry them
+    // rather than recompute them from the copy — otherwise a later re-import stops being
+    // recognisable as the same source.
+    assert.equal(after.entry.sourceHash, before.entry.sourceHash);
+    assert.equal(after.entry.sourceSize, before.entry.sourceSize);
   });
 });

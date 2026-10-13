@@ -45,6 +45,10 @@ import { auditionTable, stopAudition } from "./tableaudio.js";
 import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { WAVERIDER, writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
 import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
+import {
+  type PendingSlot,
+  pendingFromSlotFile,
+} from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { type FitBounds, type Geometry, proposeGeometry } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import {
   type PlannedImport,
@@ -92,14 +96,45 @@ export interface ImportStaging {
 }
 
 /** One file, decoded and placed, with nothing sent. */
-interface Staged {
-  slot: number;
-  fileName: string;
-  stem: string;
-  decoded: DecodedFile;
-  geometry: Geometry;
-  /** What the proposal said, kept so the note can show it after an override. */
-  proposed: string;
+/**
+ * A table waiting to be written, from one of the two kinds of file this pane accepts.
+ *
+ * **A union rather than optional fields, because the two are not the same thing.** An import has
+ * audio behind it and a geometry somebody can change; a restore has an instrument's own slot file
+ * behind it and a geometry that must not be touched — changing it would resample a table that is
+ * already in the instrument's form. Optional fields would have let the geometry boxes edit a
+ * restore, which is the one thing a restore must not allow.
+ */
+type Staged =
+  | {
+      kind: "audio";
+      slot: number;
+      fileName: string;
+      stem: string;
+      decoded: DecodedFile;
+      geometry: Geometry;
+      /** What the proposal said, kept so the note can show it after an override. */
+      proposed: string;
+    }
+  | {
+      kind: "copy";
+      slot: number;
+      fileName: string;
+      stem: string;
+      /** Straight from the saved file. Nothing is converted and nothing is recomputed. */
+      pending: PendingSlot;
+    };
+
+/** What would be written for a staged entry, whichever kind it is. */
+function pendingFor(entry: Staged, plan: PlannedImport | undefined): PendingSlot | undefined {
+  return entry.kind === "copy" ? { ...entry.pending, slot: entry.slot } : plan?.pending;
+}
+
+/** The shape a staged entry will be written at: chosen for an import, fixed for a restore. */
+function geometryOf(entry: Staged): Geometry {
+  return entry.kind === "copy"
+    ? { waves: entry.pending.waves, points: entry.pending.points }
+    : entry.geometry;
 }
 
 export function wireImport(host: ImportHost): ImportStaging {
@@ -122,6 +157,8 @@ export function wireImport(host: ImportHost): ImportStaging {
     plan = undefined;
     const entry = picked === undefined ? undefined : staged.get(picked);
     if (!entry) return;
+    // A restore is already a slot file. There is no fit to compute and nothing to convert.
+    if (entry.kind === "copy") return;
     try {
       plan = planImport(
         { bytes: entry.decoded.bytes, samples: entry.decoded.samples },
@@ -170,11 +207,46 @@ export function wireImport(host: ImportHost): ImportStaging {
     }
 
     nameBox().value = entry.stem;
-    wavesBox().value = String(entry.geometry.waves);
-    pointsBox().value = String(entry.geometry.points);
+
+    /*
+     * **A restore is not an import, and the panel has to stop offering to change it.** The
+     * geometry boxes resample; a saved copy is already in the instrument's own form, so editing
+     * it would convert a table that needs no converting. They are disabled rather than hidden so
+     * the shape is still there to read.
+     */
+    const isCopy = entry.kind === "copy";
+    const geometry = isCopy
+      ? { waves: entry.pending.waves, points: entry.pending.points }
+      : entry.geometry;
+    wavesBox().value = String(geometry.waves);
+    pointsBox().value = String(geometry.points);
+    wavesBox().disabled = isCopy;
+    pointsBox().disabled = isCopy;
+    nameBox().disabled = isCopy;
 
     const bounds = host.bounds();
     const notes: string[] = [];
+
+    if (entry.kind === "copy") {
+      notes.push(
+        `<p><strong>${escapeHtml(entry.fileName)}</strong> — a saved copy of a table, going back ` +
+          `to store slot <strong>${entry.slot}</strong> exactly as it was.</p>`,
+        `<p>${geometry.waves} waves x ${geometry.points} points · ` +
+          `${entry.pending.table.length.toLocaleString()} bytes · stored as ` +
+          `<code>${escapeHtml(entry.pending.name)}</code>.</p>`,
+        `<p class="hint">Nothing is converted and nothing is re-normalised: this is the table the ` +
+          `instrument wrote, so the name and the shape are not yours to change here.</p>`,
+      );
+      const unplayable = unplayableReason(geometry, bounds);
+      notes.push(
+        unplayable === undefined
+          ? `<p class="ok">The pool plays this geometry.</p>`
+          : `<p class="warn">${escapeHtml(unplayable)}</p>`,
+      );
+      $("wavimportNote").innerHTML = notes.join("");
+      return;
+    }
+
     notes.push(
       `<p><strong>${escapeHtml(entry.fileName)}</strong> — ${escapeHtml(entry.decoded.describedAs)}, ` +
         `${entry.decoded.channels === 1 ? "mono" : `${entry.decoded.channels} channels mixed to mono`}, ` +
@@ -193,10 +265,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       }
       // The instrument's own bounds, not the fallback: judging the staged shape against a
       // narrower rule than the one it was proposed under would contradict the proposal.
-      const unplayable = unplayableReason(
-        { waves: entry.geometry.waves, points: entry.geometry.points },
-        bounds,
-      );
+      const unplayable = unplayableReason(geometry, bounds);
       notes.push(
         unplayable === undefined
           ? `<p class="ok">The pool plays this geometry.</p>`
@@ -238,8 +307,9 @@ export function wireImport(host: ImportHost): ImportStaging {
       const cells = row.cells;
       if (cells.length >= 2) {
         cells[1]!.innerHTML =
-          `<span class="pendingmark">staged</span> ${escapeHtml(entry.stem)} ` +
-          `<span class="hint">${entry.geometry.waves} x ${entry.geometry.points}</span>`;
+          `<span class="pendingmark">${entry.kind === "copy" ? "restore" : "staged"}</span> ` +
+          `${escapeHtml(entry.stem)} ` +
+          `<span class="hint">${geometryOf(entry).waves} x ${geometryOf(entry).points}</span>`;
       }
       row.addEventListener("dragstart", (event) => {
         event.dataTransfer?.setData(MOVE_TYPE, String(entry.slot));
@@ -288,14 +358,49 @@ export function wireImport(host: ImportHost): ImportStaging {
 
     const bounds = host.bounds();
     const failed: string[] = [];
+    /** Saved copies among the dropped files, so the status can say what kind of staging this is. */
+    let restored = 0;
     for (let i = 0; i < audio.length; i++) {
       const file = audio[i]!;
       const slot = placed.slots[i]!;
-      host.status(`Decoding ${file.name}…`);
+      host.status(`Reading ${file.name}…`);
       try {
+        /*
+         * **A saved copy goes back as it is; anything else is audio to convert.**
+         *
+         * Recognised by the bytes, not the extension: `pendingFromSlotFile` refuses anything that
+         * is not an Elektron container holding a slot file, and a rename cannot fool it. A .wav
+         * that somehow parsed as one would be a container, which no audio file is.
+         *
+         * This is the other half of the door the owner asked for on 2026-10-14. Deleting a table
+         * saves exactly these bytes; before this, nothing in DNX could read one back and the copy
+         * was a file only a hex editor could use.
+         */
+        const raw = new Uint8Array(await file.arrayBuffer());
+        let pending: PendingSlot | undefined;
+        try {
+          pending = pendingFromSlotFile(raw, slot);
+        } catch {
+          pending = undefined;
+        }
+
+        if (pending) {
+          staged.set(slot, {
+            kind: "copy",
+            slot,
+            fileName: file.name,
+            stem: pending.name || stemFromFileName(file.name),
+            pending,
+          });
+          restored += 1;
+          picked ??= slot;
+          continue;
+        }
+
         const decoded = await decodeTableFile(file);
         const proposal = proposeGeometry(decoded.samples.length, bounds);
         staged.set(slot, {
+          kind: "audio",
           slot,
           fileName: file.name,
           stem: stemFromFileName(file.name),
@@ -314,7 +419,14 @@ export function wireImport(host: ImportHost): ImportStaging {
     if (failed.length > 0) {
       host.status(`${failed.length} file(s) could not be read. ${failed.join("; ")}`, "error");
     } else {
-      host.status(`${audio.length} staged, nothing sent.${skipped}`, "ok");
+      host.status(
+        restored === 0
+          ? `${audio.length} staged, nothing sent.${skipped}`
+          : restored === audio.length
+            ? `${restored} saved table(s) ready to restore, nothing sent.${skipped}`
+            : `${audio.length} staged — ${restored} restored from copies — nothing sent.${skipped}`,
+        "ok",
+      );
     }
 
     replan();
@@ -351,15 +463,19 @@ export function wireImport(host: ImportHost): ImportStaging {
 
     // Plan every one before asking, so an impossible geometry stops the run at the question
     // rather than four tables in.
-    const plans: PlannedImport[] = [];
+    const pendings: PendingSlot[] = [];
     for (const entry of entries) {
       try {
-        plans.push(
-          planImport(
-            { bytes: entry.decoded.bytes, samples: entry.decoded.samples },
-            { slot: entry.slot, stem: entry.stem, geometry: entry.geometry },
-          ),
-        );
+        // A restore is already a slot file; only an import has a conversion that can fail here.
+        const built =
+          entry.kind === "copy"
+            ? pendingFor(entry, undefined)
+            : planImport(
+                { bytes: entry.decoded.bytes, samples: entry.decoded.samples },
+                { slot: entry.slot, stem: entry.stem, geometry: entry.geometry },
+              ).pending;
+        if (!built) throw new Error("nothing to write");
+        pendings.push(built);
       } catch (error: unknown) {
         host.status(`Slot ${entry.slot} (${entry.stem}) cannot be built: ${String(error)}`, "error");
         return;
@@ -393,13 +509,9 @@ export function wireImport(host: ImportHost): ImportStaging {
 
     const judgeBounds = host.bounds();
     const unplayable = entries.filter(
-      (entry) =>
-        unplayableReason(
-          { waves: entry.geometry.waves, points: entry.geometry.points },
-          judgeBounds,
-        ) !== undefined,
+      (entry) => unplayableReason(geometryOf(entry), judgeBounds) !== undefined,
     );
-    const bytes = plans.reduce((total, one) => total + one.pending.table.length, 0);
+    const bytes = pendings.reduce((total, one) => total + one.table.length, 0);
     const lines = [
       `${entries.length} ${entries.length === 1 ? "table" : "tables"}, ` +
         `${bytes.toLocaleString()} bytes, one per slot: ` +
@@ -414,7 +526,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       lines.push(
         `${unplayable.length} of them ${unplayable.length === 1 ? "has a geometry" : "have geometries"} ` +
           `this instrument stores but does not play: ` +
-          unplayable.map((entry) => `${entry.slot} (${entry.geometry.waves} x ${entry.geometry.points})`).join(", ") +
+          unplayable.map((entry) => `${entry.slot} (${geometryOf(entry).waves} x ${geometryOf(entry).points})`).join(", ") +
           `. They will be listed and silent.`,
       );
     }
@@ -434,9 +546,9 @@ export function wireImport(host: ImportHost): ImportStaging {
     $<HTMLButtonElement>("wavimportWrite").disabled = true;
     stopAudition();
     try {
-      for (let i = 0; i < plans.length; i++) {
-        const pending = plans[i]!.pending;
-        host.status(`Writing ${i + 1} of ${plans.length}: ${pending.name} → ${WAVERIDER}/${pending.slot}…`);
+      for (let i = 0; i < pendings.length; i++) {
+        const pending = pendings[i]!;
+        host.status(`Writing ${i + 1} of ${pendings.length}: ${pending.name} → ${WAVERIDER}/${pending.slot}…`);
         const result = await writeTableToSlot({
           transport: apiTransport(device),
           host: {
@@ -452,9 +564,9 @@ export function wireImport(host: ImportHost): ImportStaging {
 
         if (result.cancelled || result.problem !== undefined || !result.listed) {
           host.status(
-            `Stopped at ${i + 1} of ${plans.length}. ${i} written. ` +
+            `Stopped at ${i + 1} of ${pendings.length}. ${i} written. ` +
               `Slot ${pending.slot}: ${result.problem ?? "cancelled"}. ` +
-              `${plans.length - i} not sent.`,
+              `${pendings.length - i} not sent.`,
             "error",
           );
           return;
@@ -463,9 +575,9 @@ export function wireImport(host: ImportHost): ImportStaging {
         if (picked === pending.slot) picked = undefined;
       }
       host.status(
-        `Wrote ${plans.length} ${plans.length === 1 ? "table" : "tables"}. ` +
-          `${plans.length === 1 ? "It is" : "They are"} in the store and in no pool yet: click ` +
-          `${plans.length === 1 ? "it" : "one"} on the right, then a pool slot on the left, and ` +
+        `Wrote ${pendings.length} ${pendings.length === 1 ? "table" : "tables"}. ` +
+          `${pendings.length === 1 ? "It is" : "They are"} in the store and in no pool yet: click ` +
+          `${pendings.length === 1 ? "it" : "one"} on the right, then a pool slot on the left, and ` +
           `press Add to pool.`,
         "ok",
       );
@@ -517,6 +629,9 @@ export function wireImport(host: ImportHost): ImportStaging {
     const rebuild = (): void => {
       const entry = picked === undefined ? undefined : staged.get(picked);
       if (!entry) return;
+      // A restore has no name or shape to edit: it is the instrument's own slot file, and the
+      // boxes are disabled for it. Guarded here too, so a stray event cannot reach the fields.
+      if (entry.kind === "copy") return;
       entry.stem = nameBox().value.trim() || entry.stem;
       const waves = Number(wavesBox().value);
       const points = Number(pointsBox().value);
@@ -574,12 +689,15 @@ export function wireImport(host: ImportHost): ImportStaging {
    * preview should sound like. Playing the floats would audition something nobody will ever hear.
    */
   async function audition(entry: Staged, sweep: boolean): Promise<void> {
-    if (!plan) return;
+    // Whichever kind: a restore has its table already, an import has one once the plan builds.
+    const pending = pendingFor(entry, plan);
+    if (!pending) return;
+    const shape = geometryOf(entry);
     const started = await auditionTable(
       {
-        samples: readTableSamples(plan.pending.table),
-        waves: entry.geometry.waves,
-        points: entry.geometry.points,
+        samples: readTableSamples(pending.table),
+        waves: shape.waves,
+        points: shape.points,
         fullScale: 32_767,
       },
       { sweep },

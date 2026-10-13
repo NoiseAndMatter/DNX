@@ -632,7 +632,13 @@ if you do not choose a slot.
 
 After deleting, take the MISSING entries out with **Remove from pool**. If you leave them and
 later write a different table into the same store slot, those entries name the new table instead,
-in every project, with nothing on screen having changed.`,
+in every project, with nothing on screen having changed.
+
+**To put a deleted table back**, drag its saved copy onto a free slot in the **+Drive wavetables**
+list, exactly as you would an audio file, and press **Write staged tables**. DNX recognises the
+copy and restores the table as it was: same shape, same name, nothing converted and nothing made
+louder. The name and shape boxes are switched off for a restore, because changing them would mean
+rebuilding a table that needs no rebuilding.`,
       },
       {
         id: "wavetable-limits",
