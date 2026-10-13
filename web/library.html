@@ -244,22 +244,30 @@
         </div>
         <div class="wfstage" id="wavePreviewStage"></div>
         <div class="wfcontrols">
-          <label class="lbl" for="wavePreviewPos">P:</label>
-          <input
-            id="wavePreviewPos" aria-label="Position in the table" type="range" min="1" max="2" step="1" value="1"
-            title="Which frame of the table to pick out of the stack"
-          >
-          <span class="wfpos" id="wavePreviewPosLabel"></span>
-          <button class="btn" id="wavePreviewPlay" title="Hear the frame the slider is on, at middle C. Nothing is sent to the instrument.">Play</button>
-          <button class="btn" id="wavePreviewSweep" title="Hear the table travel from its first frame to its last">Sweep</button>
-          <button class="btn" id="wavePreviewStop" title="Stop the audition">Stop</button>
           <!--
-            One level for the page, not one per table. Narrow and fixed, because the position
-            slider beside it is the one that should take the spare width.
+            **Each label travels with its control.** These wrap, and when they did so as eight
+            separate items the V: label stayed on the first line while its slider dropped to the
+            second — a label on its own, labelling nothing anybody could see. A group is one flex
+            item, so a pair either fits together or moves together.
           -->
-          <label class="lbl" for="wavePreviewVolume">V:</label>
-          <input class="wfvol" id="wavePreviewVolume" aria-label="Audition volume" type="range" min="0" max="100" step="1" value="80"
-                 title="How loud an audition plays in this browser. Nothing is sent to the instrument.">
+          <span class="wfgroup wfgroup-pos">
+            <label class="lbl" for="wavePreviewPos">P:</label>
+            <input
+              id="wavePreviewPos" aria-label="Position in the table" type="range" min="1" max="2" step="1" value="1"
+              title="Which frame of the table to pick out of the stack"
+            >
+          </span>
+          <span class="wfpos" id="wavePreviewPosLabel"></span>
+          <span class="wfgroup">
+            <button class="btn" id="wavePreviewPlay" title="Hear the frame the slider is on, at middle C. Nothing is sent to the instrument.">Play</button>
+            <button class="btn" id="wavePreviewSweep" title="Hear it travel from the first frame to the last">Sweep</button>
+            <button class="btn" id="wavePreviewStop" title="Stop the audition">Stop</button>
+          </span>
+          <span class="wfgroup">
+            <label class="lbl" for="wavePreviewVolume">V:</label>
+            <input class="wfvol" id="wavePreviewVolume" aria-label="Audition volume" type="range" min="0" max="100" step="1" value="80"
+                   title="How loud an audition plays in this browser. Nothing is sent to the instrument.">
+          </span>
         </div>
       </div>
 

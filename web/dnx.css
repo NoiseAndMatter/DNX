@@ -1083,7 +1083,10 @@ body.app.insights .slot { cursor: pointer; }
   that refuses to go below about 8rem. That refusal is what pushed the volume off the right edge.
 */
 .wfcontrols { flex-wrap: wrap; }
-.wfcontrols input[type="range"] { flex: 1 1 6rem; min-width: 0; min-height: 2.75rem; }
+/* A label and its control are one item, so a wrap never separates them. */
+.wfgroup { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.wfgroup-pos { flex: 1 1 10rem; }
+.wfcontrols input[type="range"] { flex: 1 1 auto; min-width: 0; min-height: 2.75rem; }
 .wfcontrols input.wfvol { flex: 0 1 6rem; }
 
 /*
