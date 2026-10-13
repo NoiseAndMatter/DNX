@@ -106,6 +106,45 @@ test("DNX writes a table, the store takes it, and the slot reads back identical"
   });
 });
 
+test("a table that fills the whole slot survives the trip", { skip }, async () => {
+  /*
+   * **The size the import can actually produce, which is the one nobody had sent.**
+   *
+   * Every other test here writes 16 x 512, which is 16 KiB. The Library's importer will happily
+   * build 64 x 4,096, and that is 524,288 bytes: exactly `SLOT_BYTES`, so it is both the largest
+   * table the format allows and the boundary where an off-by-one lands. It goes out in pieces and
+   * the firmware puts it back together, and that reassembly is the one part of the route the
+   * bridge's own header says it does not skip.
+   *
+   * Until this ran, the evidence for a large write was that a small one worked. The firmware
+   * session had not measured a receive-side limit either, so this is the measurement.
+   */
+  await withBridge(async (bridge) => {
+    const big = new Uint8Array(64 * 4096 * 2);
+    for (let i = 0; i < big.length; i++) big[i] = (i * 31 + 7) & 0xff;
+    assert.equal(big.length, 524_288, "this test is about the slot-sized table; the size moved");
+
+    const table = {
+      slot: 11, name: "DNXBIG", waves: 64, points: 4096, interpolate: true,
+      table: big, sourceHash: xxHash32(big), sourceSize: big.length, gain: 1,
+    };
+
+    const result = await writeTableToSlot({ transport: bridge, host, table, timeoutMs: TIMEOUT });
+
+    assert.equal(result.cancelled, false);
+    assert.equal(result.problem, undefined, "the write reported a problem");
+    assert.equal(result.listed, true, "the slot must be occupied in the listing afterwards");
+    assert.equal(result.listedAs, "DNXBIG");
+    // The whole point: every byte back, not just a slot that became occupied.
+    assert.equal(result.verified, true, "a slot-sized table did not read back identical");
+    assert.equal(result.written, 31 + 128 + big.length + 12);
+
+    // Stored and listed, and the stock pool will not play it. That is the documented outcome for
+    // a geometry outside the bounds, and it must be reported rather than silently fine.
+    assert.notEqual(result.unplayable, undefined, "64 x 4096 is not a geometry the stock pool plays");
+  });
+});
+
 test("the slot the firmware hands back is the file DNX built", { skip }, async () => {
   await withBridge(async (bridge) => {
     const table = pending(5, "ROUNDTRIP", 11);

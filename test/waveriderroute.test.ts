@@ -97,16 +97,32 @@ async function withCard<T>(
 }
 after(async () => { for (const io of open) await io.close(); });
 
-test("the root lists four directories, and the fourth looks like the other three", { skip }, async () => {
+test("the root lists its directories, and /waverider looks like the others", { skip }, async () => {
   await withCard([], async (io) => {
     const listing = parseListing((await io.request(listRequest(1, "/"), 1, TIMEOUT)).body);
 
-    assert.equal(listing.declared, 4, "declared must match carried or requireWholeListing refuses");
-    assert.equal(listing.entries.length, 4);
+    /*
+     * **The invariant is that the count it declares is the count it carries.** A short reply read
+     * as a whole one is how an unlisted route becomes a missing one, so this is the assertion
+     * worth making whatever the root happens to hold.
+     */
+    assert.equal(listing.declared, listing.entries.length,
+      "declared must match carried or requireWholeListing refuses");
     assert.ok(listing.complete);
-    assert.deepEqual(listing.entries.map((e) => e.name), ["projects", "soundbanks", "kits", "waverider"]);
 
-    const waverider = listing.entries[3]!;
+    /*
+     * The set is still pinned, because a route appearing or vanishing is a thing to notice rather
+     * than absorb. It last fired on 2026-10-13, when `waverider-syncpos2` began advertising
+     * `wavepool` and `modinfo` here: both are routes DNX already addresses, so what changed is
+     * that the root now says so. Update this list when the firmware adds one, and say which.
+     */
+    assert.deepEqual(listing.entries.map((e) => e.name),
+      ["projects", "soundbanks", "kits", "waverider", "wavepool", "modinfo"]);
+
+    // Found by name, not by position. It was index 3 and the routes around it have already moved
+    // once; an index here would make the shape assertions below silently test the wrong entry.
+    const waverider = listing.entries.find((e) => e.name === "waverider")!;
+    assert.ok(waverider, "the /waverider route is not in the root listing");
     assert.equal(waverider.kind, "directory");
     assert.equal(waverider.children, 256);
     // Short form carries a child count and nothing else. A long-form root entry would parse and
