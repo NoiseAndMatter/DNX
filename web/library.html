@@ -90,6 +90,23 @@
   <section class="section">
     <h2>In</h2>
     <div class="bar">
+      <!--
+        **The instrument comes first, because the project buttons depend on it.**
+        *From +Drive…* ships disabled and is only enabled by *Connect an instrument…*, so
+        with Project first the row asked you to press a button whose prerequisite was to its
+        right. The owner read it as the two buttons doing the same thing, which is the
+        natural reading of a greyed one beside a live one: connect to the instrument, then
+        open a project already stored on it.
+      -->
+      <span class="lbl">Instrument</span>
+      <button class="btn" id="connect">Connect an instrument…</button>
+      <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
+      <select id="kind" disabled title="Which library to browse">
+        <option value="preset">Presets</option>
+        <option value="kit">Kits</option>
+      </select>
+      <button class="btn" id="browse" disabled>Browse</button>
+      <span class="sep"></span>
       <span class="lbl">Project</span>
       <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
       <!--
@@ -101,18 +118,9 @@
         and edits meant for slot 47 would land in slot 3. This tool never writes to the instrument at
         all — it exports a file — so the distinction that complicates the manager does not exist here.
       -->
-      <button class="btn" id="driveBrowse" disabled title="List the projects stored on the instrument">From +Drive…</button>
+      <button class="btn" id="driveBrowse" disabled title="Connect an instrument first, then this lists the projects stored on it">From +Drive…</button>
       <select id="driveProjects" hidden title="Which stored project to open"></select>
       <button class="btn" id="driveOpen" hidden>Open</button>
-      <span class="sep"></span>
-      <span class="lbl">Instrument</span>
-      <button class="btn" id="connect">Connect an instrument…</button>
-      <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
-      <select id="kind" disabled title="Which library to browse">
-        <option value="preset">Presets</option>
-        <option value="kit">Kits</option>
-      </select>
-      <button class="btn" id="browse" disabled>Browse</button>
       <span class="spacer"></span>
       <span class="lbl">History</span>
       <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
