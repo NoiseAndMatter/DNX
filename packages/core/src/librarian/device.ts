@@ -295,6 +295,29 @@ const DN2: Device = {
 };
 
 /** Identify the device a decoded image belongs to. */
+/**
+ * The name of a pattern a **stored record** points at, or `undefined` when there is no name.
+ *
+ * `summarise` asserts the index, which is right for a caller that chose the number: a typo in a
+ * call site should be loud. This is for the other kind of caller, the one reading an index *out of
+ * a project* — a song row, a chain, anything the instrument wrote — where the number is data and
+ * data can be damaged. rivvi's project holds 196 in a song row, and a page that drew that row died
+ * of a `RangeError` rather than showing a row with no name.
+ *
+ * So the two callers are kept apart instead of softening `summarise` for both. An out-of-range
+ * index is not an error here; it is a pattern this project does not have, which is a thing a
+ * person can be shown.
+ */
+export function storedPatternName(
+  device: Device,
+  image: Uint8Array,
+  index: number,
+): string | undefined {
+  if (!Number.isInteger(index) || index < 0 || index >= device.patternCount) return undefined;
+  const summary = device.summarise(image, index);
+  return summary.readable ? summary.name : undefined;
+}
+
 export function deviceFor(image: Uint8Array): Device {
   const layout = layoutFor(image);
   return layout === DN1_LAYOUT ? DN1 : DN2;

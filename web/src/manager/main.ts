@@ -22,7 +22,7 @@
  * the only copy of that work, and an undo they have to discover after the fact is not consent.
  */
 
-import { deviceFor, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { deviceFor, storedPatternName, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { planRearrange, applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
@@ -535,6 +535,19 @@ function renderInsightsPanel(): void {
 }
 
 function render(): void {
+  /*
+   * **Decided before anything is drawn, so a drawing fault cannot take a control away.**
+   *
+   * This sat at the end of `render` and a `RangeError` from a corrupt song row jumped over it,
+   * leaving the whole-project write hidden on exactly the projects it exists to rescue. Nothing
+   * below changes `state.session` or `state.file`, so the answer is the same either way — but at
+   * the top it survives a throw, and at the bottom it does not.
+   *
+   * `state.file` is the condition, not `state.session`: writing needs the container header an
+   * export copies verbatim, and a project read off the device has no manifest to take one from.
+   */
+  $("savetodrive").hidden = !(state.session && state.file);
+
   renderTabs();
   renderGrid();
   renderSelection();
@@ -549,20 +562,6 @@ function render(): void {
     $<HTMLButtonElement>("writedevice").disabled = state.session.image === deviceHandle.original;
   }
 
-  /*
-   * **Save to +Drive appears when there is a project that can be written.**
-   *
-   * It shipped `hidden` in the markup and nothing ever unhid it, so the whole whole-project write
-   * was unreachable — the feature existed, was tested, and could not be pressed. Exactly the fault
-   * the song-level edits had, found the same way: by opening the page and looking for the button.
-   *
-   * Decided here rather than at each of the three places a project opens, because that is how the
-   * control ends up shown in two of them and forgotten in the third.
-   *
-   * `state.file` is the condition, not `state.session`: writing needs the container header an
-   * export copies verbatim, and a project read off the device has no manifest to take one from.
-   */
-  $("savetodrive").hidden = !(state.session && state.file);
 }
 
 
@@ -699,8 +698,10 @@ function renderSongs(): void {
       const image = state.session?.image;
       const device = state.device;
       if (!image || !device) return undefined;
-      const summary = device.summarise(image, slot);
-      return summary.readable ? summary.name : undefined;
+      // The number came out of a stored song row, so it is data and data can be damaged.
+      // `storedPatternName` is the reader for that case; `summarise` is for a caller that chose
+      // the index itself and should hear about a typo.
+      return storedPatternName(device, image, slot);
     },
     onField: (row, field, value) => {
       editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));
