@@ -38,7 +38,7 @@
 import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
-import { renderGrid, type SlotView } from "../grid.js";
+import { GridDrag, renderGrid, type SlotView } from "../grid.js";
 import { IDS_FOR, pageMessageIds, reserveMessageIds } from "../messageids.js";
 import { type StatusWriter } from "../statusbar.js";
 import {
@@ -119,8 +119,18 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   let reading: PoolReading | undefined;
   /** The pool index last clicked, so its note stays on screen. */
   let picked: number | undefined;
-  /** The store slot last clicked. Rename and Delete will act on this. */
-  let pickedSlot: number | undefined;
+  /**
+   * The store slots selected, in the house gesture: click, shift-click for a run, ctrl-click to
+   * add or remove one.
+   *
+   * A set rather than one slot because the owner asked for the same gesture the manager uses to
+   * move patterns between projects — select several, drag them onto a destination. A pane with
+   * one selection and a button is a second vocabulary for the same idea, and
+   * `one-visual-language-across-tools` is the rule it was breaking.
+   */
+  const pickedSlots = new Set<number>();
+  /** Where a shift-click measures its run from: the last slot clicked without shift. */
+  let anchorSlot: number | undefined;
   let busy = false;
   /** What Sounds mode had hidden when this mode took the panes. See `SOUNDS_ONLY`. */
   const hiddenBefore = new Map<string, boolean>();
@@ -132,6 +142,61 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * *Wavetable pool* over the preset pool. Found by opening the page and pressing both tabs.
    */
   const titlesBefore = new Map<string, string>();
+
+  /** The two grids a drag can cross. Named, because `GridDrag` judges a drop by where it began. */
+  const STORE_GRID = "wavestore";
+  const POOL_GRID = "wavepool";
+
+  /**
+   * Dragging tables out of the store and onto a pool slot.
+   *
+   * **The same controller the manager moves patterns with**, which is the point: the owner asked
+   * for this gesture by comparing it to moving patterns between projects, and a second drag
+   * implementation would be a second set of rules about what a drop means.
+   *
+   * Store to pool only. A drop anywhere else is refused by returning no hint, which leaves the
+   * browser's own "no" cursor — clearer than a message, and nothing has to draw it.
+   */
+  const drag = new GridDrag({
+    onDragStart: (grid, index) => {
+      if (grid !== STORE_GRID) return [index];
+      // Dragging one of several selected drags the whole selection; dragging anything else takes
+      // the selection with it, so the two can never disagree about what is in flight.
+      if (!pickedSlots.has(index)) {
+        pickedSlots.clear();
+        pickedSlots.add(index);
+        anchorSlot = index;
+        renderStore();
+        poolWriting.redraw();
+      }
+      return chosenSlots();
+    },
+    hintFor: (from, grid, index) => {
+      if (from.grid !== STORE_GRID || grid !== POOL_GRID) return undefined;
+      const holding = from.indices.filter(
+        (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
+      );
+      const described = poolWriting.describeDrop(holding, index);
+      if (!described) return undefined;
+      // `copy`, not `move`: the table stays in the store and every other project keeps it. Saying
+      // "move" would be the page claiming something the instrument does not do.
+      return { action: "copy", label: described.label, status: described.status };
+    },
+    onDrop: (from, grid, index) => {
+      if (from.grid !== STORE_GRID || grid !== POOL_GRID) return;
+      const holding = from.indices.filter(
+        (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
+      );
+      if (holding.length === 0) {
+        host.status("Those store slots are empty, so there is nothing to add.", "warn");
+        return;
+      }
+      void poolWriting.addAt(holding, index);
+    },
+    onStatus: (message, kind) => {
+      if (message !== "") host.status(message, kind ?? "info");
+    },
+  });
 
   /**
    * Staging imports onto the store, which is the only thing in this mode that writes.
@@ -165,7 +230,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     device: () => host.device(),
     reading: () => reading,
     projectSlot: () => Number(projects().value),
-    pickedSlot: () => pickedSlot,
+    pickedSlots: () => chosenSlots(),
     pickedIndex: () => picked,
     status: host.status,
     reread: refresh,
@@ -209,6 +274,38 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   const helpBefore = new Map<HTMLElement, string>();
 
   const projects = (): HTMLSelectElement => $<HTMLSelectElement>("wavepoolProject");
+
+  /** The selection in slot order, which is the order a drop lays them into the pool. */
+  function chosenSlots(): number[] {
+    return [...pickedSlots].sort((a, b) => a - b);
+  }
+
+  /**
+   * Apply a click to the selection, the same way every other grid on this page does.
+   *
+   * Plain click replaces it, ctrl or cmd toggles one, shift takes the run from the anchor. The
+   * anchor only moves on a plain or toggling click, so shift-clicking twice re-measures from the
+   * same place rather than growing the run each time.
+   */
+  function selectStore(slot: number, event: MouseEvent): void {
+    const additive = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && anchorSlot !== undefined) {
+      const lo = Math.min(anchorSlot, slot);
+      const hi = Math.max(anchorSlot, slot);
+      if (!additive) pickedSlots.clear();
+      for (let at = lo; at <= hi; at++) pickedSlots.add(at);
+      return;
+    }
+    if (additive) {
+      if (pickedSlots.has(slot)) pickedSlots.delete(slot);
+      else pickedSlots.add(slot);
+      anchorSlot = slot;
+      return;
+    }
+    pickedSlots.clear();
+    pickedSlots.add(slot);
+    anchorSlot = slot;
+  }
 
   function note(html: string): void {
     const box = $("wavepoolNote");
@@ -377,6 +474,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         // The label says which slot it will write into, so it changes with the selection.
         poolWriting.redraw();
       },
+      drag: { controller: drag, grid: POOL_GRID },
     });
 
     const cell = picked === undefined ? undefined : summary.cells[picked];
@@ -432,7 +530,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       tr.className = slot.occupied ? "occupied" : "free";
       // How `importstage.decorate` finds the row for a staged slot after a re-render.
       tr.dataset.slot = String(slot.slot);
-      if (slot.slot === pickedSlot) {
+      if (pickedSlots.has(slot.slot)) {
         tr.classList.add("selected");
         tr.setAttribute("aria-selected", "true");
       }
@@ -449,12 +547,20 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
             ? '<span class="hint">—</span>'
             : inPool.map((index) => index + 1).join(", ")
         }</td>`;
-      tr.addEventListener("click", () => {
-        pickedSlot = slot.slot;
+      tr.addEventListener("click", (event) => {
+        selectStore(slot.slot, event);
         renderStore();
         poolWriting.redraw();
+        // The preview follows the clicked row whatever the selection did, because the preview
+        // answers "what is this one" and a run of ten is still ten tables somebody clicked last.
         void showPreview(slot.slot);
       });
+      /*
+       * **Draggable, as the same gesture everywhere else on this page.** A store row is a source
+       * only: `hintFor` refuses a drop on one, so dragging a table onto the store does nothing
+       * rather than looking like it might move it.
+       */
+      drag.bind(tr, STORE_GRID, slot.slot);
       body.append(tr);
     }
     // After the rows exist, so a staged table is marked on the row it will land on rather than
@@ -468,10 +574,13 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       "Wavetable pool",
       `— ${reading.summary.tables} of ${POOL_ENTRIES} used`,
       "+Drive wavetables",
-      // The drop is the only way to import and the panel that explains it does not exist until
-      // something is staged, so the one place a first-time user is already looking has to say so.
+      /*
+       * **Both drops, named where somebody is already looking.** Audio in from the computer, and
+       * tables out onto a pool slot — neither has a control that announces itself, and the panel
+       * that explains the first does not exist until something is staged.
+       */
       `— ${used} of ${reading.store.length} slots used, shared by every project · drag audio ` +
-        `files onto a free slot to import`,
+        `files onto a free slot to import · drag tables onto a pool slot to add them`,
     );
   }
 

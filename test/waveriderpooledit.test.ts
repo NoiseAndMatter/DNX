@@ -179,3 +179,39 @@ test("a cleared slot is then the first free one, which is the hole the warning i
   assert.equal(next.placed[0]!.index, 1, "the next add falls into the hole");
   assert.equal(next.entries[2], 40, "and the table after it has not moved");
 });
+
+test("a run of tables lands on consecutive slots and reports each displacement", () => {
+  /*
+   * **What a drop of several tables onto one pool slot means.** The gesture names the first slot
+   * and the rest follow, so the arithmetic has to be the boring one — index, index+1, index+2 —
+   * with no skipping of occupied slots. Skipping would make a drop of five onto slot 10 land on
+   * 10, 11, 14, 15, 18 depending on what was already there, which is not something anybody could
+   * predict from the screen.
+   */
+  const before = pool(3, 9, 40, 77, 5);
+  const { entries, placed } = placeInPool(before, [
+    { storeSlot: 100, index: 2 },
+    { storeSlot: 101, index: 3 },
+    { storeSlot: 102, index: 4 },
+  ]);
+
+  assert.deepEqual(entries.slice(0, 5), [3, 9, 100, 101, 102]);
+  assert.deepEqual(placed, [
+    { storeSlot: 100, index: 2, replaced: 40 },
+    { storeSlot: 101, index: 3, replaced: 77 },
+    { storeSlot: 102, index: 4, replaced: 5 },
+  ]);
+});
+
+test("a run that would pass the last slot is refused rather than truncated", () => {
+  // Dropping three tables on slot 127 can only mean 127, 128, 129 — two of which do not exist.
+  // Writing the one that fits and silently dropping two is the worst of the options.
+  assert.throws(
+    () => placeInPool(pool(), [
+      { storeSlot: 1, index: POOL_ENTRIES - 2 },
+      { storeSlot: 2, index: POOL_ENTRIES - 1 },
+      { storeSlot: 3, index: POOL_ENTRIES },
+    ]),
+    WaveriderError,
+  );
+});

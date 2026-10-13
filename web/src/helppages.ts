@@ -518,9 +518,14 @@ Before you start:
 - **WRITE** on, in the tool row.
 
 1. Press **Wavetables**, then pick the project from **POOL OF**.
-2. Click the table in the **+Drive wavetables** list on the right.
-3. Click the pool slot you want it in, on the left. Skip this step to use the first free slot.
-4. Press **Add to pool**. One question names the table, the slot, and what the slot holds now.
+2. Click the table in the **+Drive wavetables** list on the right. **Shift-click** another to take
+   the whole run between them; **Ctrl-click** (**Cmd** on a Mac) adds or removes one.
+3. **Drag them onto the pool slot** you want the first one in. The rest follow in the slots after
+   it, and the slot you are over says how many are landing and what they replace.
+4. One question names every table, every slot, and what each slot holds now.
+
+Rather not drag? Click a pool slot and press **Add to pool** instead, which does the same thing.
+With no pool slot picked it uses the first free one.
 
 On the instrument, set the sound's **TBL** to the pool slot number: for pool slot 5 the cell reads
 **T:005**. Below **T:001** are the two built-in waveforms, **PRIM** and **HARM**.

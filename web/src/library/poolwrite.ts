@@ -45,7 +45,8 @@ import { downloadBackup } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { writePool } from "@noiseandmatter/dnx-core/device/wavepoolwrite.js";
-import { clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { type Placed, clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 
 export interface PoolWriteHost {
@@ -54,8 +55,14 @@ export interface PoolWriteHost {
   reading(): PoolReading | undefined;
   /** Which project's pool the mode is showing. `0` is the working project. */
   projectSlot(): number;
-  /** The store slot the right-hand pane has selected, when one is selected. */
-  pickedSlot(): number | undefined;
+  /**
+   * The store slots the right-hand pane has selected, in slot order.
+   *
+   * A list rather than one, because the pane took the house gesture: click, shift-click for a
+   * run, ctrl-click to add. A drop carries the same list, so pressing the button and dragging the
+   * selection do the same thing.
+   */
+  pickedSlots(): readonly number[];
   /** The pool index the left-hand grid has selected, when one is selected. */
   pickedIndex(): number | undefined;
   status: StatusWriter;
@@ -64,6 +71,17 @@ export interface PoolWriteHost {
 }
 
 export interface PoolWriting {
+  /**
+   * Put several stored tables into consecutive pool slots, starting at `firstIndex`.
+   *
+   * The drop half of the gesture. The button path goes through this too with one table, so there
+   * is one implementation of *what a placement means* and the two ways of asking for it cannot
+   * drift — which is the mistake the pool pane would most easily make, because a wrong index
+   * looks right on screen and plays the wrong table on the instrument.
+   */
+  addAt(storeSlots: readonly number[], firstIndex: number): Promise<void>;
+  /** What a drop would do, for the drag's own hint. No side effects. */
+  describeDrop(storeSlots: readonly number[], firstIndex: number): { label: string; status: string } | undefined;
   /**
    * Decide the control's label and whether it can be pressed, from the state the panes are in.
    *
@@ -92,14 +110,24 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     const button = $<HTMLButtonElement>(ADD);
     const remove = $<HTMLButtonElement>(REMOVE);
     const reading = host.reading();
-    const slot = host.pickedSlot();
+    const chosen = host.pickedSlots();
     const index = host.pickedIndex();
 
-    const row = slot === undefined ? undefined : reading?.store.find((e) => e.slot === slot);
-    const holdsTable = row?.occupied === true;
+    // Only slots that actually hold a table can go into a pool; a selection may include free ones
+    // where a shift-click ran across a gap, and those are dropped rather than refusing the lot.
+    const holding = chosen.filter(
+      (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
+    );
 
-    button.disabled = writing || !reading || !holdsTable || !host.device();
-    button.textContent = index === undefined ? "Add to pool" : `Place in slot ${shown(index)}`;
+    button.disabled = writing || !reading || holding.length === 0 || !host.device();
+    button.textContent =
+      holding.length > 1
+        ? index === undefined
+          ? `Add ${holding.length} to pool`
+          : `Place ${holding.length} from slot ${shown(index)}`
+        : index === undefined
+          ? "Add to pool"
+          : `Place in slot ${shown(index)}`;
 
     /*
      * **Remove reads the pool cell, not the store row.** The two controls take their subject from
@@ -126,13 +154,13 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
      */
     button.title = !reading
       ? "Read a pool first."
-      : slot === undefined
-        ? "Click a table in the store on the right, then press this."
-        : !holdsTable
-          ? `Store slot ${slot} is empty, so there is no table to add.`
+      : chosen.length === 0
+        ? "Click a table in the store on the right, then press this. Shift-click for a run."
+        : holding.length === 0
+          ? "Those store slots are empty, so there is nothing to add."
           : index === undefined
-            ? "Put this table in the first free pool slot."
-            : `Put this table in pool slot ${shown(index)}, replacing whatever it names now.`;
+            ? `Put ${holding.length === 1 ? "this table" : `these ${holding.length} tables`} in the first free pool slot onwards. Dragging them onto a slot chooses where.`
+            : `Put ${holding.length === 1 ? "this table" : `these ${holding.length} tables`} in pool slot ${shown(index)} onwards, replacing whatever is there.`;
   }
 
   /**
@@ -141,23 +169,33 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
    * Separate from the asking so the awkward case — a project with no pool of its own — is written
    * once, in one place, where it can be read as prose rather than assembled across a handler.
    */
-  function questions(
-    reading: PoolReading,
-    slot: number,
-    index: number,
-    replaced: number | undefined,
-  ): string[] {
+  function questions(reading: PoolReading, placed: readonly Placed[]): string[] {
     const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
-    const lines = [
-      `Store slot ${describeTable(slot)} goes into pool slot ${shown(index)} of ${where}. On the ` +
-        `instrument its TBL reads ${tblLabel(index)}.`,
-    ];
+    const lines: string[] = [];
 
-    if (replaced !== undefined) {
+    if (placed.length === 1) {
+      const one = placed[0]!;
       lines.push(
-        `Pool slot ${shown(index)} names store slot ${describeTable(replaced)} today. That table ` +
-          `stays in the store; it is this project's entry that changes, so every sound whose TBL ` +
-          `reads ${tblLabel(index)} plays the new one from now on.`,
+        `Store slot ${describeTable(one.storeSlot)} goes into pool slot ${shown(one.index)} of ` +
+          `${where}. On the instrument its TBL reads ${tblLabel(one.index)}.`,
+      );
+    } else {
+      lines.push(
+        `${placed.length} tables go into ${where}, one per slot: ` +
+          placed.map((one) => `${describeTable(one.storeSlot)} to ${shown(one.index)}`).join(", ") +
+          `. On the instrument they read ${tblLabel(placed[0]!.index)} to ` +
+          `${tblLabel(placed[placed.length - 1]!.index)}.`,
+      );
+    }
+
+    const replacing = placed.filter((one) => one.replaced !== undefined);
+    if (replacing.length > 0) {
+      lines.push(
+        `${replacing.length === 1 ? "One of those slots names" : `${replacing.length} of those slots name`} ` +
+          `a table today: ` +
+          replacing.map((one) => `slot ${shown(one.index)} names ${describeTable(one.replaced!)}`).join(", ") +
+          `. Those tables stay in the store; it is this project's entries that change, so every ` +
+          `sound set to those numbers plays the new ones from now on.`,
       );
     }
 
@@ -165,8 +203,8 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       /*
        * **The conversion, said plainly.** This project has no list of its own, so what is on screen
        * is the firmware's answer rather than anybody's choice, and writing a list is a change to how
-       * the project behaves rather than only an addition to it. Somebody who presses *Add to pool*
-       * is not asking for that and has to be told.
+       * the project behaves rather than only an addition to it. Somebody who dropped a table on a
+       * pool slot is not asking for that and has to be told.
        */
       lines.push(
         `This project has no pool of its own: it plays every stored table in store-slot order. ` +
@@ -331,19 +369,58 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       `Pool slot ${shown(index)} is empty. Store slot ${storeSlot} is still in the store.`);
   }
 
-  async function add(): Promise<void> {
+  /**
+   * Where a run of tables would land, and what it would displace.
+   *
+   * Pure: the drag asks it on every `dragover`, so it must not read the instrument or change
+   * anything. `undefined` means the drop is refused, which the grid shows as the browser's own
+   * "no" cursor rather than a message nobody asked for.
+   */
+  function describeDrop(
+    storeSlots: readonly number[],
+    firstIndex: number,
+  ): { label: string; status: string } | undefined {
+    const reading = host.reading();
+    if (!reading || storeSlots.length === 0) return undefined;
+    const last = firstIndex + storeSlots.length - 1;
+    if (firstIndex < 0 || last >= POOL_ENTRIES) return undefined;
+
+    const replacing = storeSlots
+      .map((_, i) => reading.record.entries[firstIndex + i])
+      .filter((entry) => entry !== undefined).length;
+
+    const where =
+      storeSlots.length === 1
+        ? `pool slot ${shown(firstIndex)}`
+        : `pool slots ${shown(firstIndex)} to ${shown(last)}`;
+    return {
+      label: storeSlots.length === 1 ? "add" : `add ${storeSlots.length}`,
+      status:
+        `${storeSlots.length} table(s) into ${where}` +
+        (replacing === 0 ? ", replacing nothing" : `, replacing ${replacing}`),
+    };
+  }
+
+  async function addAt(storeSlots: readonly number[], firstIndex: number): Promise<void> {
     const device = host.device();
     const reading = host.reading();
-    const slot = host.pickedSlot();
-    if (!device || !reading || slot === undefined || writing) return;
+    if (!device || !reading || writing || storeSlots.length === 0) return;
 
-    const asked = host.pickedIndex();
+    const last = firstIndex + storeSlots.length - 1;
+    if (last >= POOL_ENTRIES) {
+      host.status(
+        `${storeSlots.length} tables starting at pool slot ${shown(firstIndex)} would run past ` +
+          `slot ${POOL_ENTRIES}. Drop them further up the pool.`,
+        "warn",
+      );
+      return;
+    }
 
     let placement;
     try {
       placement = placeInPool(
         reading.record.entries,
-        [asked === undefined ? { storeSlot: slot } : { storeSlot: slot, index: asked }],
+        storeSlots.map((storeSlot, i) => ({ storeSlot, index: firstIndex + i })),
       );
     } catch (error: unknown) {
       // The refusals name the pool and the way out — a full pool says to name the slot to replace.
@@ -351,17 +428,20 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       return;
     }
 
-    const landed = placement.placed[0]!;
-
     /*
      * **A write that changes nothing is refused, unless it would change the kind of pool.** It
      * costs a confirmation, a saved file and an overwrite of somebody's record to achieve nothing.
      * The exception matters: on a project with no list of its own, writing the same entries is
      * what pins them, so it is a real act and goes ahead.
      */
-    if (reading.summary.authored && reading.record.entries[landed.index] === slot) {
+    const changes = placement.placed.some(
+      (one) => reading.record.entries[one.index] !== one.storeSlot,
+    );
+    if (reading.summary.authored && !changes) {
       host.status(
-        `Pool slot ${shown(landed.index)} already names store slot ${slot}. Nothing to write.`,
+        storeSlots.length === 1
+          ? `Pool slot ${shown(firstIndex)} already names store slot ${storeSlots[0]}. Nothing to write.`
+          : `Those pool slots already name those tables. Nothing to write.`,
         "info",
       );
       return;
@@ -370,10 +450,12 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     const free = freeIndices(placement.entries).length;
     const ok = await askConfirm({
       title:
-        landed.replaced === undefined
-          ? `Add store slot ${slot} to pool slot ${shown(landed.index)}?`
-          : `Replace pool slot ${shown(landed.index)} with store slot ${slot}?`,
-      body: questions(reading, slot, landed.index, landed.replaced),
+        storeSlots.length === 1
+          ? placement.placed[0]!.replaced === undefined
+            ? `Add store slot ${storeSlots[0]} to pool slot ${shown(firstIndex)}?`
+            : `Replace pool slot ${shown(firstIndex)} with store slot ${storeSlots[0]}?`
+          : `Put ${storeSlots.length} tables into pool slots ${shown(firstIndex)} to ${shown(last)}?`,
+      body: questions(reading, placement.placed),
       confirmLabel: "Write the pool",
       danger: true,
     });
@@ -383,8 +465,37 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     }
 
     await send(device, placement.entries, () =>
-      `Pool slot ${shown(landed.index)} now names store slot ${slot}. ${free} pool slot(s) free.` +
+      (storeSlots.length === 1
+        ? `Pool slot ${shown(firstIndex)} now names store slot ${storeSlots[0]}.`
+        : `Pool slots ${shown(firstIndex)} to ${shown(last)} now name ${storeSlots.length} tables.`) +
+      ` ${free} pool slot(s) free.` +
       (reading.summary.authored ? "" : " This project now has a pool of its own."));
+  }
+
+  /** The button path: whatever the store pane has selected, at the picked slot or the first free. */
+  async function add(): Promise<void> {
+    const reading = host.reading();
+    const chosen = host.pickedSlots();
+    if (!reading || chosen.length === 0) return;
+
+    const asked = host.pickedIndex();
+    if (asked !== undefined) {
+      await addAt(chosen, asked);
+      return;
+    }
+
+    // No slot picked: the first free one, and then consecutively from there. `placeInPool` would
+    // choose a free slot per table; this keeps a dropped run and a pressed run landing alike.
+    const free = freeIndices(reading.record.entries);
+    const first = free[0];
+    if (first === undefined) {
+      host.status(
+        `This pool has no free slot. Click the pool slot to replace, then press this.`,
+        "warn",
+      );
+      return;
+    }
+    await addAt(chosen, first);
   }
 
   $(ADD).addEventListener("click", () => {
@@ -394,5 +505,5 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     void remove();
   });
 
-  return { redraw };
+  return { redraw, addAt, describeDrop };
 }

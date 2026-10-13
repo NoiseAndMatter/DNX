@@ -271,3 +271,51 @@ test("both pool edits go through one write, not two copies of it", () => {
   const writes = [...POOLWRITE.matchAll(/await writePool\(/g)].length;
   assert.equal(writes, 1, `writePool is called ${writes} times; both edits should share one send`);
 });
+
+test("the store takes the house gesture: multi-select and drag onto a pool slot", () => {
+  /*
+   * **The rule this was breaking.** `one-visual-language-across-tools`: never type a slot name,
+   * select and drag on a grid as the manager does. The pane shipped with one selected row and a
+   * button, which is a second vocabulary for moving a thing from one collection to another — the
+   * owner named it by asking for "multi-select and drag and drop, like we do transferring
+   * patterns between projects".
+   *
+   * Asserted against the source because the gesture needs a pointer and an instrument to try, and
+   * the one thing a reader cannot see from the diff is whether the drag reaches a *shared*
+   * controller or a second private one.
+   */
+  assert.match(SOURCE, /new GridDrag\(/, "the drag must use the shared controller");
+  assert.match(SOURCE, /drag\.bind\(tr, STORE_GRID/, "store rows must be drag sources");
+  assert.match(SOURCE, /drag: \{ controller: drag, grid: POOL_GRID \}/,
+    "pool cells must be drop targets");
+
+  // Shift and ctrl, which is what makes it a selection rather than a highlight.
+  assert.match(SOURCE, /event\.shiftKey/, "shift-click must take a run");
+  assert.match(SOURCE, /event\.ctrlKey \|\| event\.metaKey/, "ctrl or cmd must toggle one");
+});
+
+test("a drop is a copy, and only ever store to pool", () => {
+  /*
+   * `move` would be the page claiming something the instrument does not do: the table stays in
+   * the store and every other project keeps it. And a drop that is not store-to-pool returns no
+   * hint, which leaves the browser's own refusal cursor rather than a target nobody can use.
+   */
+  assert.match(SOURCE, /action: "copy"/, "adding to a pool copies; the store keeps the table");
+  assert.match(
+    SOURCE,
+    /from\.grid !== STORE_GRID \|\| grid !== POOL_GRID\) return undefined/,
+    "any other combination of grids must be refused",
+  );
+});
+
+test("the button and the drop place tables the same way", () => {
+  /*
+   * Two gestures, one meaning. If the button had kept its own placement logic, a drop of three on
+   * slot 10 and a press with three selected could land differently — and a wrong pool index looks
+   * right on screen and plays the wrong table on the instrument.
+   */
+  assert.match(POOLWRITE, /async function addAt\(/, "there should be one placement entry point");
+  const direct = [...POOLWRITE.matchAll(/placeInPool\(/g)].length;
+  assert.equal(direct, 1, `placeInPool is called ${direct} times; both gestures should share one`);
+  assert.match(POOLWRITE, /await addAt\(chosen,/, "the button must go through it too");
+});
