@@ -525,17 +525,20 @@ from differently recorded files come out equally loud.`,
       {
         id: "wavetable-pool-kinds",
         heading: "The three kinds of pool",
-        body: `Check which kind of pool a project has before you upload a table to the instrument.
+        body: `The line under the pool says which kind it is.
 
-The line under the pool says which kind it is:
-
-- **No pool of its own.** Nobody has written one. The instrument plays every stored table in
-  store-slot order.
-- **Automatic.** The same order, written down.
+- **No pool of its own.** Nobody has written one. The project plays every stored table in
+  store-slot order, and picks up new ones as they arrive.
+- **Automatic.** The same, written down.
 - **A list.** Somebody chose these slots, on the instrument or in DNX.
 
-An upload into a lower store slot moves every later slot. A list stays where it is. In the other
-two kinds, sounds keep their **TBL** numbers and play whatever moved into them.`,
+**A list is what you want for a project you are building.** The pool slot is the number a sound
+reaches, so putting each table where you want it to answer from is the point of keeping one.
+
+In the first two kinds the order is the store's, so a table written into a free slot below the
+others moves every later pool slot along by one. Sounds keep their **TBL** numbers and play
+whatever moved into them. That is the behaviour to expect rather than a fault, and a list of its
+own is how a project stops depending on it.`,
       },
       {
         heading: "When a cell says MISSING",

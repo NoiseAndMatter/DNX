@@ -90,7 +90,19 @@ export const CONTENT_KIND_POOL = 0x50;
  */
 export const POOL_FORMAT_VERSION = 2;
 
-/** Entries each version carries. Version 1 is read and never written. */
+/**
+ * Entries each version carries.
+ *
+ * **Version 1 is legacy and on its way out.** The owner decided on 2026-10-14 that version 2 is
+ * the only format shared publicly, so v1 exists here to read records written by builds from
+ * before 2026-10-06 and for nothing else. DNX has never written one.
+ *
+ * It is kept rather than dropped today because a card flashed with one of those builds still has
+ * v1 records on it, and reading somebody's pool as empty would be worse than reading it at all.
+ * **Nothing new should be taught about v1** — no feature, no branch, no test beyond the one that
+ * proves the read still works. When the last of those cards is gone, this map loses its first
+ * entry, `reservedFrom` loses its argument, and the two version checks collapse into one.
+ */
 export const ENTRIES_BY_VERSION: Readonly<Record<number, number>> = { 1: 127, 2: POOL_ENTRIES };
 
 /**

@@ -201,13 +201,14 @@ export function describePool(summary: PoolSummary): string {
     case "untouched":
       return (
         `${where} has no pool of its own, so it plays every stored table in store-slot order: ` +
-        `${counts}. An upload into a lower store slot moves every later slot, and the sounds do ` +
-        `not follow.`
+        `${counts}. Writing a table into a free slot below the others moves every later pool ` +
+        `slot along by one, and a sound set by number plays whatever moved into it. Give the ` +
+        `project a list of its own to pin them.`
       );
     case "automatic":
       return (
-        `${where} is set to follow the store: ${counts}. The entries are the firmware's, not a ` +
-        `list somebody wrote, so an upload into a lower store slot moves every later slot.`
+        `${where} is set to follow the store: ${counts}. The entries are the firmware's rather ` +
+        `than a list somebody wrote, so the order is the store's and new tables join it.`
       );
     default:
       return `${where} has a pool of its own: ${counts}. These slots stay where they are.`;

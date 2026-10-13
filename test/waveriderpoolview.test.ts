@@ -97,14 +97,21 @@ test("whether somebody wrote the pool changes what the numbers mean", () => {
   const store = listing({ 9: "HS SAW", 20: "QUANT NOISE" });
 
   // A read with no stored record behind it: generation 0. The entries are real — the firmware
-  // synthesised them and that is what the project plays — but an upload moves them.
+  // synthesised them and that is what the project plays — but the order is the store's.
   const untouched = summarisePool(record(entries, { generation: 0, automatic: true }), store);
   assert.equal(untouched.kind, "untouched");
   assert.equal(untouched.authored, false);
   assert.match(describePool(untouched), /no pool of its own/);
-  assert.match(describePool(untouched), /sounds do not follow/);
+  /*
+   * It still has to say that the numbers move, because that is what distinguishes this kind from
+   * a list. What changed on 2026-10-14 is the tone: the owner curates a pool deliberately, so
+   * this is the behaviour to expect and the sentence names the remedy rather than raising an
+   * alarm. The fact is asserted; the alarm is not.
+   */
+  assert.match(describePool(untouched), /moves every later pool slot/);
+  assert.match(describePool(untouched), /list of its own/);
 
-  // Written as automatic on purpose. Same entries, same hazard, different sentence.
+  // Written as following the store on purpose. Same entries, different sentence.
   const automatic = summarisePool(record(entries, { automatic: true }), store);
   assert.equal(automatic.kind, "automatic");
   assert.equal(automatic.authored, false);
