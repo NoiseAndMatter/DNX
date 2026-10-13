@@ -278,7 +278,12 @@ test("every control that writes is marked, and every dangerous one has been cons
     // part-way, and refusing the whole run unless every target is empty in a listing read at the
     // moment of asking. The Library having a write at all is the change worth noticing here — that
     // pane shipped read-only, and `librarywavetables.test.ts` says what now stands in its place.
-    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `wavepoolAdd` joined on 2026-10-13 as well: the Library's *Add to pool*, which puts a stored
+    // table into a project's list. It is the only write here that changes **what a sound plays**
+    // without sending a byte of audio, and the only one that can change the *kind* of pool a
+    // project has — writing a list for a project that had none pins what it plays today. It asks
+    // once, for one record, and the confirmation says that conversion in words before it goes.
+    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "wavepoolAdd", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

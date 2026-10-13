@@ -462,7 +462,13 @@ export function wireImport(host: ImportHost): ImportStaging {
         staged.delete(pending.slot);
         if (picked === pending.slot) picked = undefined;
       }
-      host.status(`Wrote ${plans.length} ${plans.length === 1 ? "table" : "tables"}.`, "ok");
+      host.status(
+        `Wrote ${plans.length} ${plans.length === 1 ? "table" : "tables"}. ` +
+          `${plans.length === 1 ? "It is" : "They are"} in the store and in no pool yet: click ` +
+          `${plans.length === 1 ? "it" : "one"} on the right, then a pool slot on the left, and ` +
+          `press Add to pool.`,
+        "ok",
+      );
     } finally {
       writing = false;
       $<HTMLButtonElement>("wavimportWrite").disabled = false;

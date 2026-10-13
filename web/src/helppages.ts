@@ -506,6 +506,36 @@ the number of samples it has, and the panel says when that happened.`,
         image: { src: "help/wavetables-import.png", alt: "Three audio files staged on free store slots, marked amber and reading staged, with the panel below showing the name, the waves and points, and the Play and Write staged tables buttons" },
       },
       {
+        id: "wavetable-add-to-pool",
+        heading: "Making a table playable: put it in the pool",
+        body: `A table in the store makes no sound until a project's pool points at it. The pool
+slot is the number a sound asks for, so you choose which slot it goes in.
+
+Before you start:
+
+- A table in the **+Drive wavetables** list.
+- **WRITE** on, in the tool row.
+
+1. Press **Wavetables**, then pick the project from **POOL OF**.
+2. Click the table in the **+Drive wavetables** list on the right.
+3. Click the pool slot you want it in, on the left. Skip this step to use the first free slot.
+4. Press **Add to pool**. One question names the table, the slot, and what the slot holds now.
+
+On the instrument, set the sound's **TBL** to one above the pool slot number: pool slot 5 is
+**TBL 6**, because the two built-in waveforms come first.
+
+The pool being replaced is saved to your computer as a file before anything is sent. That copy is
+the only undo there is.
+
+**If the project had no pool of its own**, the question says so before you answer it. Writing one
+fixes the tables it plays today at the slots they are in now, and from then on a table written into
+the store does not join that project until you add it.
+
+The store is shared by every project; a pool is one project's own. So the same table can sit at
+pool slot 3 of one project and pool slot 40 of another, and adding it to one changes nothing
+anywhere else.`,
+      },
+      {
         id: "wavetable-shape",
         heading: "Choosing the shape of a table",
         body: `**waves** is how many frames the table holds. **points** is how long each frame is.

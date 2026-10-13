@@ -160,12 +160,19 @@
         it can show the pool of a project nobody has opened — including the working one, the only
         pool with a second writer.
       -->
-      <div class="bar" id="wavepoolBar" hidden>
+      <div class="bar" id="wavepoolBar" data-help="library/wavetable-add-to-pool" hidden>
         <span class="lbl">Pool of</span>
         <select id="wavepoolProject" disabled title="Which project's wavetable pool to read">
           <option value="0">Working project</option>
         </select>
         <button class="btn" id="wavepoolRefresh" disabled title="Read the pool and the store again">Refresh</button>
+        <!--
+          The pool's one write. Ships disabled and is turned on by `poolwrite.redraw` from the
+          state the two panes are in, never by its own handler: a control whose only enabling
+          line sits inside the run it starts can never be pressed, which is how the
+          staged-import write shipped unreachable with a green suite.
+        -->
+        <button class="btn danger" data-writes-device id="wavepoolAdd" disabled title="Click a table in the store on the right, then press this.">Add to pool</button>
       </div>
       <div class="grid" id="wavepoolGrid" hidden></div>
       <div class="plan hint" id="wavepoolNote" data-help="library/wavetable-pool-kinds" hidden></div>

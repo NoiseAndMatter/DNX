@@ -10,13 +10,16 @@
  * 2026-10-06), and rather than a third `LibraryKind` because the preset machinery does not fit:
  * the store is not banked, there are no tags, and the pool is not in the project file at all.
  *
- * ## Read-only, deliberately, and not for long
+ * ## Two writes, and neither of them lives in this file
  *
- * Nothing here writes. ADD TO POOL, CLEAR SLOT, DELETE and Rename each need the confirmation and
- * backup path every write in DNX goes through, and the gate's own answer about whether this build
- * serves them — which `features` already carries. Shipping the reading first means the thing that
- * can tell somebody *your sound plays Prim. because that table was deleted* arrives without
- * waiting for the half that can break something.
+ * The mode shipped read-only, which is what let the reading arrive before the confirmation path
+ * existed. It now has two writes, and both sit in neighbours: `importstage.ts` puts tables into the
+ * **store**, and `poolwrite.ts` puts a stored table into this project's **pool**. Keeping the
+ * renderer itself free of them is what makes two entry points reviewable instead of a handful
+ * scattered through the drawing code, and `test/librarywavetables.test.ts` holds that line.
+ *
+ * CLEAR SLOT, DELETE and Rename are still not built. Clearing in particular is argued against in
+ * `poolview.ts`: it digs a hole the next add falls into.
  *
  * ## The pool is not in the project file
  *
@@ -54,6 +57,7 @@ import { paintWaterfall } from "./waterfallview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import { wireImport } from "./importstage.js";
+import { wirePoolWrite } from "./poolwrite.js";
 import { auditionTable, stopAudition } from "./tableaudio.js";
 import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
 
@@ -144,6 +148,23 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
 
   /**
+   * Placing a stored table into this project's pool, which is the mode's second write.
+   *
+   * Handed the same kind of accessors as the staging for the same reason, and the two selections
+   * as well: the control's label and whether it can be pressed are decided by what the panes have
+   * selected, so it has to read that from here rather than keep its own copy.
+   */
+  const poolWriting = wirePoolWrite({
+    device: () => host.device(),
+    reading: () => reading,
+    projectSlot: () => Number(projects().value),
+    pickedSlot: () => pickedSlot,
+    pickedIndex: () => picked,
+    status: host.status,
+    reread: refresh,
+  });
+
+  /**
    * What this instrument will play, as the instrument reported it.
    *
    * `support.features.playable` is absent on a build that does not report the capability, and the
@@ -187,6 +208,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   function controls(on: boolean): void {
     $<HTMLSelectElement>("wavepoolProject").disabled = !on;
     $<HTMLButtonElement>("wavepoolRefresh").disabled = !on;
+    // Off with them, and back on only where the panes' own state allows it, which is the write's
+    // own question rather than this one.
+    if (on) poolWriting.redraw();
+    else $<HTMLButtonElement>("wavepoolAdd").disabled = true;
   }
 
   /** The sentence for a state that is not *supported*, and the reason it is not a failure. */
@@ -318,6 +343,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         picked = index;
         renderPool();
         renderStore();
+        // The label says which slot it will write into, so it changes with the selection.
+        poolWriting.redraw();
       },
     });
 
@@ -327,7 +354,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         ? ""
         : `<p><b>Slot ${cell.shown}</b> — ` +
           (cell.state === "empty"
-            ? "nothing here. ADD TO POOL on the instrument fills the first free slot."
+            ? "nothing here. Click a table on the right and press Add to pool to put one in it, " +
+              "or use ADD TO POOL on the instrument, which fills the first free slot."
             : `store slot ${cell.storeSlot}${cell.name === undefined ? "" : ` · ${escapeHtml(cell.name)}`}` +
               `. A sound reaches it as coarse ${cell.coarse}.`) +
           `${cell.note === undefined ? "" : ` ${escapeHtml(cell.note)}`}</p>`;
@@ -393,6 +421,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       tr.addEventListener("click", () => {
         pickedSlot = slot.slot;
         renderStore();
+        poolWriting.redraw();
         void showPreview(slot.slot);
       });
       body.append(tr);
@@ -608,6 +637,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       });
       renderStore();
       renderPool();
+      poolWriting.redraw();
       host.status(
         `${describePool(reading.summary)}${
           reading.unlisted === 0

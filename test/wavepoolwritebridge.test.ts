@@ -17,6 +17,11 @@
  *   refused: like every refusal on this route it answers `commit ok` and writes nothing. So the
  *   only way to see it is to read the entries back, which is exactly what a caller would get wrong
  *   by trusting the commit.
+ * - **The pool index `pooledit.ts` computes is the index the firmware stores.** Added with the
+ *   Library's *Add to pool*, because that feature turns an arithmetic mistake into a silent one:
+ *   four numbers describe one table — store slot, pool index, shown slot and `TBL` — and placing a
+ *   table one slot from where the page said would look right on the page and play the wrong table
+ *   on the instrument.
  *
  * `/wavepool` needs the modded firmware, so these skip with the rest when it is not configured.
  * `docs/emulator-tests.md` says how to configure it.
@@ -30,6 +35,7 @@ import { readPoolRecord } from "@noiseandmatter/dnx-core/device/wavepoolread.js"
 import { MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
 import { listRequest, wholeListing } from "@noiseandmatter/dnx-core/device/storage.js";
 import { buildPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
+import { placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 import { safeWriteFile } from "@noiseandmatter/dnx-core/device/safewrite.js";
 
 const MODDED = process.env["DNX_WAVERIDER_FIRMWARE"];
@@ -216,5 +222,62 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
     assert.deepEqual(afterControl.entries.slice(0, 3), [99, 98, 97],
       "the same record with the current generation did not land either, so the refusal above " +
         "says nothing about staleness and this whole test is measuring something else");
+  });
+});
+
+test("a table placed by pooledit lands at exactly that index", { skip }, async () => {
+  /*
+   * **What the Library's *Add to pool* actually does, end to end.** The pure arithmetic has its own
+   * tests in `waveriderpooledit.test.ts`; this one asks whether the index it hands back is the
+   * index the instrument ends up holding. That is the join nothing covered: the record is written
+   * whole, so an off-by-one anywhere between a clicked cell and a stored entry produces a pool that
+   * looks right in the pane and plays the wrong table under the sound's TBL number.
+   *
+   * Both ways of placing are exercised in one write, because that is how the editor works: a named
+   * index and a nameless one resolved against the pool the named one has already claimed.
+   */
+  await withBridge(async (bridge) => {
+    const projectSlot = 7;
+
+    // A pool with a hole in it, so "the first free index" has an answer that is not simply "next".
+    const before = [3, 9, undefined, undefined, 21];
+    const written = await writePool({
+      transport: bridge, host, projectSlot, entries: before,
+      onBackup: () => {},
+      timeoutMs: TIMEOUT,
+    });
+    assert.equal(written.landed, true, "the starting pool did not land");
+
+    const read = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
+    const placement = placeInPool(read.entries, [
+      // Replace what pool slot 2 names, which is store slot 9.
+      { storeSlot: 40, index: 1 },
+      // And one with no index, which must take index 2: the first entry holding nothing.
+      { storeSlot: 41 },
+    ]);
+
+    assert.deepEqual(
+      placement.placed,
+      [{ storeSlot: 40, index: 1, replaced: 9 }, { storeSlot: 41, index: 2 }],
+      "the editor resolved the placement differently than this test describes",
+    );
+
+    const result = await writePool({
+      transport: bridge, host, projectSlot, entries: placement.entries,
+      onBackup: () => {},
+      timeoutMs: TIMEOUT,
+    });
+    assert.equal(result.landed, true, "the edited pool did not land");
+
+    const after = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
+    assert.deepEqual(
+      after.entries.slice(0, 5),
+      [3, 40, 41, undefined, 21],
+      "the instrument holds different entries than the editor computed",
+    );
+    // The hole stays a hole: nothing slid along to fill it, which is what would make every sound
+    // after it play the wrong table.
+    assert.equal(after.entries[3], undefined, "an untouched empty entry must stay empty");
+    assert.equal(after.entries[4], 21, "an entry after the edit must not move");
   });
 });
