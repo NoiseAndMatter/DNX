@@ -135,11 +135,17 @@ export const NO_TABLE = 0xffff;
 /**
  * `flags` bit 0: this project **follows the store**, and the entries are not used.
  *
- * Called "the automatic pool" in the proposal that introduced these records, and `RF_AUTOMATIC` in
- * the firmware. The owner renamed the concept on 2026-10-13: "automatic" says that something
- * happens by itself without saying what, where the state is that this project's pool *is* the
- * store, in the store's order, new tables included. **The bit did not move**, and both
- * repositories renamed together, so a build and a reader of either vintage agree about the byte.
+ * The firmware's `RF_FOLLOWS_STORE`, also bit 0 of the same u16.
+ *
+ * Both were called *automatic* until 2026-10-13 — "the automatic pool" in the proposal that
+ * introduced these records, `RF_AUTOMATIC` in `csrc/wrstore/records.h`. The owner renamed the
+ * concept because "automatic" says that something happens by itself without saying what, where the
+ * state is that this project's pool *is* the store, in the store's order, new tables included.
+ *
+ * **The bit did not move**, and the two repositories renamed in the same week — DNX in `906b807`,
+ * the firmware in `fef921f` — so a build and a reader of either vintage agree about the byte. Each
+ * side's declaration still names the old identifier, which is the only thing that lets somebody
+ * reading one repository in a year connect it to the other.
  */
 export const FLAG_FOLLOWS_STORE = 1 << 0;
 
