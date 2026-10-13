@@ -23,6 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(resolve(HERE, "../web/src/library/wavetables.ts"), "utf8");
 const STAGING = readFileSync(resolve(HERE, "../web/src/library/importstage.ts"), "utf8");
 const POOLWRITE = readFileSync(resolve(HERE, "../web/src/library/poolwrite.ts"), "utf8");
+const DELETE = readFileSync(resolve(HERE, "../web/src/library/tabledelete.ts"), "utf8");
 const PAGE = readFileSync(resolve(HERE, "../web/library.html"), "utf8");
 
 /** The element ids in a `const NAME = [...] as const` list. */
@@ -207,4 +208,66 @@ test("the pool write control is enabled by its render, not by its own handler", 
     /button\.disabled =/,
     "redraw must decide whether the write control can be pressed",
   );
+});
+
+test("the delete is gated, asks once, and copies before it asks", () => {
+  /*
+   * **The mode's only destructive control.** Everything else it does can be undone by writing
+   * something else; this cannot be undone on the instrument at all, so the copy is the whole
+   * safety net — and it is taken *before* the question. Being told after agreeing that the copy
+   * failed is not consent, which is the rule `safeWriteFile` follows for an overwrite and the
+   * reason this is asserted rather than left to whoever edits the flow next.
+   */
+  assert.match(DELETE, /deleteTableSlot/, "the delete module should be the one that deletes");
+  assert.match(DELETE, /gate: requireWriteEnabled/, "the delete must pass the gate itself");
+  assert.match(DELETE, /askConfirm\(/, "it must ask before deleting");
+  assert.match(DELETE, /onBackup: downloadBackup\(/, "the table must be saved before it goes");
+
+  assert.match(
+    DELETE,
+    /confirm: \(\) => Promise\.resolve\(true\)/,
+    "the per-delete confirm should answer yes after the single question",
+  );
+  assert.ok(
+    !/export\s+(const|function)\s+\w*[Cc]onfirm/.test(DELETE),
+    "a confirm hook that answers yes without asking must stay local to this module",
+  );
+});
+
+test("the delete says what it has not checked, rather than implying it checked everything", () => {
+  /*
+   * The page has read **one** project's pool. It can name the slots in that one exactly, and a
+   * sentence saying "no pool slot names this table" would be read as "nothing points at this" —
+   * a claim about 128 projects made on evidence from one.
+   *
+   * And the case the firmware session raised on 2026-10-13: a pool entry names a store slot, so a
+   * slot refilled later makes every entry still pointing there play the new table, silently, in
+   * every project. The question has to say that before the delete, not after.
+   */
+  assert.match(DELETE, /has not looked/, "it must admit which pools it did not read");
+  assert.match(DELETE, /plays that new table instead/, "it must warn about the slot being refilled");
+});
+
+test("removing from a pool warns that the slot goes quiet and becomes the next hole", () => {
+  /*
+   * `poolview.ts` argues at length that DNX must not clear an entry on somebody's behalf. This is
+   * a person asking, which is a different thing — but the consequence is identical and is not
+   * visible from a button called Remove from pool: the sounds set to that number stop playing
+   * anything, nothing renumbers, and the empty slot is where the next add lands.
+   */
+  assert.match(POOLWRITE, /clearInPool/, "the removal should use the shared arithmetic");
+  assert.match(POOLWRITE, /play the built-in Prim/, "it must say what the sounds will do");
+  assert.match(POOLWRITE, /Nothing renumbers/, "it must say the later slots do not move");
+  assert.match(POOLWRITE, /the next table added with no slot chosen lands here/,
+    "it must say the empty slot is the next hole");
+});
+
+test("both pool edits go through one write, not two copies of it", () => {
+  /*
+   * Adding and removing differ only in the entries and the sentence. Two copies of the write would
+   * have to be kept in step through the gate, the backup, the cancelled case and the three ways a
+   * write can fail to land, and the half nobody exercised is the one that would drift.
+   */
+  const writes = [...POOLWRITE.matchAll(/await writePool\(/g)].length;
+  assert.equal(writes, 1, `writePool is called ${writes} times; both edits should share one send`);
 });

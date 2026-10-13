@@ -127,13 +127,33 @@ test("a core module that writes takes the switch from its host and calls it", ()
   const files: string[] = [];
   walkTs(CORE, files);
 
-  // `safewrite.ts` is the primitive itself, not a caller of it.
+  /*
+   * **A delete counts, and for a while it did not.**
+   *
+   * This scan found callers of `safeWriteRecords` and `safeWriteFile` only. `waveriderdelete.ts`
+   * sends `deleteRequest` straight down the transport — it writes nothing, so it matched neither
+   * pattern, and a core module that destroys a table outright would have been the one thing here
+   * nobody checked for a gate. Added on 2026-10-13 when that module was written, which is the only
+   * reason the hole was noticed at all.
+   *
+   * `storage.ts` is excluded as the place `deleteRequest` is *built*, the same way `safewrite.ts`
+   * is excluded as the primitive rather than a caller of it.
+   */
+  const DESTROYS = /\bsafeWrite(Records|File)\s*\(|\bdeleteRequest\s*\(/;
   const writers = files
     .filter((f) => !f.endsWith(join("device", "safewrite.ts")))
-    .filter((f) => /\bsafeWrite(Records|File)\s*\(/.test(readFileSync(f, "utf8")));
+    .filter((f) => !f.endsWith(join("device", "storage.ts")))
+    .filter((f) => DESTROYS.test(readFileSync(f, "utf8")));
   assert.ok(writers.length >= 1,
     "no core module calls a safe-write function; either the pattern stopped matching or the " +
       "workflows have not moved yet, and this test must be revisited either way");
+
+  // And the delete path specifically, by name: a rename of that module must not silently drop it
+  // out of the scan and leave this passing on the writers alone.
+  assert.ok(
+    writers.some((f) => f.endsWith(join("device", "waveriderdelete.ts"))),
+    "the wavetable delete is no longer in this scan; it destroys a table and must take a gate",
+  );
 
   /**
    * Does this module take a gate, declaring it or naming a host type that does?
@@ -160,13 +180,21 @@ test("a core module that writes takes the switch from its host and calls it", ()
     assert.ok(takesAGate(source, files),
       `${name} writes without taking a gate from its host`);
     const gate = source.search(/\bhost\.gate\(\)/);
-    const send = source.search(/\bsafeWrite(Records|File)\s*\(/);
+    // Whichever destructive call this module makes, not only a safe write: a module that sends
+    // its own delete has a send too, and it is the thing the gate has to come before.
+    const send = source.search(DESTROYS);
     assert.ok(gate > 0, `${name} takes a gate and never calls it`);
     assert.ok(gate < send, `${name} calls the gate after the write, which is not a gate`);
-    // And hands it down. The safe write requires its own `gate` and will not take a caller's
-    // word that one was consulted, so passing the host's switch through is the contract.
-    assert.match(source, /\bgate:\s*host\.gate\b/,
-      `${name} calls the gate but does not pass it to the write that requires one`);
+    /*
+     * And hands it down, **where there is something to hand it to**. The safe write requires its
+     * own `gate` and will not take a caller's word that one was consulted. A module that sends the
+     * request itself has no such callee, and its own call above is then the whole guarantee —
+     * requiring the pass-through there would be asking for a parameter nothing reads.
+     */
+    if (/\bsafeWrite(Records|File)\s*\(/.test(source)) {
+      assert.match(source, /\bgate:\s*host\.gate\b/,
+        `${name} calls the gate but does not pass it to the write that requires one`);
+    }
   }
 
   /*
@@ -283,7 +311,12 @@ test("every control that writes is marked, and every dangerous one has been cons
     // without sending a byte of audio, and the only one that can change the *kind* of pool a
     // project has — writing a list for a project that had none pins what it plays today. It asks
     // once, for one record, and the confirmation says that conversion in words before it goes.
-    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "wavepoolAdd", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `wavepoolRemove` and `waveTableDelete` joined it hours later, when the owner asked why a
+    // manager could add a table and never take one away. Removing from a pool is the same record
+    // write as adding; deleting is the mode's only destructive control and the only one in the
+    // Library that cannot be undone on the instrument, which is why its copy is taken before the
+    // question rather than after it.
+    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

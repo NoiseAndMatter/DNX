@@ -579,13 +579,49 @@ and the entry still points at it, so a sound set to that pool slot plays a built
 To fix it:
 
 1. Press **Refresh**. It re-reads the pool and the store together.
-2. If the cell still says MISSING, write a table into that store slot, or set the sound to a
-   different pool slot.
+2. Click the cell and press **Remove from pool** to empty it, or put a table in it with
+   **Add to pool**, or set the sound to a different pool slot.
 
-DNX leaves the entry alone. Clearing it would leave a hole for the next add to drop into, and the
-sound would then play an unrelated table. Adding a table skips a MISSING entry and fills the first
-free one.`,
+DNX never clears one by itself, and adding a table skips a MISSING entry and fills the first truly
+empty one. That is on purpose: an entry emptied without you asking would be a hole the next table
+drops into, and the sound pointing at it would start playing something unrelated.
+
+**Leaving one is riskier than it looks.** If you later write a different table into that store
+slot, the entry starts naming the new table — in every project, with nothing on screen having
+changed. Removing it is the way to avoid that.`,
         image: { src: "help/wavetables-missing.png", alt: "A pool cell naming a store slot that is empty, reading MISSING, with a note saying the table was deleted and the slot now plays the built-in waveform" },
+      },
+      {
+        id: "wavetable-remove",
+        heading: "Taking a table out of a pool, and deleting one",
+        body: `Two different removals. One changes a project's list; the other takes the table off
+the instrument for every project.
+
+Before you start:
+
+- **WRITE** on, in the tool row.
+
+**To take a table out of this project's pool:** click the pool slot on the left, then press
+**Remove from pool**.
+
+The table stays in the store and every other project keeps it. The slot becomes empty, and any
+sound whose **TBL** reads that number plays the built-in **PRIM** from then on. Nothing renumbers:
+the slots after it stay where they are, and the empty one is where the next **Add to pool** lands
+if you do not choose a slot.
+
+**To delete a table from the instrument:** click it in the **+Drive wavetables** list, then press
+**Delete table** in the preview header.
+
+1. DNX saves a copy to your computer first. **There is no undo on the instrument** — that copy is
+   the only way back.
+2. The question names any pool slot of the project you are looking at that points at the table.
+   Those cells will read **MISSING** afterwards.
+3. Only that one project's pool has been read. Any other project may also name the slot, and DNX
+   has not looked.
+
+After deleting, take the MISSING entries out with **Remove from pool**. If you leave them and
+later write a different table into the same store slot, those entries name the new table instead,
+in every project, with nothing on screen having changed.`,
       },
       {
         id: "wavetable-limits",

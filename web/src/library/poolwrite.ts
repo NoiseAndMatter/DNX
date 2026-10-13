@@ -45,7 +45,7 @@ import { downloadBackup } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { writePool } from "@noiseandmatter/dnx-core/device/wavepoolwrite.js";
-import { freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 
 export interface PoolWriteHost {
@@ -74,7 +74,8 @@ export interface PoolWriting {
   redraw(): void;
 }
 
-const BUTTON = "wavepoolAdd";
+const ADD = "wavepoolAdd";
+const REMOVE = "wavepoolRemove";
 
 export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
   let writing = false;
@@ -88,7 +89,8 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
   }
 
   function redraw(): void {
-    const button = $<HTMLButtonElement>(BUTTON);
+    const button = $<HTMLButtonElement>(ADD);
+    const remove = $<HTMLButtonElement>(REMOVE);
     const reading = host.reading();
     const slot = host.pickedSlot();
     const index = host.pickedIndex();
@@ -98,6 +100,25 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
 
     button.disabled = writing || !reading || !holdsTable || !host.device();
     button.textContent = index === undefined ? "Add to pool" : `Place in slot ${shown(index)}`;
+
+    /*
+     * **Remove reads the pool cell, not the store row.** The two controls take their subject from
+     * opposite panes, which is why they can be enabled at different moments: a store table
+     * selected with no pool cell picked can be added and not removed, and a pool cell holding a
+     * table can be removed whatever the store pane has selected.
+     *
+     * A cell reading MISSING is removable, and deliberately so: an entry naming a store slot whose
+     * table was deleted is the one a person most wants rid of, and it is the only way to get rid
+     * of it.
+     */
+    const inPool = index === undefined ? undefined : reading?.record.entries[index];
+    remove.disabled = writing || !reading || inPool === undefined || !host.device();
+    remove.title =
+      index === undefined
+        ? "Click a pool slot on the left, then press this."
+        : inPool === undefined
+          ? `Pool slot ${shown(index)} is already empty.`
+          : `Take store slot ${inPool} out of pool slot ${shown(index)}. The table stays in the store.`;
 
     /*
      * The title carries the reason it is off. A dead control with a label and no explanation is
@@ -163,6 +184,153 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     return lines;
   }
 
+  /**
+   * Write a whole pool record and say how it went.
+   *
+   * **One copy, because adding and removing differ only in the entries and the sentence.** Two
+   * copies of this would have to be kept in step through the gate, the backup, the cancelled case
+   * and the three ways a write can fail to land — and the half nobody exercised would be the one
+   * that drifted.
+   *
+   * `describe` is a function rather than a string so a caller can build its sentence from the
+   * reading it had **before** the write, without that sentence being computed for a write that
+   * was then cancelled.
+   */
+  async function send(
+    device: ConnectedDevice,
+    entries: readonly (number | undefined)[],
+    describe: () => string,
+  ): Promise<void> {
+    const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
+
+    writing = true;
+    redraw();
+    try {
+      const result = await writePool({
+        transport: apiTransport(device),
+        host: {
+          ids: pageMessageIds,
+          // Per write, as every path in core takes it: the WRITE switch is a stop button.
+          gate: requireWriteEnabled,
+          // Already asked, about exactly this edit. Local and unexported; see the module note.
+          confirm: () => Promise.resolve(true),
+        },
+        projectSlot: host.projectSlot(),
+        entries,
+        onBackup: downloadBackup(
+          (message) => host.status(message, "ok"),
+          () => `the pool of ${where}`,
+        ),
+        onStatus: (message) => host.status(message),
+      });
+
+      if (result.cancelled) {
+        host.status("Cancelled — nothing was sent.", "warn");
+        return;
+      }
+
+      if (result.landed) {
+        host.status(describe(), "ok");
+        return;
+      }
+
+      /*
+       * **Not landed is two different things and the firmware cannot tell them apart.** A stale
+       * write and a malformed one both answer ok and change nothing, so the guess is labelled as
+       * one and the record on the instrument is named rather than assumed.
+       */
+      host.status(
+        `The pool was not written. ${result.problem ?? "The entries read back are not the ones sent."}` +
+          (result.probablyStale === true
+            ? ` The generation moved by something other than this write, so the likeliest cause is ` +
+              `an edit on the front panel between the read and the write. Press Refresh and look ` +
+              `before trying again.`
+            : ""),
+        "error",
+      );
+    } catch (error: unknown) {
+      host.status(`The pool write failed: ${String(error)}`, "error");
+    } finally {
+      writing = false;
+      // The reading in hand is now wrong about this project, so the pane asks the instrument
+      // again rather than redrawing what it had. `redraw` follows from the mode's own render.
+      await host.reread();
+      redraw();
+    }
+  }
+
+  /**
+   * The question before a table leaves a pool.
+   *
+   * The consequence is the whole of it: the table is not deleted, the slot does not close up, and
+   * **every sound set to that number stops playing anything**. None of those is obvious from a
+   * button called Remove from pool.
+   */
+  function removalQuestions(reading: PoolReading, index: number, storeSlot: number): string[] {
+    const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
+    const stillThere = reading.store.find((e) => e.slot === storeSlot)?.occupied === true;
+
+    const lines = [
+      `Pool slot ${shown(index)} of ${where} stops naming store slot ${describeTable(storeSlot)}.` +
+        (stillThere
+          ? ` The table stays in the store and every other project keeps it.`
+          : ` That store slot is empty anyway — this clears an entry pointing at a table that is` +
+            ` already gone.`),
+      `Any sound whose TBL reads ${tblLabel(index)} will play the built-in Prim. from then on. ` +
+        `Nothing renumbers: the slots after this one stay exactly where they are, and this one ` +
+        `becomes the first free slot, so the next table added with no slot chosen lands here.`,
+    ];
+
+    if (!reading.summary.authored) {
+      lines.push(
+        `This project has no pool of its own: it plays every stored table in store-slot order. ` +
+          `Writing one pins the ${reading.summary.tables} table(s) it plays today at the slots ` +
+          `they are in now, minus the one you are taking out. After this, a table written into ` +
+          `the store no longer joins this project on its own.`,
+      );
+    }
+
+    lines.push(
+      `The 512-byte record being replaced is saved as a file first, which is the only undo there is.`,
+    );
+    return lines;
+  }
+
+  async function remove(): Promise<void> {
+    const device = host.device();
+    const reading = host.reading();
+    const index = host.pickedIndex();
+    if (!device || !reading || index === undefined || writing) return;
+
+    const storeSlot = reading.record.entries[index];
+    if (storeSlot === undefined) {
+      host.status(`Pool slot ${shown(index)} is already empty.`, "info");
+      return;
+    }
+
+    let edit;
+    try {
+      edit = clearInPool(reading.record.entries, [index]);
+    } catch (error: unknown) {
+      host.status(String(error instanceof Error ? error.message : error), "error");
+      return;
+    }
+
+    const ok = await askConfirm({
+      title: `Take store slot ${storeSlot} out of pool slot ${shown(index)}?`,
+      body: removalQuestions(reading, index, storeSlot),
+      confirmLabel: "Write the pool",
+      danger: true,
+    });
+    if (!ok) {
+      host.status("Cancelled — nothing was sent.", "warn");
+      return;
+    }
+
+    await send(device, edit.entries, () =>
+      `Pool slot ${shown(index)} is empty. Store slot ${storeSlot} is still in the store.`);
+  }
+
   async function add(): Promise<void> {
     const device = host.device();
     const reading = host.reading();
@@ -214,69 +382,16 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       return;
     }
 
-    writing = true;
-    redraw();
-    try {
-      const result = await writePool({
-        transport: apiTransport(device),
-        host: {
-          ids: pageMessageIds,
-          // Per write, as every path in core takes it: the WRITE switch is a stop button.
-          gate: requireWriteEnabled,
-          // Already asked, about exactly this edit. Local and unexported; see the module note.
-          confirm: () => Promise.resolve(true),
-        },
-        projectSlot: host.projectSlot(),
-        entries: placement.entries,
-        onBackup: downloadBackup(
-          (message) => host.status(message, "ok"),
-          () => `the pool of ${host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`}`,
-        ),
-        onStatus: (message) => host.status(message),
-      });
-
-      if (result.cancelled) {
-        host.status("Cancelled — nothing was sent.", "warn");
-        return;
-      }
-
-      if (result.landed) {
-        host.status(
-          `Pool slot ${shown(landed.index)} now names store slot ${slot}. ` +
-            `${free} pool slot(s) free.` +
-            (reading.summary.authored ? "" : " This project now has a pool of its own."),
-          "ok",
-        );
-        return;
-      }
-
-      /*
-       * **Not landed is two different things and the firmware cannot tell them apart.** A stale
-       * write and a malformed one both answer ok and change nothing, so the guess is labelled as
-       * one and the record on the instrument is named rather than assumed.
-       */
-      host.status(
-        `The pool was not written. ${result.problem ?? "The entries read back are not the ones sent."}` +
-          (result.probablyStale === true
-            ? ` The generation moved by something other than this write, so the likeliest cause is ` +
-              `an edit on the front panel between the read and the write. Press Refresh and look ` +
-              `before trying again.`
-            : ""),
-        "error",
-      );
-    } catch (error: unknown) {
-      host.status(`The pool write failed: ${String(error)}`, "error");
-    } finally {
-      writing = false;
-      // The reading in hand is now wrong about this project, so the pane asks the instrument
-      // again rather than redrawing what it had. `redraw` follows from the mode's own render.
-      await host.reread();
-      redraw();
-    }
+    await send(device, placement.entries, () =>
+      `Pool slot ${shown(landed.index)} now names store slot ${slot}. ${free} pool slot(s) free.` +
+      (reading.summary.authored ? "" : " This project now has a pool of its own."));
   }
 
-  $(BUTTON).addEventListener("click", () => {
+  $(ADD).addEventListener("click", () => {
     void add();
+  });
+  $(REMOVE).addEventListener("click", () => {
+    void remove();
   });
 
   return { redraw };

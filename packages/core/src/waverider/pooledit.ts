@@ -140,3 +140,60 @@ export function placeInPool(
 
   return { entries: out, placed };
 }
+
+/**
+ * Take tables out of a pool, leaving the slots empty.
+ *
+ * The other half of `placeInPool`, and the one with a consequence worth saying out loud: the table
+ * stays in the store, the pool slot becomes empty, and **every sound set to that slot's number
+ * plays the built-in Prim. from then on**. Nothing renumbers. The slots after it do not close up.
+ *
+ * ## Why this exists at all, having been argued against
+ *
+ * `poolview.ts` argues that DNX must not clear an entry *on somebody's behalf* — a hole dug under
+ * them is a hole the next add drops into, and a sound still pointing at a later slot would then
+ * play an unrelated table. That argument is about DNX deciding. It is not an argument against a
+ * person deciding, and reading it as one left the Library able to add to a pool and never able to
+ * take anything out. The owner said so on 2026-10-13: a manager that cannot remove is not a
+ * manager.
+ *
+ * So the hole is still a hole — this does not shuffle the entries up, because renumbering a pool
+ * would move every table a sound is already pointing at, which is a far larger change than the one
+ * being asked for. The caller's job is to say what the empty slot will do.
+ */
+export function clearInPool(
+  entries: readonly (number | undefined)[],
+  indices: readonly number[],
+): Placement {
+  if (indices.length === 0) {
+    throw new WaveriderError("clearInPool was given nothing to clear");
+  }
+
+  const out: (number | undefined)[] = new Array<number | undefined>(POOL_ENTRIES).fill(undefined);
+  for (let index = 0; index < POOL_ENTRIES; index++) out[index] = entries[index];
+
+  const placed: Placed[] = [];
+  const seen = new Set<number>();
+  for (const index of indices) {
+    if (!Number.isInteger(index) || index < 0 || index >= POOL_ENTRIES) {
+      throw new WaveriderError(`a pool index is 0..${POOL_ENTRIES - 1}, and this one is ${index}`);
+    }
+    if (seen.has(index)) {
+      throw new WaveriderError(`pool slot ${index + 1} was named twice in one edit`);
+    }
+    seen.add(index);
+
+    const was = out[index];
+    if (was === undefined) {
+      throw new WaveriderError(
+        `pool slot ${index + 1} is already empty, so there is nothing to take out of it`,
+      );
+    }
+    out[index] = undefined;
+    // `storeSlot` is what *left*, which is what a caller naming the change needs. The shape is
+    // shared with `placeInPool` so one renderer can describe either edit.
+    placed.push({ storeSlot: was, index, replaced: was });
+  }
+
+  return { entries: out, placed };
+}

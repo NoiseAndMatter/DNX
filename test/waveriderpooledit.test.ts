@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
-import { freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 
 /** A pool holding the given store slots at indices 0.., and nothing after. */
 function pool(...slots: (number | undefined)[]): (number | undefined)[] {
@@ -134,4 +134,48 @@ test("nothing to place is a mistake rather than a no-op write", () => {
   // A pool write is an overwrite with a backup and a confirmation. Sending one that changes
   // nothing would spend all of that to achieve nothing, so it is refused here.
   assert.throws(() => placeInPool(pool(3), []), WaveriderError);
+});
+
+test("clearing a slot empties it and leaves everything else exactly where it was", () => {
+  /*
+   * **The hole stays a hole, on purpose.** Closing it up would renumber every table after it, and
+   * every sound already set to one of those numbers would then play a different table — a far
+   * bigger change than the one being asked for, applied to sounds nobody mentioned.
+   */
+  const before = pool(3, 9, 40, 77);
+  const { entries, placed } = clearInPool(before, [1]);
+
+  assert.equal(entries[1], undefined, "the named slot is empty");
+  assert.deepEqual(entries.slice(0, 4), [3, undefined, 40, 77], "nothing shuffled up");
+  assert.deepEqual(placed, [{ storeSlot: 9, index: 1, replaced: 9 }]);
+  assert.equal(before[1], 9, "the input was mutated");
+});
+
+test("clearing an already empty slot is refused rather than written as a no-op", () => {
+  // A pool write costs a confirmation, a saved copy and an overwrite of somebody's record. Sending
+  // one that changes nothing spends all of that to achieve nothing.
+  assert.throws(
+    () => clearInPool(pool(3), [5]),
+    (error: unknown) => error instanceof WaveriderError && /already empty/.test(error.message),
+  );
+  assert.throws(() => clearInPool(pool(3), []), WaveriderError);
+});
+
+test("clearing refuses a slot named twice, and an index outside the pool", () => {
+  assert.throws(
+    () => clearInPool(pool(3, 9), [0, 0]),
+    (error: unknown) => error instanceof WaveriderError && /named twice/.test(error.message),
+  );
+  assert.throws(() => clearInPool(pool(3), [POOL_ENTRIES]), WaveriderError);
+  assert.throws(() => clearInPool(pool(3), [-1]), WaveriderError);
+});
+
+test("a cleared slot is then the first free one, which is the hole the warning is about", () => {
+  // The two halves meeting: take slot 2 out, and the next add with no index goes straight into it
+  // rather than to the end. This is exactly what `poolview.ts` warns of, and it is correct —
+  // it is only wrong when DNX does the clearing without being asked.
+  const { entries } = clearInPool(pool(3, 9, 40), [1]);
+  const next = placeInPool(entries, [{ storeSlot: 55 }]);
+  assert.equal(next.placed[0]!.index, 1, "the next add falls into the hole");
+  assert.equal(next.entries[2], 40, "and the table after it has not moved");
 });

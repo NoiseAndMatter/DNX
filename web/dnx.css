@@ -814,7 +814,7 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * it is the first thing somebody looks at when the page goes quiet.
  */
 .progress {
-  position: fixed; top: 4.25rem; left: 50%; transform: translateX(-50%); z-index: 30;
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30;
   width: min(26rem, calc(100vw - 2rem));
   display: grid; grid-template-columns: 1fr auto; gap: .3rem .75rem; align-items: center;
   padding: .7rem .85rem;

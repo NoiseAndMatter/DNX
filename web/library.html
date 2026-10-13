@@ -173,6 +173,7 @@
           staged-import write shipped unreachable with a green suite.
         -->
         <button class="btn danger" data-writes-device id="wavepoolAdd" disabled title="Click a table in the store on the right, then press this.">Add to pool</button>
+        <button class="btn danger" data-writes-device id="wavepoolRemove" disabled title="Click a pool slot that holds a table, then press this. The table stays in the store.">Remove from pool</button>
       </div>
       <div class="grid" id="wavepoolGrid" hidden></div>
       <div class="plan hint" id="wavepoolNote" data-help="library/wavetable-pool-kinds" hidden></div>
@@ -230,11 +231,16 @@
         position is still a device write and still not here.
       -->
       <div class="wfpanel" id="wavePreview" hidden>
-        <div class="wfhead">
+        <div class="wfhead" data-help="library/wavetable-remove">
           <span class="wflabel">Wavetable preview</span>
           <span class="wfmeta" id="wavePreviewWhere"></span>
           <span class="wfspacer"></span>
           <span class="wfmeta" id="wavePreviewGeom"></span>
+          <!--
+            Acts on the table named to the left, which is the one drawn below. In the header
+            rather than beside Play, because that row is the audition and this is not audio.
+          -->
+          <button class="btn danger" data-writes-device id="waveTableDelete" disabled title="Delete this table from the instrument. A copy is saved first; there is no undo on the instrument.">Delete table</button>
         </div>
         <div class="wfstage" id="wavePreviewStage"></div>
         <div class="wfcontrols">

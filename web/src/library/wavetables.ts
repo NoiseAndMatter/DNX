@@ -58,6 +58,7 @@ import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
+import { wireTableDelete } from "./tabledelete.js";
 import {
   auditionFrame,
   auditionTable,
@@ -171,6 +172,23 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
 
   /**
+   * Deleting a stored table, which is the mode's third write and the only destructive one.
+   *
+   * Takes the **previewed** slot rather than the selected row: the control sits in the preview's
+   * own header, under the name and the geometry of the table it would remove, so the thing being
+   * deleted is the thing on screen. A row selected and then not read — which happens while a read
+   * is in flight — is not a table anybody has looked at.
+   */
+  const tableDeleting = wireTableDelete({
+    device: () => host.device(),
+    reading: () => reading,
+    projectSlot: () => Number(projects().value),
+    previewSlot: () => previewSlot,
+    status: host.status,
+    reread: refresh,
+  });
+
+  /**
    * What this instrument will play, as the instrument reported it.
    *
    * `support.features.playable` is absent on a build that does not report the capability, and the
@@ -216,8 +234,14 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     $<HTMLButtonElement>("wavepoolRefresh").disabled = !on;
     // Off with them, and back on only where the panes' own state allows it, which is the write's
     // own question rather than this one.
-    if (on) poolWriting.redraw();
-    else $<HTMLButtonElement>("wavepoolAdd").disabled = true;
+    if (on) {
+      poolWriting.redraw();
+      tableDeleting.redraw();
+    } else {
+      for (const id of ["wavepoolAdd", "wavepoolRemove", "waveTableDelete"]) {
+        $<HTMLButtonElement>(id).disabled = true;
+      }
+    }
   }
 
   /** The sentence for a state that is not *supported*, and the reason it is not a failure. */
@@ -544,6 +568,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         current: frame,
         waves: entry.waves,
       });
+      // The delete acts on whatever is drawn, so it is decided wherever the drawing is.
+      tableDeleting.redraw();
     } catch (error) {
       // A table whose geometry does not measure its bytes is a real thing on a +Drive, and the
       // view refuses it by name rather than drawing a wave that is not there.
@@ -655,6 +681,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       renderStore();
       renderPool();
       poolWriting.redraw();
+      tableDeleting.redraw();
       host.status(
         `${describePool(reading.summary)}${
           reading.unlisted === 0
