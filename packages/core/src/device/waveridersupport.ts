@@ -75,6 +75,15 @@ export interface WaveriderFeatures {
   tab: boolean;
   /** The pool pane, rather than the store list on its own. */
   pool: boolean;
+  /**
+   * The build can empty the whole wavetable region: `/wavepool/129`.
+   *
+   * **False wherever it is not certain**, including on every build too old to carry a
+   * capabilities record. The control destroys everything in the region, so the question is not
+   * "does this build lack the bit" but "has this build said it has the route" — and silence is
+   * not a yes.
+   */
+  erase: boolean;
   /** Rename in place. Off whenever it is not known to be there. */
   rename: boolean;
   /**
@@ -163,6 +172,9 @@ export function featuresFrom(roots: readonly string[], info?: ModInfo): Waveride
       conflictReported: false,
       warnConcurrentUndetectable: true,
       capabilitiesKnown: false,
+      // A build with no capabilities record has never claimed the route, and the control empties
+      // the whole region. Silence is not a yes for this one.
+      erase: false,
     };
   }
 
@@ -179,6 +191,8 @@ export function featuresFrom(roots: readonly string[], info?: ModInfo): Waveride
     conflictReported: info.can.poolCas,
     warnConcurrentUndetectable: !info.can.poolCas,
     capabilitiesKnown: true,
+    // The bit and the route both, as above. `/wavepool/129` lives on the pool route.
+    erase: info.can.erase && poolRoute,
     poolSlots: info.poolSlots,
     nameChars: { pool: info.poolNameChars, shown: info.shownNameChars },
     ...(info.playable === undefined ? {} : { playable: info.playable }),

@@ -160,6 +160,9 @@ test("a modded build with a record: supported, and every capability named", () =
       conflictReported: true,
       warnConcurrentUndetectable: false,
       capabilitiesKnown: true,
+      // The build names every capability it has and this is not one of them, so the settings
+      // button that empties the region is not offered on it.
+      erase: false,
       poolSlots: 128,
       nameChars: { pool: 15, shown: 14 },
     });
@@ -222,6 +225,9 @@ test("a Waverider build older than the record: supported, capabilities unknown",
     conflictReported: false,
     warnConcurrentUndetectable: true,
     capabilitiesKnown: false,
+    // A build with no record has never claimed the erase route, and silence is not a yes for a
+    // control that empties everything.
+    erase: false,
   });
 });
 
@@ -277,7 +283,7 @@ test("a feature needs both its bit and its route", () => {
   // exists. Where they would not, a pool pane whose route is absent fails when somebody uses it.
   const noRoute = featuresFrom(["waverider"], {
     version: 1, bytes: 256, capabilities: 0x3f, unknown: 0,
-    can: { store: true, pool: true, rename: true, poolCas: true, page: true, playable: false },
+    can: { store: true, pool: true, rename: true, poolCas: true, page: true, playable: false, erase: false },
     poolSlots: 128, poolRecordVersion: 2, storeSlots: 256,
     poolNameChars: 15, shownNameChars: 14, imageId: 1,
     os: "1.11", buildTag: "t", commit: "c", modCount: 0, mods: [],
@@ -300,7 +306,7 @@ test("the playable bounds pass through, and their absence is a rule rather than 
   const reported = featuresFrom(roots, {
     ...base,
     capabilities: 0x77,
-    can: { ...can, playable: true },
+    can: { ...can, playable: true, erase: false },
     playable: { maxWaves: 64, minPoints: 64, maxPoints: 4_096, pointsPowerOfTwo: true },
   });
   assert.deepEqual(reported.playable, {
@@ -315,7 +321,7 @@ test("the playable bounds pass through, and their absence is a rule rather than 
   const notReported = featuresFrom(roots, {
     ...base,
     capabilities: 0x37,
-    can: { ...can, playable: false },
+    can: { ...can, playable: false, erase: false },
   });
   assert.equal(notReported.playable, undefined);
   assert.equal(notReported.capabilitiesKnown, true, "the build answered; it answered 16 x 512");

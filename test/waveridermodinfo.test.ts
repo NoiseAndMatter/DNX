@@ -21,6 +21,7 @@ import {
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
 import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import { buildContainer } from "@noiseandmatter/dnx-core/project/container.js";
+import { featuresFrom } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 import { FORMAT_VERSION } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 
 const put16 = (b: Uint8Array, at: number, v: number): void => {
@@ -113,6 +114,7 @@ test("every field the spec names reads back", () => {
     poolCas: true,
     page: true,
     playable: false,
+    erase: false,
   });
   assert.equal(info.unknown, 0);
   assert.equal(info.playable, undefined, "no bit, so no bounds, whatever 248..251 hold");
@@ -289,4 +291,45 @@ test("a container that is not a mod-info record is refused by kind", () => {
     () => readModInfoFile(file({}, 0x50)),
     (e: unknown) => e instanceof WaveriderError && /content kind 0x50/.test(e.message),
   );
+});
+
+test("no bit, no button: the erase capability is false unless the build claims it", () => {
+  /*
+   * **The question is not whether the bit is missing, but whether the build said yes.** The erase
+   * control empties the whole wavetable region, so silence has to read as no: a build too old to
+   * carry this record has never claimed the route, and a page that offered the button anyway
+   * would put an irreversible-looking control in front of somebody whose instrument cannot do it.
+   */
+  assert.equal(CAPABILITY.erase, 0x80);
+
+  // No record at all, every route listed. Still no.
+  assert.equal(featuresFrom(["waverider", "wavepool", "modinfo"]).erase, false);
+
+  const withCaps = (capabilities: number) => readModInfo(record({ capabilities }));
+
+  assert.equal(
+    featuresFrom(["waverider", "wavepool"], withCaps(CAPABILITY.store | CAPABILITY.pool)).erase,
+    false,
+    "a record that does not set the bit",
+  );
+  assert.equal(
+    featuresFrom(
+      ["waverider", "wavepool"],
+      withCaps(CAPABILITY.store | CAPABILITY.pool | CAPABILITY.erase),
+    ).erase,
+    true,
+  );
+  // The bit set and the route absent: a build claiming something it cannot be asked for.
+  assert.equal(
+    featuresFrom(["waverider"], withCaps(CAPABILITY.store | CAPABILITY.erase)).erase,
+    false,
+  );
+});
+
+test("the erase bit is a known capability, so it is not reported as unknown", () => {
+  // `unknown` is what a page shows when a build claims something this DNX has never heard of.
+  // A bit we do understand appearing there would send somebody looking for a missing feature.
+  const info = readModInfo(record({ capabilities: CAPABILITY.store | CAPABILITY.erase }));
+  assert.equal(info.unknown, 0);
+  assert.equal(info.can.erase, true);
 });

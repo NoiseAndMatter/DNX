@@ -153,6 +153,14 @@ export const CAPABILITY = {
    * warning that sends somebody re-importing a table that was fine.
    */
   playable: 0x40,
+  /**
+   * `/wavepool/129` empties the whole wavetable region: every table, every pool list.
+   *
+   * **No bit, no button.** A build without it has no route at all, and offering the control
+   * anyway would put an irreversible-looking button in front of somebody whose instrument cannot
+   * do it — the worst kind of dead control, because the thing it claims to do is destructive.
+   */
+  erase: 0x80,
 } as const;
 
 /** `0x08` meant `delete` in rev 1 and said nothing. Named so that nothing reuses it. */
@@ -165,6 +173,7 @@ const KNOWN_CAPABILITIES =
   CAPABILITY.poolCas |
   CAPABILITY.page |
   CAPABILITY.playable |
+  CAPABILITY.erase |
   RETIRED_CAPABILITY;
 
 export interface ModInfoMod {
@@ -181,6 +190,7 @@ export interface ModInfoCapabilities {
   poolCas: boolean;
   page: boolean;
   playable: boolean;
+  erase: boolean;
 }
 
 export interface ModInfo {
@@ -367,6 +377,7 @@ export function readModInfo(record: Uint8Array): ModInfo {
       poolCas: (capabilities & CAPABILITY.poolCas) !== 0,
       page: (capabilities & CAPABILITY.page) !== 0,
       playable: (capabilities & CAPABILITY.playable) !== 0,
+      erase: (capabilities & CAPABILITY.erase) !== 0,
     },
     unknown: capabilities & ~KNOWN_CAPABILITIES,
     poolSlots: be16(record, INFO.poolSlots),
