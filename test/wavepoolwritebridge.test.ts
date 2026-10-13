@@ -86,7 +86,7 @@ test("a pool record lands at a non-zero project slot, and backs up only an overw
     const after = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
     assert.deepEqual(after.entries.slice(0, entries.length), entries,
       "the entries read back are not the entries sent");
-    assert.equal(after.automatic, false, "writing a list must turn automatic off");
+    assert.equal(after.followsStore, false, "writing a list must stop the project following the store");
 
     // Now the overwrite, which is the case the hook exists for.
     const second = await writePool({
@@ -152,7 +152,7 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
       path: `/wavepool/${projectSlot}`,
       bytes: buildPoolFile({
         projectSlot,
-        automatic: false,
+        followsStore: false,
         entries: [99, 98, 97],
         generation: mine.generation,
       }),
@@ -200,7 +200,7 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
       path: `/wavepool/${projectSlot}`,
       bytes: buildPoolFile({
         projectSlot,
-        automatic: false,
+        followsStore: false,
         entries: [99, 98, 97],
         generation: moved.generation,
       }),

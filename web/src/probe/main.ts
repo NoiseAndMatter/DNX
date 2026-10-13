@@ -289,7 +289,7 @@ async function probe(): Promise<void> {
     // be armed before the button does anything, like every other `data-writes-device` control.
     for (const id of ["tableFile", "tableSlot", "tableName", "tableWaves", "tablePoints", "tableWrite",
       "tableFiles", "tableFirstSlot", "tableWriteAll",
-      "poolProject", "poolList", "poolAutomatic", "poolWrite",
+      "poolProject", "poolList", "poolFollowsStore", "poolWrite",
       "tableDeleteSlot", "tableDelete"]) {
       $<HTMLInputElement>(id).disabled = false;
     }

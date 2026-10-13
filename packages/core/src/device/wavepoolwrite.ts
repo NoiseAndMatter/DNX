@@ -19,7 +19,7 @@
  *
  * **But the refusal is silent.** The stock session answers the commit before the store's callback
  * runs, so a stale write replies `ok` and writes nothing — the same property that produced the
- * slot 9 silent write and the automatic-write trap. `wp_write.last` holds 26 for a stale write
+ * slot 9 silent write and the follows-the-store write trap. `wp_write.last` holds 26 for a stale write
  * and a PEEK is not something a user has.
  *
  * ## So the proof is the entries, and the generation is only corroboration
@@ -85,11 +85,11 @@ export interface WritePoolOptions {
   /**
    * The list to write: the **store slot** at each **pool index**, `undefined` for none.
    *
-   * Shorter than a full pool is padded. An automatic pool is written by passing `automatic`.
+   * Shorter than a full pool is padded. To follow the store instead, pass `followsStore`.
    */
   entries?: readonly (number | undefined)[];
-  /** Write the automatic record instead of a list. Refused together with `entries`. */
-  automatic?: boolean;
+  /** Write the follows-the-store record instead of a list. Refused together with `entries`. */
+  followsStore?: boolean;
   /**
    * Handed the record that is about to be replaced, before a byte is sent.
    *
@@ -166,14 +166,15 @@ export async function writePool(options: WritePoolOptions): Promise<WritePoolRes
   const { transport, host, projectSlot } = options;
   const status = options.onStatus ?? ((): void => {});
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const automatic = options.automatic === true;
+  const followsStore = options.followsStore === true;
 
   if (!Number.isInteger(projectSlot) || projectSlot < 0 || projectSlot >= PROJECT_SLOTS) {
     throw new WavepoolWriteError(`project slot ${projectSlot} is outside 0..${PROJECT_SLOTS - 1}`);
   }
-  if (automatic && options.entries !== undefined && options.entries.some((e) => e !== undefined)) {
+  if (followsStore && options.entries !== undefined && options.entries.some((e) => e !== undefined)) {
     throw new WavepoolWriteError(
-      `project slot ${projectSlot}: an automatic pool carries no entries. Pass one or the other.`,
+      `project slot ${projectSlot}: a pool that follows the store carries no entries. Pass one or ` +
+        `the other.`,
     );
   }
 
@@ -187,8 +188,8 @@ export async function writePool(options: WritePoolOptions): Promise<WritePoolRes
 
   const bytes = buildPoolFile({
     projectSlot,
-    automatic,
-    entries: automatic ? [] : (options.entries ?? []),
+    followsStore,
+    entries: followsStore ? [] : (options.entries ?? []),
     generation: before.generation,
   });
 

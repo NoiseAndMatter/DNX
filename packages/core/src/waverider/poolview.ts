@@ -38,7 +38,7 @@
  *
  * ## Whether anybody wrote this pool changes what the numbers mean
  *
- * A project with no record of its own follows the automatic pool, and the firmware answers a read
+ * A project with no record of its own follows the store, and the firmware answers a read
  * of `/wavepool/<p>` with the entries it would synthesise. They are real — that is what the project
  * plays — but **an upload moves them**: a table landing in a free store slot below the others
  * shifts every later pool index, and every sound keeps its old coarse value. So `authored` is on
@@ -84,12 +84,12 @@ export interface PoolCell {
 
 export interface PoolSummary {
   projectSlot: number;
-  /** `untouched` nobody wrote one, `automatic` written as automatic, `list` written as a list. */
+  /** `untouched` nobody wrote one, `follows-store` written as following the store, `list` as a list. */
   kind: ReturnType<typeof poolState>;
   /**
    * Somebody wrote this pool, so its indices are pinned.
    *
-   * False for `untouched` and `automatic`, where an upload into a lower store slot moves every
+   * False for `untouched` and `follows-store`, where an upload into a lower store slot moves every
    * later index and the sounds do not follow.
    */
   authored: boolean;
@@ -189,7 +189,7 @@ export function summarisePool(
  * The sentence above the grid: what this project plays, and whether the numbering is pinned.
  *
  * Here rather than in the page because it is the one place the three states are put into words, and
- * a second wording would eventually disagree with this one about what `automatic` means.
+ * a second wording would eventually disagree with this one about what following the store means.
  */
 export function describePool(summary: PoolSummary): string {
   const where = summary.projectSlot === 0 ? "the working project" : `project slot ${summary.projectSlot}`;
@@ -205,7 +205,7 @@ export function describePool(summary: PoolSummary): string {
         `slot along by one, and a sound set by number plays whatever moved into it. Give the ` +
         `project a list of its own to pin them.`
       );
-    case "automatic":
+    case "follows-store":
       return (
         `${where} is set to follow the store: ${counts}. The entries are the firmware's rather ` +
         `than a list somebody wrote, so the order is the store's and new tables join it.`

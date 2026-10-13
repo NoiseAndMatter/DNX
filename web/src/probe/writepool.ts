@@ -60,11 +60,11 @@ async function writeTheirPool(): Promise<void> {
   }
 
   const projectSlot = Number($<HTMLInputElement>("poolProject").value);
-  const automatic = $<HTMLInputElement>("poolAutomatic").checked;
+  const followsStore = $<HTMLInputElement>("poolFollowsStore").checked;
   const text = $<HTMLInputElement>("poolList").value;
 
   let entries: (number | undefined)[] = [];
-  if (!automatic) {
+  if (!followsStore) {
     try {
       entries = parseEntryList(text);
     } catch (error) {
@@ -74,7 +74,7 @@ async function writeTheirPool(): Promise<void> {
       return;
     }
     if (entries.every((e) => e === undefined)) {
-      status("That list is empty. Tick automatic to write the automatic pool instead.", "warn");
+      status("That list is empty. Tick follows the store to write that record instead.", "warn");
       return;
     }
   }
@@ -82,8 +82,8 @@ async function writeTheirPool(): Promise<void> {
   const summary = summariseEntryList(entries);
   verdictCard("Writing a pool…", [
     ["To", `/wavepool/${projectSlot}${projectSlot === 0 ? " — the working project" : ""}`],
-    ["Kind", automatic ? "automatic: every playable table in store order" : "a list"],
-    ...(automatic
+    ["Kind", followsStore ? "follows the store: every playable table in store order" : "a list"],
+    ...(followsStore
       ? []
       : ([
           ["Entries", `${summary.used} of 128 used, ${summary.distinct} distinct`],
@@ -104,7 +104,7 @@ async function writeTheirPool(): Promise<void> {
         confirm: confirmFileWrite,
       },
       projectSlot,
-      ...(automatic ? { automatic: true } : { entries }),
+      ...(followsStore ? { followsStore: true } : { entries }),
       // The record being replaced, 512 bytes, saved before anything is sent — the same rule every
       // other overwrite in core follows.
       onBackup: downloadBackup(
@@ -123,8 +123,8 @@ async function writeTheirPool(): Promise<void> {
     if (result.landed) {
       verdictCard("Pool written", [
         ["To", `/wavepool/${result.projectSlot}`],
-        ["Was", `generation ${result.before.generation}${result.before.automatic ? ", automatic" : ""}`],
-        ["Entries", automatic ? "automatic" : `${summary.used} used, ${summary.distinct} distinct`],
+        ["Was", `generation ${result.before.generation}${result.before.followsStore ? ", following the store" : ""}`],
+        ["Entries", followsStore ? "the store's order" : `${summary.used} used, ${summary.distinct} distinct`],
         ["Proof", "the entries read back are the entries sent"],
       ]);
       status(`The pool of project slot ${result.projectSlot} is written.`, "ok");

@@ -87,7 +87,7 @@ test("the pool and the store arrive together, and the join names the missing tab
   // The record names slots 9 and 20; the store holds 9 and not 20, so pool slot 2 plays Prim.
   const file = buildPoolFile({
     projectSlot: 4,
-    automatic: false,
+    followsStore: false,
     entries: [9, 20],
     generation: 7,
   });

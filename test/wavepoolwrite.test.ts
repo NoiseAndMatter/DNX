@@ -40,7 +40,7 @@ function asStored(sent: Uint8Array, generation: number): Uint8Array {
 }
 
 function sample(): Uint8Array {
-  return buildPoolFile({ projectSlot: 3, automatic: false, entries: [3, undefined, 0], generation: 4 });
+  return buildPoolFile({ projectSlot: 3, followsStore: false, entries: [3, undefined, 0], generation: 4 });
 }
 
 test("a pool slot addresses the path the device resolves", () => {
@@ -104,8 +104,8 @@ test("the generation alone cannot prove a write, which is why it is not the proo
    * generation check calls that a success; the entries do not.
    */
   const before = 4;
-  const ours = buildPoolFile({ projectSlot: 3, automatic: false, entries: [3], generation: before });
-  const theirs = buildPoolFile({ projectSlot: 3, automatic: false, entries: [7], generation: before });
+  const ours = buildPoolFile({ projectSlot: 3, followsStore: false, entries: [3], generation: before });
+  const theirs = buildPoolFile({ projectSlot: 3, followsStore: false, entries: [7], generation: before });
   const held = asStored(theirs, before + 1);
 
   assert.equal(readPoolFile(held).generation, before + 1, "the generation looks exactly right");

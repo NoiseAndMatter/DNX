@@ -15,14 +15,15 @@
  * field positions are still written out rather than taken from `RECORD`, so that a mistake in the
  * module is not also the mistake in the test.
  *
- * **One limit on the automatic vector.** The card had an empty store, so `automatic-slot0` reads
- * back with no entries filled and compares as sent. With tables stored, an automatic read fills
- * the entries from the store, and that case is not pinned here.
+ * **One limit on the follows-the-store vector.** The card had an empty store, so
+ * `automatic-slot0` reads back with no entries filled and compares as sent. With tables stored,
+ * such a read fills the entries from the store, and that case is not pinned here. The file keeps
+ * its captured name: it is a file on disk in the firmware repository, written before the rename.
  *
  * ## The one that matters
  *
- * `an automatic record cannot carry entries` is not a tidiness check. A read of a project with no
- * pool of its own comes back with the automatic flag set and its entries filled with what that
+ * `a pool that follows the store carries no entries` is not a tidiness check. A read of a project
+ * with no pool of its own comes back with that flag set and its entries filled with what that
  * project plays, so read-change-write is a write the firmware ignores, and both sides refuse it
  * rather than let it report success. It is the slot 9 shape: a commit that answers ok and writes
  * nothing.
@@ -32,14 +33,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   CONTENT_KIND_POOL,
-  FLAG_AUTOMATIC,
+  FLAG_FOLLOWS_STORE,
   FORMAT_VERSION,
   NO_TABLE,
   POOL_FORMAT_VERSION,
   POOL_RECORD_BYTES,
   PROJECT_SLOTS,
   type PoolRecord,
-  automaticPoolFile,
+  followsStorePoolFile,
   buildPoolFile,
   emptyPoolFile,
   hasStoredPool,
@@ -55,7 +56,7 @@ import {
   POOL_B_BASE,
   poolRecordSector,
 } from "@noiseandmatter/dnx-core/waverider/layout.js";
-import { POOL_ENTRIES, automaticEntries } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { POOL_ENTRIES, storeOrderEntries } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { FORMAT_VERSION as STORE_ASCII } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
@@ -110,7 +111,7 @@ function sample(): PoolRecord {
   entries[0] = 0;
   entries[1] = 7;
   entries[5] = 255;
-  return { projectSlot: 4, automatic: false, entries, generation: 0 };
+  return { projectSlot: 4, followsStore: false, entries, generation: 0 };
 }
 
 test("a pool record round-trips, and the entries come back 127 long", () => {
@@ -119,7 +120,7 @@ test("a pool record round-trips, and the entries come back 127 long", () => {
 
   const read = readPoolFile(file);
   assert.equal(read.projectSlot, 4);
-  assert.equal(read.automatic, false);
+  assert.equal(read.followsStore, false);
   assert.equal(read.entries.length, POOL_ENTRIES);
   assert.equal(read.entries[0], 0);
   assert.equal(read.entries[1], 7);
@@ -130,7 +131,7 @@ test("a pool record round-trips, and the entries come back 127 long", () => {
 
 test("a short entry list is padded rather than refused", () => {
   const read = readPoolFile(
-    buildPoolFile({ projectSlot: 1, automatic: false, entries: [3, undefined, 9], generation: 0 }),
+    buildPoolFile({ projectSlot: 1, followsStore: false, entries: [3, undefined, 9], generation: 0 }),
   );
   assert.equal(read.entries.length, POOL_ENTRIES);
   assert.deepEqual(read.entries.slice(0, 3), [3, undefined, 9]);
@@ -177,65 +178,65 @@ test("the pool's format-version ASCII has not drifted from the store's", () => {
   assert.equal(FORMAT_VERSION, STORE_ASCII);
 });
 
-test("an automatic record carries no entries, and says so when asked to", () => {
-  const file = automaticPoolFile(9);
+test("a follows-the-store record carries no entries, and says so when asked to", () => {
+  const file = followsStorePoolFile(9);
   const record = body(file);
-  assert.equal(be16(record, AT.flags), FLAG_AUTOMATIC);
+  assert.equal(be16(record, AT.flags), FLAG_FOLLOWS_STORE);
   assert.equal(be16(record, AT.entriesInUse), 0);
   for (let j = 0; j < POOL_ENTRIES; j++) {
     assert.equal(be16(record, AT.entries + j * 2), NO_TABLE);
   }
 
   const read = readPoolFile(file);
-  assert.equal(read.automatic, true);
+  assert.equal(read.followsStore, true);
   assert.equal(read.projectSlot, 9);
 });
 
-test("an automatic record cannot carry entries: the read-then-write trap", () => {
+test("a follows-the-store record cannot carry entries: the read-then-write trap", () => {
   // What a read of a project with no pool of its own hands back: the flag set, and the entries
   // filled with what it plays. Writing that back unchanged is the write that does nothing.
   const asRead: PoolRecord = {
     projectSlot: 12,
-    automatic: true,
-    entries: automaticEntries([0, 3, 4]),
+    followsStore: true,
+    entries: storeOrderEntries([0, 3, 4]),
     generation: 0,
   };
   assert.throws(
     () => buildPoolFile(asRead),
     (error: unknown) =>
-      error instanceof WaveriderError && /automatic pool cannot carry entries/.test(error.message),
+      error instanceof WaveriderError && /follows the store carries no entries/.test(error.message),
   );
 
   // And the two ways out of it, both of which are a real intention.
-  assert.equal(readPoolFile(buildPoolFile({ ...asRead, automatic: false })).automatic, false);
-  assert.equal(readPoolFile(buildPoolFile({ ...asRead, entries: [] })).automatic, true);
+  assert.equal(readPoolFile(buildPoolFile({ ...asRead, followsStore: false })).followsStore, false);
+  assert.equal(readPoolFile(buildPoolFile({ ...asRead, entries: [] })).followsStore, true);
 });
 
-test("the automatic entries are the playable slots in store-slot order", () => {
-  const entries = automaticEntries([9, 2, 2, 40]);
+test("store order is the playable slots, in store-slot order", () => {
+  const entries = storeOrderEntries([9, 2, 2, 40]);
   assert.deepEqual(entries.slice(0, 4), [2, 9, 40, undefined]);
   assert.equal(entries.length, POOL_ENTRIES);
 
   // The 128th playable table onward has no pool index at all, as it has none today.
-  const many = automaticEntries(Array.from({ length: 200 }, (_, i) => i));
+  const many = storeOrderEntries(Array.from({ length: 200 }, (_, i) => i));
   assert.equal(many[POOL_ENTRIES - 1], POOL_ENTRIES - 1);
   assert.equal(many.length, POOL_ENTRIES);
 });
 
-test("an empty list is a different thing from an automatic one", () => {
+test("an empty list is a different thing from following the store", () => {
   // The owner's call for CREATE NEW, 2026-10-06: a new project's sound pool starts empty, so its
   // wavetable pool does. The difference is audible — an empty list gives a sound the two built-ins
-  // and nothing else, where automatic gives it every playable table on the card.
+  // and nothing else, where following the store gives it every playable table on the card.
   const empty = readPoolFile(emptyPoolFile(7));
-  assert.equal(empty.automatic, false);
+  assert.equal(empty.followsStore, false);
   assert.equal(empty.entries.filter((e) => e !== undefined).length, 0);
 
-  const automatic = readPoolFile(automaticPoolFile(7));
-  assert.equal(automatic.automatic, true);
+  const follows = readPoolFile(followsStorePoolFile(7));
+  assert.equal(follows.followsStore, true);
 
   // They differ in the flags word and nowhere else, which is exactly why the flag is load-bearing.
   const a = body(emptyPoolFile(7));
-  const b = body(automaticPoolFile(7));
+  const b = body(followsStorePoolFile(7));
   const differing: number[] = [];
   for (let i = 0; i < AT.hash; i++) if (a[i] !== b[i]) differing.push(i);
   assert.deepEqual(differing, [AT.flags + 1]);
@@ -243,11 +244,11 @@ test("an empty list is a different thing from an automatic one", () => {
 
 test("poolState names the three a read can describe", () => {
   // A project saved before the lists: the firmware made this record up to answer the read.
-  assert.equal(poolState({ ...sample(), automatic: true, entries: [], generation: 0 }), "untouched");
+  assert.equal(poolState({ ...sample(), followsStore: true, entries: [], generation: 0 }), "untouched");
   // The same thing on purpose, and a stored fact.
-  assert.equal(poolState({ ...sample(), automatic: true, entries: [], generation: 2 }), "automatic");
+  assert.equal(poolState({ ...sample(), followsStore: true, entries: [], generation: 2 }), "follows-store");
   // A list, which may hold nothing: what CREATE NEW writes.
-  assert.equal(poolState({ ...sample(), automatic: false, entries: [], generation: 2 }), "list");
+  assert.equal(poolState({ ...sample(), followsStore: false, entries: [], generation: 2 }), "list");
   assert.equal(poolState({ ...sample(), generation: 9 }), "list");
 });
 
@@ -381,7 +382,7 @@ test("the two copies of a pool record are in different erase groups", () => {
 const FIRMWARE_VECTORS = [
   {
     file: "explicit-slot3.bin",
-    record: { projectSlot: 3, automatic: false, entries: [3, undefined, 0], generation: 1 },
+    record: { projectSlot: 3, followsStore: false, entries: [3, undefined, 0], generation: 1 },
     header: [
       0xac, 0x11, 0xd3, 0x03, 0x02, 0x00, 0x05, 0x00, 0x0f, 0x30, 0x30, 0x35, 0x39, 0x00, 0x00,
       0x00, 0x50, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -397,7 +398,7 @@ const FIRMWARE_VECTORS = [
   },
   {
     file: "automatic-slot0.bin",
-    record: { projectSlot: 0, automatic: true, entries: [], generation: 1 },
+    record: { projectSlot: 0, followsStore: true, entries: [], generation: 1 },
     header: [
       0xac, 0x11, 0xd3, 0x03, 0x02, 0x00, 0x05, 0x00, 0x0f, 0x30, 0x30, 0x35, 0x39, 0x00, 0x00,
       0x00, 0x50, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -415,7 +416,7 @@ const FIRMWARE_VECTORS = [
     file: "full-slot128.bin",
     record: {
       projectSlot: 128,
-      automatic: false,
+      followsStore: false,
       // 127, not POOL_ENTRIES: this is what a version 1 record holds, and the constant has moved.
       entries: Array.from({ length: 127 }, (_, j) => (j * 2) % 256),
       generation: 1,
@@ -476,7 +477,7 @@ for (const vector of FIRMWARE_VECTORS) {
     // And the reader takes it, reporting one shape whatever the bytes said.
     const read = readPoolFile(built);
     assert.equal(read.projectSlot, vector.record.projectSlot);
-    assert.equal(read.automatic, vector.record.automatic);
+    assert.equal(read.followsStore, vector.record.followsStore);
     assert.equal(read.generation, 1);
     assert.equal(read.entries.length, POOL_ENTRIES, "128 entries from a 127-entry record");
     assert.equal(read.entries[POOL_ENTRIES - 1], undefined, "the 128th is empty in a v1 record");
@@ -484,7 +485,7 @@ for (const vector of FIRMWARE_VECTORS) {
 }
 
 test("version 1 is read and never written", () => {
-  const v2 = buildPoolFile({ projectSlot: 3, automatic: false, entries: [3], generation: 0 });
+  const v2 = buildPoolFile({ projectSlot: 3, followsStore: false, entries: [3], generation: 0 });
   assert.equal(be32(v2, HEAD.objectVersion), POOL_FORMAT_VERSION);
   assert.equal(be16(body(v2), AT.version), POOL_FORMAT_VERSION);
   assert.equal(POOL_FORMAT_VERSION, 2);

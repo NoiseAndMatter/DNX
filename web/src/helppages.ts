@@ -529,7 +529,7 @@ from differently recorded files come out equally loud.`,
 
 - **No pool of its own.** Nobody has written one. The project plays every stored table in
   store-slot order, and picks up new ones as they arrive.
-- **Automatic.** The same, written down.
+- **Follows the store.** The same, written down.
 - **A list.** Somebody chose these slots, on the instrument or in DNX.
 
 **A list is what you want for a project you are building.** The pool slot is the number a sound

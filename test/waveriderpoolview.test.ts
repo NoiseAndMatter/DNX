@@ -31,7 +31,7 @@ function listing(used: Record<number, string>): StoreSlotFacts[] {
 function record(entries: (number | undefined)[], over: Partial<PoolRecord> = {}): PoolRecord {
   return {
     projectSlot: 4,
-    automatic: false,
+    followsStore: false,
     generation: 7,
     entries,
     ...over,
@@ -98,7 +98,7 @@ test("whether somebody wrote the pool changes what the numbers mean", () => {
 
   // A read with no stored record behind it: generation 0. The entries are real — the firmware
   // synthesised them and that is what the project plays — but the order is the store's.
-  const untouched = summarisePool(record(entries, { generation: 0, automatic: true }), store);
+  const untouched = summarisePool(record(entries, { generation: 0, followsStore: true }), store);
   assert.equal(untouched.kind, "untouched");
   assert.equal(untouched.authored, false);
   assert.match(describePool(untouched), /no pool of its own/);
@@ -112,10 +112,10 @@ test("whether somebody wrote the pool changes what the numbers mean", () => {
   assert.match(describePool(untouched), /list of its own/);
 
   // Written as following the store on purpose. Same entries, different sentence.
-  const automatic = summarisePool(record(entries, { automatic: true }), store);
-  assert.equal(automatic.kind, "automatic");
-  assert.equal(automatic.authored, false);
-  assert.match(describePool(automatic), /follow the store/);
+  const follows = summarisePool(record(entries, { followsStore: true }), store);
+  assert.equal(follows.kind, "follows-store");
+  assert.equal(follows.authored, false);
+  assert.match(describePool(follows), /follow the store/);
 
   // A list somebody wrote. These stay put.
   const list = summarisePool(record(entries), store);
