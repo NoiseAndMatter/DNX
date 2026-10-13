@@ -18,8 +18,10 @@
  *
  * ## A pool holds store slots, and a sound holds a pool index
  *
- * A sound's `TBL` is a **coarse** value: 0 and 1 are the built-in Prim. and Harm., and `c >= 2` is
- * **pool index** `c - 2`, displayed as **shown slot** `c - 1`, and `c` runs to 129 for the 128th.
+ * A sound's `TBL` is stored as a **coarse** value: 0 and 1 are the built-in Prim. and Harm., and
+ * `c >= 2` is **pool index** `c - 2`. The instrument shows `c - 1`, as `T:001` to `T:128`, which is
+ * the **shown slot** — so what a person reads on the unit is the pool slot and no arithmetic. `c`
+ * runs to 129 for the 128th.
  * The pool record says which **store slot** sits at each pool index. Four numbers for one table, and this module adds the fifth, the
  * project slot. Every field says which it carries, because `coarse - 1` and `coarse - 2` both look
  * right across most of the range.

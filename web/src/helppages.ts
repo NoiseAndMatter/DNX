@@ -447,17 +447,18 @@ points at the store directly.`,
       },
       {
         heading: "Store slot, pool slot, and the number in a sound",
-        body: `Set **TBL** on a sound to one more than the pool slot you want.
+        body: `Set **TBL** on a sound to the pool slot you want. It is the same number.
 
-Every table in the pool has three numbers:
+Every table has two numbers:
 
-- **Store slot, 0 to 255.** Where the table sits on the instrument.
-- **Pool slot, 1 to 128.** Where it sits in this project's pool.
-- **The number in a sound.** The pool slot plus one. The first values of **TBL** are the
-  instrument's built-in waveforms.
+- **Store slot, 0 to 255.** Where the table sits on the instrument, shared by every project.
+- **Pool slot, 1 to 128.** Where it sits in this project's pool, and what you set **TBL** to.
 
-One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows its store slot
-and its pool slot.`,
+The sound's **TBL** cell reads **T:002** for pool slot 2. Turning it below **T:001** gives the
+instrument's two built-in waveforms, **PRIM** and **HARM**.
+
+One table can be store slot 9 and pool slot 2, and the same table can be a different pool slot in
+another project. Every cell shows its store slot and its pool slot.`,
       },
       {
         heading: "Seeing what a table looks like",
@@ -521,8 +522,8 @@ Before you start:
 3. Click the pool slot you want it in, on the left. Skip this step to use the first free slot.
 4. Press **Add to pool**. One question names the table, the slot, and what the slot holds now.
 
-On the instrument, set the sound's **TBL** to one above the pool slot number: pool slot 5 is
-**TBL 6**, because the two built-in waveforms come first.
+On the instrument, set the sound's **TBL** to the pool slot number: for pool slot 5 the cell reads
+**T:005**. Below **T:001** are the two built-in waveforms, **PRIM** and **HARM**.
 
 The pool being replaced is saved to your computer as a file before anything is sent. That copy is
 the only undo there is.

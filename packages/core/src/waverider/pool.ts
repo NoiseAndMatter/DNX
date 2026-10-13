@@ -72,7 +72,14 @@ export const POOL_BYTES = POOL_WAVES * POOL_POINTS * 2;
  */
 export const POOL_ENTRIES = 128;
 
-/** `TBL 0` and `TBL 1` are the baked tables; the pool starts here. */
+/**
+ * The stored coarse value of the **first** pool entry. Coarse 0 and 1 are the baked tables.
+ *
+ * **Stored, not shown.** The instrument's TBL cell reads `PRIM` and `HARM` for coarse 0 and 1, and
+ * `T:%03d` of `coarse - 1` for the rest — so pool index 0 stores 2 and reads `T:001`. Confirmed
+ * against `csrc/waverider/page.c` by the firmware session on 2026-10-13, after DNX's help page had
+ * told people to set TBL to one above the pool slot. It is the same number as the pool slot.
+ */
 export const FIRST_POOL_TBL = 2;
 
 /**

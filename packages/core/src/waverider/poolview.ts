@@ -71,7 +71,12 @@ export interface PoolCell {
   index: number;
   /** `index + 1`: what both UIs display. The built-ins sit outside this numbering. */
   shown: number;
-  /** `2 + index`: what a sound stores in TBL1 / TBL2. See 8w on the three numbers. */
+  /**
+   * `2 + index`: what a sound **stores** in TBL1 / TBL2. See 8w on the three numbers.
+   *
+   * Not what the instrument shows. Its cell reads `coarse - 1`, which is `shown` — so anything
+   * put in front of a person uses `shown`, and this is for bytes.
+   */
   coarse: number;
   /** The store slot this entry names, absent on an empty cell. */
   storeSlot?: number;
@@ -183,6 +188,21 @@ export function summarisePool(
       .map(([slot]) => slot)
       .sort((a, b) => a - b),
   };
+}
+
+/**
+ * What the instrument's **TBL** cell reads for a pool index: `T:001` to `T:128`.
+ *
+ * **One place, because the arithmetic has already been got wrong once.** The value a sound stores
+ * is `index + 2`; the unit displays `stored - 1` as `T:%03d`, which is the shown slot — so the
+ * number on screen is the pool slot and nothing has to be added to it. DNX's help told people to
+ * add one from the day it was written until the firmware session checked `csrc/waverider/page.c`
+ * on 2026-10-13.
+ *
+ * Below `T:001` are the two built-ins, which read `PRIM` and `HARM` rather than numbers.
+ */
+export function tblLabel(index: number): string {
+  return `T:${String(index + 1).padStart(3, "0")}`;
 }
 
 /**

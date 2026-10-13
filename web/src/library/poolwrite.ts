@@ -46,6 +46,7 @@ import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { writePool } from "@noiseandmatter/dnx-core/device/wavepoolwrite.js";
 import { freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 
 export interface PoolWriteHost {
   device(): ConnectedDevice | undefined;
@@ -80,9 +81,6 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
 
   /** The shown slot number, 1..128, which is what both panes and the instrument display. */
   const shown = (index: number): number => index + 1;
-
-  /** What a sound stores in TBL to reach a pool index. See 8w on the three numbers. */
-  const coarse = (index: number): number => index + 2;
 
   function describeTable(slot: number): string {
     const row = host.reading()?.store.find((entry) => entry.slot === slot);
@@ -130,15 +128,15 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
   ): string[] {
     const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
     const lines = [
-      `Store slot ${describeTable(slot)} goes into pool slot ${shown(index)} of ${where}. A sound ` +
-        `reaches it as TBL ${coarse(index)}.`,
+      `Store slot ${describeTable(slot)} goes into pool slot ${shown(index)} of ${where}. On the ` +
+        `instrument its TBL reads ${tblLabel(index)}.`,
     ];
 
     if (replaced !== undefined) {
       lines.push(
         `Pool slot ${shown(index)} names store slot ${describeTable(replaced)} today. That table ` +
-          `stays in the store; it is this project's entry that changes, so every sound set to TBL ` +
-          `${coarse(index)} plays the new one from now on.`,
+          `stays in the store; it is this project's entry that changes, so every sound whose TBL ` +
+          `reads ${tblLabel(index)} plays the new one from now on.`,
       );
     }
 

@@ -13,6 +13,7 @@ import {
   type StoreSlotFacts,
   describePool,
   summarisePool,
+  tblLabel,
 } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { type PoolRecord } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
@@ -142,4 +143,27 @@ test("an empty list is a pool, and reads as one", () => {
   assert.equal(summary.missing, 0);
   assert.equal(summary.free, POOL_ENTRIES);
   assert.match(describePool(summary), /pool of its own/);
+});
+
+test("the TBL label is the pool slot, not the stored value", () => {
+  /*
+   * **The arithmetic that was wrong in the help from the day it was written.** A sound stores
+   * `index + 2`; the instrument displays `stored - 1` as `T:%03d`. So the number on screen is the
+   * shown pool slot and there is nothing for a person to add. DNX told people to add one until the
+   * firmware session read `csrc/waverider/page.c` on 2026-10-13 and said otherwise.
+   *
+   * Pinned at both ends because an off-by-one in the middle of the range looks right: `T:005` for
+   * slot 5 is the case somebody can check against their own instrument.
+   */
+  assert.equal(tblLabel(0), "T:001", "the first pool slot, stored as coarse 2");
+  assert.equal(tblLabel(4), "T:005", "pool slot 5 — the example the help gives");
+  assert.equal(tblLabel(POOL_ENTRIES - 1), "T:128", "the last pool slot, stored as coarse 129");
+
+  // Three digits, always: the cell is a fixed width and `T:5` is not a thing anybody will see.
+  assert.match(tblLabel(9), /^T:\d{3}$/);
+
+  // And it agrees with the summary's own `shown`, which is the number both panes print.
+  const summary = summarisePool(record([9]), [{ slot: 9, occupied: true, name: "A" }]);
+  assert.equal(tblLabel(0), `T:${String(summary.cells[0]!.shown).padStart(3, "0")}`);
+  assert.equal(summary.cells[0]!.coarse, 2, "stored is still index + 2, and is not what is shown");
 });

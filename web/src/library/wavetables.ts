@@ -49,7 +49,7 @@ import {
   type WaveriderSupport,
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
-import { type PoolCell, describePool } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { type PoolCell, describePool, tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { type SlotFile, readSlotFile } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { waterfall } from "@noiseandmatter/dnx-core/waverider/waterfall.js";
 import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
@@ -305,8 +305,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   function cellView(cell: PoolCell): SlotView {
     return {
       index: cell.index,
-      // The shown slot, 1..128. The built-ins Prim. and Harm. sit outside this numbering, and the
-      // coarse value a sound stores is this number plus one. See 8w on the three numbers.
+      // The shown slot, 1..128, which is also what the instrument TBL cell reads: T:005 for
+      // slot 5. The built-ins sit outside this numbering and read PRIM and HARM. The value a sound
+      // *stores* is this number plus one, and nobody sees it. See 8w on the three numbers.
       id: String(cell.shown),
       name:
         cell.state === "table"
@@ -357,7 +358,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
             ? "nothing here. Click a table on the right and press Add to pool to put one in it, " +
               "or use ADD TO POOL on the instrument, which fills the first free slot."
             : `store slot ${cell.storeSlot}${cell.name === undefined ? "" : ` · ${escapeHtml(cell.name)}`}` +
-              `. A sound reaches it as coarse ${cell.coarse}.`) +
+              `. A sound reaches it with TBL reading ${tblLabel(cell.index)}.`) +
           `${cell.note === undefined ? "" : ` ${escapeHtml(cell.note)}`}</p>`;
 
     note(
