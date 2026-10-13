@@ -197,3 +197,35 @@ export function clearInPool(
 
   return { entries: out, placed };
 }
+
+/**
+ * Which tables go where, for an "add these to the pool" gesture.
+ *
+ * **One decision for both ways of asking.** The Library offers two: drag a selection onto a pool
+ * slot, or select and press a button. They were each working out the answer for themselves and
+ * they disagreed twice — the drag dropped store slots that hold nothing, the button did not, and
+ * the button laid a run consecutively over occupied slots where it used to fill free ones. Both
+ * wrote entries nobody asked for, and the test that claimed the two gestures agreed passed
+ * throughout, because it compared the call sites rather than the answers.
+ *
+ * Two rules, and the second is the one that differs by gesture:
+ *
+ * - **Only slots that hold a table.** A selection made with shift can run across empty store
+ *   slots, and an entry naming an empty slot is a pool entry that reads MISSING the moment it is
+ *   written. Dropped silently rather than refusing the whole run, because the person selected a
+ *   range and meant the tables in it.
+ * - **A named slot means consecutive; no named slot means the free ones.** A drop points at a
+ *   slot, so the run starts there and takes the slots after it, whatever is in them — anything
+ *   else makes a drop of five land in places nobody could predict from the screen. A press points
+ *   at nothing, so it fills free slots one at a time and overwrites nothing, which is also what
+ *   ADD TO POOL on the instrument does.
+ */
+export function planAdd(
+  chosen: readonly number[],
+  occupied: ReadonlySet<number>,
+  at?: number,
+): PlaceRequest[] {
+  const holding = [...chosen].filter((slot) => occupied.has(slot)).sort((a, b) => a - b);
+  if (at === undefined) return holding.map((storeSlot) => ({ storeSlot }));
+  return holding.map((storeSlot, nth) => ({ storeSlot, index: at + nth }));
+}

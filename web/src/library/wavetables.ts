@@ -173,10 +173,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     },
     hintFor: (from, grid, index) => {
       if (from.grid !== STORE_GRID || grid !== POOL_GRID) return undefined;
-      const holding = from.indices.filter(
-        (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
-      );
-      const described = poolWriting.describeDrop(holding, index);
+      // What was dragged, unfiltered. Which of it can go into a pool is one decision and it is
+      // not taken here — `describeDrop` and the write both ask `planAdd`, so the hint and the
+      // result cannot describe different writes.
+      const described = poolWriting.describeDrop(from.indices, index);
       if (!described) return undefined;
       // `copy`, not `move`: the table stays in the store and every other project keeps it. Saying
       // "move" would be the page claiming something the instrument does not do.
@@ -184,14 +184,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     },
     onDrop: (from, grid, index) => {
       if (from.grid !== STORE_GRID || grid !== POOL_GRID) return;
-      const holding = from.indices.filter(
-        (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
-      );
-      if (holding.length === 0) {
-        host.status("Those store slots are empty, so there is nothing to add.", "warn");
-        return;
-      }
-      void poolWriting.addAt(holding, index);
+      // `addAt` drops the empty slots and says so if nothing is left.
+      void poolWriting.addAt(from.indices, index);
     },
     onStatus: (message, kind) => {
       if (message !== "") host.status(message, kind ?? "info");
@@ -559,8 +553,14 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
        * **Draggable, as the same gesture everywhere else on this page.** A store row is a source
        * only: `hintFor` refuses a drop on one, so dragging a table onto the store does nothing
        * rather than looking like it might move it.
+       *
+       * **Except a staged row, which already has a drag of its own.** `importstage.decorate`
+       * makes it draggable to move the staging to another slot, and binding this on top gave one
+       * element two `dragstart` handlers and two meanings. It failed safe only because the pool
+       * drop filters to slots the instrument says are occupied, and a staged slot is not one —
+       * safety resting on a filter in another module. The same guard `showPreview` uses.
        */
-      drag.bind(tr, STORE_GRID, slot.slot);
+      if (!staging.staged().has(slot.slot)) drag.bind(tr, STORE_GRID, slot.slot);
       body.append(tr);
     }
     // After the rows exist, so a staged table is marked on the row it will land on rather than
@@ -572,7 +572,14 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     const used = reading.store.filter((slot) => slot.occupied).length;
     heading(
       "Wavetable pool",
-      `— ${reading.summary.tables} of ${POOL_ENTRIES} used`,
+      /*
+       * **The count alone reads as a list the project owns.** "83 of 128 used" is true of a
+       * project that follows the store and of one that chose 83 tables, and those are different
+       * facts: the first renumbers when a table is added to the store, the second does not. The
+       * note below says so in full; the heading is where somebody looks first.
+       */
+      `— ${reading.summary.tables} of ${POOL_ENTRIES}` +
+        (reading.summary.authored ? " used" : " — following the store, not a list of its own"),
       "+Drive wavetables",
       /*
        * **Both drops, named where somebody is already looking.** Audio in from the computer, and

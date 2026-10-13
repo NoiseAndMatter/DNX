@@ -175,8 +175,16 @@
         <button class="btn danger" data-writes-device id="wavepoolAdd" disabled title="Click a table in the store on the right, then press this.">Add to pool</button>
         <button class="btn danger" data-writes-device id="wavepoolRemove" disabled title="Click a pool slot that holds a table, then press this. The table stays in the store.">Remove from pool</button>
       </div>
-      <div class="grid" id="wavepoolGrid" hidden></div>
+      <!--
+        **Above the grid, because it is the answer to what the grid shows.** A project saved
+        before the wavetable firmware has no pool of its own, so the instrument answers a read
+        with every stored table in store order — 83 of them, filling the grid. The note says
+        exactly that, and under 128 cells it was a thousand pixels below the thing it explains.
+        The owner read the pane as a bug on 2026-10-13, which it was: the data was right and
+        the page never said why.
+      -->
       <div class="plan hint" id="wavepoolNote" data-help="library/wavetable-pool-kinds" hidden></div>
+      <div class="grid" id="wavepoolGrid" hidden></div>
     </section>
 
     <!--

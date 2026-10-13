@@ -45,7 +45,13 @@ import { downloadBackup } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { writePool } from "@noiseandmatter/dnx-core/device/wavepoolwrite.js";
-import { type Placed, clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import {
+  type Placed,
+  clearInPool,
+  freeIndices,
+  placeInPool,
+  planAdd,
+} from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 
@@ -79,7 +85,7 @@ export interface PoolWriting {
    * drift — which is the mistake the pool pane would most easily make, because a wrong index
    * looks right on screen and plays the wrong table on the instrument.
    */
-  addAt(storeSlots: readonly number[], firstIndex: number): Promise<void>;
+  addAt(storeSlots: readonly number[], firstIndex?: number): Promise<void>;
   /** What a drop would do, for the drag's own hint. No side effects. */
   describeDrop(storeSlots: readonly number[], firstIndex: number): { label: string; status: string } | undefined;
   /**
@@ -113,11 +119,13 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     const chosen = host.pickedSlots();
     const index = host.pickedIndex();
 
-    // Only slots that actually hold a table can go into a pool; a selection may include free ones
-    // where a shift-click ran across a gap, and those are dropped rather than refusing the lot.
-    const holding = chosen.filter(
-      (slot) => reading?.store.find((e) => e.slot === slot)?.occupied === true,
-    );
+    /*
+     * **The same decision the press will make, so the label cannot promise something else.**
+     * This had its own copy of the occupied filter, which made three places working out what a
+     * selection means: here, the drag, and the write. The label is now literally what would be
+     * written.
+     */
+    const holding = reading ? planAdd(chosen, occupiedSlots(reading), index) : [];
 
     button.disabled = writing || !reading || holding.length === 0 || !host.device();
     button.textContent =
@@ -376,52 +384,67 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
    * anything. `undefined` means the drop is refused, which the grid shows as the browser's own
    * "no" cursor rather than a message nobody asked for.
    */
+  /** Store slots the instrument's listing says hold a table. The only ones a pool may name. */
+  function occupiedSlots(reading: PoolReading): Set<number> {
+    return new Set(reading.store.filter((entry) => entry.occupied).map((entry) => entry.slot));
+  }
+
   function describeDrop(
     storeSlots: readonly number[],
     firstIndex: number,
   ): { label: string; status: string } | undefined {
     const reading = host.reading();
-    if (!reading || storeSlots.length === 0) return undefined;
-    const last = firstIndex + storeSlots.length - 1;
+    if (!reading) return undefined;
+
+    // The same decision the drop will make, so the hint cannot describe a different write.
+    const requests = planAdd(storeSlots, occupiedSlots(reading), firstIndex);
+    if (requests.length === 0) return undefined;
+
+    const last = firstIndex + requests.length - 1;
     if (firstIndex < 0 || last >= POOL_ENTRIES) return undefined;
 
-    const replacing = storeSlots
-      .map((_, i) => reading.record.entries[firstIndex + i])
-      .filter((entry) => entry !== undefined).length;
+    const replacing = requests.filter(
+      (request) => reading.record.entries[request.index!] !== undefined,
+    ).length;
 
     const where =
-      storeSlots.length === 1
+      requests.length === 1
         ? `pool slot ${shown(firstIndex)}`
         : `pool slots ${shown(firstIndex)} to ${shown(last)}`;
     return {
-      label: storeSlots.length === 1 ? "add" : `add ${storeSlots.length}`,
+      label: requests.length === 1 ? "add" : `add ${requests.length}`,
       status:
-        `${storeSlots.length} table(s) into ${where}` +
+        `${requests.length} table(s) into ${where}` +
         (replacing === 0 ? ", replacing nothing" : `, replacing ${replacing}`),
     };
   }
 
-  async function addAt(storeSlots: readonly number[], firstIndex: number): Promise<void> {
+  async function addAt(storeSlots: readonly number[], firstIndex?: number): Promise<void> {
     const device = host.device();
     const reading = host.reading();
     if (!device || !reading || writing || storeSlots.length === 0) return;
 
-    const last = firstIndex + storeSlots.length - 1;
-    if (last >= POOL_ENTRIES) {
-      host.status(
-        `${storeSlots.length} tables starting at pool slot ${shown(firstIndex)} would run past ` +
-          `slot ${POOL_ENTRIES}. Drop them further up the pool.`,
-        "warn",
-      );
+    const requests = planAdd(storeSlots, occupiedSlots(reading), firstIndex);
+    if (requests.length === 0) {
+      host.status("Those store slots are empty, so there is nothing to add.", "warn");
       return;
+    }
+
+    if (firstIndex !== undefined) {
+      const last = firstIndex + requests.length - 1;
+      if (last >= POOL_ENTRIES) {
+        host.status(
+          `${requests.length} tables starting at pool slot ${shown(firstIndex)} would run past ` +
+            `slot ${POOL_ENTRIES}. Drop them further up the pool.`,
+          "warn",
+        );
+        return;
+      }
     }
 
     let placement;
     try {
-      placement = placeInPool(
-        reading.record.entries,
-        storeSlots.map((storeSlot, i) => ({ storeSlot, index: firstIndex + i })),
-      );
+      placement = placeInPool(reading.record.entries, requests);
     } catch (error: unknown) {
       // The refusals name the pool and the way out — a full pool says to name the slot to replace.
       host.status(String(error instanceof Error ? error.message : error), "error");
@@ -439,8 +462,9 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     );
     if (reading.summary.authored && !changes) {
       host.status(
-        storeSlots.length === 1
-          ? `Pool slot ${shown(firstIndex)} already names store slot ${storeSlots[0]}. Nothing to write.`
+        placement.placed.length === 1
+          ? `Pool slot ${shown(placement.placed[0]!.index)} already names store slot ` +
+            `${placement.placed[0]!.storeSlot}. Nothing to write.`
           : `Those pool slots already name those tables. Nothing to write.`,
         "info",
       );
@@ -448,14 +472,18 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     }
 
     const free = freeIndices(placement.entries).length;
+    const landed = placement.placed;
+    const first = landed[0]!.index;
+    const last = landed[landed.length - 1]!.index;
+
     const ok = await askConfirm({
       title:
-        storeSlots.length === 1
-          ? placement.placed[0]!.replaced === undefined
-            ? `Add store slot ${storeSlots[0]} to pool slot ${shown(firstIndex)}?`
-            : `Replace pool slot ${shown(firstIndex)} with store slot ${storeSlots[0]}?`
-          : `Put ${storeSlots.length} tables into pool slots ${shown(firstIndex)} to ${shown(last)}?`,
-      body: questions(reading, placement.placed),
+        landed.length === 1
+          ? landed[0]!.replaced === undefined
+            ? `Add store slot ${landed[0]!.storeSlot} to pool slot ${shown(first)}?`
+            : `Replace pool slot ${shown(first)} with store slot ${landed[0]!.storeSlot}?`
+          : `Put ${landed.length} tables into ${describeSlots(landed)}?`,
+      body: questions(reading, landed),
       confirmLabel: "Write the pool",
       danger: true,
     });
@@ -465,37 +493,28 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     }
 
     await send(device, placement.entries, () =>
-      (storeSlots.length === 1
-        ? `Pool slot ${shown(firstIndex)} now names store slot ${storeSlots[0]}.`
-        : `Pool slots ${shown(firstIndex)} to ${shown(last)} now name ${storeSlots.length} tables.`) +
+      (landed.length === 1
+        ? `Pool slot ${shown(first)} now names store slot ${landed[0]!.storeSlot}.`
+        : `${describeSlots(landed)} now name ${landed.length} tables.`) +
       ` ${free} pool slot(s) free.` +
-      (reading.summary.authored ? "" : " This project now has a pool of its own."));
+      (reading.summary.authored ? "" : " This project now has a pool of its own.") +
+      (last === first ? "" : ""));
   }
 
-  /** The button path: whatever the store pane has selected, at the picked slot or the first free. */
+  /** "pool slots 5 to 7", or the individual numbers when a press scattered them among the free. */
+  function describeSlots(landed: readonly Placed[]): string {
+    const indices = landed.map((one) => one.index);
+    const consecutive = indices.every((index, nth) => nth === 0 || index === indices[nth - 1]! + 1);
+    return consecutive && indices.length > 1
+      ? `pool slots ${shown(indices[0]!)} to ${shown(indices[indices.length - 1]!)}`
+      : `pool slot(s) ${indices.map(shown).join(", ")}`;
+  }
+
+  /** The button path. It names no pool slot unless one is picked, which is the whole difference. */
   async function add(): Promise<void> {
-    const reading = host.reading();
     const chosen = host.pickedSlots();
-    if (!reading || chosen.length === 0) return;
-
-    const asked = host.pickedIndex();
-    if (asked !== undefined) {
-      await addAt(chosen, asked);
-      return;
-    }
-
-    // No slot picked: the first free one, and then consecutively from there. `placeInPool` would
-    // choose a free slot per table; this keeps a dropped run and a pressed run landing alike.
-    const free = freeIndices(reading.record.entries);
-    const first = free[0];
-    if (first === undefined) {
-      host.status(
-        `This pool has no free slot. Click the pool slot to replace, then press this.`,
-        "warn",
-      );
-      return;
-    }
-    await addAt(chosen, first);
+    if (chosen.length === 0) return;
+    await addAt(chosen, host.pickedIndex());
   }
 
   $(ADD).addEventListener("click", () => {

@@ -317,5 +317,26 @@ test("the button and the drop place tables the same way", () => {
   assert.match(POOLWRITE, /async function addAt\(/, "there should be one placement entry point");
   const direct = [...POOLWRITE.matchAll(/placeInPool\(/g)].length;
   assert.equal(direct, 1, `placeInPool is called ${direct} times; both gestures should share one`);
-  assert.match(POOLWRITE, /await addAt\(chosen,/, "the button must go through it too");
+  assert.match(POOLWRITE, /await addAt\(chosen, host\.pickedIndex\(\)\)/, "the button must go through it too");
+
+  /*
+   * **The half this test used to miss.** It checked that both gestures call `addAt` and that
+   * `placeInPool` appears once, and both were true while the two disagreed about *which* tables
+   * and *which* slots — the drag filtered out empty store slots and the button did not, and the
+   * button laid a run over occupied slots where it used to fill free ones. Comparing call sites
+   * is not comparing answers.
+   *
+   * So the decision is `planAdd`, which is pure and has its own tests, and the only thing left
+   * to assert here is that nothing works it out a second time.
+   */
+  assert.match(POOLWRITE, /planAdd\(storeSlots, occupiedSlots\(reading\), firstIndex\)/,
+    "the placement decision must come from planAdd, not be rebuilt here");
+  assert.ok(
+    !/storeSlots\.map\(\(storeSlot, /.test(POOLWRITE),
+    "poolwrite must not build placement requests itself",
+  );
+  assert.ok(
+    !/\.filter\(\s*\(slot\) => reading/.test(POOLWRITE),
+    "the occupied filter belongs in planAdd, not beside the caller",
+  );
 });

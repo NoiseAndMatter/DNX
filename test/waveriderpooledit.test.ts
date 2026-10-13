@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
-import { clearInPool, freeIndices, placeInPool } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
+import { clearInPool, freeIndices, placeInPool, planAdd } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 
 /** A pool holding the given store slots at indices 0.., and nothing after. */
 function pool(...slots: (number | undefined)[]): (number | undefined)[] {
@@ -214,4 +214,47 @@ test("a run that would pass the last slot is refused rather than truncated", () 
     ]),
     WaveriderError,
   );
+});
+
+test("planAdd drops store slots that hold nothing, whichever gesture asked", () => {
+  /*
+   * **The bug this function exists to stop.** A shift-click run across the store takes the empty
+   * slots in between. Writing those as pool entries produces entries that read MISSING the moment
+   * they land — the exact broken state the help tells people to repair. The drag path filtered
+   * and the button path did not, so the two gestures wrote different pools from one selection.
+   */
+  const occupied = new Set([3, 4, 6]);
+  assert.deepEqual(planAdd([3, 4, 5, 6], occupied, 10), [
+    { storeSlot: 3, index: 10 },
+    { storeSlot: 4, index: 11 },
+    { storeSlot: 6, index: 12 },
+  ]);
+  // The run closes up: slot 5 took no pool index rather than leaving a gap at 12.
+  assert.deepEqual(planAdd([3, 4, 5, 6], occupied), [
+    { storeSlot: 3 }, { storeSlot: 4 }, { storeSlot: 6 },
+  ]);
+  assert.deepEqual(planAdd([5], occupied, 0), [], "a selection of only empty slots asks for nothing");
+});
+
+test("a named pool slot means consecutive; no named slot means the free ones", () => {
+  /*
+   * **The second disagreement.** A drop points at a slot, so the run starts there and takes what
+   * follows, whatever is in it. A press points at nothing, so it must fill free slots and
+   * overwrite nothing — which is what it used to do, what the instrument's own ADD TO POOL does,
+   * and what it stopped doing when the drag was added.
+   */
+  const occupied = new Set([1, 2, 3]);
+  const pool_ = pool(9, undefined, 40, undefined, undefined, 77);
+
+  // Pressed: three tables into the three free slots, 1, 3 and 4. Nothing is replaced.
+  const pressed = placeInPool(pool_, planAdd([1, 2, 3], occupied));
+  assert.deepEqual(pressed.placed.map((one) => one.index), [1, 3, 4]);
+  assert.deepEqual(pressed.placed.map((one) => one.replaced), [undefined, undefined, undefined]);
+  assert.equal(pressed.entries[0], 9, "an occupied slot the press did not name must survive");
+  assert.equal(pressed.entries[2], 40);
+
+  // Dropped on slot index 2: consecutive from there, replacing what is in the way and saying so.
+  const dropped = placeInPool(pool_, planAdd([1, 2, 3], occupied, 2));
+  assert.deepEqual(dropped.placed.map((one) => one.index), [2, 3, 4]);
+  assert.equal(dropped.placed[0]!.replaced, 40, "a drop replaces, and reports what it replaced");
 });
