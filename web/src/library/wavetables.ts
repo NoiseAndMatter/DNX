@@ -579,7 +579,11 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
        * note below says so in full; the heading is where somebody looks first.
        */
       `— ${reading.summary.tables} of ${POOL_ENTRIES}` +
-        (reading.summary.authored ? " used" : " — following the store, not a list of its own"),
+        (reading.summary.kind === "list"
+          ? " used"
+          : reading.summary.kind === "follows-store"
+            ? " — following the store, not a list of its own"
+            : " — no pool of its own, so this project plays none"),
       "+Drive wavetables",
       /*
        * **Both drops, named where somebody is already looking.** Audio in from the computer, and

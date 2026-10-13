@@ -95,31 +95,36 @@ test("two entries may name one slot, and the store side can say which", () => {
 
 test("whether somebody wrote the pool changes what the numbers mean", () => {
   const entries = [9, 20];
-  const store = listing({ 9: "HS SAW", 20: "QUANT NOISE" });
+  const store: StoreSlotFacts[] = [
+    { slot: 9, occupied: true, name: "HS SAW" },
+    { slot: 20, occupied: true, name: "QUANT NOISE" },
+  ];
 
-  // A read with no stored record behind it: generation 0. The entries are real — the firmware
-  // synthesised them and that is what the project plays — but the order is the store's.
-  const untouched = summarisePool(record(entries, { generation: 0, followsStore: true }), store);
-  assert.equal(untouched.kind, "untouched");
-  assert.equal(untouched.authored, false);
-  assert.match(describePool(untouched), /no pool of its own/);
   /*
-   * It still has to say that the numbers move, because that is what distinguishes this kind from
-   * a list. What changed on 2026-10-14 is the tone: the owner curates a pool deliberately, so
-   * this is the behaviour to expect and the sentence names the remedy rather than raising an
-   * alarm. The fact is asserted; the alarm is not.
+   * **Three states, and the first one changed meaning on 2026-10-13.** A project with no record
+   * used to be answered by the firmware with every stored table filled in; it now plays nothing.
+   * Both answers still arrive here, because an instrument that has not been flashed sends the old
+   * one, so the summary has to describe the record in front of it rather than a default.
    */
-  assert.match(describePool(untouched), /moves every later pool slot/);
-  assert.match(describePool(untouched), /list of its own/);
 
-  // Written as following the store on purpose. Same entries, different sentence.
-  const follows = summarisePool(record(entries, { followsStore: true }), store);
+  // A record-less read from a build that fills it: the project really does play these.
+  const follows = summarisePool(record(entries, { generation: 0, followsStore: true }), store);
   assert.equal(follows.kind, "follows-store");
-  assert.equal(follows.authored, false);
-  assert.match(describePool(follows), /follow the store/);
+  assert.equal(follows.authored, false, "nobody chose these slots, so they are not pinned");
+  assert.match(describePool(follows), /follows the store/);
+  assert.match(describePool(follows), /moves every later pool slot/);
 
-  // A list somebody wrote. These stay put.
-  const list = summarisePool(record(entries), store);
+  // The same project read from a build where no record means no pool.
+  const empty = summarisePool(record([], { generation: 0, followsStore: false }), store);
+  assert.equal(empty.kind, "empty");
+  assert.equal(empty.authored, false);
+  assert.match(describePool(empty), /plays no wavetables/);
+  assert.match(describePool(empty), /built-in Prim/);
+  // It must not tell somebody their sounds will shift: there is nothing in it to shift.
+  assert.doesNotMatch(describePool(empty), /moves every later pool slot/);
+
+  // And a list somebody wrote, which is pinned.
+  const list = summarisePool(record(entries, { generation: 4, followsStore: false }), store);
   assert.equal(list.kind, "list");
   assert.equal(list.authored, true);
   assert.match(describePool(list), /stay where they are/);

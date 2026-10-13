@@ -563,18 +563,24 @@ from differently recorded files come out equally loud.`,
         heading: "The three kinds of pool",
         body: `The line under the pool says which kind it is.
 
-- **No pool of its own.** Nobody has written one. The project plays every stored table in
-  store-slot order, and picks up new ones as they arrive.
-- **Follows the store.** The same, written down.
+- **No pool of its own.** Nobody has written one, so the project plays **no** wavetables. Every
+  sound set to a **TBL** number plays the built-in **PRIM** until you put tables in the pool.
+- **Follows the store.** The project plays every stored table in store-slot order, and picks up
+  new ones as they arrive.
 - **A list.** Somebody chose these slots, on the instrument or in DNX.
 
 **A list is what you want for a project you are building.** The pool slot is the number a sound
 reaches, so putting each table where you want it to answer from is the point of keeping one.
 
-In the first two kinds the order is the store's, so a table written into a free slot below the
-others moves every later pool slot along by one. Sounds keep their **TBL** numbers and play
-whatever moved into them. That is the behaviour to expect rather than a fault, and a list of its
-own is how a project stops depending on it.`,
+When a project **follows the store** the order is the store's, so a table written into a free slot
+below the others moves every later pool slot along by one. Sounds keep their **TBL** numbers and
+play whatever moved into them. That is the behaviour to expect rather than a fault, and a list of
+its own is how a project stops depending on it.
+
+**A project made before the wavetable firmware has no pool of its own**, so it plays nothing until
+you add tables to it. Older firmware answered differently — it gave such a project every stored
+table — so if your pool looks full of tables you did not choose, that instrument has not been
+updated yet.`,
       },
       {
         heading: "When a cell says MISSING",

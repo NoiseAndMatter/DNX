@@ -207,16 +207,17 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       );
     }
 
-    if (!reading.summary.authored) {
-      /*
-       * **The conversion, said plainly.** This project has no list of its own, so what is on screen
-       * is the firmware's answer rather than anybody's choice, and writing a list is a change to how
-       * the project behaves rather than only an addition to it. Somebody who dropped a table on a
-       * pool slot is not asking for that and has to be told.
-       */
+    /*
+     * **The conversion, said plainly, and only where there is one.** A project that follows the
+     * store plays every stored table, so writing a list pins what it plays today and stops new
+     * tables joining — a change to how the project behaves, which nobody asks for by dropping a
+     * table on a slot. A project with *no* pool plays nothing, so there is nothing to pin and
+     * saying there is would be a warning about a loss that cannot happen.
+     */
+    if (reading.summary.kind === "follows-store") {
       lines.push(
-        `This project has no pool of its own: it plays every stored table in store-slot order. ` +
-          `Writing one pins the ${reading.summary.tables} table(s) it plays today at the slots ` +
+        `This project follows the store: it plays every stored table in store-slot order. ` +
+          `Writing a list pins the ${reading.summary.tables} table(s) it plays today at the slots ` +
           `they are in now, and adds yours. After this, a table written into the store no longer ` +
           `joins this project on its own — you place it, as you are doing here.`,
       );
@@ -327,10 +328,10 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
         `becomes the first free slot, so the next table added with no slot chosen lands here.`,
     ];
 
-    if (!reading.summary.authored) {
+    if (reading.summary.kind === "follows-store") {
       lines.push(
-        `This project has no pool of its own: it plays every stored table in store-slot order. ` +
-          `Writing one pins the ${reading.summary.tables} table(s) it plays today at the slots ` +
+        `This project follows the store: it plays every stored table in store-slot order. ` +
+          `Writing a list pins the ${reading.summary.tables} table(s) it plays today at the slots ` +
           `they are in now, minus the one you are taking out. After this, a table written into ` +
           `the store no longer joins this project on its own.`,
       );
@@ -497,7 +498,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
         ? `Pool slot ${shown(first)} now names store slot ${landed[0]!.storeSlot}.`
         : `${describeSlots(landed)} now name ${landed.length} tables.`) +
       ` ${free} pool slot(s) free.` +
-      (reading.summary.authored ? "" : " This project now has a pool of its own.") +
+      (reading.summary.kind === "list" ? "" : " This project now has a pool of its own.") +
       (last === first ? "" : ""));
   }
 

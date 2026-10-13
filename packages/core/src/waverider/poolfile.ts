@@ -407,19 +407,40 @@ export function emptyPoolFile(projectSlot: number): Uint8Array {
 /**
  * Which of the three states a read describes.
  *
- * | | generation | follows the store | what a sound reaches |
+ * | state | generation | follows the store | what a sound reaches |
  * |---|---|---|---|
- * | `untouched` | 0 | yes | every playable table on the card, in store-slot order |
- * | `follows-store` | 1 or more | yes | the same, and the project says so on purpose |
+ * | `follows-store` | any | yes | every playable table on the card, in store-slot order |
+ * | `empty` | 0 | no | nothing: this project has no record, so it has no pool |
  * | `list` | 1 or more | no | exactly the entries, which may be none |
  *
- * `untouched` is a project saved before the lists existed, answered by a record the firmware made
- * up to answer the read. It plays the same as `follows-store` and is not the same fact, which is
- * why the generation is the only thing that separates them.
+ * ## The flag decides, and that is a change
+ *
+ * This tested the generation first and called anything at generation 0 `untouched`, which was
+ * right while *no record* and *follows the store* were the same thing. The owner separated them on
+ * 2026-10-13: **a project with no pool of its own now plays nothing.** He found it by opening a
+ * project older than the wavetable firmware and reading its pool, full of all 83 stored tables, as
+ * a bug — it was not, and that it looked like one to the person who commissioned the behaviour was
+ * the argument for changing it.
+ *
+ * So the flag is asked first, and the answer is right **on both firmwares without being told which
+ * is running**:
+ *
+ * - An older build answers a record-less read with the flag set and the entries filled. That is
+ *   `follows-store`, and it is exactly what the project plays.
+ * - A build from `feature/waverider-empty-pool-default` answers with flags 0 and no entries. That
+ *   is `empty`, and it is exactly what that project plays.
+ *
+ * Which matters because the change carries **no new capability bit** — `/modinfo` cannot be asked
+ * which behaviour a build has. Describing the record that came back rather than the firmware's
+ * default is what makes a page correct on an instrument nobody has flashed yet and on one somebody
+ * has.
+ *
+ * `hasStoredPool` still separates a record somebody wrote from one the firmware made up to answer
+ * the read, which is the question `follows-store` no longer answers on its own.
  */
-export function poolState(record: PoolRecord): "untouched" | "follows-store" | "list" {
-  if (record.generation === 0) return "untouched";
-  return record.followsStore ? "follows-store" : "list";
+export function poolState(record: PoolRecord): "empty" | "follows-store" | "list" {
+  if (record.followsStore) return "follows-store";
+  return record.generation === 0 ? "empty" : "list";
 }
 
 /**

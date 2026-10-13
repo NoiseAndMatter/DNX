@@ -89,13 +89,13 @@ export interface PoolCell {
 
 export interface PoolSummary {
   projectSlot: number;
-  /** `untouched` nobody wrote one, `follows-store` written as following the store, `list` as a list. */
+  /** `empty` no record and nothing plays, `follows-store` every stored table, `list` these slots. */
   kind: ReturnType<typeof poolState>;
   /**
    * Somebody wrote this pool, so its indices are pinned.
    *
-   * False for `untouched` and `follows-store`, where an upload into a lower store slot moves every
-   * later index and the sounds do not follow.
+   * False for `follows-store`, where an upload into a lower store slot moves every later index and
+   * the sounds do not follow, and for `empty`, where there is nothing to pin.
    */
   authored: boolean;
   cells: PoolCell[];
@@ -218,17 +218,17 @@ export function describePool(summary: PoolSummary): string {
     (summary.missing === 0 ? "" : `, ${summary.missing} missing`);
 
   switch (summary.kind) {
-    case "untouched":
+    case "empty":
       return (
-        `${where} has no pool of its own, so it plays every stored table in store-slot order: ` +
-        `${counts}. Writing a table into a free slot below the others moves every later pool ` +
-        `slot along by one, and a sound set by number plays whatever moved into it. Give the ` +
-        `project a list of its own to pin them.`
+        `${where} has no pool of its own, so it plays no wavetables: every sound set to a TBL ` +
+        `number plays the built-in Prim. until tables are put in this project's pool.`
       );
     case "follows-store":
       return (
-        `${where} is set to follow the store: ${counts}. The entries are the firmware's rather ` +
-        `than a list somebody wrote, so the order is the store's and new tables join it.`
+        `${where} follows the store, so it plays every stored table in store-slot order: ` +
+        `${counts}. Writing a table into a free slot below the others moves every later pool ` +
+        `slot along by one, and a sound set by number plays whatever moved into it. Give the ` +
+        `project a list of its own to pin them.`
       );
     default:
       return `${where} has a pool of its own: ${counts}. These slots stay where they are.`;

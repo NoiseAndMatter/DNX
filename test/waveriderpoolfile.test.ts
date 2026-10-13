@@ -242,14 +242,44 @@ test("an empty list is a different thing from following the store", () => {
   assert.deepEqual(differing, [AT.flags + 1]);
 });
 
-test("poolState names the three a read can describe", () => {
-  // A project saved before the lists: the firmware made this record up to answer the read.
-  assert.equal(poolState({ ...sample(), followsStore: true, entries: [], generation: 0 }), "untouched");
-  // The same thing on purpose, and a stored fact.
-  assert.equal(poolState({ ...sample(), followsStore: true, entries: [], generation: 2 }), "follows-store");
+test("poolState names the three a read can describe, on either firmware", () => {
+  /*
+   * **The flag decides, not the generation**, and that is what makes one reading correct on two
+   * builds that answer a record-less project differently and carry no capability bit to tell them
+   * apart. The owner separated "no pool" from "follows the store" on 2026-10-13: a project with no
+   * record of its own now plays nothing.
+   */
+
+  // An older build's answer for a project with no record: flag set, entries filled from the store.
+  // It plays every stored table, so that is what it is called, generation 0 or not.
+  assert.equal(
+    poolState({ ...sample(), followsStore: true, entries: [], generation: 0 }),
+    "follows-store",
+  );
+  // A newer build's answer for the same project: flags clear, nothing in it, never written.
+  assert.equal(
+    poolState({ ...sample(), followsStore: false, entries: [], generation: 0 }),
+    "empty",
+  );
+  // Stored on purpose, either build.
+  assert.equal(
+    poolState({ ...sample(), followsStore: true, entries: [], generation: 2 }),
+    "follows-store",
+  );
   // A list, which may hold nothing: what CREATE NEW writes.
-  assert.equal(poolState({ ...sample(), followsStore: false, entries: [], generation: 2 }), "list");
+  assert.equal(
+    poolState({ ...sample(), followsStore: false, entries: [], generation: 2 }),
+    "list",
+  );
   assert.equal(poolState({ ...sample(), generation: 9 }), "list");
+
+  /*
+   * **The distinction `poolState` no longer makes, and where it went.** Whether a record was
+   * written or synthesised to answer the read is `hasStoredPool`'s question, and it still answers
+   * it — the two follows-store cases above differ only there.
+   */
+  assert.equal(hasStoredPool({ ...sample(), followsStore: true, generation: 0 }), false);
+  assert.equal(hasStoredPool({ ...sample(), followsStore: true, generation: 2 }), true);
 });
 
 test("only a stored record has a generation", () => {
