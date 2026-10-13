@@ -52,7 +52,7 @@ It is also not a +Drive. The card is blank unless given an image, and state does
 between runs. A green run is a reason to try something on hardware with more confidence, never a
 reason to skip trying it.
 
-## Two things the first real run found
+## Three things the first real runs found
 
 **The root listing has grown to six.** `waverider-syncpos2` advertises `projects`, `soundbanks`,
 `kits`, `waverider`, `wavepool` and `modinfo`. The last two are routes DNX already addresses, so
@@ -67,3 +67,23 @@ before, on either side, and the evidence for a large write was that a small one 
 limit below the maximum table size.
 
 That one matters for the Library's importer, which can build a table that size from a dropped file.
+
+**The pool's compare-and-swap works, and nobody had seen it.** `writePool` shipped with no
+emulator test at all: its only mention in `test/` was as a forbidden name in the Library's
+read-only check, and the firmware session had not tried a non-zero project slot either. So the
+thing that stops two writers losing each other's work was, on both sides, what the specification
+said. `test/wavepoolwritebridge.test.ts` now writes a record at project slot 7, confirms the
+entries read back, and then sends a record carrying a generation that has since moved and confirms
+the record is left alone.
+
+That second half needs its control, and the first version of it did not have one. An unchanged
+record is equally consistent with *refused because stale* and *refused because those bytes were
+malformed*, and `wavepoolwrite.ts` says in as many words that the two cannot be told apart from
+here. The test now sends the same record again with the current generation and requires it to
+land, so the generation is the only difference between the attempt that was refused and the one
+that was not.
+
+It also pins the empty-slot rule from both sides: a write into a project slot with no record takes
+no backup, because `refuseUnlessEmpty` has already proved there is nothing to copy, and the write
+after it does take one. That rule has caught me out twice, which is why the assertion is written
+as the rule rather than as the expectation.
