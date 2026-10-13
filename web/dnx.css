@@ -806,23 +806,37 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * That element's text is written with `textContent`, which replaces every child — a bar appended
  * inside it was deleted by the next message about the operation it was drawing. See `progress.ts`.
  */
+/*
+ * A card, not a strip in the corner.
+ *
+ * It used to be 12rem by half a rem at the bottom right with no words on it, which for a +Drive
+ * read meant a minute of an anonymous animated stripe. Centred near the top, with the label in it,
+ * it is the first thing somebody looks at when the page goes quiet.
+ */
 .progress {
-  position: fixed; right: 1rem; bottom: .62rem; z-index: 30;
-  /* Fixed width, so the number beside it cannot shuffle the bar sideways as it changes. */
-  width: 12rem;
-  height: .5rem; border-radius: 999px;
-  background: var(--panel-2); border: 1px solid var(--line-soft);
-  overflow: hidden;
+  position: fixed; top: 4.25rem; left: 50%; transform: translateX(-50%); z-index: 30;
+  width: min(26rem, calc(100vw - 2rem));
+  display: grid; grid-template-columns: 1fr auto; gap: .3rem .75rem; align-items: center;
+  padding: .7rem .85rem;
+  background: var(--panel-2); border: 1px solid var(--teal-dim); border-radius: 4px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / .45);
 }
-.progress > i {
+.progress > span {
+  grid-column: 1; font-size: .78rem; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.progress > b {
+  grid-column: 2; justify-self: end;
+  font-size: .72rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.progress > .progresstrack {
+  grid-column: 1 / -1; position: relative; overflow: hidden;
+  height: .4rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line-soft);
+}
+.progress > .progresstrack > i {
   display: block; height: 100%; width: 0;
   background: var(--teal);
   transition: width .12s linear;
-}
-/* The percentage sits outside the track, or a bar under 20% has nowhere to put its own label. */
-.progress > b {
-  position: absolute; right: 12.6rem; bottom: -.3rem;
-  font-size: .66rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -831,12 +845,15 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * Used where the total genuinely is not known — a +Drive read, where the listing reports a flat
  * 4 MiB allocation rather than the file's size. See `progress.ts`.
  */
-.progress.working { background: var(--panel-2); }
-.progress.working::after {
+/* The travelling stripe belongs to the track now, not to the card. */
+.progress.working > .progresstrack::after {
   content: ""; position: absolute; inset: 0;
   width: 35%;
   background: linear-gradient(90deg, transparent, var(--teal-dim), var(--teal), var(--teal-dim), transparent);
   animation: progress-sweep 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress.working > .progresstrack::after { animation: none; background: var(--teal-dim); width: 100%; }
 }
 @keyframes progress-sweep {
   from { transform: translateX(-100%); }

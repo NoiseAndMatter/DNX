@@ -68,6 +68,7 @@ export function progressBar(): Progress {
   let bar: HTMLElement | undefined;
   let fill: HTMLElement | undefined;
   let text: HTMLElement | undefined;
+  let caption: HTMLElement | undefined;
 
   const build = (): void => {
     if (bar) return;
@@ -78,11 +79,29 @@ export function progressBar(): Progress {
     // minute of silence.
     bar.setAttribute("role", "progressbar");
 
+    /*
+     * **The label is on screen, not only in `aria-valuetext`.**
+     *
+     * This was a 12rem by half-a-rem strip in the bottom corner with no words on it: in
+     * indeterminate mode it set the label on an ARIA attribute and then cleared the only visible
+     * text it had. Somebody opening a 12.9 MB project off the +Drive got a minute of an anonymous
+     * animated stripe, and the sentence saying what was happening was in the status bar at the
+     * other end of the window. The owner asked for something more evident on 2026-10-13.
+     *
+     * So it is a card, centred, with the label in it. Four pages share this and every one of them
+     * uses it for an operation that takes tens of seconds against an instrument.
+     */
+    caption = document.createElement("span");
+    const track = document.createElement("div");
+    track.className = "progresstrack";
     fill = document.createElement("i");
     text = document.createElement("b");
-    bar.append(fill, text);
+    track.append(fill);
+    bar.append(caption, track, text);
     // The body, not the status element — see the note above.
     document.body.append(bar);
+    // So assistive technology, and anything else asking, can tell the page is mid-operation.
+    document.body.setAttribute("aria-busy", "true");
   };
 
   return {
@@ -94,6 +113,7 @@ export function progressBar(): Progress {
       bar!.setAttribute("aria-valuenow", String(percent));
       bar!.setAttribute("aria-valuetext", `${percent}% — ${label}`);
       fill!.style.width = `${percent}%`;
+      caption!.textContent = label;
       text!.textContent = `${percent}%`;
     },
 
@@ -105,6 +125,9 @@ export function progressBar(): Progress {
       // Cleared rather than left at its last width: a stalled bar that still shows 60% is a claim,
       // and this mode exists precisely because there is nothing to claim.
       fill!.style.width = "";
+      caption!.textContent = label;
+      // **The label moves to the caption, so this stays empty on purpose.** A percentage is the
+      // one thing this mode has no right to show.
       text!.textContent = "";
     },
 
@@ -113,6 +136,8 @@ export function progressBar(): Progress {
       bar = undefined;
       fill = undefined;
       text = undefined;
+      caption = undefined;
+      document.body.removeAttribute("aria-busy");
     },
   };
 }
