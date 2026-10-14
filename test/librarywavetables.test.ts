@@ -515,3 +515,19 @@ test("a resample names where it started, not only where it ended", () => {
     "and only when the proposal divided exactly: anything else was never that shape");
   assert.match(STAGING, /resampled from \$\{from\} to /, "the line says both ends");
 });
+
+test("the pool starts on the working project, and a saved one says it is not what plays", () => {
+  /*
+   * Option B, the owner's choice on 2026-10-14. The list started on the project open in Presets, so
+   * with project 24 open an edit went to 24's saved record while the instrument went on playing
+   * the working one — a write that looked like it did nothing. The firmware refills what plays only
+   * from the working record, so that is where a first edit has to land.
+   */
+  assert.match(SOURCE, /renderProjectList\(select, listed, WORKING_PROJECT\)/,
+    "entering Wavetables must start on the working project, whatever is open in Presets");
+  assert.ok(!/host\.openSlot\(/.test(SOURCE),
+    "the open project must no longer choose the pool: that is the trap option B removes");
+  assert.match(SOURCE, /summary\.projectSlot === WORKING_PROJECT\s*\?\s*""/,
+    "a saved project's pool must say when it is not the one playing");
+  assert.match(SOURCE, /Changes play after you next load it on the/, "in words a musician acts on");
+});

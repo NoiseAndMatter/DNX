@@ -60,7 +60,7 @@ import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
 import { provideWaveriderSupport } from "../instrumentcommands.js";
-import { type ListedProject, renderProjectList } from "./projectlist.js";
+import { type ListedProject, WORKING_PROJECT, renderProjectList } from "./projectlist.js";
 import {
   auditionFrame,
   auditionTable,
@@ -112,8 +112,6 @@ const OURS = [
 export interface WavetableHost {
   /** The instrument, when one is connected. */
   device(): ConnectedDevice | undefined;
-  /** The open project's +Drive slot, when it came from the +Drive rather than from a file. */
-  openSlot(): number | undefined;
   status: StatusWriter;
 }
 
@@ -575,6 +573,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
      */
     note(
       `<p>${escapeHtml(describePool(summary))}</p>` +
+        /*
+         * **A saved project's pool is not what is playing.** The firmware refills what plays only
+         * from the working record; a write to any other changes the +Drive and nothing you hear,
+         * until that project is next loaded. Said where somebody looks before they edit, because
+         * the mix-up that prompted option B looked exactly like a write that did nothing.
+         */
+        (summary.projectSlot === WORKING_PROJECT
+          ? ""
+          : `<p class="hint">Saved in this project. Changes play after you next load it on the ` +
+            `instrument.</p>`) +
         (summary.missing === 0
           ? ""
           : `<p class="warn"><b>${summary.missing} slot(s) name a table that is missing ` +
@@ -825,9 +833,6 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
 
   async function fillProjects(device: ConnectedDevice): Promise<void> {
     const select = projects();
-    // What the list already shows wins over the project open in Presets: somebody who chose a
-    // project in the toolbar and then switched to Wavetables means that one.
-    const current = select.value === "" ? host.openSlot() : Number(select.value);
     let listed: ListedProject[] = [];
     try {
       listed = await listDeviceProjects(device);
@@ -835,7 +840,13 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       // A pool can still be read without the names, so this is a worse list rather than a failure.
       host.status(`Could not list the projects, so only the working project is offered: ${String(error)}`, "warn");
     }
-    renderProjectList(select, listed, current);
+    /*
+     * **Always the working project to start with** — the owner's choice, 2026-10-14 (option B).
+     * This started on the project open in Presets, so with project 24 open an edit went to 24's
+     * saved record while the instrument went on playing the working one, and nothing changed.
+     * The working project is the one being heard, so it is the one a first edit should reach.
+     */
+    renderProjectList(select, listed, WORKING_PROJECT);
   }
 
   async function refresh(): Promise<void> {

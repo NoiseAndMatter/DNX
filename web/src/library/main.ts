@@ -123,16 +123,6 @@ interface State {
   session?: Session;
   audit?: PoolAudit;
   device?: ConnectedDevice;
-  /**
-   * The +Drive slot the open project came from, when it came from one.
-   *
-   * **Only the Wavetables mode needs it**, and it needs it because a wavetable pool is not in the
-   * project file: it is a record on the +Drive addressed by project slot. A project opened from a
-   * file has no slot, which is why this is optional rather than defaulted to the working project —
-   * reading slot 0's pool for a project that came off disk would show somebody another project's
-   * tables.
-   */
-  openSlot?: number;
   bank?: LibraryBank;
   bankLetter: string;
   /** The library row last clicked, and which bank it was in. Rename acts on it. */
@@ -212,7 +202,7 @@ async function loadProject(file: File): Promise<void> {
  * audit, the cleared history and the rendering happen once. Two copies of this would be two answers
  * to "is this project usable", and the one that drifted would be the one nobody was looking at.
  */
-function adopt(loaded: LoadedProject, label: string, driveSlot?: number): void {
+function adopt(loaded: LoadedProject, label: string): void {
   const device = deviceFor(loaded.image);
 
   /*
@@ -233,10 +223,6 @@ function adopt(loaded: LoadedProject, label: string, driveSlot?: number): void {
   }
 
   state.project = loaded;
-  // Cleared for a file and set for a +Drive slot, every time: a stale slot here would point the
-  // Wavetables pane at the pool of whatever was opened before.
-  if (driveSlot === undefined) delete state.openSlot;
-  else state.openSlot = driveSlot;
   // A fresh session per project: the history describes edits to *this* image, and carrying one
   // across would offer to undo a step into a project that never had it done.
   state.session = new Session(loaded.image);
@@ -519,7 +505,6 @@ async function openDriveProject(): Promise<void> {
       image: opened.image,
     },
     `${project.name} · slot ${project.index}`,
-    project.index,
   );
   $<HTMLButtonElement>("export").disabled = false;
 }
@@ -1295,7 +1280,6 @@ $("driveProjects").addEventListener("change", gateOpen);
  */
 const wavetables = wireWavetables({
   device: () => state.device,
-  openSlot: () => state.openSlot,
   status,
 });
 
