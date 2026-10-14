@@ -468,3 +468,66 @@ test("the copying is asked for before it starts", () => {
   assert.ok(counting > 0 && counting < first,
     "the tables are counted before the question that names how many there are");
 });
+
+test("one control chooses what to work with, and one list chooses the project", () => {
+  /*
+   * **The owner, 2026-10-14**: Sounds / Wavetables tabs above the panes and a Presets / Kits list in
+   * the toolbar were two answers to one question, and a *Pool of* dropdown in the wavetable pane
+   * beside the toolbar's project list put the same names on screen twice. Both are one control now.
+   */
+  for (const gone of ['id="libraryMode"', 'id="modeSounds"', 'id="modeWavetables"', 'id="wavepoolProject"']) {
+    assert.ok(!PAGE.includes(gone), `${gone} is gone from the page: its job is the toolbar's now`);
+  }
+  const kinds = /<select id="kind"[^>]*>([\s\S]*?)<\/select>/.exec(PAGE);
+  assert.ok(kinds, "the toolbar's kind list is no longer a select — rewrite this test, do not delete it");
+  for (const option of ['value="preset"', 'value="kit"', 'value="wavetable"']) {
+    assert.ok(kinds[1]!.includes(option), `the kind list must offer ${option}`);
+  }
+
+  // The dropdown is the mode switch, and every change of its value goes through one function, so
+  // the mode cannot disagree with what the dropdown says.
+  assert.match(MAIN, /\$\("kind"\)\.addEventListener\("change", \(\) => \{\s*applyKind\(\);/,
+    "a change of the kind list must decide the mode");
+  assert.match(MAIN, /function applyKind\(\): void \{/, "the mode follows the dropdown in one place");
+
+  // The mode must not hide the control that is now the only way out of it.
+  assert.ok(!idList("SOUNDS_ONLY").includes("kind"),
+    "Wavetables must not hide the dropdown: without the tabs it is how somebody leaves");
+
+  // One list, filled one way. Two fillers had already drifted: `24. PRESETS` against `024 PRESETS`.
+  assert.match(MAIN, /renderProjectList\(/, "Presets and Kits fill the list with the shared renderer");
+  assert.match(SOURCE, /renderProjectList\(/, "and so does Wavetables");
+  assert.match(SOURCE, /\$<HTMLSelectElement>\("driveProjects"\)/,
+    "Wavetables reads its project from the toolbar's list, not a list of its own");
+
+  // The working project has a pool and no file: Open refuses it rather than failing on it.
+  assert.match(MAIN, /index === WORKING_PROJECT/, "Open must refuse the working project");
+});
+
+test("a resample names where it started, not only where it ended", () => {
+  /*
+   * The owner, 2026-10-14, looking at a 15 x 2048 file staged at 64 waves: *resampled to 64 x 2048*
+   * hid half of the change. The line names the shape the file already was — kept from the proposal
+   * when its sample count divides exactly — or its sample count when it divides into nothing.
+   */
+  assert.match(STAGING, /source\?: Geometry;/, "the staged entry keeps the shape the file already was");
+  assert.match(STAGING, /proposal\.exact \? \{ source: proposal\.geometry \}/,
+    "and only when the proposal divided exactly: anything else was never that shape");
+  assert.match(STAGING, /resampled from \$\{from\} to /, "the line says both ends");
+});
+
+test("the pool starts on the working project, and a saved one says it is not what plays", () => {
+  /*
+   * Option B, the owner's choice on 2026-10-14. The list started on the project open in Presets, so
+   * with project 24 open an edit went to 24's saved record while the instrument went on playing
+   * the working one — a write that looked like it did nothing. The firmware refills what plays only
+   * from the working record, so that is where a first edit has to land.
+   */
+  assert.match(SOURCE, /renderProjectList\(select, listed, WORKING_PROJECT\)/,
+    "entering Wavetables must start on the working project, whatever is open in Presets");
+  assert.ok(!/host\.openSlot\(/.test(SOURCE),
+    "the open project must no longer choose the pool: that is the trap option B removes");
+  assert.match(SOURCE, /summary\.projectSlot === WORKING_PROJECT\s*\?\s*""/,
+    "a saved project's pool must say when it is not the one playing");
+  assert.match(SOURCE, /Changes play after you next load it on the/, "in words a musician acts on");
+});

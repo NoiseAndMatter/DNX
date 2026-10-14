@@ -112,9 +112,15 @@
         <span class="lbl">Instrument</span>
         <button class="btn" id="connect">Connect an instrument…</button>
         <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
-        <select id="kind" disabled title="Which library to browse">
+        <!--
+          What the page is working with — presets, kits or wavetables — in one control. It replaced
+          a pair of Sounds / Wavetables tabs on 2026-10-14: the owner read the tabs and this list as
+          two answers to one question, and they were.
+        -->
+        <select id="kind" disabled title="What to work with">
           <option value="preset">Presets</option>
           <option value="kit">Kits</option>
+          <option value="wavetable">Wavetables</option>
         </select>
         <button class="btn" id="browse" disabled>Browse</button>
       </span>
@@ -125,7 +131,7 @@
       <span class="bargroup" id="projectGroup">
       <span class="sep"></span>
       <span class="lbl">Project</span>
-      <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
+      <label class="btn filebtn" id="projectFileButton">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
       <!--
         The other half, and the one that was missing: you could browse 2,048 presets off the +Drive
         but had to reach for a file picker for the project you were putting them in.
@@ -136,7 +142,14 @@
         all — it exports a file — so the distinction that complicates the manager does not exist here.
       -->
       <button class="btn" id="driveBrowse" disabled title="Connect an instrument first, then this lists the projects stored on it">From +Drive…</button>
-      <select id="driveProjects" hidden title="Which stored project to open"></select>
+      <!--
+        **The page's one project picker.** Presets and kits open the chosen project with Open;
+        wavetables read its pool the moment it is chosen, and add *Working project* at the top —
+        the project loaded on the instrument, which has a pool and no file to open. It used to be
+        a second dropdown inside the wavetable pane; two lists of the same names on one screen
+        was the confusion.
+      -->
+      <select id="driveProjects" hidden title="Which project"></select>
       <button class="btn" id="driveOpen" hidden>Open</button>
       </span>
       <span class="spacer"></span>
@@ -157,20 +170,6 @@
     </div>
   </section>
 
-  <!--
-    Sounds or wavetables, and it is a mode rather than a fifth tool.
-
-    The owner picked this placement over a standing page: the two collections ask the same two
-    questions this page is already shaped around — what is in use, and where is the one I made last
-    week. The cost is that "library" stops meaning only Elektron presets, which is said here in as
-    many words rather than left to be discovered.
-  -->
-  <section class="section">
-    <div class="tabs" id="libraryMode" role="tablist" aria-label="Which collection this page shows">
-      <button type="button" class="tab" id="modeSounds" role="tab" aria-selected="true">Sounds</button>
-      <button type="button" class="tab" id="modeWavetables" role="tab" aria-selected="false">Wavetables</button>
-    </div>
-  </section>
 
   <div class="panes">
 
@@ -192,10 +191,6 @@
         pool with a second writer.
       -->
       <div class="bar" id="wavepoolBar" data-help="library/wavetable-add-to-pool" hidden>
-        <span class="lbl">Pool of</span>
-        <select id="wavepoolProject" disabled title="Which project's wavetable pool to read">
-          <option value="0">Working project</option>
-        </select>
         <button class="btn" id="wavepoolRefresh" disabled title="Read the pool and the store again">Refresh</button>
         <!--
           The pool's one write. Ships disabled and is turned on by `poolwrite.redraw` from the

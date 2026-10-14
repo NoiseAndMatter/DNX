@@ -352,8 +352,8 @@ The page says so when that happens rather than leaving you to check the column.`
     intro: `A project's **sound pool** beside the instrument's **+Drive library**. The pool is where
 a preset has to be for a trig to preset-lock it; the library is where 2,048 of them live.
 
-The tabs above the left pane switch between **Sounds** and **Wavetables**. The wavetable sections
-are at the end of this page.`,
+The list beside **Browse** chooses what you work with: **Presets**, **Kits** or **Wavetables**.
+The wavetable sections are at the end of this page.`,
     sections: [
       {
         id: "pool-vs-library",
@@ -435,8 +435,9 @@ Before you start:
 - **WRITE** can stay off. This mode only reads.
 
 1. Press **Connect an instrument…**.
-2. Press **Wavetables**, above the left pane.
-3. Pick a project from **POOL OF**.
+2. Choose **Wavetables** in the list beside **Browse**.
+3. Pick a project from the **Project** list. **Working project** is the one loaded on the
+   instrument, which is the one you hear.
 
 The left pane is that project's **wavetable pool**: 128 slots, each naming a store slot. The right
 pane is the instrument's **wavetable store**: 256 slots, one table each, shared by every project.
@@ -493,8 +494,9 @@ Before you start:
 - **WRITE** on, in the tool row.
 - Elektron Transfer and Overbridge closed.
 
-1. Press **Wavetables**, then pick a project from **POOL OF**.
-2. Drag audio files from your computer onto a free slot in the **+Drive wavetables** list.
+1. Choose **Wavetables** beside **Browse**, then pick a project from the **Project** list.
+2. Drag audio files from your computer onto a free slot in the **+Drive wavetables** list. While
+   you drag, the slots they will land in light up, and taken slots they step over dim.
 3. The slots turn amber and read **staged**. Nothing has been sent.
 4. Click a staged row. Set **name**, **waves** and **points**, and press **Play** to hear it, or
    **Sweep** to hear it travel from the first frame to the last.
@@ -518,7 +520,7 @@ Before you start:
 - A table in the **+Drive wavetables** list.
 - **WRITE** on, in the tool row.
 
-1. Press **Wavetables**, then pick the project from **POOL OF**.
+1. Choose **Wavetables** beside **Browse**, then pick the project from the **Project** list.
 2. Click the table in the **+Drive wavetables** list on the right. **Shift-click** another to take
    the whole run between them; **Ctrl-click** (**Cmd** on a Mac) adds or removes one.
 3. **Drag them onto the pool slot** you want the first one in. The rest follow in the slots after
