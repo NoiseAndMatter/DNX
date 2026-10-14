@@ -27,6 +27,7 @@ import { renderPlan } from "../render.js";
 import { $, escapeHtml } from "../dom.js";
 import { countOccupiedIn, patternSlotView, type SlotView } from "../slotview.js";
 import { statusBar } from "../statusbar.js";
+import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { progressBar } from "../progress.js";
 import { renderToolNav } from "../toolnav.js";
 import { type DeviceProjectHandle, DeviceSourceError } from "../devicesource.js";
@@ -71,6 +72,12 @@ import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
  * it with it, which this page has been bitten by before.
  */
 const status = statusBar();
+
+/*
+ * The instrument commands in the settings sheet are the whole application's, not one tool's. This
+ * page connects nothing of its own for them, so they reach an instrument themselves.
+ */
+wireInstrumentCommands({ status });
 const progress = progressBar();
 
 // Drawn rather than written into the HTML, so the row cannot say different things on different

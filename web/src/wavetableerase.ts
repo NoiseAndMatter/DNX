@@ -24,57 +24,64 @@
  * It is checked at the press rather than drawn into the control's state, because permission can be
  * revoked between the sheet opening and the button being pressed, and the check costs nothing.
  *
- * ## One question, asked where the decision is
+ * ## Two questions, because they are two decisions
  *
- * Pressing starts minutes of copying before anybody is asked anything, which would be surprising
- * if the row did not say so — it does. The copying reads and sends nothing, a failure in it
- * abandons the run untouched, and the question that follows carries the counts the firmware will
- * check. There is no second dialog: a confirmation before the confirmation teaches people to click
- * through both.
+ * This file once argued the opposite — one question, on the grounds that a confirmation before a
+ * confirmation teaches people to click through both. The owner overruled it on 2026-10-14, and
+ * the reason is sound: **the copying is not part of the erase.** Pressing used to start minutes
+ * of reading before anybody was asked anything, and somebody who then cancelled had sat through
+ * all of it for nothing.
+ *
+ * So the press asks first whether to save the copies, naming how many tables there are. That
+ * reads and sends nothing, and cancelling it leaves the instrument and the folder untouched. Only
+ * when the copies are written does the second question appear — the one that carries the counts
+ * the firmware will check, and the one that ends in something being sent.
  */
 
-import { askConfirm } from "../dialog.js";
-import { type ConnectedDevice, apiTransport } from "../devicesource.js";
-import { folderState, folderSupported } from "../dnxfolder.js";
-import { pageMessageIds } from "../messageids.js";
-import { downloadBackup } from "../safewriteui.js";
-import { type EraseOffer, type JobReport, registerErase } from "../settings.js";
-import { type StatusWriter } from "../statusbar.js";
-import { requireWriteEnabled } from "../writeenable.js";
+import { askConfirm } from "./dialog.js";
+import { type ConnectedDevice, apiTransport } from "./devicesource.js";
+import { reachInstrument } from "./instrument.js";
+import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
+import { folderState, folderSupported } from "./dnxfolder.js";
+import { pageMessageIds } from "./messageids.js";
+import { downloadBackup } from "./safewriteui.js";
+import { type EraseOffer, type JobReport, registerErase } from "./settings.js";
+import { type StatusWriter } from "./statusbar.js";
+import { requireWriteEnabled } from "./writeenable.js";
 import {
   type EraseReview,
   eraseWavetableStore,
 } from "@noiseandmatter/dnx-core/device/wavetableerase.js";
-import { type WaveriderSupport } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
+import {
+  type WaveriderSupport,
+  askWaveriderSupport,
+} from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 
 export interface WavetableEraseHost {
-  /** The instrument, when one is connected. */
-  device(): ConnectedDevice | undefined;
   /**
-   * What the gate said about the connected instrument, or `undefined` when it has not been asked.
+   * The gate's answer, when a tool on this page has already asked this instrument.
    *
-   * **The whole answer rather than its `features`**, because every state sends the reader
-   * somewhere different: *not asked* to the Wavetables tab, *no store* nowhere at all, *could not
-   * ask* back to the tab to press Refresh, and a build that answered and has no erase route is the
-   * end of it. Handing over `features` alone collapsed the first three into one sentence, and a
-   * stock Digitone II was told to open a tab it had already answered from.
+   * Optional, and only an accelerator: the Wavetables tab asks the gate to draw its panes, so on
+   * the library the answer is already in hand. Everywhere else the press asks for itself rather
+   * than sending somebody to another tool to unlock a command about their instrument.
    */
-  support(): WaveriderSupport | undefined;
+  support?(): WaveriderSupport | undefined;
   status: StatusWriter;
-  /** The panes hold a listing that the erase has just invalidated. */
-  reread(): Promise<void>;
+  /** A pane holding a listing this has invalidated, where there is one. */
+  reread?(): Promise<void>;
 }
 
 export function wireWavetableErase(host: WavetableEraseHost): void {
   let erasing = false;
 
   /**
-   * Whether the control may be pressed, worked out from the live state each time it is asked.
+   * Whether the control may be pressed.
    *
-   * **Computed on demand rather than pushed.** The sheet reads this when it opens, so there is
-   * nothing to keep in step as instruments come and go — and no event for a future caller to
-   * forget. The first version registered a snapshot at wiring time and said *connect an
-   * instrument first* with one connected.
+   * **Only what is knowable without speaking to the instrument.** It used to refuse here for a
+   * missing device and for every gate state, which made the command the library's: on any other
+   * page it was a disabled button, and a disabled button shows no tooltip in Chrome, so it was a
+   * disabled button with no reason. The instrument and the gate are now settled at the press,
+   * where asking them is allowed and the answer can be said in a sentence.
    */
   function offer(): EraseOffer {
     if (erasing) return { unavailable: "An erase is already running." };
@@ -84,36 +91,38 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
           "Erasing saves a copy of every table first, and saving that many files needs Chrome or Edge.",
       };
     }
-    if (!host.device()) return { unavailable: "Connect an instrument in the library first." };
+    return { run };
+  }
 
-    const support = host.support();
+  /**
+   * What this build says about its wavetable store, asked now unless a tool already knows.
+   *
+   * Returns the sentence to refuse with, or `undefined` when the erase route is there. Every
+   * state sends the reader somewhere different, which is why the whole answer is read rather than
+   * its `features`: a stock Digitone II that has answered must not be told nobody has asked.
+   */
+  async function gateRefusal(device: ConnectedDevice, report: JobReport): Promise<string | undefined> {
+    let support = host.support?.();
     if (!support) {
-      return {
-        unavailable: "Open the library's Wavetables tab, so DNX can ask this build what it can do.",
-      };
+      report.say("Asking this instrument what it can do…");
+      support = await askWaveriderSupport({ transport: apiTransport(device), ids: pageMessageIds });
     }
     if (support.state === "unsupported") {
-      return {
-        unavailable: "This instrument has no wavetable store, so there is nothing here to erase.",
-      };
+      return "This instrument has no wavetable store, so there is nothing here to erase.";
     }
     if (support.state !== "supported") {
-      return {
-        unavailable:
-          "DNX could not find out what this build can do. Open the library's Wavetables tab and " +
-          "press Refresh, with Elektron Transfer and Overbridge closed.",
-      };
+      return (
+        "DNX could not find out what this build can do. Close Elektron Transfer and Overbridge, " +
+        "then try again."
+      );
     }
-    const features = support.features;
-    if (!features.erase) {
-      return {
-        unavailable: features.capabilitiesKnown
-          ? "This firmware does not offer the erase route."
-          : "This build predates the capabilities record, so it has never said it has the erase " +
-            "route — and silence is not a yes for a control that empties the whole region.",
-      };
+    if (!support.features.erase) {
+      return support.features.capabilitiesKnown
+        ? "This firmware does not offer the erase route."
+        : "This build predates the capabilities record, so it has never said it has the erase " +
+          "route — and silence is not a yes for a control that empties the whole region.";
     }
-    return { run };
+    return undefined;
   }
 
   /**
@@ -171,16 +180,26 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
 
   async function run(report: JobReport): Promise<void> {
     if (erasing) return;
-    const device = host.device();
-    if (!device) {
-      /*
-       * The offer outlived the connection — the picker was changed, or the port went away, after
-       * the sheet was opened. Said rather than returning quietly: a control that does nothing is
-       * the one failure somebody cannot act on.
-       */
-      const gone = "No instrument is connected any more. Connect one in the library and try again.";
+
+    let device: ConnectedDevice;
+    try {
+      report.say("Looking for an instrument…");
+      device = await reachInstrument((message) => report.say(message));
+    } catch (error: unknown) {
+      // Said rather than returning quietly: a control that does nothing is the one failure
+      // somebody cannot act on.
+      const gone = String(error instanceof Error ? error.message : error);
       report.say(gone);
       host.status(gone, "warn");
+      return;
+    }
+
+    const gate = await gateRefusal(device, report).catch(
+      (error: unknown) => `DNX could not ask this instrument what it can do: ${String(error)}`,
+    );
+    if (gate) {
+      report.say(gate);
+      host.status(gate, "warn");
       return;
     }
 
@@ -188,6 +207,51 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
     if (refusal) {
       report.say(refusal);
       host.status(refusal, "warn");
+      return;
+    }
+
+    /*
+     * **The first of the two questions: may DNX save the copies?**
+     *
+     * The listing is read here rather than taken from the core's own, because the number of
+     * tables is what makes this question answerable — *83 tables, a few minutes* is a decision,
+     * *this may take a while* is not. It is one message, and the core lists again at the moment
+     * of erasing, which is the listing the firmware actually checks against.
+     */
+    let tables: number;
+    try {
+      report.say("Counting the tables…");
+      const listing = await readStoreListing(apiTransport(device), pageMessageIds);
+      tables = listing.filter((slot) => slot.occupied).length;
+    } catch (error: unknown) {
+      const said = `The store could not be listed, so nothing was done: ${String(error)}`;
+      report.say(said);
+      host.status(said, "error");
+      return;
+    }
+
+    const agreed = await askConfirm({
+      title:
+        tables === 0
+          ? "Save copies first? The store is already empty"
+          : `Save a copy of ${tables} wavetable${tables === 1 ? "" : "s"} first?`,
+      body: [
+        tables === 0
+          ? `There is nothing to copy. The erase can still be sent, which is how an erase ` +
+            `interrupted partway is finished.`
+          : `Every one of the ${tables} tables is read off the instrument and written into your ` +
+            `DNX folder, one file each. On a full store that is a few minutes.`,
+        `Nothing is sent to the instrument by this, and nothing on it changes. You are asked ` +
+          `again, with the counts, before anything is erased.`,
+        `Those copies are the only way back: putting one of them onto a free slot is how a table ` +
+          `comes home.`,
+      ],
+      confirmLabel: tables === 0 ? "Carry on" : "Save the copies",
+    });
+    if (!agreed) {
+      const said = "Nothing was copied and nothing was sent.";
+      report.say(said);
+      host.status(said, "info");
       return;
     }
 
@@ -267,7 +331,7 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
     } finally {
       erasing = false;
       // Whatever happened, the listing the panes hold is no longer evidence about the instrument.
-      await host.reread().catch(() => undefined);
+      await host.reread?.().catch(() => undefined);
     }
   }
 

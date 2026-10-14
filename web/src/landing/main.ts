@@ -21,6 +21,7 @@
  * same question the setup card asks, so `seen.ts` answers both and the two cannot disagree.
  */
 
+import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { DNXLoader } from "./dnxloader.js";
 import { DNX_BUILD } from "../version.js";
 import { browserSupport, folderNote, unsupportedMessage } from "./browsercheck.js";
@@ -179,3 +180,11 @@ if (firstRun) {
     document.createTextNode(" · This is the long version; later visits are shorter."),
   );
 }
+
+/* ---- the instrument's own commands ----------------------------------------------------------
+ *
+ * The front page has no instrument and no status bar, and the backup is still the first thing a
+ * nervous person reaches for. Settings is on this page like every other, so the commands are too;
+ * they connect for themselves and report into the sheet's own job pane.
+ */
+wireInstrumentCommands();

@@ -26,7 +26,7 @@ const POOLWRITE = readFileSync(resolve(HERE, "../web/src/library/poolwrite.ts"),
 const DELETE = readFileSync(resolve(HERE, "../web/src/library/tabledelete.ts"), "utf8");
 const PAGE = readFileSync(resolve(HERE, "../web/library.html"), "utf8");
 const MAIN = readFileSync(resolve(HERE, "../web/src/library/main.ts"), "utf8");
-const ERASE = readFileSync(resolve(HERE, "../web/src/library/wavetableerase.ts"), "utf8");
+const ERASE = readFileSync(resolve(HERE, "../web/src/wavetableerase.ts"), "utf8");
 
 /** The element ids in a `const NAME = [...] as const` list. */
 function idList(name: string): string[] {
@@ -375,10 +375,13 @@ test("another instrument is asked, rather than inheriting the last one's answer"
    * *asked and this instrument has no store* cannot be reported as *nobody has asked yet*, which
    * sends somebody to a tab that has already answered.
    */
-  assert.match(ERASE, /support\(\): WaveriderSupport \| undefined;/,
+  assert.match(ERASE, /support\?\(\): WaveriderSupport \| undefined;/,
     "the erase control must see the whole gate answer, not only its features");
   assert.match(ERASE, /support\.state === "unsupported"/,
     "an instrument with no wavetable store must be told so");
+  // And when no tool has asked, it asks for itself rather than sending somebody to another tab.
+  assert.match(ERASE, /askWaveriderSupport\(/,
+    "the erase must be able to ask the gate itself: it is offered on every page now");
 });
 
 test("one conversation at a time: every device path takes the pane and gives it back", () => {
@@ -441,4 +444,27 @@ test("a drop says where it would land, by the rule the drop itself runs", () => 
   for (const clearing of ["dragleave", "drop"]) {
     assert.ok(body.includes(clearing), `the marks must be cleared on ${clearing}`);
   }
+});
+
+test("the copying is asked for before it starts", () => {
+  /*
+   * **The owner, 2026-10-14**: pressing *Erase* began by backing up without a word, and somebody
+   * who sat through minutes of copying only to cancel the erase had been asked nothing at all.
+   * The button keeps its name — it is the command — and the press asks first whether to save the
+   * copies; the erase is asked again afterwards, which is the question that sends something.
+   */
+
+  const first = ERASE.indexOf("Save the copies");
+  const second = ERASE.indexOf("Erase the region");
+  assert.ok(first > 0, "the first question must offer to save the copies");
+  assert.ok(second > first, "the erase question comes after the copies are agreed to");
+
+  // Cancelling the first leaves everything where it was, which is the whole point of asking.
+  assert.match(ERASE, /Nothing was copied and nothing was sent\./,
+    "cancelling the copies must say that nothing happened");
+
+  // The count is what makes the question answerable, so the listing is read before asking.
+  const counting = ERASE.indexOf("readStoreListing(");
+  assert.ok(counting > 0 && counting < first,
+    "the tables are counted before the question that names how many there are");
 });

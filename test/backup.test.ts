@@ -239,7 +239,9 @@ test("a +Drive directory DNX cannot read is named, not passed over", () => {
   const manifest = readFileSync(join(CORE, "project", "dnxfile.ts"), "utf8");
   assert.match(manifest, /skipped\?: string\[\]/, "optional, because older files predate it");
 
-  const ui = readFileSync(join(ROOT, "web/src/manager/main.ts"), "utf8");
+  // The job, not a page: since 2026-10-14 every page runs the same backup, so the sentence lives
+  // in the one module they all register.
+  const ui = readFileSync(join(ROOT, "web/src/backupjob.ts"), "utf8");
   assert.match(ui, /manifest\.skipped/, "and the page says so rather than leaving it to the file");
   assert.match(ui, /cannot read/, "in words, not a field name");
 });
