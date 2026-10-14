@@ -61,8 +61,7 @@ test("an entry naming a free store slot is MISSING, and the free count excludes 
   assert.equal(summary.cells[1]?.state, "missing");
   assert.equal(summary.cells[1]?.storeSlot, 20);
   assert.equal(summary.cells[1]?.name, undefined, "there is no name to show: the slot is empty");
-  assert.match(summary.cells[1]?.note ?? "", /deleted/);
-  assert.match(summary.cells[1]?.note ?? "", /Prim/, "and what it plays instead");
+  assert.match(summary.cells[1]?.note ?? "", /missing from the/, "it says where the table went");
 
   assert.equal(summary.tables, 1);
   assert.equal(summary.missing, 1);
@@ -79,7 +78,7 @@ test("a slot absent from the listing is not reported as a deleted table", () => 
 
   assert.equal(summary.cells[1]?.state, "missing");
   assert.match(summary.cells[1]?.note ?? "", /not in the listing/);
-  assert.doesNotMatch(summary.cells[1]?.note ?? "", /deleted/);
+  assert.doesNotMatch(summary.cells[1]?.note ?? "", /missing from the/);
 });
 
 test("two entries may name one slot, and the store side can say which", () => {
@@ -127,7 +126,7 @@ test("whether somebody wrote the pool changes what the numbers mean", () => {
   const list = summarisePool(record(entries, { generation: 4, followsStore: false }), store);
   assert.equal(list.kind, "list");
   assert.equal(list.authored, true);
-  assert.match(describePool(list), /stay where they are/);
+  assert.match(describePool(list), /has a pool of its own/);
 });
 
 test("the working project says so rather than calling itself slot 0", () => {

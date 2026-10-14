@@ -113,8 +113,6 @@ type Staged =
       stem: string;
       decoded: DecodedFile;
       geometry: Geometry;
-      /** What the proposal said, kept so the note can show it after an override. */
-      proposed: string;
     }
   | {
       kind: "copy";
@@ -252,16 +250,23 @@ export function wireImport(host: ImportHost): ImportStaging {
         `${entry.decoded.channels === 1 ? "mono" : `${entry.decoded.channels} channels mixed to mono`}, ` +
         `${entry.decoded.samples.length.toLocaleString()} samples.</p>`,
     );
-    notes.push(`<p>Going to store slot <strong>${entry.slot}</strong>. ${escapeHtml(entry.proposed)}</p>`);
-
     if (plan) {
-      notes.push(`<p>${escapeHtml(plan.fit.reason)}</p>`);
+      /*
+       * **The shape, and whether the file had to be changed to get there.** The panel used to
+       * print the proposal's grounds and the fit's method as two sentences, which read as an
+       * argument for a decision nobody had questioned. What somebody needs is the geometry and a
+       * yes or no on resampling; the help explains how the shape is chosen.
+       */
+      const fitted = plan.fit.geometry;
+      notes.push(
+        `<p>Going to store slot <strong>${entry.slot}</strong>` +
+          (plan.fit.method === "exact"
+            ? ` as ${fitted.waves} x ${fitted.points} — no resample required.</p>`
+            : ` — resampled to ${fitted.waves} x ${fitted.points}.</p>`),
+      );
       const gain = plan.converted.gain;
       if (gain > 1.001) {
-        notes.push(
-          `<p class="warn">Normalised by ${gain.toFixed(2)}x. The instrument does not read the ` +
-            `stored gain, so this table plays at full level whatever the file's own was.</p>`,
-        );
+        notes.push(`<p class="warn">Normalised by ${gain.toFixed(2)}x to full level.</p>`);
       }
       // The instrument's own bounds, not the fallback: judging the staged shape against a
       // narrower rule than the one it was proposed under would contradict the proposal.
@@ -274,7 +279,10 @@ export function wireImport(host: ImportHost): ImportStaging {
       $("wavimportName").title = plan.pending.name;
       notes.push(`<p class="hint">Stored as <code>${escapeHtml(plan.pending.name)}</code>.</p>`);
     } else {
-      notes.push(`<p class="warn">This geometry cannot be built. Change the numbers.</p>`);
+      notes.push(
+        `<p>Going to store slot <strong>${entry.slot}</strong>.</p>`,
+        `<p class="warn">This geometry cannot be built. Change the numbers.</p>`,
+      );
     }
 
     if (entry.decoded.peak === 0) {
@@ -406,7 +414,6 @@ export function wireImport(host: ImportHost): ImportStaging {
           stem: stemFromFileName(file.name),
           decoded,
           geometry: proposal.geometry,
-          proposed: proposal.reason,
         });
         picked ??= slot;
       } catch (error: unknown) {

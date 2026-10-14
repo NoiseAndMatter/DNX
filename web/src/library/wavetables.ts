@@ -49,7 +49,7 @@ import {
   type WaveriderSupport,
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
-import { type PoolCell, describePool, tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { type PoolCell, describePool } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { type SlotFile, readSlotFile } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { waterfall } from "@noiseandmatter/dnx-core/waverider/waterfall.js";
 import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
@@ -476,7 +476,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         cell.state === "table"
           ? `store ${cell.storeSlot}`
           : cell.state === "missing"
-            ? "table deleted"
+            ? "not on +Drive"
             : "free",
       occupied: cell.state === "table",
       /*
@@ -507,34 +507,17 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       drag: { controller: drag, grid: POOL_GRID },
     });
 
-    const cell = picked === undefined ? undefined : summary.cells[picked];
-    const chosen =
-      cell === undefined
-        ? ""
-        : `<p><b>Slot ${cell.shown}</b> — ` +
-          (cell.state === "empty"
-            ? "nothing here. Click a table on the right and press Add to pool to put one in it, " +
-              "or use ADD TO POOL on the instrument, which fills the first free slot."
-            : `store slot ${cell.storeSlot}${cell.name === undefined ? "" : ` · ${escapeHtml(cell.name)}`}` +
-              `. A sound reaches it with TBL reading ${tblLabel(cell.index)}.`) +
-          `${cell.note === undefined ? "" : ` ${escapeHtml(cell.note)}`}</p>`;
-
+    /*
+     * **The counts, and the one warning.** Everything else the pane used to print here — what the
+     * selected slot holds, its TBL number, which store slots are named twice — is already on the
+     * grid or in the help, and the owner read the paragraphs as noise in front of it.
+     */
     note(
       `<p>${escapeHtml(describePool(summary))}</p>` +
         (summary.missing === 0
           ? ""
-          : `<p class="warn"><b>${summary.missing} slot(s) name a table that is gone.</b> Each ` +
-            `plays the built-in Prim. Only clearing the slot frees it, and DNX will not do that ` +
-            `on its own: clearing one digs a hole the next add falls into, and every sound still ` +
-            `pointing at it would then play an unrelated table.</p>`) +
-        (summary.repeated.length === 0
-          ? ""
-          : `<p>${
-              summary.repeated.length === 1
-                ? `Store slot ${summary.repeated[0]} is`
-                : `Store slots ${summary.repeated.join(", ")} are`
-            } named by more than one pool slot, which is legal.</p>`) +
-        chosen,
+          : `<p class="warn"><b>${summary.missing} slot(s) name a table that is missing ` +
+            `from the +Drive.</b></p>`),
     );
   }
 

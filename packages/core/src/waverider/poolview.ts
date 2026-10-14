@@ -160,9 +160,7 @@ export function summarisePool(
       missing++;
       cells.push({
         index, shown, coarse, storeSlot, state: "missing",
-        note:
-          `store slot ${storeSlot} is empty: this table was deleted. The entry still names it, ` +
-          `so this slot plays the built-in Prim. until somebody clears it.`,
+        note: `store slot ${storeSlot} is empty: the table is missing from the +Drive.`,
       });
       continue;
     }
@@ -231,6 +229,6 @@ export function describePool(summary: PoolSummary): string {
         `project a list of its own to pin them.`
       );
     default:
-      return `${where} has a pool of its own: ${counts}. These slots stay where they are.`;
+      return `${where} has a pool of its own: ${counts}.`;
   }
 }
