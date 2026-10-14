@@ -359,6 +359,18 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     }
   }
 
+  /**
+   * The gate's reason, started as a sentence of its own.
+   *
+   * `why` is written to be read after a colon, so it begins in lower case — and each of the three
+   * notes below puts it after a full stop, which read "no wavetable store. the root listing
+   * offers…". Capitalised here rather than in the core, because where it sits is the caller's
+   * decision and the next caller may want it mid-sentence.
+   */
+  function asSentence(why: string): string {
+    return why.charAt(0).toUpperCase() + why.slice(1);
+  }
+
   /** The sentence for a state that is not *supported*, and the reason it is not a failure. */
   function explain(answer: WaveriderSupport): void {
     hideOurs();
@@ -369,7 +381,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
 
     if (answer.state === "unsupported") {
       note(
-        `<p><b>This instrument has no wavetable store.</b> ${escapeHtml(answer.why)}.</p>` +
+        `<p><b>This instrument has no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
           `<p>Wavetables need a Waverider build. Nothing is wrong with the instrument or with ` +
           `DNX.</p>`,
       );
@@ -383,7 +395,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
        * answer, and not the same as the two above: the instrument was asked and said no.
        */
       note(
-        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(answer.why)}.</p>` +
+        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
           `<p>DNX takes the record's word for it rather than offering a pane whose route may not ` +
           `answer.</p>`,
       );
@@ -397,7 +409,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
      * the clothes of a considered one, and somebody would stop looking.
      */
     note(
-      `<p><b>DNX could not find out.</b> ${escapeHtml(answer.why)}.</p>` +
+      `<p><b>DNX could not find out.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
         `<p>This is not the same as the instrument not having wavetables. Another application ` +
         `holding the MIDI port is the usual cause: close Elektron Transfer and Overbridge, then ` +
         `press Refresh.</p>`,
