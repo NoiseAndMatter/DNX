@@ -60,6 +60,7 @@ import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
 import { provideWaveriderSupport } from "../instrumentcommands.js";
+import { type ListedProject, renderProjectList } from "./projectlist.js";
 import {
   auditionFrame,
   auditionTable,
@@ -78,17 +79,16 @@ import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js"
  * that describes a bank, which is a claim about an instrument nobody asked.
  */
 const SOUNDS_ONLY = [
-  "kind",
   "browse",
   /*
-   * **The toolbar's project picker**, because this mode has one of its own and the owner met both
-   * at once on 2026-10-14 and asked why there were two. They do different things — the toolbar
-   * opens a project into the page, POOL OF reads one project's pool record off the +Drive without
-   * opening anything — but that is a distinction for the help, not two dropdowns of the same 128
-   * names on one screen. This mode never opens a project, so the group goes with the rest of the
-   * Sounds furniture.
+   * **The project group's verbs, not its picker.** Since 2026-10-14 the toolbar's project list is
+   * the page's only one: this mode reads the chosen project's pool from it, and has nothing to
+   * open and no file to load, so *From file…*, *From +Drive…* and *Open* go while it is on. The
+   * dropdown beside Browse stays — it is how somebody leaves this mode now the tabs are gone.
    */
-  "projectGroup",
+  "projectFileButton",
+  "driveBrowse",
+  "driveOpen",
   "poolGrid",
   "patternGrid",
   "findings",
@@ -157,6 +157,14 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   let shown = false;
   /** What Sounds mode had hidden when this mode took the panes. See `SOUNDS_ONLY`. */
   const hiddenBefore = new Map<string, boolean>();
+  /**
+   * Whether the toolbar's project list was hidden when this mode took it.
+   *
+   * Presets and Kits show it only once *From +Drive…* has listed the projects; this mode fills it
+   * and shows it on entry. Leaving puts it back as it was, so Presets does not inherit a list
+   * nobody asked it for.
+   */
+  let pickerHiddenBefore = true;
   /**
    * And what the two panes were called.
    *
@@ -307,7 +315,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    */
   const helpBefore = new Map<HTMLElement, string>();
 
-  const projects = (): HTMLSelectElement => $<HTMLSelectElement>("wavepoolProject");
+  /** The toolbar's project list, which this mode shares with Presets and Kits. */
+  const projects = (): HTMLSelectElement => $<HTMLSelectElement>("driveProjects");
 
   /** The selection in slot order, which is the order a drop lays them into the pool. */
   function chosenSlots(): number[] {
@@ -369,7 +378,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * each handler.
    */
   const WHILE_BUSY = [
-    "wavepoolProject",
+    "driveProjects",
     "wavepoolRefresh",
     "wavepoolAdd",
     "wavepoolRemove",
@@ -377,8 +386,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     "wavimportWrite",
     "wavimportClear",
     "wavimportRemove",
-    "modeSounds",
-    "modeWavetables",
+    "kind",
   ] as const;
 
   function lock(on: boolean): void {
@@ -403,7 +411,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   }
 
   function controls(on: boolean): void {
-    $<HTMLSelectElement>("wavepoolProject").disabled = !on;
+    $<HTMLSelectElement>("driveProjects").disabled = !on;
     $<HTMLButtonElement>("wavepoolRefresh").disabled = !on;
     // Off with them, and back on only where the panes' own state allows it, which is the write's
     // own question rather than this one.
@@ -817,30 +825,17 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
 
   async function fillProjects(device: ConnectedDevice): Promise<void> {
     const select = projects();
-    const open = host.openSlot();
-    select.innerHTML = "";
-
-    // **The working project first, and it is slot 0.** The only number here where 0 is not "the
-    // first of 128": it is the project the instrument has loaded, the one the front panel edits,
-    // and the one whose pool has a second writer.
-    const working = document.createElement("option");
-    working.value = "0";
-    working.textContent = "Working project";
-    select.append(working);
-
+    // What the list already shows wins over the project open in Presets: somebody who chose a
+    // project in the toolbar and then switched to Wavetables means that one.
+    const current = select.value === "" ? host.openSlot() : Number(select.value);
+    let listed: ListedProject[] = [];
     try {
-      for (const project of await listDeviceProjects(device)) {
-        const option = document.createElement("option");
-        option.value = String(project.index);
-        option.textContent = `${String(project.index).padStart(3, "0")} ${project.name}`;
-        select.append(option);
-      }
+      listed = await listDeviceProjects(device);
     } catch (error) {
       // A pool can still be read without the names, so this is a worse list rather than a failure.
       host.status(`Could not list the projects, so only the working project is offered: ${String(error)}`, "warn");
     }
-
-    select.value = open === undefined ? "0" : String(open);
+    renderProjectList(select, listed, current);
   }
 
   async function refresh(): Promise<void> {
@@ -944,12 +939,15 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         $(id).hidden = true;
       }
       for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
+      pickerHiddenBefore = projects().hidden;
+      projects().hidden = false;
       helpFor(headingOf("leftTitle"), "library/wavetable-modes");
       helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
       shown = true;
     } else {
       for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
       for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
+      projects().hidden = pickerHiddenBefore;
       restoreHelp();
       staging.show(false);
       hideOurs();
@@ -987,8 +985,10 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     await enter();
   }
 
+  // The list is shared with Presets and Kits, where choosing waits for Open. Here choosing is
+  // the read, so only while this mode has the panes.
   projects().addEventListener("change", () => {
-    void refresh();
+    if (shown) void refresh();
   });
   $("wavepoolRefresh").addEventListener("click", () => {
     void refresh();

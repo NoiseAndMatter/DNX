@@ -19,10 +19,19 @@ rather than an instrument: three WAV files generated in the page, written to an 
 pooled and then deleted. All three are pictures of controls and of what DNX itself drew, so the
 emulator's blank card is not a limit on them — see the rule below.
 
-`wavetables-pane.png` was taken 2026-10-09 against a Digitone II whose firmware carries the
+`wavetables-pane.png` was first taken 2026-10-09 against a Digitone II whose firmware carries the
 wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
 reach main and render a placeholder there. The count below is what catches that, which is why it is
 counted from `web/help/` rather than written down.
+
+**Three retaken on 2026-10-14, against the emulator, because the page changed under them.**
+`wavetables-pane.png` showed the Sounds / Wavetables tabs and the pane's own *Pool of* list, both
+replaced by the toolbar's kind dropdown and its one project list; it now includes the toolbar, since
+that is where the mode and the project are chosen. `wavetables-import.png` and
+`wavetables-missing.png` showed the long explanations the owner had taken out of the pane that
+morning — the resample reasoning and the paragraph on why DNX will not clear a MISSING entry — so
+the help showed text the page no longer says. **A copy change is a reason to look at the shots**:
+nothing counts words in a PNG, and these were stale on the live site from the moment #116 merged.
 
 *Seeing what a table looks like* was the third, owed since 2026-10-10 and carried here without a
 reserved slot until it existed — a row naming a file nobody has taken is what `test/helppages.test.ts`

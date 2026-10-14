@@ -76,6 +76,7 @@ import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
 import { renamePresetOnDrive } from "./renamepreset.js";
 import { wireWavetables } from "./wavetables.js";
+import { WORKING_PROJECT, renderProjectList } from "./projectlist.js";
 import { provideInstrument } from "../instrument.js";
 import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { NAME_SIZE } from "@noiseandmatter/dnx-core/librarian/rename.js";
@@ -450,18 +451,11 @@ async function browseDriveProjects(): Promise<void> {
   driveProjects = await listDeviceProjects(device);
 
   const select = $<HTMLSelectElement>("driveProjects");
-  select.replaceChildren(
-    ...driveProjects.map((p) => {
-      const option = document.createElement("option");
-      option.value = String(p.index);
-      // Slot number first: it is what addresses the project and what the instrument's own screen
-      // shows. A name alone is ambiguous — a +Drive can hold two projects called NEW PROJECT.
-      option.textContent = `${p.index}. ${p.name}`;
-      return option;
-    }),
-  );
+  const before = select.value === "" ? undefined : Number(select.value);
+  renderProjectList(select, driveProjects, before);
   select.hidden = false;
   $("driveOpen").hidden = false;
+  gateOpen();
   status(`${driveProjects.length} project(s) on the +Drive. Choose one and press Open.`, "ok");
 }
 
@@ -480,6 +474,10 @@ async function openDriveProject(): Promise<void> {
   if (!device) throw new DeviceSourceError("connect an instrument first");
 
   const index = Number($<HTMLSelectElement>("driveProjects").value);
+  if (index === WORKING_PROJECT) {
+    status("The working project has no file to open here. Choose a stored project.", "warn");
+    return;
+  }
   const project = driveProjects.find((p) => p.index === index);
   if (!project) {
     status("That slot is no longer in the listing. Browse again.", "warn");
@@ -585,8 +583,9 @@ async function connect(): Promise<void> {
     kitOption.disabled = !hasKits;
     kitOption.title = hasKits ? "" : `${device.name} has no kits on its +Drive`;
   }
-  if (!hasKits) kinds.value = "preset";
-  clearShownBank(`— press Browse to list ${kind()}s`);
+  if (!hasKits && kinds.value === "kit") kinds.value = "preset";
+  if (wavetableMode) applyKind();
+  else clearShownBank(`— press Browse to list ${kind()}s`);
 
   $("deviceInfo").hidden = false;
   $("deviceInfo").textContent = device.name;
@@ -595,7 +594,7 @@ async function connect(): Promise<void> {
   $<HTMLButtonElement>("driveBrowse").disabled = false;
   status(
     hasKits
-      ? `${device.name} connected. Choose presets or kits, then Browse.`
+      ? `${device.name} connected. Choose presets, kits or wavetables.`
       : `${device.name} connected. It has no kits on its +Drive, so Browse lists its presets.`,
     "ok",
   );
@@ -1265,8 +1264,26 @@ $("export").addEventListener("click", () => {
 });
 
 $("kind").addEventListener("change", () => {
-  clearShownBank(`— press Browse to list ${kind()}s`);
+  applyKind();
 });
+
+/**
+ * Open is for a project with a file, and the working project has none.
+ *
+ * Disabled with its reason in the title rather than refused at the press alone: the list is
+ * shared with Wavetables, where the working project is the one most often chosen, so it will be
+ * selected here often.
+ */
+function gateOpen(): void {
+  const open = $<HTMLButtonElement>("driveOpen");
+  const working = $<HTMLSelectElement>("driveProjects").value === String(WORKING_PROJECT);
+  open.disabled = working;
+  open.title = working
+    ? "The working project has no file to open here. Choose a stored project."
+    : "Read this project off the +Drive and edit it here";
+}
+
+$("driveProjects").addEventListener("change", gateOpen);
 
 // --- sounds or wavetables ------------------------------------------------------------------------
 
@@ -1296,11 +1313,6 @@ let wavetableMode = false;
 
 function setMode(wavetable: boolean): void {
   wavetableMode = wavetable;
-  // `aria-selected`, which is both the correct state for a tab and the attribute the shared
-  // stylesheet paints a selected tab from. A class would look right and say nothing to a reader.
-  for (const [id, on] of [["modeSounds", !wavetable], ["modeWavetables", wavetable]] as const) {
-    $(id).setAttribute("aria-selected", String(on));
-  }
 
   if (!wavetable) {
     // Hands the panes back first, then redraws Sounds mode: the restore puts each element back the
@@ -1313,13 +1325,22 @@ function setMode(wavetable: boolean): void {
   wavetables.show(true).catch(report);
 }
 
-$("modeSounds").addEventListener("click", () => {
-  if (wavetableMode) setMode(false);
-});
-
-$("modeWavetables").addEventListener("click", () => {
-  if (!wavetableMode) setMode(true);
-});
+/**
+ * Presets, Kits or Wavetables, from the one dropdown.
+ *
+ * **It was two controls until 2026-10-14**: Sounds / Wavetables tabs above the panes, and this
+ * list choosing presets or kits inside Sounds. The owner read them as two answers to one question
+ * — what am I working with — and they were. Wavetables swaps both panes, as the tab did; presets
+ * and kits keep the panes and change what Browse lists.
+ *
+ * Called for every change of the value, including the ones made in code, so the mode cannot be
+ * left disagreeing with what the dropdown says.
+ */
+function applyKind(): void {
+  const wavetable = $<HTMLSelectElement>("kind").value === "wavetable";
+  if (wavetable !== wavetableMode) setMode(wavetable);
+  if (!wavetable) clearShownBank(`— press Browse to list ${kind()}s`);
+}
 
 // --- finding one of 256 --------------------------------------------------------------------------
 

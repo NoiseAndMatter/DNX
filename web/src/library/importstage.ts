@@ -121,6 +121,14 @@ type Staged =
       stem: string;
       decoded: DecodedFile;
       geometry: Geometry;
+      /**
+       * The shape the file already is, when its sample count divides into one exactly.
+       *
+       * Kept from the proposal so a resample can say what it started from: *from 15 x 2048 to
+       * 64 x 2048* is the change somebody made, where *resampled to 64 x 2048* hides half of it.
+       * Absent when nothing divided, and the panel then names the sample count instead.
+       */
+      source?: Geometry;
     }
   | {
       kind: "copy";
@@ -266,11 +274,16 @@ export function wireImport(host: ImportHost): ImportStaging {
        * yes or no on resampling; the help explains how the shape is chosen.
        */
       const fitted = plan.fit.geometry;
+      // What it was, so a resample names both ends: the shape the file divides into, or its
+      // sample count when it divides into nothing.
+      const from = entry.source
+        ? `${entry.source.waves} x ${entry.source.points}`
+        : `${entry.decoded.samples.length.toLocaleString()} samples`;
       notes.push(
         `<p>Going to store slot <strong>${entry.slot}</strong>` +
           (plan.fit.method === "exact"
             ? ` as ${fitted.waves} x ${fitted.points} — no resample required.</p>`
-            : ` — resampled to ${fitted.waves} x ${fitted.points}.</p>`),
+            : ` — resampled from ${from} to ${fitted.waves} x ${fitted.points}.</p>`),
       );
       const gain = plan.converted.gain;
       if (gain > 1.001) {
@@ -422,6 +435,7 @@ export function wireImport(host: ImportHost): ImportStaging {
           stem: stemFromFileName(file.name),
           decoded,
           geometry: proposal.geometry,
+          ...(proposal.exact ? { source: proposal.geometry } : {}),
         });
         picked ??= slot;
       } catch (error: unknown) {
