@@ -199,7 +199,9 @@ export type FitMethod =
   /** Every frame was a power-of-two cycle, resized band-limited through the transform. */
   | "spectral"
   /** The frames were spans of a recording, resized by interpolation. */
-  | "interpolated";
+  | "interpolated"
+  /** The file's own waves were kept, and the ones between them made by mixing neighbours. */
+  | "blended";
 
 export interface FitResult {
   /** Exactly `geometry.waves * geometry.points` samples, ready for `convertTable`. */
@@ -346,5 +348,78 @@ export function fitToGeometry(
       `${total.toLocaleString()} samples read as ${waves} spans of ` +
       `${framePoints.toFixed(1)} and resized to ${points} points each. The spans are not whole ` +
       `cycles, so they were interpolated rather than transformed.`,
+  };
+}
+
+/**
+ * Make `target.waves` waves out of the `source.waves` a file already has, by mixing neighbours.
+ *
+ * ## Why this exists beside `fitToGeometry`
+ *
+ * Asking `fitToGeometry` for more waves than a file holds **re-cuts** it: 7 cycles of 2048 asked
+ * for 64 waves become 64 spans of 224 samples, each stretched to 2048 — fragments of a cycle rather
+ * than cycles. The owner tried exactly that on 2026-10-14, found it sounded interesting, and kept
+ * it as the default. What they had expected was the other reading — 64 waves that travel from the
+ * first cycle to the last — and that is this.
+ *
+ * ## How
+ *
+ * Each source cycle is first brought to `target.points` through `fitToGeometry`, so a cycle is
+ * resized by the same path a re-cut uses. Output wave `i` then sits at position
+ * `i * (S - 1) / (N - 1)` along the source cycles and is the linear mix of the two either side.
+ * The first and last waves are the file's first and last; the originals in between come through
+ * unchanged only where that position is a whole number, which is when `N - 1` is a multiple of
+ * `S - 1` (7 cycles to 61, not to 64).
+ *
+ * **Linear, and it says so.** Two cycles out of phase partly cancel halfway between them, so the
+ * level dips there. Mixing magnitudes and phases instead would not, and is the obvious next step.
+ */
+export function blendToWaves(
+  samples: Float32Array | readonly number[],
+  source: Geometry,
+  target: Geometry,
+): FitResult {
+  for (const [name, value] of [
+    ["source waves", source.waves],
+    ["source points", source.points],
+    ["waves", target.waves],
+    ["points", target.points],
+  ] as const) {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new WaveriderError(`${name} must be a positive integer, got ${value}`);
+    }
+  }
+  if (samples.length !== source.waves * source.points) {
+    throw new WaveriderError(
+      `blending needs the file to be ${source.waves} x ${source.points}, and it is ` +
+        `${samples.length.toLocaleString()} samples`,
+    );
+  }
+
+  const cycles = fitToGeometry(samples, { waves: source.waves, points: target.points }).samples;
+  const { waves, points } = target;
+  const last = source.waves - 1;
+  const out = new Float32Array(waves * points);
+
+  for (let i = 0; i < waves; i++) {
+    const position = waves === 1 ? 0 : (i * last) / (waves - 1);
+    const a = Math.floor(position);
+    const b = Math.min(a + 1, last);
+    const mix = position - a;
+    const at = a * points;
+    const next = b * points;
+    for (let k = 0; k < points; k++) {
+      out[i * points + k] = (1 - mix) * cycles[at + k]! + mix * cycles[next + k]!;
+    }
+  }
+
+  return {
+    samples: out,
+    geometry: target,
+    method: "blended",
+    sourceFramePoints: source.points,
+    reason:
+      `${source.waves} waves of ${source.points} points blended into ${waves} of ${points}, ` +
+      `each new wave a mix of the two nearest.`,
   };
 }

@@ -513,7 +513,8 @@ test("a resample names where it started, not only where it ended", () => {
   assert.match(STAGING, /source\?: Geometry;/, "the staged entry keeps the shape the file already was");
   assert.match(STAGING, /proposal\.exact \? \{ source: proposal\.geometry \}/,
     "and only when the proposal divided exactly: anything else was never that shape");
-  assert.match(STAGING, /resampled from \$\{from\} to /, "the line says both ends");
+  // "resampled" or "blended", then both ends.
+  assert.match(STAGING, /"resampled"\} from \$\{from\} to /, "the line says both ends");
 });
 
 test("the pool starts on the working project, and a saved one says it is not what plays", () => {
@@ -530,4 +531,21 @@ test("the pool starts on the working project, and a saved one says it is not wha
   assert.match(SOURCE, /summary\.projectSlot === WORKING_PROJECT\s*\?\s*""/,
     "a saved project's pool must say when it is not the one playing");
   assert.match(SOURCE, /Changes play after you next load it on the/, "in words a musician acts on");
+});
+
+test("blend is a toggle that changes how the table is built, and says when it did", () => {
+  /*
+   * The owner, 2026-10-14: raising the wave count re-cuts the file, which sounded interesting and
+   * stays the default; a toggle named blend keeps the file's own waves and mixes new ones between
+   * them instead. Asserted here: the control exists, both the panel and the write build through one
+   * choice — so what plays in the preview is what gets written — and the line names the method.
+   */
+  assert.match(PAGE, /id="wavimportBlend" type="checkbox"/, "the toggle is on the page");
+  assert.match(PAGE, /<label class="lbl" for="wavimportBlend">blend<\/label>/, "and is called blend");
+  assert.match(STAGING, /blend: false,/, "off until somebody turns it on: the re-cut is the default");
+  assert.equal((STAGING.match(/choiceFor\(entry\)/g) ?? []).length, 2,
+    "the panel and the write must build the same table, from one choice");
+  assert.match(STAGING, /entry\.blend && entry\.source \? \{ blendFrom: entry\.source \}/,
+    "the blend applies only when the file has whole waves to keep");
+  assert.match(STAGING, /"blended" : "resampled"/, "the line says blended rather than resampled");
 });

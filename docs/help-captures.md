@@ -33,6 +33,9 @@ morning — the resample reasoning and the paragraph on why DNX will not clear a
 the help showed text the page no longer says. **A copy change is a reason to look at the shots**:
 nothing counts words in a PNG, and these were stale on the live site from the moment #116 merged.
 
+`wavetables-import.png` was taken once more on 2026-10-15, when the panel gained the **blend** toggle
+the same section of the help now describes.
+
 *Seeing what a table looks like* was the third, owed since 2026-10-10 and carried here without a
 reserved slot until it existed — a row naming a file nobody has taken is what `test/helppages.test.ts`
 exists to catch. It is taken at frame 24 of 64, position 0.365, which is the example the section's
