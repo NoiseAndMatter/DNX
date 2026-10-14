@@ -72,6 +72,13 @@ export interface PoolWriteHost {
   /** The pool index the left-hand grid has selected, when one is selected. */
   pickedIndex(): number | undefined;
   status: StatusWriter;
+  /**
+   * Hold the pane while this module talks to the instrument, and let it go afterwards.
+   *
+   * The +Drive takes one conversation at a time, and the pane's controls can start a second.
+   * Released **before** `reread`, because that read is the mode's own and takes the pane itself.
+   */
+  lock(on: boolean): void;
   /** Read the pool and the store again, because a write changed what is out there. */
   reread(): Promise<void>;
 }
@@ -251,6 +258,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
 
     writing = true;
+    host.lock(true);
     redraw();
     try {
       const result = await writePool({
@@ -299,6 +307,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       host.status(`The pool write failed: ${String(error)}`, "error");
     } finally {
       writing = false;
+      host.lock(false);
       // The reading in hand is now wrong about this project, so the pane asks the instrument
       // again rather than redrawing what it had. `redraw` follows from the mode's own render.
       await host.reread();

@@ -70,6 +70,14 @@ export interface ImportHost {
   bounds(): FitBounds;
   status: StatusWriter;
   /**
+   * Hold the pane while this module talks to the instrument, and let it go afterwards.
+   *
+   * The +Drive takes one conversation at a time, and the pane's controls can start a second.
+   * Released **before** `reread`, because the mode's own refresh is the next conversation and a
+   * lock still held would make it refuse itself.
+   */
+  lock(on: boolean): void;
+  /**
    * Redraw from what the pane already holds.
    *
    * For staging changes, which touch nothing on the instrument: a drop, a move, a removal.
@@ -550,6 +558,7 @@ export function wireImport(host: ImportHost): ImportStaging {
     }
 
     writing = true;
+    host.lock(true);
     $<HTMLButtonElement>("wavimportWrite").disabled = true;
     stopAudition();
     try {
@@ -590,6 +599,8 @@ export function wireImport(host: ImportHost): ImportStaging {
       );
     } finally {
       writing = false;
+      // Let go before the re-read: that read is the mode's own, and it takes the pane itself.
+      host.lock(false);
       $<HTMLButtonElement>("wavimportWrite").disabled = false;
       replan();
       renderPanel();
@@ -602,19 +613,84 @@ export function wireImport(host: ImportHost): ImportStaging {
     bound = true;
     const store = $("wavestoreGrid");
 
+    /*
+     * **Where the drop would land, marked on the slots themselves.**
+     *
+     * The owner asked for this at the instrument on 2026-10-14: an outline round the whole store
+     * said the files would be taken and nothing said where they would go. The marks come from
+     * `placeFrom`, the rule the drop itself runs, so what lights up is what will happen — the
+     * slots that take a file, the occupied ones it steps over, and a refusal when there is no
+     * room from here. Marking rows was once passed over as "256 listeners"; it needs none, since
+     * the one delegated listener can read the row under the pointer.
+     */
+    let markedAt: number | undefined;
+    let markedCount = 0;
+
+    const rowFor = (slot: number): Element | null =>
+      store.querySelector(`tr[data-slot="${slot}"]`);
+
+    function clearMarks(): void {
+      for (const row of store.querySelectorAll(".dropland, .dropskip, .dropfull")) {
+        row.classList.remove("dropland", "dropskip", "dropfull");
+      }
+      markedAt = undefined;
+      markedCount = 0;
+    }
+
+    function mark(at: number, count: number, moving: boolean): void {
+      if (markedAt === at && markedCount === count) return;
+      clearMarks();
+      markedAt = at;
+      markedCount = count;
+      // A move goes to the slot under the pointer or nowhere: `moveStaged` refuses a taken one
+      // rather than looking further down, so the mark must not promise a search.
+      if (moving) {
+        rowFor(at)?.classList.add(claimed().has(at) ? "dropfull" : "dropland");
+        return;
+      }
+      try {
+        const placed = placeFrom(at, count, claimed());
+        for (const slot of placed.slots) rowFor(slot)?.classList.add("dropland");
+        for (const slot of placed.skipped) rowFor(slot)?.classList.add("dropskip");
+      } catch {
+        rowFor(at)?.classList.add("dropfull");
+      }
+    }
+
     store.addEventListener("dragover", (event) => {
       const kinds = event.dataTransfer?.types ?? [];
       if (!kinds.includes("Files") && !kinds.includes(MOVE_TYPE)) return;
       // Required: without it the browser navigates to the dropped file.
       event.preventDefault();
       store.classList.add("dropping");
+
+      const row = (event.target as Element | null)?.closest?.("tr[data-slot]");
+      if (!(row instanceof HTMLTableRowElement)) {
+        clearMarks();
+        return;
+      }
+      /*
+       * **`items`, not `files`.** A drag in flight hides the files themselves — `files` is empty
+       * until the drop — but the item list is there and its length is the count, which is all the
+       * placement needs. A browser that gives neither falls back to one, so the row under the
+       * pointer still lights up.
+       */
+      const moving = kinds.includes(MOVE_TYPE);
+      const count = moving
+        ? 1
+        : [...(event.dataTransfer?.items ?? [])].filter((item) => item.kind === "file").length || 1;
+      mark(Number(row.dataset.slot), count, moving);
     });
     store.addEventListener("dragleave", (event) => {
-      if (event.target === store) store.classList.remove("dropping");
+      if (event.target === store) {
+        store.classList.remove("dropping");
+        clearMarks();
+      }
     });
     store.addEventListener("drop", (event) => {
       event.preventDefault();
       store.classList.remove("dropping");
+      clearMarks();
 
       const row = (event.target as Element | null)?.closest?.("tr[data-slot]");
       const at = row instanceof HTMLTableRowElement ? Number(row.dataset.slot) : undefined;

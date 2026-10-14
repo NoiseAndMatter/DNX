@@ -118,7 +118,11 @@
         </select>
         <button class="btn" id="browse" disabled>Browse</button>
       </span>
-      <span class="bargroup">
+      <!--
+        Hidden by the Wavetables mode, which has a project picker of its own: two dropdowns of the
+        same 128 names on one screen, one opening a project and one choosing whose pool to read.
+      -->
+      <span class="bargroup" id="projectGroup">
       <span class="sep"></span>
       <span class="lbl">Project</span>
       <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>

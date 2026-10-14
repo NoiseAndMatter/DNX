@@ -80,6 +80,15 @@ import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js"
 const SOUNDS_ONLY = [
   "kind",
   "browse",
+  /*
+   * **The toolbar's project picker**, because this mode has one of its own and the owner met both
+   * at once on 2026-10-14 and asked why there were two. They do different things — the toolbar
+   * opens a project into the page, POOL OF reads one project's pool record off the +Drive without
+   * opening anything — but that is a distinction for the help, not two dropdowns of the same 128
+   * names on one screen. This mode never opens a project, so the group goes with the rest of the
+   * Sounds furniture.
+   */
+  "projectGroup",
   "poolGrid",
   "patternGrid",
   "findings",
@@ -134,6 +143,15 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   const pickedSlots = new Set<number>();
   /** Where a shift-click measures its run from: the last slot clicked without shift. */
   let anchorSlot: number | undefined;
+  /**
+   * Whether a conversation with the instrument owns the pane.
+   *
+   * **Found at the instrument on 2026-10-14**: clicking anything while a read was in flight
+   * stopped the read. The +Drive takes one conversation at a time, and every control here can
+   * start a second — a row click reads a 512 KiB table, Refresh reads the store and a pool, the
+   * two write buttons write. So the controls go off and the grids stop taking clicks for the
+   * duration, rather than leaving somebody to find out by losing a read.
+   */
   let busy = false;
   /** Whether the panes are ours. `reconnected` re-asks only while they are. */
   let shown = false;
@@ -209,6 +227,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       new Set((reading?.store ?? []).filter((slot) => slot.occupied).map((slot) => slot.slot)),
     bounds: (): FitBounds => storeBounds(),
     status: host.status,
+    lock,
     redraw: () => {
       renderStore();
     },
@@ -232,6 +251,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     pickedSlots: () => chosenSlots(),
     pickedIndex: () => picked,
     status: host.status,
+    lock,
     reread: refresh,
   });
 
@@ -249,6 +269,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     projectSlot: () => Number(projects().value),
     previewSlot: () => previewSlot,
     status: host.status,
+    lock,
     reread: refresh,
   });
 
@@ -344,6 +365,48 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * Off until the gate has said *supported*, because a Refresh that answers nothing is a control
    * telling somebody the page is broken when the page is waiting for an instrument.
    */
+  /**
+   * Every control in this mode that can reach the instrument, switched off together.
+   *
+   * The mode buttons are in it because leaving mid-read abandons a conversation the pane would
+   * no longer be watching. The grids are not controls, so they take a class instead: the clicks
+   * are on their rows and cells, and refusing the pointer is one rule rather than a guard in
+   * each handler.
+   */
+  const WHILE_BUSY = [
+    "wavepoolProject",
+    "wavepoolRefresh",
+    "wavepoolAdd",
+    "wavepoolRemove",
+    "waveTableDelete",
+    "wavimportWrite",
+    "wavimportClear",
+    "wavimportRemove",
+    "modeSounds",
+    "modeWavetables",
+  ] as const;
+
+  function lock(on: boolean): void {
+    busy = on;
+    for (const id of WHILE_BUSY) {
+      const control = document.getElementById(id);
+      if (control instanceof HTMLButtonElement || control instanceof HTMLSelectElement) {
+        control.disabled = on;
+      }
+    }
+    for (const id of ["wavepoolGrid", "wavestoreGrid"]) {
+      const pane = document.getElementById(id);
+      pane?.classList.toggle("locked", on);
+      pane?.setAttribute("aria-busy", String(on));
+    }
+    // On the way out, back to whatever each control's own state allows — which is its question,
+    // not this one. `controls` does the same thing for the same reason.
+    if (!on) {
+      poolWriting.redraw();
+      tableDeleting.redraw();
+    }
+  }
+
   function controls(on: boolean): void {
     $<HTMLSelectElement>("wavepoolProject").disabled = !on;
     $<HTMLButtonElement>("wavepoolRefresh").disabled = !on;
@@ -737,6 +800,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     slider().disabled = true;
     previewMessage(`Reading store slot ${slot}…`);
     previewBusy = true;
+    lock(true);
     try {
       const file = await readStoredFile(`/waverider/${slot}`, {
         transport: apiTransport(device),
@@ -752,6 +816,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       host.status(`Could not read store slot ${slot}: ${String(error)}`, "warn");
     } finally {
       previewBusy = false;
+      lock(false);
     }
   }
 
@@ -789,8 +854,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (busy) return;
 
     const projectSlot = Number(projects().value);
-    busy = true;
-    $<HTMLButtonElement>("wavepoolRefresh").disabled = true;
+    lock(true);
     try {
       host.status(`Reading the wavetable store and the pool of project slot ${projectSlot}…`);
       picked = undefined;
@@ -824,8 +888,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       );
       host.status(`Could not read the pool: ${String(error)}`, "error");
     } finally {
-      busy = false;
-      $<HTMLButtonElement>("wavepoolRefresh").disabled = false;
+      lock(false);
     }
   }
 

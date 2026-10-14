@@ -46,6 +46,13 @@ export interface TableDeleteHost {
   /** The store slot the preview is showing, which is the one this acts on. */
   previewSlot(): number | undefined;
   status: StatusWriter;
+  /**
+   * Hold the pane while this module talks to the instrument, and let it go afterwards.
+   *
+   * The +Drive takes one conversation at a time, and the pane's controls can start a second.
+   * Released **before** `reread`, because that read is the mode's own and takes the pane itself.
+   */
+  lock(on: boolean): void;
   reread(): Promise<void>;
 }
 
@@ -144,6 +151,7 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
     }
 
     deleting = true;
+    host.lock(true);
     redraw();
     try {
       const result = await deleteTableSlot({
@@ -186,6 +194,7 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
       host.status(`The delete failed: ${String(error)}`, "error");
     } finally {
       deleting = false;
+      host.lock(false);
       // The store listing in hand is now wrong, so the pane asks the instrument again.
       await host.reread();
       redraw();

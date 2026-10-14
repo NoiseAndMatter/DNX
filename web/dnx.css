@@ -793,8 +793,27 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
   margin-right: .3rem;
   vertical-align: .05rem;
 }
-/* The whole store says it will take a drop, because a row-by-row hover would be 256 listeners. */
+/* The store says it will take a drop, and the rows say where it would land. */
 .libtablewrap.dropping { outline: 2px dashed var(--amber); outline-offset: -2px; }
+/* Ground and a bar, nothing inserted into the cells: an arrow in `::after` wrapped the row and
+   pushed the number onto a second line. */
+.libtable tbody tr.dropland { background: #2c2514; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.dropland td { color: var(--amber); }
+/* Stepped over: taken already, so the placement looked further down. */
+.libtable tbody tr.dropskip { opacity: .45; }
+/* No room from here, said before the drop rather than after it. */
+.libtable tbody tr.dropfull { background: #3a2020; box-shadow: inset 3px 0 0 var(--salmon); }
+
+/*
+ * A conversation with the instrument owns the panes.
+ *
+ * Clicks on a grid start device reads, and the +Drive takes one at a time — so while one is
+ * running the grids refuse the pointer and say so by going dim. The controls around them are
+ * disabled properly, which is what a keyboard follows; this is for the two that are not
+ * controls.
+ */
+#wavepoolGrid.locked,
+#wavestoreGrid.locked { pointer-events: none; opacity: .55; }
 
 /* The staging panel sits under the store it stages onto, never beside the pool. */
 .section.import { margin-top: .6rem; }

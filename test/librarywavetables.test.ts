@@ -380,3 +380,65 @@ test("another instrument is asked, rather than inheriting the last one's answer"
   assert.match(ERASE, /support\.state === "unsupported"/,
     "an instrument with no wavetable store must be told so");
 });
+
+test("one conversation at a time: every device path takes the pane and gives it back", () => {
+  /*
+   * **The bug this is here for**, found at the instrument on 2026-10-14: clicking anything while
+   * a read was in flight stopped the read. The +Drive takes one conversation at a time, so each
+   * path that starts one locks the pane for its duration.
+   *
+   * The release has to come **before** `reread`, because that is the mode's own refresh and it
+   * takes the lock itself — a module still holding it would make the re-read refuse, and the pane
+   * would sit there describing an instrument it had just changed.
+   */
+  assert.match(SOURCE, /function lock\(on: boolean\): void \{/, "the mode owns the lock");
+  const lockBody = /function lock\(on: boolean\): void \{([\s\S]*?)\n  \}/.exec(SOURCE);
+  assert.ok(lockBody, "lock is no longer one function — rewrite this test, do not delete it");
+  assert.ok(lockBody[1]!.includes("busy = on"), "the flag the handlers read is the lock's own");
+  assert.ok(lockBody[1]!.includes('classList.toggle("locked", on)'),
+    "the grids must stop taking clicks: their rows are what start a read");
+
+  // The mode's two own reads.
+  for (const [name, body] of [
+    ["refresh", /async function refresh\(\): Promise<void> \{([\s\S]*?)\n  \}/.exec(SOURCE)],
+    ["the preview read", /previewBusy = true;([\s\S]*?)previewBusy = false;/.exec(SOURCE)],
+  ] as const) {
+    assert.ok(body, `${name} is no longer one block — rewrite this test, do not delete it`);
+    assert.ok(body[1]!.includes("lock(true)"), `${name} must take the pane`);
+  }
+
+  for (const [name, source] of [
+    ["the staged write", STAGING],
+    ["the pool write", POOLWRITE],
+    ["the delete", DELETE],
+  ] as const) {
+    assert.match(source, /host\.lock\(true\);/, `${name} must take the pane while it writes`);
+    assert.match(source, /host\.lock\(false\);/, `${name} must give it back`);
+    const release = source.indexOf("host.lock(false);");
+    const reread = source.indexOf("host.reread()");
+    assert.ok(release < reread,
+      `${name} must release the lock before the re-read, which takes it in turn`);
+  }
+});
+
+test("a drop says where it would land, by the rule the drop itself runs", () => {
+  /*
+   * The owner, at the instrument on 2026-10-14: there was no feedback about where a dragged file
+   * would go. The marks have to come from `placeFrom` — the placement the drop runs — or the
+   * highlight becomes a second rule that drifts from the first and lights up the wrong slots.
+   */
+  const bind = /function bind\(\): void \{([\s\S]*?)\n  \}/.exec(STAGING);
+  assert.ok(bind, "bind is no longer one function — rewrite this test, do not delete it");
+  const body = bind[1]!;
+
+  assert.ok(body.includes("placeFrom("), "the marks must come from the placement rule, not a copy");
+  for (const mark of ["dropland", "dropskip", "dropfull"]) {
+    assert.ok(body.includes(mark), `a drop must be able to say ${mark}`);
+  }
+  // `files` is empty until the drop; `items` is not, and its length is the count to place.
+  assert.ok(body.includes("dataTransfer?.items"),
+    "a drag in flight hides its files, so the count comes from the item list");
+  for (const clearing of ["dragleave", "drop"]) {
+    assert.ok(body.includes(clearing), `the marks must be cleared on ${clearing}`);
+  }
+});
