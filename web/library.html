@@ -98,14 +98,27 @@
         natural reading of a greyed one beside a live one: connect to the instrument, then
         open a project already stored on it.
       -->
-      <span class="lbl">Instrument</span>
-      <button class="btn" id="connect">Connect an instrument…</button>
-      <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
-      <select id="kind" disabled title="Which library to browse">
-        <option value="preset">Presets</option>
-        <option value="kit">Kits</option>
-      </select>
-      <button class="btn" id="browse" disabled>Browse</button>
+      <!--
+        **Each group wraps as one thing.** The row is a flex wrap and its children used to be
+        loose, so when the device picker appears and the row no longer fits, what dropped to the
+        second line was *Export project* by itself — with the separator that belongs to it left
+        dangling at the end of the first. Same rule the wavetable controls were given: if
+        something has to move to the next row, everything related moves with it.
+
+        It used to take two instruments connected to see this. It now takes one emulator, which
+        is the normal state of this machine when the instrument is off.
+      -->
+      <span class="bargroup">
+        <span class="lbl">Instrument</span>
+        <button class="btn" id="connect">Connect an instrument…</button>
+        <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
+        <select id="kind" disabled title="Which library to browse">
+          <option value="preset">Presets</option>
+          <option value="kit">Kits</option>
+        </select>
+        <button class="btn" id="browse" disabled>Browse</button>
+      </span>
+      <span class="bargroup">
       <span class="sep"></span>
       <span class="lbl">Project</span>
       <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
@@ -121,16 +134,22 @@
       <button class="btn" id="driveBrowse" disabled title="Connect an instrument first, then this lists the projects stored on it">From +Drive…</button>
       <select id="driveProjects" hidden title="Which stored project to open"></select>
       <button class="btn" id="driveOpen" hidden>Open</button>
+      </span>
       <span class="spacer"></span>
-      <span class="lbl">History</span>
-      <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
-      <button class="btn" id="redo" disabled title="Nothing to redo">Redo</button>
-      <span class="sep"></span>
-      <!--
-        The only way out. Presets dragged into the pool change the project in this page and nothing
-        else — the instrument is untouched, and the file on disk is untouched until this is pressed.
-      -->
-      <button class="btn primary" id="export" disabled>Export project</button>
+      <span class="bargroup">
+        <span class="lbl">History</span>
+        <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
+        <button class="btn" id="redo" disabled title="Nothing to redo">Redo</button>
+      </span>
+      <span class="bargroup">
+        <span class="sep"></span>
+        <!--
+          The only way out. Presets dragged into the pool change the project in this page and
+          nothing else — the instrument is untouched, and the file on disk is untouched until this
+          is pressed.
+        -->
+        <button class="btn primary" id="export" disabled>Export project</button>
+      </span>
     </div>
   </section>
 

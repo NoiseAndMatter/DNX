@@ -56,6 +56,13 @@ Serve the app with `npm run web` and capture against **http://127.0.0.1:8173**.
   whose RESET cuts a track mid-figure (22 against 64, 9% reachable). An empty grid teaches nothing.
 - **Connect an instrument** for the probe, +Drive and backup shots. Those states cannot be faked and
   a mocked one would be a lie with a picture attached.
+- **The emulator counts for shots about the controls — not for shots about contents.** With the
+  variables in `docs/emulator-tests.md` set, `npm run web` offers an *Emulator* entry beside the
+  MIDI ports and the page runs against the firmware's own handlers. A picture of a panel, a dialog
+  or a staging step is as true taken that way as any other, and it publishes nothing off anybody's
+  +Drive. A picture whose **subject** is what an instrument holds — a bank of presets, a slot
+  listing, a backup — is not: the emulator's card is blank, so filling one would mean inventing the
+  contents, which is the lie this rule is about.
 
 ### Captures run at the end of a cycle, never mid-flight
 
@@ -83,8 +90,8 @@ closing step. Re-open any suspect image before committing it.
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
 | `wavetables-pane.png` | Library | The Wavetables mode | captured |
-| `wavetables-import.png` | Library | Putting a wavetable on the instrument | outstanding |
-| `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, needs a pool entry whose table was deleted |
+| `wavetables-import.png` | Library | Putting a wavetable on the instrument | outstanding, **no longer blocked** — the staging panel is a controls shot, so the emulator serves it |
+| `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, **no longer blocked** — write two tables to the emulator, pool them, delete one |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
 | `probe-drive.png` | Probe | The +Drive | captured |
