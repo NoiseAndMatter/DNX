@@ -20,6 +20,7 @@ import {
   WriteDisabled, isWriteEnabled, requireWriteEnabled, setWriteEnabled,
 } from "../web/src/writeenable.js";
 import { probeFunctionNames, probeWrite } from "./probesource.js";
+import { ERASE_CONTROL } from "../web/src/settings.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
@@ -285,6 +286,14 @@ test("every control that writes is marked, and every dangerous one has been cons
     }
   }
 
+  /*
+   * **And the one no markup contains.** The settings sheet is built at open, so the scan above
+   * cannot see its erase control however dangerous it is. Named here rather than left out, and
+   * the test below proves it really does carry the attribute and really is registered — without
+   * that, this line would be the lie instead of the omission.
+   */
+  marked.push(ERASE_CONTROL);
+
   assert.deepEqual(unconsidered, [],
     "a dangerous button must either carry data-writes-device or be listed in DOES_NOT_WRITE with " +
       "a reason it cannot reach the instrument");
@@ -316,8 +325,41 @@ test("every control that writes is marked, and every dangerous one has been cons
     // write as adding; deleting is the mode's only destructive control and the only one in the
     // Library that cannot be undone on the instrument, which is why its copy is taken before the
     // question rather than after it.
-    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `eraseWavetables` joined on 2026-10-14 and is **the only one of these that no page's markup
+    // contains**: the settings sheet is built in JavaScript, so the scan above cannot see it. That
+    // is exactly the shape of hole this test exists to refuse, so it is named through its exported
+    // id and the next test asserts the attribute is really on it. It empties the whole wavetable
+    // region, which is why it is the only control in the sheet coloured as dangerous.
+    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
+});
+
+test("a write control built in JavaScript registers itself, since no markup scan can find it", () => {
+  /*
+   * **The hole the test above would otherwise have.** It reads `web/*.html`, and the settings
+   * sheet has no markup — every row of it is built at open. A dangerous button created there is
+   * invisible to that scan, so the scan would go on passing while an ungated control sat on the
+   * panel. That is the failure mode this repository keeps paying for: a check that passes by
+   * finding nothing.
+   *
+   * So the three things that make it gated are asserted against the source directly: it carries
+   * the attribute the switch reads, it is given the id named in the list above, and the sheet
+   * runs the scan again once it is in the document — the tool row's own run happened before this
+   * element existed.
+   */
+  const source = readFileSync(join(WEB, "src", "settings.ts"), "utf8");
+
+  assert.equal(ERASE_CONTROL, "eraseWavetables", "the id is named in the list in the test above");
+  assert.match(source, /button\.id = ERASE_CONTROL;/,
+    "the erase control must take the exported id, or the list above names something that does not exist");
+  assert.match(source, /button\.setAttribute\(WRITES_DEVICE, ""\);/,
+    "the erase control must carry the attribute the write switch registers controls by");
+  assert.match(source, /^\s*gateWriteControls\(\);/m,
+    "the sheet must re-run the scan after building, because the tool row's run came first");
+
+  // And it must be the dangerous one, since nothing else on that panel suggests a press matters.
+  assert.match(source, /button\.classList\.add\("danger"\);/,
+    "the erase control must be marked dangerous");
 });
 
 test("the whole page is edged in red while writing is armed", () => {

@@ -178,7 +178,13 @@ async function openImage(key: string | null): Promise<EmulatorIdentity & { image
   await closeEmulator();
 
   const firmware = process.env[IMAGES.find((i) => i.key === wanted.key)!.env]!;
-  const bridge = await EmulatorBridge.start({ firmware, startupMs: 180_000 });
+  /*
+   * **90 s, not the test suite's three minutes.** A boot measured on this machine is about 12 s,
+   * and the person on the other end of this is looking at a page that says half a minute. A
+   * generous ceiling is right — a cold cache is slower — but one so generous that a boot which
+   * will never finish takes three minutes to say so is the wrong trade for an interactive page.
+   */
+  const bridge = await EmulatorBridge.start({ firmware, startupMs: 90_000 });
   try {
     const identity = await identifyEmulator(bridge);
     open = { key: wanted.key, bridge, identity };

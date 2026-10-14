@@ -149,6 +149,15 @@ export function gateWriteControls(...ids: readonly string[]): void {
 
 function applyGates(): void {
   if (!hasDom) return;
+  /*
+   * **Controls that have left the page are dropped first.** The settings sheet is rebuilt on every
+   * open, so its write control is a new element each time and the old one is detached. Without
+   * this the set grows by one per open and this loop spends its time setting attributes on nodes
+   * nobody can see. A `WeakSet` would collect them and cannot be walked, which is what this does.
+   */
+  for (const el of [...gated]) {
+    if (!el.isConnected) gated.delete(el);
+  }
   for (const el of gated) {
     el.setAttribute("data-write-gated", armed ? "on" : "off");
     /*

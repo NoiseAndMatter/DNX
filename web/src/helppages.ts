@@ -872,6 +872,8 @@ this browser, and none of them is about your projects.`,
         id: "settings-rows",
         heading: "What is in it",
         body: `- **Back up the +Drive** — see *Backup*.
+- **Erase the wavetable region** — take every wavetable off the instrument. See *Erasing the
+  wavetable region* below.
 - **Hide the probe** — keep the probe out of the tool row. On unless you turn it off.
 - **DNX folder** — where DNX saves the files it makes. See *The DNX folder* below.
 - **Motion** — honour your system's reduced-motion setting, or overrule it.
@@ -902,6 +904,42 @@ permission. The status line says which.
 
 **Chrome can ask again after a restart.** Settings then shows the folder as needing permission:
 press **Allow**. **Forget** stops using the folder and leaves its files where they are.`,
+      },
+      {
+        id: "settings-erase",
+        heading: "Erasing the wavetable region",
+        body: `**Erase…** takes every wavetable and every wavetable pool off the instrument, putting
+its +Drive back to how it left the factory. It is for selling the instrument, sending it for
+repair, or going back to the official firmware for good. Nothing else uses it.
+
+**FORMAT +DRIVE and a factory reset do not do this.** They leave the wavetables where they are, so
+this is the only way to remove them.
+
+Before you start:
+
+1. The instrument must be running the custom firmware, connected, and chosen in the **library**.
+2. Open the **Wavetables** tab once, so DNX can ask the instrument what it can do.
+3. Choose a **DNX folder** in these settings. DNX saves one file per wavetable, and a browser
+   blocks that many downloads — without a folder, **Erase…** will not run.
+4. Turn on **WRITE** in the tool row.
+
+Then:
+
+1. Press **Erase…**. DNX reads every wavetable off the instrument and saves a copy into your DNX
+   folder. On a full instrument this takes several minutes, and the bar says how far it has got.
+2. Read the question. It says how many wavetables and pools are going, lists them by name, and
+   says how much was saved.
+3. Press **Erase the region**, or **Cancel**. Cancelling sends nothing, and the copies stay.
+4. DNX reads the instrument back and tells you it is empty.
+
+**The copies are the only way back.** There is no undo on the instrument itself. Put a wavetable
+back by dragging its file onto a free slot in the **Wavetables** tab.
+
+**Do this before you put the official firmware back on.** The official firmware has no way to
+reach these wavetables, so going back first means installing the custom firmware again to erase,
+then the official one again afterwards.
+
+Your projects, sounds and kits are kept somewhere else on the +Drive and are not touched.`,
       },
       {
         heading: "Why the write switch is not in here",

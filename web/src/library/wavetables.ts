@@ -59,6 +59,7 @@ import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider
 import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
+import { wireWavetableErase } from "./wavetableerase.js";
 import {
   auditionFrame,
   auditionTable,
@@ -243,6 +244,25 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     reading: () => reading,
     projectSlot: () => Number(projects().value),
     previewSlot: () => previewSlot,
+    status: host.status,
+    reread: refresh,
+  });
+
+  /**
+   * Emptying the whole region, which is the mode's fourth write and lives in the settings sheet.
+   *
+   * **Wired from here even though its control is elsewhere**, because what decides whether it may
+   * be offered is the gate's answer, and this is where the gate is asked. The sheet is shared by
+   * four pages and has no business asking an instrument anything; it is lent a function, which it
+   * calls when it opens, so nothing has to be pushed to it as the device and the gate change.
+   *
+   * `features` is only answered while a device is still connected: a gate answer outliving the
+   * instrument it describes is a claim about whatever is plugged in next.
+   */
+  wireWavetableErase({
+    device: () => host.device(),
+    features: () =>
+      host.device() && support?.state === "supported" ? support.features : undefined,
     status: host.status,
     reread: refresh,
   });
