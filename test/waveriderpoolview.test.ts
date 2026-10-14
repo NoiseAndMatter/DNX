@@ -111,22 +111,23 @@ test("whether somebody wrote the pool changes what the numbers mean", () => {
   assert.equal(follows.kind, "follows-store");
   assert.equal(follows.authored, false, "nobody chose these slots, so they are not pinned");
   assert.match(describePool(follows), /follows the store/);
-  assert.match(describePool(follows), /moves every later pool slot/);
+  // **The line is a summary, not a lesson.** What the store's order does to a sound's TBL is in
+  // the help, and the owner had it taken out of the pane on 2026-10-14.
+  assert.doesNotMatch(describePool(follows), /moves every later pool slot/);
 
   // The same project read from a build where no record means no pool.
   const empty = summarisePool(record([], { generation: 0, followsStore: false }), store);
   assert.equal(empty.kind, "empty");
   assert.equal(empty.authored, false);
+  // Silence is the one thing the counts cannot say on their own, so it stays in the line.
   assert.match(describePool(empty), /plays no wavetables/);
-  assert.match(describePool(empty), /built-in Prim/);
-  // It must not tell somebody their sounds will shift: there is nothing in it to shift.
   assert.doesNotMatch(describePool(empty), /moves every later pool slot/);
 
   // And a list somebody wrote, which is pinned.
   const list = summarisePool(record(entries, { generation: 4, followsStore: false }), store);
   assert.equal(list.kind, "list");
   assert.equal(list.authored, true);
-  assert.match(describePool(list), /has a pool of its own/);
+  assert.match(describePool(list), /a pool of its own/);
 });
 
 test("the working project says so rather than calling itself slot 0", () => {

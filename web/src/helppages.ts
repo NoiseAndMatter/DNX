@@ -562,7 +562,10 @@ from differently recorded files come out equally loud.`,
       {
         id: "wavetable-pool-kinds",
         heading: "The three kinds of pool",
-        body: `The line under the pool says which kind it is.
+        body: `A pool is a record on the **+Drive**, one per project slot, not part of the
+project file — which is why an instrument has to be connected to read one.
+
+The line under the pool says which kind it is.
 
 - **No pool of its own.** Nobody has written one, so the project plays **no** wavetables. Every
   sound set to a **TBL** number plays the built-in **PRIM** until you put tables in the pool.

@@ -382,8 +382,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (answer.state === "unsupported") {
       note(
         `<p><b>This instrument has no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
-          `<p>Wavetables need a Waverider build. Nothing is wrong with the instrument or with ` +
-          `DNX.</p>`,
+          `<p>Wavetables need a Waverider build.</p>`,
       );
       host.status("No wavetable store on this instrument.", "info");
       return;
@@ -395,9 +394,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
        * answer, and not the same as the two above: the instrument was asked and said no.
        */
       note(
-        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
-          `<p>DNX takes the record's word for it rather than offering a pane whose route may not ` +
-          `answer.</p>`,
+        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>`,
       );
       host.status("This build reports no wavetable store.", "info");
       return;
@@ -410,9 +407,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
      */
     note(
       `<p><b>DNX could not find out.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
-        `<p>This is not the same as the instrument not having wavetables. Another application ` +
-        `holding the MIDI port is the usual cause: close Elektron Transfer and Overbridge, then ` +
-        `press Refresh.</p>`,
+        `<p>Close Elektron Transfer and Overbridge, then press Refresh.</p>`,
     );
     host.status("Could not ask the instrument about its wavetable store.", "warn");
   }
@@ -591,18 +586,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     const used = reading.store.filter((slot) => slot.occupied).length;
     heading(
       "Wavetable pool",
-      /*
-       * **The count alone reads as a list the project owns.** "83 of 128 used" is true of a
-       * project that follows the store and of one that chose 83 tables, and those are different
-       * facts: the first renumbers when a table is added to the store, the second does not. The
-       * note below says so in full; the heading is where somebody looks first.
-       */
-      `— ${reading.summary.tables} of ${POOL_ENTRIES}` +
-        (reading.summary.kind === "list"
-          ? " used"
-          : reading.summary.kind === "follows-store"
-            ? " — following the store, not a list of its own"
-            : " — no pool of its own, so this project plays none"),
+      // The count only. Which kind of pool it is sits in the line under the bar, and the heading
+      // used to carry it too — one fact in two places, both of them shortened on 2026-10-14.
+      `— ${reading.summary.tables} of ${POOL_ENTRIES} used`,
       "+Drive wavetables",
       /*
        * **Both drops, named where somebody is already looking.** Audio in from the computer, and
@@ -861,9 +847,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       $("wavepoolBar").hidden = false;
       heading("Wavetable pool", "— connect an instrument", "+Drive wavetables", "");
       note(
-        `<p><b>Connect an instrument.</b> A wavetable pool is a record on the +Drive, one per ` +
-          `project slot, so unlike a preset pool it is not in the project file: there is nothing ` +
-          `to show until an instrument is here to ask.</p>`,
+        `<p><b>Connect an instrument.</b> The pool is read from the +Drive, not from the ` +
+          `project file.</p>`,
       );
       return;
     }

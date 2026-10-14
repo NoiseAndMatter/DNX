@@ -204,9 +204,14 @@ export function tblLabel(index: number): string {
 }
 
 /**
- * The sentence above the grid: what this project plays, and whether the numbering is pinned.
+ * The line above the grid: which kind of pool this is, and the counts.
  *
- * Here rather than in the page because it is the one place the three states are put into words, and
+ * **A summary, not a lesson.** It used to explain what following the store does to a sound's TBL
+ * when a table is written below it — three sentences of behaviour that is the firmware's, and
+ * which the help already covers under *Three kinds of pool*. The owner's rule, 2026-10-14: the UI
+ * states what is true and the help explains it, so this says the kind and the numbers and stops.
+ *
+ * Here rather than in the page because it is the one place the three kinds are put into words, and
  * a second wording would eventually disagree with this one about what following the store means.
  */
 export function describePool(summary: PoolSummary): string {
@@ -216,19 +221,14 @@ export function describePool(summary: PoolSummary): string {
     (summary.missing === 0 ? "" : `, ${summary.missing} missing`);
 
   switch (summary.kind) {
+    // **Said rather than left to the counts.** A project with no record of its own plays nothing,
+    // and "0 table(s), 128 free" alone reads as an empty pool somebody could fill rather than as
+    // silence. The owner separated this from follows-the-store on 2026-10-13.
     case "empty":
-      return (
-        `${where} has no pool of its own, so it plays no wavetables: every sound set to a TBL ` +
-        `number plays the built-in Prim until tables are put in this project's pool.`
-      );
+      return `${where} — no pool of its own, so it plays no wavetables. ${counts}.`;
     case "follows-store":
-      return (
-        `${where} follows the store, so it plays every stored table in store-slot order: ` +
-        `${counts}. Writing a table into a free slot below the others moves every later pool ` +
-        `slot along by one, and a sound set by number plays whatever moved into it. Give the ` +
-        `project a list of its own to pin them.`
-      );
+      return `${where} — follows the store. ${counts}.`;
     default:
-      return `${where} has a pool of its own: ${counts}.`;
+      return `${where} — a pool of its own. ${counts}.`;
   }
 }
