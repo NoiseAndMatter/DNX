@@ -59,7 +59,7 @@ import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider
 import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
-import { wireWavetableErase } from "./wavetableerase.js";
+import { provideWaveriderSupport } from "../instrumentcommands.js";
 import {
   auditionFrame,
   auditionTable,
@@ -274,23 +274,18 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   });
 
   /**
-   * Emptying the whole region, which is the mode's fourth write and lives in the settings sheet.
+   * Lend the application what this mode already knows about the instrument.
    *
-   * **Wired from here even though its control is elsewhere**, because what decides whether it may
-   * be offered is the gate's answer, and this is where the gate is asked. The sheet is shared by
-   * four pages and has no business asking an instrument anything; it is lent a function, which it
-   * calls when it opens, so nothing has to be pushed to it as the device and the gate change.
+   * **The erase lives in the settings sheet and belongs to the whole application**, since the
+   * owner's rule of 2026-10-14: a command about the instrument does not depend on which tool you
+   * are sitting in. It asks the gate for itself anywhere else; here the gate has already been
+   * asked to draw these panes, so the answer is lent and the press does not ask twice.
    *
-   * It is only answered while a device is still connected: a gate answer outliving the instrument
-   * it describes is a claim about whatever is plugged in next. `reconnected` drops it as well, so
-   * the next instrument is asked rather than inheriting this one's answer.
+   * Only while a device is still connected: a gate answer outliving the instrument it describes
+   * is a claim about whatever is plugged in next. `reconnected` drops it as well, so the next
+   * instrument is asked rather than inheriting this one's answer.
    */
-  wireWavetableErase({
-    device: () => host.device(),
-    support: () => (host.device() ? support : undefined),
-    status: host.status,
-    reread: refresh,
-  });
+  provideWaveriderSupport(() => (host.device() ? support : undefined));
 
   /**
    * What this instrument will play, as the instrument reported it.

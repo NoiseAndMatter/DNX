@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { importGraph } from "./importgraph.js";
+import { code, importGraph } from "./importgraph.js";
 import { NO_CORPUS, corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
@@ -447,7 +447,13 @@ for (const [name, entry, html] of PAGES) {
     // a flowing page the pinning that keeps it in view. A page that spells the element differently
     // gets an unstyled line of text at the left edge — which is exactly what the expander showed
     // for as long as its status writer rebuilt `className` from an empty base.
-    const uses = reachableFiles(entry).some((f) => f.endsWith(`statusbar.ts`));
+    // A page uses the bar when something it reaches **calls** `statusBar()` — not when a module
+    // only names its type. Since 2026-10-14 the instrument commands import `StatusWriter` for
+    // their signature and run on the front page too, which writes no status at all; reaching the
+    // module by a type import put a requirement on a page that has nothing to show.
+    const uses = reachableFiles(entry).some(
+      (f) => !f.endsWith("statusbar.ts") && /\bstatusBar\(\)/.test(code(f)),
+    );
     if (!uses) return;
 
     const markup = readFileSync(html, "utf8");

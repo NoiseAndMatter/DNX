@@ -76,6 +76,8 @@ import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
 import { renamePresetOnDrive } from "./renamepreset.js";
 import { wireWavetables } from "./wavetables.js";
+import { provideInstrument } from "../instrument.js";
+import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { NAME_SIZE } from "@noiseandmatter/dnx-core/librarian/rename.js";
 import {
   type BankCache,
@@ -1279,6 +1281,15 @@ const wavetables = wireWavetables({
   openSlot: () => state.openSlot,
   status,
 });
+
+/*
+ * The instrument-wide commands in the settings sheet — the backup and the wavetable erase — run
+ * here too, on the owner's rule that a command about the instrument does not depend on which tool
+ * you are sitting in. What is lent is this page's own choosing, so two Digitones are chosen once,
+ * in the select this page already has.
+ */
+provideInstrument(async () => state.device ?? (await chooseDevice(picker, status)));
+wireInstrumentCommands({ status, reread: () => wavetables.refresh() });
 
 /** Which mode the page is in. Sounds, until somebody asks for the other. */
 let wavetableMode = false;

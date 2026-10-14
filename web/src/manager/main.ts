@@ -120,9 +120,8 @@ import {
 } from "../history.js";
 import { askConfirm, askText } from "../dialog.js";
 import { renderToolNav } from "../toolnav.js";
-import { registerBackup } from "../settings.js";
-import { backupDevice } from "../backup.js";
-import { backupFileName, packBackup } from "../dnxfile.js";
+import { provideInstrument } from "../instrument.js";
+import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { renderInsights, type InsightsRefusal } from "./insights.js";
 import { dn1PatternSubject } from "@noiseandmatter/dnx-core/analysis/dn1subject.js";
 import { patternSubject } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
@@ -136,69 +135,14 @@ const progress = progressBar();
 renderToolNav($("toolnav"), "manager");
 
 /**
- * Lend the settings sheet a way to reach an instrument.
+ * Lend the application this page's instrument, and wire the commands that act on one.
  *
- * The sheet is shared by four pages and three of them have no device. `chooseDevice` lives here
- * because this page owns the port picker and what to do when two Digitones are plugged in, so the
- * sheet is handed a function rather than the knowledge.
- *
- * **This reads and never writes.** `backupDevice` opens each slot, reads it and closes it; the
- * write-enable switch is not involved because nothing is sent. That is the point of a backup being
- * the first thing a nervous person does.
+ * `chooseDevice` lives on this page because it owns the port picker and what to do when two
+ * Digitones are plugged in, so what is lent is the choosing rather than a device — the sheet's
+ * commands then run through this page's own select instead of growing a second one.
  */
-registerBackup(async (report) => {
-  try {
-    report.say("Looking for an instrument…");
-    const connected = drive?.connected ?? (await chooseDevice(picker, status));
-
-    const { backup, failed } = await backupDevice(connected, {
-      onList: () => report.say("Listing the +Drive…"),
-      onProgress: ({ done, total, name, kind, bytes, stages }) => {
-        report.at(stages);
-        void done;
-        void total;
-        report.say(
-          name
-            ? `${kind === "projects" ? "Project" : kind === "kits" ? "Kit" : "Sound"} ${name}` +
-              `${bytes ? `, ${describeBytes(bytes)}` : ""}…`
-            : `Packing ${done.toLocaleString()} items…`,
-        );
-      },
-    });
-
-    const bytes = await packBackup(backup);
-    const name = backupFileName(backup.manifest);
-    const saved = await saveFile(new Blob([bytes as BlobPart], { type: "application/zip" }), name, "backups");
-
-    const lost = failed.length
-      ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ` +
-        failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
-      : "";
-    const kinds = backup.manifest.contents.join(", ");
-    /*
-     * **Said out loud rather than left to the manifest.** The drive is listed rather than assumed,
-     * so a firmware adding a directory is discovered; but the reader handles three, and a backup
-     * that passes over a fourth in silence reports success while being incomplete. Nobody reads a
-     * manifest until they are restoring, which is the worst moment to find out.
-     */
-    const missed = backup.manifest.skipped ?? [];
-    const unread = missed.length
-      ? ` The +Drive also holds ${missed.join(", ")}, which DNX cannot read — this backup does ` +
-        `not contain ${missed.length === 1 ? "it" : "them"}.`
-      : "";
-    report.say(
-      `Saved ${whereSaved(saved)} — ${backup.manifest.entries.length} items (${kinds}), ` +
-        `${describeBytes(bytes.length)}.${lost}${unread}`,
-    );
-    status(
-      missed.length ? `Backup saved, but not everything on the +Drive` : `Backup saved to ${whereSaved(saved)}`,
-      failed.length || missed.length ? "warn" : savedTone(saved),
-    );
-  } catch (error) {
-    report.say(`Backup stopped: ${String(error)}`);
-    status(`Backup stopped: ${String(error)}`, "error");
-  }
-});
+provideInstrument(async () => drive?.connected ?? (await chooseDevice(picker, status)));
+wireInstrumentCommands({ status });
 
 interface State {
   file?: LoadedProject;

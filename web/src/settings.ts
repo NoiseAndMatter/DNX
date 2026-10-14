@@ -132,6 +132,18 @@ export type BackupRunner = (report: JobReport) => Promise<void>;
 
 let runBackup: BackupRunner | undefined;
 
+/**
+ * The select the instrument commands choose with, lent by whoever wired them.
+ *
+ * Registered rather than imported: this module is also typechecked by the node project, and a
+ * device import drags WebMIDI's types in with it. The same reason the runners are lent.
+ */
+let instrumentSelect: (() => HTMLElement) | undefined;
+
+export function registerInstrumentSelect(find: () => HTMLElement): void {
+  instrumentSelect = find;
+}
+
 /** Called by a page that can reach an instrument. */
 export function registerBackup(runner: BackupRunner): void {
   runBackup = runner;
@@ -342,18 +354,33 @@ function build(panel: HTMLElement): HTMLElement {
       "Back up the +Drive",
       "Read every project, sound and kit the connected instrument holds into one .dnx file. Empty " +
         "slots are skipped. Nothing on the instrument is changed.",
-      runBackup
-        ? (() => {
-            const button = action("Back up…", () => startJob(button, runBackup!));
-            instrumentJobs.push(button);
-            return button;
-          })()
-        : (() => {
-            const disabled = action("Back up…", () => {});
-            disabled.disabled = true;
-            disabled.title = "Open the manager to reach an instrument";
-            return disabled;
-          })(),
+      (() => {
+        const holder = document.createElement("span");
+        holder.className = "erase-control";
+        const button = action("Back up…", () => {
+          if (runBackup) startJob(button, runBackup);
+        });
+        holder.append(button);
+        if (runBackup) {
+          instrumentJobs.push(button);
+        } else {
+          /*
+           * **The reason beside the button, never in its `title`.** A disabled button takes no
+           * pointer events in Chrome, so its tooltip never appears: before 2026-10-14 this row
+           * was a greyed *Back up…* with its reason invisible, and the owner asked why it was
+           * disabled. Every page but the probe registers a runner now, so this is the probe's
+           * sentence — it holds the MIDI ports its own way, and a second connection underneath it
+           * is the one thing this command must not do.
+           */
+          button.disabled = true;
+          const why = document.createElement("span");
+          why.className = "why";
+          why.textContent =
+            "The probe holds the instrument's ports itself. Back up from any other tool.";
+          holder.append(why);
+        }
+        return holder;
+      })(),
     ),
     /*
      * **The one control in DNX that destroys everything it addresses**, which is why it is
@@ -376,6 +403,11 @@ function build(panel: HTMLElement): HTMLElement {
         // Read now for the control's state, and read again at the press: the connection can go
         // away while the sheet is open, and the run is the thing that must not be stale.
         const offer = eraseOffer();
+        /*
+         * **Named for the command, and the press says what comes first.** The owner, 2026-10-14:
+         * the button may say Erase, but a press that begins by copying every table must say so
+         * before it does. That is the first of the two questions in `wavetableerase.ts`.
+         */
         const button = action("Erase…", () => {
           const run = eraseOffer().run;
           if (run) startJob(button, run);
@@ -409,6 +441,13 @@ function build(panel: HTMLElement): HTMLElement {
       "settings/settings-erase",
     ),
   ], "backup/backup-contents"));
+  /*
+   * **The select these two commands choose an instrument with, where the page has none of its
+   * own.** `chooseDevice` refuses until somebody picks when two Digitones answer, and a refusal
+   * that cannot be acted on is worse than no command at all. It stays hidden until it has
+   * options, which is every case but that one.
+   */
+  if (instrumentSelect) panel.append(instrumentSelect());
   panel.append(bar, note);
 
   panel.append(group("This application", [
