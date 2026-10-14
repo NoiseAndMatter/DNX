@@ -76,12 +76,12 @@ interface itself.
 | Manager — session model, undo/redo | done (`librarian/session.ts`) |
 | Manager — UI, first slice (open, rearrange, undo, export) | done (`/manager.html`) |
 | Manager — track operations inside a pattern | done (DN2), `librarian/trackmove.ts` |
-| WebMIDI device transfer | not started — must be **multi-device**, see §3d |
+| WebMIDI device transfer | done — every page connects, and the picker chooses between several |
 | Transfer mode, DN1 → DN2 with two devices | idea, deferred (§3d) |
 | Micro-timing features for the expander | idea, deferred (§3e) |
-| GitHub Pages and CI | not started |
+| GitHub Pages and CI | done — `verify.yml` on every push and PR, `pages.yml` deploys main |
 
-315 tests pass. `npm test` runs them; corpus-dependent tests skip cleanly without one.
+`npm run verify` is the one command: the tests, the no-corpus pass, and three typechecks. Corpus-dependent tests skip cleanly without a corpus, and emulator-dependent ones without the variables in `docs/emulator-tests.md`. A count is deliberately not written here; it was stale within a week of being written, and the run says what it is.
 
 ---
 

@@ -221,7 +221,7 @@ export function describePool(summary: PoolSummary): string {
     case "empty":
       return (
         `${where} has no pool of its own, so it plays no wavetables: every sound set to a TBL ` +
-        `number plays the built-in Prim. until tables are put in this project's pool.`
+        `number plays the built-in Prim until tables are put in this project's pool.`
       );
     case "follows-store":
       return (

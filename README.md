@@ -33,6 +33,11 @@ sound, voice pressure against the device's budget, pitch content and a key fit. 
 **Library** — browse the +Drive's 2,048 presets with their tags, search them, rename one on the
 instrument, and drag presets into a project's sound pool.
 
+**Wavetables**, inside the library — on a Digitone II whose firmware carries the wavetable store:
+see what is in the store and in each project's pool, draw a table frame by frame and hear it,
+import audio files onto free slots, put tables into a pool, and delete one. Every write saves a
+copy first.
+
 **Backup** — every project, soundbank and kit on the +Drive into one `.dnx` file, with a manifest.
 It copies the **+Drive**, not the instrument. **The instrument's global settings are not in it and
 no tool can put them there**: MIDI configuration, sync, audio routing and personalisation live in
