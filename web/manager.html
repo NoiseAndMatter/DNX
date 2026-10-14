@@ -34,6 +34,13 @@
   about a change, send it somewhere.
 -->
 <div class="bar toolbar">
+  <!--
+    **Each group wraps as one thing.** The row is a flex wrap, and with its children loose the
+    break lands wherever it falls — the device picker appearing was enough to drop one button to a
+    second line with its separator stranded at the end of the first. A `.bargroup` is one item as
+    far as the wrap is concerned, so if something moves, everything related moves with it.
+  -->
+  <span class="bargroup">
   <span class="lbl" data-help="manager/open-device">Open</span>
   <label class="btn file" id="reopen" hidden>Open another…<input type="file" id="file2" accept=".dnprj,.dn2prj"></label>
   <!--
@@ -65,10 +72,14 @@
   <label class="btn file" id="openbackup" data-help="manager/open-backup">Open a backup…<input type="file" id="backupfile" accept=".dnx,.zip"></label>
   <select id="driveprojects" hidden title="Projects stored on the device, by slot"></select>
   <button class="btn" id="opendrive" hidden disabled>Open slot</button>
+  </span>
+  <span class="bargroup">
   <span class="sep"></span>
   <span class="lbl">History</span>
   <button class="btn" id="undo" disabled>Undo</button>
   <button class="btn" id="redo" disabled>Redo</button>
+  </span>
+  <span class="bargroup">
   <span class="sep"></span>
   <span class="lbl">Out</span>
   <button class="btn primary" id="export" disabled>Export…</button>
@@ -83,6 +94,8 @@
   <button class="btn" id="savetodrive" hidden>Save to +Drive…</button>
   <select id="drivetarget" hidden title="An empty +Drive project slot"></select>
   <button class="btn danger" data-writes-device id="dodrivesave" hidden disabled>Save to slot</button>
+  </span>
+  <span class="bargroup">
   <span class="sep"></span>
   <!--
     **A view, not a command**, which is why it is its own group and why it is a toggle rather than
@@ -92,6 +105,7 @@
   <span class="lbl">View</span>
   <button class="btn" id="insights" aria-pressed="false" disabled
           title="Analyse the selected pattern">Insights</button>
+  </span>
 </div>
 
 <div class="tabs" id="tabs" hidden></div>

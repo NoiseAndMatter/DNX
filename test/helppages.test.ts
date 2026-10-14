@@ -191,3 +191,29 @@ test("the overview's model chart names what is Digitone II only, as the code gat
     assert.match(chart, row);
   }
 });
+
+test("the help never tells anybody to add one to a pool slot", () => {
+  /*
+   * **This was wrong from the day the section was written and nobody caught it by reading.** The
+   * help said to set TBL to one more than the pool slot. The value a sound *stores* is the pool
+   * index plus two, but the instrument displays that minus one — so the number on the unit is the
+   * pool slot itself, and the advice sent people one table along. Found by the firmware session
+   * reading `csrc/waverider/page.c` on 2026-10-13, not by anybody using DNX.
+   *
+   * A wording check rather than a logic one, because the logic was never wrong: `poolview.ts` has
+   * always carried `shown` and `coarse` as separate fields, and its own test says the label is
+   * `coarse - 1`. Only the prose turned a stored value into a number to type.
+   */
+  const text = JSON.stringify(HELP_PAGES);
+
+  for (const wrong of [
+    /one more than the pool slot/i,
+    /pool slot plus one/i,
+    /one above the pool slot/i,
+  ]) {
+    assert.doesNotMatch(text, wrong, "the TBL number is the pool slot; nothing is added to it");
+  }
+
+  // And the right form is present, so this test fails if the section is deleted rather than fixed.
+  assert.match(text, /T:005/, "the help should show what the cell actually reads");
+});

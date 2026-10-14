@@ -329,6 +329,26 @@ html.write-armed::after {
 }
 .sheet .act:disabled { opacity: .5; cursor: default; }
 
+/*
+  The one control in the sheet that destroys something.
+
+  Coloured standing, not only on hover as `.btn.danger` is in a tool row. A tool row's danger
+  button sits among other device controls and the row itself carries the warning; this one sits
+  between a backup and a motion preference, where nothing else on the panel suggests that pressing
+  something could matter.
+*/
+.sheet .act.danger { border-color: var(--salmon); color: var(--salmon); }
+.sheet .act.danger:hover:not(:disabled) { background: var(--salmon); color: #1a1010; }
+
+/*
+  Why a disabled control is disabled, written beside it.
+
+  A disabled button takes no pointer events, so a `title` on one is never read. These four reasons
+  each send somebody somewhere different, so they have to be on screen.
+*/
+.erase-control { display: inline-flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.erase-control .why { color: var(--muted); font-size: .82em; max-width: 22rem; }
+
 /* The backup progress bar. Hidden until something runs, because a bar at zero reads as stuck. */
 .set-progress {
   position: relative;

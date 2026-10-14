@@ -13,6 +13,7 @@ import {
   type StoreSlotFacts,
   describePool,
   summarisePool,
+  tblLabel,
 } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { type PoolRecord } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
@@ -31,7 +32,7 @@ function listing(used: Record<number, string>): StoreSlotFacts[] {
 function record(entries: (number | undefined)[], over: Partial<PoolRecord> = {}): PoolRecord {
   return {
     projectSlot: 4,
-    automatic: false,
+    followsStore: false,
     generation: 7,
     entries,
     ...over,
@@ -60,8 +61,7 @@ test("an entry naming a free store slot is MISSING, and the free count excludes 
   assert.equal(summary.cells[1]?.state, "missing");
   assert.equal(summary.cells[1]?.storeSlot, 20);
   assert.equal(summary.cells[1]?.name, undefined, "there is no name to show: the slot is empty");
-  assert.match(summary.cells[1]?.note ?? "", /deleted/);
-  assert.match(summary.cells[1]?.note ?? "", /Prim/, "and what it plays instead");
+  assert.match(summary.cells[1]?.note ?? "", /missing from the/, "it says where the table went");
 
   assert.equal(summary.tables, 1);
   assert.equal(summary.missing, 1);
@@ -78,7 +78,7 @@ test("a slot absent from the listing is not reported as a deleted table", () => 
 
   assert.equal(summary.cells[1]?.state, "missing");
   assert.match(summary.cells[1]?.note ?? "", /not in the listing/);
-  assert.doesNotMatch(summary.cells[1]?.note ?? "", /deleted/);
+  assert.doesNotMatch(summary.cells[1]?.note ?? "", /missing from the/);
 });
 
 test("two entries may name one slot, and the store side can say which", () => {
@@ -94,27 +94,40 @@ test("two entries may name one slot, and the store side can say which", () => {
 
 test("whether somebody wrote the pool changes what the numbers mean", () => {
   const entries = [9, 20];
-  const store = listing({ 9: "HS SAW", 20: "QUANT NOISE" });
+  const store: StoreSlotFacts[] = [
+    { slot: 9, occupied: true, name: "HS SAW" },
+    { slot: 20, occupied: true, name: "QUANT NOISE" },
+  ];
 
-  // A read with no stored record behind it: generation 0. The entries are real — the firmware
-  // synthesised them and that is what the project plays — but an upload moves them.
-  const untouched = summarisePool(record(entries, { generation: 0, automatic: true }), store);
-  assert.equal(untouched.kind, "untouched");
-  assert.equal(untouched.authored, false);
-  assert.match(describePool(untouched), /no pool of its own/);
-  assert.match(describePool(untouched), /sounds do not follow/);
+  /*
+   * **Three states, and the first one changed meaning on 2026-10-13.** A project with no record
+   * used to be answered by the firmware with every stored table filled in; it now plays nothing.
+   * Both answers still arrive here, because an instrument that has not been flashed sends the old
+   * one, so the summary has to describe the record in front of it rather than a default.
+   */
 
-  // Written as automatic on purpose. Same entries, same hazard, different sentence.
-  const automatic = summarisePool(record(entries, { automatic: true }), store);
-  assert.equal(automatic.kind, "automatic");
-  assert.equal(automatic.authored, false);
-  assert.match(describePool(automatic), /follow the store/);
+  // A record-less read from a build that fills it: the project really does play these.
+  const follows = summarisePool(record(entries, { generation: 0, followsStore: true }), store);
+  assert.equal(follows.kind, "follows-store");
+  assert.equal(follows.authored, false, "nobody chose these slots, so they are not pinned");
+  assert.match(describePool(follows), /follows the store/);
+  // **The line is a summary, not a lesson.** What the store's order does to a sound's TBL is in
+  // the help, and the owner had it taken out of the pane on 2026-10-14.
+  assert.doesNotMatch(describePool(follows), /moves every later pool slot/);
 
-  // A list somebody wrote. These stay put.
-  const list = summarisePool(record(entries), store);
+  // The same project read from a build where no record means no pool.
+  const empty = summarisePool(record([], { generation: 0, followsStore: false }), store);
+  assert.equal(empty.kind, "empty");
+  assert.equal(empty.authored, false);
+  // Silence is the one thing the counts cannot say on their own, so it stays in the line.
+  assert.match(describePool(empty), /plays no wavetables/);
+  assert.doesNotMatch(describePool(empty), /moves every later pool slot/);
+
+  // And a list somebody wrote, which is pinned.
+  const list = summarisePool(record(entries, { generation: 4, followsStore: false }), store);
   assert.equal(list.kind, "list");
   assert.equal(list.authored, true);
-  assert.match(describePool(list), /stay where they are/);
+  assert.match(describePool(list), /a pool of its own/);
 });
 
 test("the working project says so rather than calling itself slot 0", () => {
@@ -135,4 +148,27 @@ test("an empty list is a pool, and reads as one", () => {
   assert.equal(summary.missing, 0);
   assert.equal(summary.free, POOL_ENTRIES);
   assert.match(describePool(summary), /pool of its own/);
+});
+
+test("the TBL label is the pool slot, not the stored value", () => {
+  /*
+   * **The arithmetic that was wrong in the help from the day it was written.** A sound stores
+   * `index + 2`; the instrument displays `stored - 1` as `T:%03d`. So the number on screen is the
+   * shown pool slot and there is nothing for a person to add. DNX told people to add one until the
+   * firmware session read `csrc/waverider/page.c` on 2026-10-13 and said otherwise.
+   *
+   * Pinned at both ends because an off-by-one in the middle of the range looks right: `T:005` for
+   * slot 5 is the case somebody can check against their own instrument.
+   */
+  assert.equal(tblLabel(0), "T:001", "the first pool slot, stored as coarse 2");
+  assert.equal(tblLabel(4), "T:005", "pool slot 5 — the example the help gives");
+  assert.equal(tblLabel(POOL_ENTRIES - 1), "T:128", "the last pool slot, stored as coarse 129");
+
+  // Three digits, always: the cell is a fixed width and `T:5` is not a thing anybody will see.
+  assert.match(tblLabel(9), /^T:\d{3}$/);
+
+  // And it agrees with the summary's own `shown`, which is the number both panes print.
+  const summary = summarisePool(record([9]), [{ slot: 9, occupied: true, name: "A" }]);
+  assert.equal(tblLabel(0), `T:${String(summary.cells[0]!.shown).padStart(3, "0")}`);
+  assert.equal(summary.cells[0]!.coarse, 2, "stored is still index + 2, and is not what is shown");
 });

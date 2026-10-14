@@ -90,6 +90,40 @@
   <section class="section">
     <h2>In</h2>
     <div class="bar">
+      <!--
+        **The instrument comes first, because the project buttons depend on it.**
+        *From +Drive…* ships disabled and is only enabled by *Connect an instrument…*, so
+        with Project first the row asked you to press a button whose prerequisite was to its
+        right. The owner read it as the two buttons doing the same thing, which is the
+        natural reading of a greyed one beside a live one: connect to the instrument, then
+        open a project already stored on it.
+      -->
+      <!--
+        **Each group wraps as one thing.** The row is a flex wrap and its children used to be
+        loose, so when the device picker appears and the row no longer fits, what dropped to the
+        second line was *Export project* by itself — with the separator that belongs to it left
+        dangling at the end of the first. Same rule the wavetable controls were given: if
+        something has to move to the next row, everything related moves with it.
+
+        It used to take two instruments connected to see this. It now takes one emulator, which
+        is the normal state of this machine when the instrument is off.
+      -->
+      <span class="bargroup">
+        <span class="lbl">Instrument</span>
+        <button class="btn" id="connect">Connect an instrument…</button>
+        <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
+        <select id="kind" disabled title="Which library to browse">
+          <option value="preset">Presets</option>
+          <option value="kit">Kits</option>
+        </select>
+        <button class="btn" id="browse" disabled>Browse</button>
+      </span>
+      <!--
+        Hidden by the Wavetables mode, which has a project picker of its own: two dropdowns of the
+        same 128 names on one screen, one opening a project and one choosing whose pool to read.
+      -->
+      <span class="bargroup" id="projectGroup">
+      <span class="sep"></span>
       <span class="lbl">Project</span>
       <label class="btn filebtn">From file…<input type="file" id="projectFile" accept=".dn2prj"></label>
       <!--
@@ -101,28 +135,25 @@
         and edits meant for slot 47 would land in slot 3. This tool never writes to the instrument at
         all — it exports a file — so the distinction that complicates the manager does not exist here.
       -->
-      <button class="btn" id="driveBrowse" disabled title="List the projects stored on the instrument">From +Drive…</button>
+      <button class="btn" id="driveBrowse" disabled title="Connect an instrument first, then this lists the projects stored on it">From +Drive…</button>
       <select id="driveProjects" hidden title="Which stored project to open"></select>
       <button class="btn" id="driveOpen" hidden>Open</button>
-      <span class="sep"></span>
-      <span class="lbl">Instrument</span>
-      <button class="btn" id="connect">Connect an instrument…</button>
-      <select id="whichdevice" hidden title="Which connected instrument this page works with"></select>
-      <select id="kind" disabled title="Which library to browse">
-        <option value="preset">Presets</option>
-        <option value="kit">Kits</option>
-      </select>
-      <button class="btn" id="browse" disabled>Browse</button>
+      </span>
       <span class="spacer"></span>
-      <span class="lbl">History</span>
-      <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
-      <button class="btn" id="redo" disabled title="Nothing to redo">Redo</button>
-      <span class="sep"></span>
-      <!--
-        The only way out. Presets dragged into the pool change the project in this page and nothing
-        else — the instrument is untouched, and the file on disk is untouched until this is pressed.
-      -->
-      <button class="btn primary" id="export" disabled>Export project</button>
+      <span class="bargroup">
+        <span class="lbl">History</span>
+        <button class="btn" id="undo" disabled title="Nothing to undo">Undo</button>
+        <button class="btn" id="redo" disabled title="Nothing to redo">Redo</button>
+      </span>
+      <span class="bargroup">
+        <span class="sep"></span>
+        <!--
+          The only way out. Presets dragged into the pool change the project in this page and
+          nothing else — the instrument is untouched, and the file on disk is untouched until this
+          is pressed.
+        -->
+        <button class="btn primary" id="export" disabled>Export project</button>
+      </span>
     </div>
   </section>
 
@@ -160,15 +191,31 @@
         it can show the pool of a project nobody has opened — including the working one, the only
         pool with a second writer.
       -->
-      <div class="bar" id="wavepoolBar" hidden>
+      <div class="bar" id="wavepoolBar" data-help="library/wavetable-add-to-pool" hidden>
         <span class="lbl">Pool of</span>
         <select id="wavepoolProject" disabled title="Which project's wavetable pool to read">
           <option value="0">Working project</option>
         </select>
         <button class="btn" id="wavepoolRefresh" disabled title="Read the pool and the store again">Refresh</button>
+        <!--
+          The pool's one write. Ships disabled and is turned on by `poolwrite.redraw` from the
+          state the two panes are in, never by its own handler: a control whose only enabling
+          line sits inside the run it starts can never be pressed, which is how the
+          staged-import write shipped unreachable with a green suite.
+        -->
+        <button class="btn danger" data-writes-device id="wavepoolAdd" disabled title="Click a table in the store on the right, then press this.">Add to pool</button>
+        <button class="btn danger" data-writes-device id="wavepoolRemove" disabled title="Click a pool slot that holds a table, then press this. The table stays in the store.">Remove from pool</button>
       </div>
-      <div class="grid" id="wavepoolGrid" hidden></div>
+      <!--
+        **Above the grid, because it is the answer to what the grid shows.** A project saved
+        before the wavetable firmware has no pool of its own, so the instrument answers a read
+        with every stored table in store order — 83 of them, filling the grid. The note says
+        exactly that, and under 128 cells it was a thousand pixels below the thing it explains.
+        The owner read the pane as a bug on 2026-10-13, which it was: the data was right and
+        the page never said why.
+      -->
       <div class="plan hint" id="wavepoolNote" data-help="library/wavetable-pool-kinds" hidden></div>
+      <div class="grid" id="wavepoolGrid" hidden></div>
     </section>
 
     <!--
@@ -214,25 +261,88 @@
         the slot that was asked for, and claiming it for every row would be 256 reads nobody asked
         for.
 
-        There is no Play control. This mode is read-only by construction, and the two things Play
-        could mean — synthesising the table in the browser, or driving the instrument's pool
-        position — are a new capability and a device write respectively.
+        **Play arrived on 2026-10-13 and the reason it was absent no longer holds.** It was left
+        out because the two things it could mean were a new capability and a device write: the
+        first of those is now built, so Play synthesises the table in this browser and nothing is
+        sent to the instrument. It reads the table the way the player does, interpolating between
+        samples and between frames and wrapping each cycle, because a preview that read it
+        differently would make a wrong table sound correct. Driving the instrument's own pool
+        position is still a device write and still not here.
       -->
       <div class="wfpanel" id="wavePreview" hidden>
-        <div class="wfhead">
+        <div class="wfhead" data-help="library/wavetable-remove">
           <span class="wflabel">Wavetable preview</span>
           <span class="wfmeta" id="wavePreviewWhere"></span>
           <span class="wfspacer"></span>
           <span class="wfmeta" id="wavePreviewGeom"></span>
+          <!--
+            Acts on the table named to the left, which is the one drawn below. In the header
+            rather than beside Play, because that row is the audition and this is not audio.
+          -->
+          <button class="btn danger" data-writes-device id="waveTableDelete" disabled title="Delete this table from the instrument. A copy is saved first; there is no undo on the instrument.">Delete table</button>
         </div>
         <div class="wfstage" id="wavePreviewStage"></div>
         <div class="wfcontrols">
-          <label class="lbl" for="wavePreviewPos">Position</label>
-          <input
-            id="wavePreviewPos" type="range" min="1" max="2" step="1" value="1"
-            title="Which frame of the table to pick out of the stack"
-          >
+          <!--
+            **Each label travels with its control.** These wrap, and when they did so as eight
+            separate items the V: label stayed on the first line while its slider dropped to the
+            second — a label on its own, labelling nothing anybody could see. A group is one flex
+            item, so a pair either fits together or moves together.
+          -->
+          <span class="wfgroup wfgroup-pos">
+            <label class="lbl" for="wavePreviewPos">P:</label>
+            <input
+              id="wavePreviewPos" aria-label="Position in the table" type="range" min="1" max="2" step="1" value="1"
+              title="Which frame of the table to pick out of the stack"
+            >
+          </span>
           <span class="wfpos" id="wavePreviewPosLabel"></span>
+          <span class="wfgroup">
+            <button class="btn" id="wavePreviewPlay" title="Hear the frame the slider is on, at middle C. Nothing is sent to the instrument.">Play</button>
+            <button class="btn" id="wavePreviewSweep" title="Hear it travel from the first frame to the last">Sweep</button>
+            <button class="btn" id="wavePreviewStop" title="Stop the audition">Stop</button>
+          </span>
+          <span class="wfgroup">
+            <label class="lbl" for="wavePreviewVolume">V:</label>
+            <input class="wfvol" id="wavePreviewVolume" aria-label="Audition volume" type="range" min="0" max="100" step="1" value="80"
+                   title="How loud an audition plays in this browser. Nothing is sent to the instrument.">
+          </span>
+        </div>
+      </div>
+
+      <!--
+        **Staging, not a dialog.** Audio files dropped on a store slot land here as pending rows and
+        nothing is converted or sent until Write asks once, naming every slot. A sheet per file
+        would be seventy-five sheets for a pool fill, which is the problem the probe's batch control
+        exists to avoid, and it turns the safeguard into something people click through rather than
+        a question they read.
+
+        The geometry is typed because a length cannot tell 16 x 512 from 32 x 256, and the player
+        cuts the table up by those two numbers, so a wrong pair is a table read as something else.
+      -->
+      <div class="section import" id="wavimport" hidden>
+        <h2 data-help="library/wavetable-import">Staged for import <span class="count" id="wavimportCount"></span></h2>
+        <div class="plan hint" id="wavimportNote"></div>
+        <div id="wavimportBody" hidden>
+          <!-- The ? sits on the geometry row, which is where "what is a point" gets asked. -->
+          <div class="bar" data-help="library/wavetable-shape">
+            <label class="lbl" for="wavimportName">name</label>
+            <input id="wavimportName" type="text" size="18" title="The stem. The stored name gets the _wt convention appended.">
+            <label class="lbl" for="wavimportWaves">waves</label>
+            <input id="wavimportWaves" type="number" min="1" max="64" step="1" title="Frames in the table.">
+            <label class="lbl" for="wavimportPoints">points</label>
+            <input id="wavimportPoints" type="number" min="64" max="4096" step="1" title="Points per frame. A power of two.">
+          </div>
+          <div class="bar">
+            <button class="btn" id="wavimportPlay" title="Hear this table at middle C">Play</button>
+            <button class="btn" id="wavimportSweep" title="Hear it travel from the first frame to the last">Sweep</button>
+            <button class="btn" id="wavimportStop" title="Stop the audition">Stop</button>
+            <button class="btn" id="wavimportRemove" title="Take this one off the staging list">Remove</button>
+          </div>
+        </div>
+        <div class="bar">
+          <button class="btn danger" data-writes-device id="wavimportWrite" disabled title="Write every staged table, asking once and naming every slot">Write staged tables</button>
+          <button class="btn" id="wavimportClear" title="Discard the whole staging list. Nothing was sent.">Discard all</button>
         </div>
       </div>
     </section>

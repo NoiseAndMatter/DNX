@@ -9,28 +9,25 @@ Until a PNG is on disk, its slot renders a labelled placeholder carrying the sec
 That is harmless and deliberate: **sections are written before the shots are taken**, so a page
 half-captured reads as in progress rather than broken.
 
-## Capture status, 2026-10-12
+## Capture status, 2026-10-14
 
-**23 of the 24 referenced PNGs exist.** 9 pages, 39 sections, 24 screenshot slots. Counted from the
+**26 of the 26 referenced PNGs exist.** 9 pages, 41 sections, 26 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-The one outstanding shot is the Library's **When a cell says MISSING**. It needs a pool entry
-naming a store slot that is empty, which means deleting a stored table that a pool names. **That is
-a write, so it waits for a session where the owner is arming writes anyway.** It is the only shot in
-the manifest that cannot be taken by reading.
+**Nothing is outstanding.** The last three went in on 2026-10-14, against the Waverider emulator
+rather than an instrument: three WAV files generated in the page, written to an empty store, one
+pooled and then deleted. All three are pictures of controls and of what DNX itself drew, so the
+emulator's blank card is not a limit on them — see the rule below.
 
 `wavetables-pane.png` was taken 2026-10-09 against a Digitone II whose firmware carries the
 wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
 reach main and render a placeholder there. The count below is what catches that, which is why it is
 counted from `web/help/` rather than written down.
 
-**A third is owed but not yet in the manifest.** *Seeing what a table looks like*, added
-2026-10-10 with the wavetable preview, describes a surface rather than a rule, so by the test
-above it should carry a picture. It has no `image` yet because the drawing needs a table: an
-instrument with the wavetable store, a slot with something in it, and the preview open on that
-slot. Reading is enough to take it — no write — so it goes with the next session that has the
-instrument to hand. A slot is deliberately not reserved for it here: a row in the manifest
-naming a file nobody has taken is what `test/helppages.test.ts` exists to catch.
+*Seeing what a table looks like* was the third, owed since 2026-10-10 and carried here without a
+reserved slot until it existed — a row naming a file nobody has taken is what `test/helppages.test.ts`
+exists to catch. It is taken at frame 24 of 64, position 0.365, which is the example the section's
+own text uses.
 
 The two Library preset shots came last in the first round, because both are the instrument's +Drive
 pane and it holds nothing until a **Digitone II** answers. They were taken against `/soundbanks/A`,
@@ -53,6 +50,13 @@ Serve the app with `npm run web` and capture against **http://127.0.0.1:8173**.
   whose RESET cuts a track mid-figure (22 against 64, 9% reachable). An empty grid teaches nothing.
 - **Connect an instrument** for the probe, +Drive and backup shots. Those states cannot be faked and
   a mocked one would be a lie with a picture attached.
+- **The emulator counts for shots about the controls — not for shots about contents.** With the
+  variables in `docs/emulator-tests.md` set, `npm run web` offers an *Emulator* entry beside the
+  MIDI ports and the page runs against the firmware's own handlers. A picture of a panel, a dialog
+  or a staging step is as true taken that way as any other, and it publishes nothing off anybody's
+  +Drive. A picture whose **subject** is what an instrument holds — a bank of presets, a slot
+  listing, a backup — is not: the emulator's card is blank, so filling one would mean inventing the
+  contents, which is the lie this rule is about.
 
 ### Captures run at the end of a cycle, never mid-flight
 
@@ -80,7 +84,9 @@ closing step. Re-open any suspect image before committing it.
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
 | `wavetables-pane.png` | Library | The Wavetables mode | captured |
-| `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, needs a pool entry whose table was deleted |
+| `wavetables-import.png` | Library | Putting a wavetable on the instrument | captured |
+| `wavetables-missing.png` | Library | When a cell says MISSING | captured |
+| `wavetables-preview.png` | Library | Seeing what a table looks like | captured |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
 | `probe-drive.png` | Probe | The +Drive | captured |

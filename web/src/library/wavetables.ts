@@ -10,13 +10,16 @@
  * 2026-10-06), and rather than a third `LibraryKind` because the preset machinery does not fit:
  * the store is not banked, there are no tags, and the pool is not in the project file at all.
  *
- * ## Read-only, deliberately, and not for long
+ * ## Two writes, and neither of them lives in this file
  *
- * Nothing here writes. ADD TO POOL, CLEAR SLOT, DELETE and Rename each need the confirmation and
- * backup path every write in DNX goes through, and the gate's own answer about whether this build
- * serves them — which `features` already carries. Shipping the reading first means the thing that
- * can tell somebody *your sound plays Prim. because that table was deleted* arrives without
- * waiting for the half that can break something.
+ * The mode shipped read-only, which is what let the reading arrive before the confirmation path
+ * existed. It now has two writes, and both sit in neighbours: `importstage.ts` puts tables into the
+ * **store**, and `poolwrite.ts` puts a stored table into this project's **pool**. Keeping the
+ * renderer itself free of them is what makes two entry points reviewable instead of a handful
+ * scattered through the drawing code, and `test/librarywavetables.test.ts` holds that line.
+ *
+ * CLEAR SLOT, DELETE and Rename are still not built. Clearing in particular is argued against in
+ * `poolview.ts`: it digs a hole the next add falls into.
  *
  * ## The pool is not in the project file
  *
@@ -35,7 +38,7 @@
 import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
-import { renderGrid, type SlotView } from "../grid.js";
+import { GridDrag, renderGrid, type SlotView } from "../grid.js";
 import { IDS_FOR, pageMessageIds, reserveMessageIds } from "../messageids.js";
 import { type StatusWriter } from "../statusbar.js";
 import {
@@ -52,6 +55,19 @@ import { waterfall } from "@noiseandmatter/dnx-core/waverider/waterfall.js";
 import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { paintWaterfall } from "./waterfallview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
+import { wireImport } from "./importstage.js";
+import { wirePoolWrite } from "./poolwrite.js";
+import { wireTableDelete } from "./tabledelete.js";
+import { wireWavetableErase } from "./wavetableerase.js";
+import {
+  auditionFrame,
+  auditionTable,
+  auditionVolume,
+  setAuditionVolume,
+  stopAudition,
+} from "./tableaudio.js";
+import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
 
 /**
  * Elements that belong to Sounds mode and have no meaning in this one.
@@ -64,6 +80,15 @@ import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 const SOUNDS_ONLY = [
   "kind",
   "browse",
+  /*
+   * **The toolbar's project picker**, because this mode has one of its own and the owner met both
+   * at once on 2026-10-14 and asked why there were two. They do different things — the toolbar
+   * opens a project into the page, POOL OF reads one project's pool record off the +Drive without
+   * opening anything — but that is a distinction for the help, not two dropdowns of the same 128
+   * names on one screen. This mode never opens a project, so the group goes with the rest of the
+   * Sounds furniture.
+   */
+  "projectGroup",
   "poolGrid",
   "patternGrid",
   "findings",
@@ -81,6 +106,7 @@ const OURS = [
   "wavepoolNote",
   "wavestoreGrid",
   "wavePreview",
+  "wavimport",
 ] as const;
 
 export interface WavetableHost {
@@ -96,6 +122,8 @@ export interface WavetableMode {
   show(on: boolean): Promise<void>;
   /** Read the pool and the store again. */
   refresh(): Promise<void>;
+  /** Another instrument answered: forget what the last one said, and ask this one. */
+  reconnected(): Promise<void>;
 }
 
 export function wireWavetables(host: WavetableHost): WavetableMode {
@@ -103,9 +131,30 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   let reading: PoolReading | undefined;
   /** The pool index last clicked, so its note stays on screen. */
   let picked: number | undefined;
-  /** The store slot last clicked. Rename and Delete will act on this. */
-  let pickedSlot: number | undefined;
+  /**
+   * The store slots selected, in the house gesture: click, shift-click for a run, ctrl-click to
+   * add or remove one.
+   *
+   * A set rather than one slot because the owner asked for the same gesture the manager uses to
+   * move patterns between projects — select several, drag them onto a destination. A pane with
+   * one selection and a button is a second vocabulary for the same idea, and
+   * `one-visual-language-across-tools` is the rule it was breaking.
+   */
+  const pickedSlots = new Set<number>();
+  /** Where a shift-click measures its run from: the last slot clicked without shift. */
+  let anchorSlot: number | undefined;
+  /**
+   * Whether a conversation with the instrument owns the pane.
+   *
+   * **Found at the instrument on 2026-10-14**: clicking anything while a read was in flight
+   * stopped the read. The +Drive takes one conversation at a time, and every control here can
+   * start a second — a row click reads a 512 KiB table, Refresh reads the store and a pool, the
+   * two write buttons write. So the controls go off and the grids stop taking clicks for the
+   * duration, rather than leaving somebody to find out by losing a read.
+   */
   let busy = false;
+  /** Whether the panes are ours. `reconnected` re-asks only while they are. */
+  let shown = false;
   /** What Sounds mode had hidden when this mode took the panes. See `SOUNDS_ONLY`. */
   const hiddenBefore = new Map<string, boolean>();
   /**
@@ -116,6 +165,145 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * *Wavetable pool* over the preset pool. Found by opening the page and pressing both tabs.
    */
   const titlesBefore = new Map<string, string>();
+
+  /** The two grids a drag can cross. Named, because `GridDrag` judges a drop by where it began. */
+  const STORE_GRID = "wavestore";
+  const POOL_GRID = "wavepool";
+
+  /**
+   * Dragging tables out of the store and onto a pool slot.
+   *
+   * **The same controller the manager moves patterns with**, which is the point: the owner asked
+   * for this gesture by comparing it to moving patterns between projects, and a second drag
+   * implementation would be a second set of rules about what a drop means.
+   *
+   * Store to pool only. A drop anywhere else is refused by returning no hint, which leaves the
+   * browser's own "no" cursor — clearer than a message, and nothing has to draw it.
+   */
+  const drag = new GridDrag({
+    onDragStart: (grid, index) => {
+      if (grid !== STORE_GRID) return [index];
+      // Dragging one of several selected drags the whole selection; dragging anything else takes
+      // the selection with it, so the two can never disagree about what is in flight.
+      if (!pickedSlots.has(index)) {
+        pickedSlots.clear();
+        pickedSlots.add(index);
+        anchorSlot = index;
+        renderStore();
+        poolWriting.redraw();
+      }
+      return chosenSlots();
+    },
+    hintFor: (from, grid, index) => {
+      if (from.grid !== STORE_GRID || grid !== POOL_GRID) return undefined;
+      // What was dragged, unfiltered. Which of it can go into a pool is one decision and it is
+      // not taken here — `describeDrop` and the write both ask `planAdd`, so the hint and the
+      // result cannot describe different writes.
+      const described = poolWriting.describeDrop(from.indices, index);
+      if (!described) return undefined;
+      // `copy`, not `move`: the table stays in the store and every other project keeps it. Saying
+      // "move" would be the page claiming something the instrument does not do.
+      return { action: "copy", label: described.label, status: described.status };
+    },
+    onDrop: (from, grid, index) => {
+      if (from.grid !== STORE_GRID || grid !== POOL_GRID) return;
+      // `addAt` drops the empty slots and says so if nothing is left.
+      void poolWriting.addAt(from.indices, index);
+    },
+    onStatus: (message, kind) => {
+      if (message !== "") host.status(message, kind ?? "info");
+    },
+  });
+
+  /**
+   * Staging imports onto the store, which is the only thing in this mode that writes.
+   *
+   * Handed accessors rather than the reading itself, so it cannot hold a stale copy of a listing
+   * this module re-reads on every Refresh.
+   */
+  const staging = wireImport({
+    device: () => host.device(),
+    occupied: () =>
+      new Set((reading?.store ?? []).filter((slot) => slot.occupied).map((slot) => slot.slot)),
+    bounds: (): FitBounds => storeBounds(),
+    status: host.status,
+    lock,
+    redraw: () => {
+      renderStore();
+    },
+    // The mode's own refresh, which reads the pool and the store from the instrument. A write
+    // changes what is out there, so redrawing the reading in hand would show the slots that were
+    // just written as still free.
+    reread: refresh,
+  });
+
+  /**
+   * Placing a stored table into this project's pool, which is the mode's second write.
+   *
+   * Handed the same kind of accessors as the staging for the same reason, and the two selections
+   * as well: the control's label and whether it can be pressed are decided by what the panes have
+   * selected, so it has to read that from here rather than keep its own copy.
+   */
+  const poolWriting = wirePoolWrite({
+    device: () => host.device(),
+    reading: () => reading,
+    projectSlot: () => Number(projects().value),
+    pickedSlots: () => chosenSlots(),
+    pickedIndex: () => picked,
+    status: host.status,
+    lock,
+    reread: refresh,
+  });
+
+  /**
+   * Deleting a stored table, which is the mode's third write and the only destructive one.
+   *
+   * Takes the **previewed** slot rather than the selected row: the control sits in the preview's
+   * own header, under the name and the geometry of the table it would remove, so the thing being
+   * deleted is the thing on screen. A row selected and then not read — which happens while a read
+   * is in flight — is not a table anybody has looked at.
+   */
+  const tableDeleting = wireTableDelete({
+    device: () => host.device(),
+    reading: () => reading,
+    projectSlot: () => Number(projects().value),
+    previewSlot: () => previewSlot,
+    status: host.status,
+    lock,
+    reread: refresh,
+  });
+
+  /**
+   * Emptying the whole region, which is the mode's fourth write and lives in the settings sheet.
+   *
+   * **Wired from here even though its control is elsewhere**, because what decides whether it may
+   * be offered is the gate's answer, and this is where the gate is asked. The sheet is shared by
+   * four pages and has no business asking an instrument anything; it is lent a function, which it
+   * calls when it opens, so nothing has to be pushed to it as the device and the gate change.
+   *
+   * It is only answered while a device is still connected: a gate answer outliving the instrument
+   * it describes is a claim about whatever is plugged in next. `reconnected` drops it as well, so
+   * the next instrument is asked rather than inheriting this one's answer.
+   */
+  wireWavetableErase({
+    device: () => host.device(),
+    support: () => (host.device() ? support : undefined),
+    status: host.status,
+    reread: refresh,
+  });
+
+  /**
+   * What this instrument will play, as the instrument reported it.
+   *
+   * `support.features.playable` is absent on a build that does not report the capability, and the
+   * fallback is then the one `unplayableReason` applies with no bounds: 16 x 512 and nothing else.
+   * **Taking the same fallback is what keeps the two from disagreeing** — proposing a shape this
+   * pane would then call unplayable is the failure this function exists to avoid, and it is the
+   * failure that was live while the capability reader was unmerged.
+   */
+  function storeBounds(): FitBounds {
+    return support?.state === "supported" ? support.features.playable ?? STOCK_BOUNDS : STOCK_BOUNDS;
+  }
   /**
    * And where the two panes' `?` markers pointed.
    *
@@ -125,6 +313,38 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   const helpBefore = new Map<HTMLElement, string>();
 
   const projects = (): HTMLSelectElement => $<HTMLSelectElement>("wavepoolProject");
+
+  /** The selection in slot order, which is the order a drop lays them into the pool. */
+  function chosenSlots(): number[] {
+    return [...pickedSlots].sort((a, b) => a - b);
+  }
+
+  /**
+   * Apply a click to the selection, the same way every other grid on this page does.
+   *
+   * Plain click replaces it, ctrl or cmd toggles one, shift takes the run from the anchor. The
+   * anchor only moves on a plain or toggling click, so shift-clicking twice re-measures from the
+   * same place rather than growing the run each time.
+   */
+  function selectStore(slot: number, event: MouseEvent): void {
+    const additive = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && anchorSlot !== undefined) {
+      const lo = Math.min(anchorSlot, slot);
+      const hi = Math.max(anchorSlot, slot);
+      if (!additive) pickedSlots.clear();
+      for (let at = lo; at <= hi; at++) pickedSlots.add(at);
+      return;
+    }
+    if (additive) {
+      if (pickedSlots.has(slot)) pickedSlots.delete(slot);
+      else pickedSlots.add(slot);
+      anchorSlot = slot;
+      return;
+    }
+    pickedSlots.clear();
+    pickedSlots.add(slot);
+    anchorSlot = slot;
+  }
 
   function note(html: string): void {
     const box = $("wavepoolNote");
@@ -145,9 +365,73 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * Off until the gate has said *supported*, because a Refresh that answers nothing is a control
    * telling somebody the page is broken when the page is waiting for an instrument.
    */
+  /**
+   * Every control in this mode that can reach the instrument, switched off together.
+   *
+   * The mode buttons are in it because leaving mid-read abandons a conversation the pane would
+   * no longer be watching. The grids are not controls, so they take a class instead: the clicks
+   * are on their rows and cells, and refusing the pointer is one rule rather than a guard in
+   * each handler.
+   */
+  const WHILE_BUSY = [
+    "wavepoolProject",
+    "wavepoolRefresh",
+    "wavepoolAdd",
+    "wavepoolRemove",
+    "waveTableDelete",
+    "wavimportWrite",
+    "wavimportClear",
+    "wavimportRemove",
+    "modeSounds",
+    "modeWavetables",
+  ] as const;
+
+  function lock(on: boolean): void {
+    busy = on;
+    for (const id of WHILE_BUSY) {
+      const control = document.getElementById(id);
+      if (control instanceof HTMLButtonElement || control instanceof HTMLSelectElement) {
+        control.disabled = on;
+      }
+    }
+    for (const id of ["wavepoolGrid", "wavestoreGrid"]) {
+      const pane = document.getElementById(id);
+      pane?.classList.toggle("locked", on);
+      pane?.setAttribute("aria-busy", String(on));
+    }
+    // On the way out, back to whatever each control's own state allows — which is its question,
+    // not this one. `controls` does the same thing for the same reason.
+    if (!on) {
+      poolWriting.redraw();
+      tableDeleting.redraw();
+    }
+  }
+
   function controls(on: boolean): void {
     $<HTMLSelectElement>("wavepoolProject").disabled = !on;
     $<HTMLButtonElement>("wavepoolRefresh").disabled = !on;
+    // Off with them, and back on only where the panes' own state allows it, which is the write's
+    // own question rather than this one.
+    if (on) {
+      poolWriting.redraw();
+      tableDeleting.redraw();
+    } else {
+      for (const id of ["wavepoolAdd", "wavepoolRemove", "waveTableDelete"]) {
+        $<HTMLButtonElement>(id).disabled = true;
+      }
+    }
+  }
+
+  /**
+   * The gate's reason, started as a sentence of its own.
+   *
+   * `why` is written to be read after a colon, so it begins in lower case — and each of the three
+   * notes below puts it after a full stop, which read "no wavetable store. the root listing
+   * offers…". Capitalised here rather than in the core, because where it sits is the caller's
+   * decision and the next caller may want it mid-sentence.
+   */
+  function asSentence(why: string): string {
+    return why.charAt(0).toUpperCase() + why.slice(1);
   }
 
   /** The sentence for a state that is not *supported*, and the reason it is not a failure. */
@@ -160,9 +444,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
 
     if (answer.state === "unsupported") {
       note(
-        `<p><b>This instrument has no wavetable store.</b> ${escapeHtml(answer.why)}.</p>` +
-          `<p>Wavetables need a Waverider build. Nothing is wrong with the instrument or with ` +
-          `DNX.</p>`,
+        `<p><b>This instrument has no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
+          `<p>Wavetables need a Waverider build.</p>`,
       );
       host.status("No wavetable store on this instrument.", "info");
       return;
@@ -174,9 +457,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
        * answer, and not the same as the two above: the instrument was asked and said no.
        */
       note(
-        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(answer.why)}.</p>` +
-          `<p>DNX takes the record's word for it rather than offering a pane whose route may not ` +
-          `answer.</p>`,
+        `<p><b>This build reports no wavetable store.</b> ${escapeHtml(asSentence(answer.why))}.</p>`,
       );
       host.status("This build reports no wavetable store.", "info");
       return;
@@ -188,10 +469,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
      * the clothes of a considered one, and somebody would stop looking.
      */
     note(
-      `<p><b>DNX could not find out.</b> ${escapeHtml(answer.why)}.</p>` +
-        `<p>This is not the same as the instrument not having wavetables. Another application ` +
-        `holding the MIDI port is the usual cause: close Elektron Transfer and Overbridge, then ` +
-        `press Refresh.</p>`,
+      `<p><b>DNX could not find out.</b> ${escapeHtml(asSentence(answer.why))}.</p>` +
+        `<p>Close Elektron Transfer and Overbridge, then press Refresh.</p>`,
     );
     host.status("Could not ask the instrument about its wavetable store.", "warn");
   }
@@ -241,8 +520,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   function cellView(cell: PoolCell): SlotView {
     return {
       index: cell.index,
-      // The shown slot, 1..128. The built-ins Prim. and Harm. sit outside this numbering, and the
-      // coarse value a sound stores is this number plus one. See 8w on the three numbers.
+      // The shown slot, 1..128, which is also what the instrument TBL cell reads: T:005 for
+      // slot 5. The built-ins sit outside this numbering and read PRIM and HARM. The value a sound
+      // *stores* is this number plus one, and nobody sees it. See 8w on the three numbers.
       id: String(cell.shown),
       name:
         cell.state === "table"
@@ -254,7 +534,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         cell.state === "table"
           ? `store ${cell.storeSlot}`
           : cell.state === "missing"
-            ? "table deleted"
+            ? "not on +Drive"
             : "free",
       occupied: cell.state === "table",
       /*
@@ -279,36 +559,23 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         picked = index;
         renderPool();
         renderStore();
+        // The label says which slot it will write into, so it changes with the selection.
+        poolWriting.redraw();
       },
+      drag: { controller: drag, grid: POOL_GRID },
     });
 
-    const cell = picked === undefined ? undefined : summary.cells[picked];
-    const chosen =
-      cell === undefined
-        ? ""
-        : `<p><b>Slot ${cell.shown}</b> — ` +
-          (cell.state === "empty"
-            ? "nothing here. ADD TO POOL on the instrument fills the first free slot."
-            : `store slot ${cell.storeSlot}${cell.name === undefined ? "" : ` · ${escapeHtml(cell.name)}`}` +
-              `. A sound reaches it as coarse ${cell.coarse}.`) +
-          `${cell.note === undefined ? "" : ` ${escapeHtml(cell.note)}`}</p>`;
-
+    /*
+     * **The counts, and the one warning.** Everything else the pane used to print here — what the
+     * selected slot holds, its TBL number, which store slots are named twice — is already on the
+     * grid or in the help, and the owner read the paragraphs as noise in front of it.
+     */
     note(
       `<p>${escapeHtml(describePool(summary))}</p>` +
         (summary.missing === 0
           ? ""
-          : `<p class="warn"><b>${summary.missing} slot(s) name a table that is gone.</b> Each ` +
-            `plays the built-in Prim. Only clearing the slot frees it, and DNX will not do that ` +
-            `on its own: clearing one digs a hole the next add falls into, and every sound still ` +
-            `pointing at it would then play an unrelated table.</p>`) +
-        (summary.repeated.length === 0
-          ? ""
-          : `<p>${
-              summary.repeated.length === 1
-                ? `Store slot ${summary.repeated[0]} is`
-                : `Store slots ${summary.repeated.join(", ")} are`
-            } named by more than one pool slot, which is legal.</p>`) +
-        chosen,
+          : `<p class="warn"><b>${summary.missing} slot(s) name a table that is missing ` +
+            `from the +Drive.</b></p>`),
     );
   }
 
@@ -332,7 +599,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       const inPool = reading.summary.byStoreSlot.get(slot.slot) ?? [];
       const tr = document.createElement("tr");
       tr.className = slot.occupied ? "occupied" : "free";
-      if (slot.slot === pickedSlot) {
+      // How `importstage.decorate` finds the row for a staged slot after a re-render.
+      tr.dataset.slot = String(slot.slot);
+      if (pickedSlots.has(slot.slot)) {
         tr.classList.add("selected");
         tr.setAttribute("aria-selected", "true");
       }
@@ -349,22 +618,48 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
             ? '<span class="hint">—</span>'
             : inPool.map((index) => index + 1).join(", ")
         }</td>`;
-      tr.addEventListener("click", () => {
-        pickedSlot = slot.slot;
+      tr.addEventListener("click", (event) => {
+        selectStore(slot.slot, event);
         renderStore();
+        poolWriting.redraw();
+        // The preview follows the clicked row whatever the selection did, because the preview
+        // answers "what is this one" and a run of ten is still ten tables somebody clicked last.
         void showPreview(slot.slot);
       });
+      /*
+       * **Draggable, as the same gesture everywhere else on this page.** A store row is a source
+       * only: `hintFor` refuses a drop on one, so dragging a table onto the store does nothing
+       * rather than looking like it might move it.
+       *
+       * **Except a staged row, which already has a drag of its own.** `importstage.decorate`
+       * makes it draggable to move the staging to another slot, and binding this on top gave one
+       * element two `dragstart` handlers and two meanings. It failed safe only because the pool
+       * drop filters to slots the instrument says are occupied, and a staged slot is not one —
+       * safety resting on a filter in another module. The same guard `showPreview` uses.
+       */
+      if (!staging.staged().has(slot.slot)) drag.bind(tr, STORE_GRID, slot.slot);
       body.append(tr);
     }
+    // After the rows exist, so a staged table is marked on the row it will land on rather than
+    // listed beside the store.
+    staging.decorate(body);
     table.append(body);
     where.append(table);
 
     const used = reading.store.filter((slot) => slot.occupied).length;
     heading(
       "Wavetable pool",
+      // The count only. Which kind of pool it is sits in the line under the bar, and the heading
+      // used to carry it too — one fact in two places, both of them shortened on 2026-10-14.
       `— ${reading.summary.tables} of ${POOL_ENTRIES} used`,
       "+Drive wavetables",
-      `— ${used} of ${reading.store.length} slots used, shared by every project`,
+      /*
+       * **Both drops, named where somebody is already looking.** Audio in from the computer, and
+       * tables out onto a pool slot — neither has a control that announces itself, and the panel
+       * that explains the first does not exist until something is staged.
+       */
+      `— ${used} of ${reading.store.length} slots used, shared by every project · drag audio ` +
+        `files onto a free slot to import · drag tables onto a pool slot to add them`,
     );
   }
 
@@ -384,6 +679,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   let previewSlot: number | undefined;
   /** One read at a time, so a fast double click cannot interleave two slot reads. */
   let previewBusy = false;
+  /**
+   * The animation frame driving the marker while a note sounds, so it can be cancelled.
+   *
+   * The drawing follows the **audio clock**, not a timer started beside it: a sweep rendered at
+   * 3 seconds and a `setInterval` counting to 3 seconds drift apart within one note, and a marker
+   * that arrives at the last frame before the sound does reads as a bug in the table.
+   */
+  let following = 0;
+  /** The frame the slider was on before an audition moved it, so it can be put back. */
+  let frameBeforeAudition: number | undefined;
 
   const stage = (): HTMLElement => $("wavePreviewStage");
   const slider = (): HTMLInputElement => $<HTMLInputElement>("wavePreviewPos");
@@ -451,6 +756,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
         current: frame,
         waves: entry.waves,
       });
+      // The delete acts on whatever is drawn, so it is decided wherever the drawing is.
+      tableDeleting.redraw();
     } catch (error) {
       // A table whose geometry does not measure its bytes is a real thing on a +Drive, and the
       // view refuses it by name rather than drawing a wave that is not there.
@@ -460,6 +767,16 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
 
   /** Read one store slot's table and draw it. */
   async function showPreview(slot: number): Promise<void> {
+    /*
+     * **A staged row is not a table on the instrument, and the import panel owns it.**
+     *
+     * Both this and the staging's own row handler are bound to the same `<tr>`, so which of them
+     * runs is a question about event phases rather than about intent. Asking here instead makes it
+     * intent: without this, clicking a staged row would ask the instrument for a slot that is
+     * empty and report the failure as though the table were missing.
+     */
+    if (staging.staged().has(slot)) return;
+
     const device = host.device();
     previewSlot = slot;
 
@@ -483,6 +800,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     slider().disabled = true;
     previewMessage(`Reading store slot ${slot}…`);
     previewBusy = true;
+    lock(true);
     try {
       const file = await readStoredFile(`/waverider/${slot}`, {
         transport: apiTransport(device),
@@ -498,6 +816,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       host.status(`Could not read store slot ${slot}: ${String(error)}`, "warn");
     } finally {
       previewBusy = false;
+      lock(false);
     }
   }
 
@@ -535,8 +854,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (busy) return;
 
     const projectSlot = Number(projects().value);
-    busy = true;
-    $<HTMLButtonElement>("wavepoolRefresh").disabled = true;
+    lock(true);
     try {
       host.status(`Reading the wavetable store and the pool of project slot ${projectSlot}…`);
       picked = undefined;
@@ -551,6 +869,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       });
       renderStore();
       renderPool();
+      poolWriting.redraw();
+      tableDeleting.redraw();
       host.status(
         `${describePool(reading.summary)}${
           reading.unlisted === 0
@@ -568,28 +888,20 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       );
       host.status(`Could not read the pool: ${String(error)}`, "error");
     } finally {
-      busy = false;
-      $<HTMLButtonElement>("wavepoolRefresh").disabled = false;
+      lock(false);
     }
   }
 
-  async function show(on: boolean): Promise<void> {
-    if (on) {
-      for (const id of SOUNDS_ONLY) {
-        hiddenBefore.set(id, $(id).hidden);
-        $(id).hidden = true;
-      }
-      for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
-      helpFor(headingOf("leftTitle"), "library/wavetable-modes");
-      helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
-    } else {
-      for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
-      for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
-      restoreHelp();
-      hideOurs();
-      return;
-    }
-
+  /**
+   * Ask the connected instrument what it can do, and draw whatever it says.
+   *
+   * **Separate from `show` because the panes are handed over once and asked more than once.**
+   * The handover saves what Sounds mode had hidden, which may only happen on the way in: running
+   * it a second time would record this mode's own state as Sounds mode's, and leaving would then
+   * hand back a hidden page. A reconnect needs the asking without the saving.
+   */
+  async function enter(): Promise<void> {
+    staging.show(true);
     $("wavepoolBar").hidden = false;
     const device = host.device();
     if (!device) {
@@ -598,9 +910,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       $("wavepoolBar").hidden = false;
       heading("Wavetable pool", "— connect an instrument", "+Drive wavetables", "");
       note(
-        `<p><b>Connect an instrument.</b> A wavetable pool is a record on the +Drive, one per ` +
-          `project slot, so unlike a preset pool it is not in the project file: there is nothing ` +
-          `to show until an instrument is here to ask.</p>`,
+        `<p><b>Connect an instrument.</b> The pool is read from the +Drive, not from the ` +
+          `project file.</p>`,
       );
       return;
     }
@@ -631,6 +942,56 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     await refresh();
   }
 
+  async function show(on: boolean): Promise<void> {
+    if (on) {
+      for (const id of SOUNDS_ONLY) {
+        hiddenBefore.set(id, $(id).hidden);
+        $(id).hidden = true;
+      }
+      for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
+      helpFor(headingOf("leftTitle"), "library/wavetable-modes");
+      helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
+      shown = true;
+    } else {
+      for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
+      for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
+      restoreHelp();
+      staging.show(false);
+      hideOurs();
+      shown = false;
+      return;
+    }
+
+    await enter();
+  }
+
+  /**
+   * Another instrument answered, so nothing the last one said is evidence about this one.
+   *
+   * **What the gate said is about one instrument.** `support` decides whether the settings sheet
+   * offers the erase and what geometry the store will take, `reading` is one instrument's pool and
+   * store drawn on the screen, and `tables` caches slots by number — a slot number means something
+   * different on the next machine. Connecting a stock Digitone II while this mode was open left a
+   * Waverider's pool on screen and the erase on offer, found on 2026-10-14. It is the hazard the
+   * preset bank cache is cleared for in `main.ts`, one pane over.
+   *
+   * Staged files go too: they were placed on free slots of the instrument that has just gone.
+   */
+  async function reconnected(): Promise<void> {
+    support = undefined;
+    reading = undefined;
+    picked = undefined;
+    previewSlot = undefined;
+    pickedSlots.clear();
+    anchorSlot = undefined;
+    tables.clear();
+    frameOf.clear();
+    staging.show(false);
+    $("wavePreview").hidden = true;
+    if (!shown) return;
+    await enter();
+  }
+
   projects().addEventListener("change", () => {
     void refresh();
   });
@@ -642,9 +1003,117 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   // instrument here.
   slider().addEventListener("input", () => {
     if (previewSlot === undefined) return;
+    // **Before stopping the note, not after.** The follow loop puts the slider back where the
+    // audition found it when the sound ends; a drag is the person taking it over, so the saved
+    // position is dropped and the loop has nothing to restore. Without this, dragging mid-sweep
+    // moved the marker and then snapped it back a frame later.
+    frameBeforeAudition = undefined;
     frameOf.set(previewSlot, Number(slider().value) - 1);
     drawPreview();
+    // A slider drag while a note is sounding would otherwise leave the sound on the frame it
+    // started from, which reads as the picture and the sound disagreeing.
+    stopAudition();
   });
 
-  return { show, refresh };
+  /**
+   * Hear the table that is drawn.
+   *
+   * **This mode stayed read-only when the preview arrived, and Play was left out because the two
+   * things it could mean were a new capability and a device write.** The first is now built, so
+   * this synthesises the table in the browser and sends nothing: the instrument does not move, the
+   * sequencer does not start, and no pool position changes. Driving the instrument's own position
+   * is still a write and still not here.
+   *
+   * It plays the stored int16 at the geometry the entry declares, which is what the player reads,
+   * so what you hear is the table rather than an idealised version of it.
+   */
+  /**
+   * Move the drawing with the sound, until the sound stops.
+   *
+   * A sweep travels, so the marker and the slider travel with it and the stack lights up frame by
+   * frame. A held note does not travel — the frame it is on is the frame it stays on — so what
+   * this does there is mark the stage as sounding and leave the marker where it is. Animating a
+   * number that is not moving would be a lie about what is coming out of the speakers.
+   */
+  function followAudition(): void {
+    const slot = previewSlot;
+    const file = slot === undefined ? undefined : tables.get(slot);
+    if (!file) return;
+
+    $("wavePreviewStage").classList.add("sounding");
+
+    const step = (): void => {
+      const at = auditionFrame();
+      if (at === undefined) {
+        // Ended or stopped. Put the slider back where the person left it and redraw once.
+        following = 0;
+        $("wavePreviewStage").classList.remove("sounding");
+        if (frameBeforeAudition !== undefined && slot !== undefined) {
+          frameOf.set(slot, frameBeforeAudition);
+          frameBeforeAudition = undefined;
+          if (previewSlot === slot) drawPreview();
+        }
+        return;
+      }
+
+      const whole = Math.round(at);
+      if (slot !== undefined && frameOf.get(slot) !== whole) {
+        frameOf.set(slot, whole);
+        if (previewSlot === slot) drawPreview();
+      }
+      following = requestAnimationFrame(step);
+    };
+
+    if (following !== 0) cancelAnimationFrame(following);
+    following = requestAnimationFrame(step);
+  }
+
+  async function auditionDrawn(sweep: boolean): Promise<void> {
+    const slot = previewSlot;
+    const file = slot === undefined ? undefined : tables.get(slot);
+    if (!file) {
+      host.status("Click a table in the store first.", "warn");
+      return;
+    }
+    const { entry, table } = file;
+    const started = await auditionTable(
+      {
+        samples: readTableSamples(table),
+        waves: entry.waves,
+        points: entry.points,
+        fullScale: 32_767,
+      },
+      { sweep, frame: frameOf.get(slot!) ?? 0 },
+    );
+    if (!started) {
+      host.status("The browser would not start audio. Click the page and try again.", "warn");
+      return;
+    }
+    // Remembered before the marker starts moving, so Stop or the end of the note puts the slider
+    // back rather than leaving it wherever the sweep happened to finish.
+    frameBeforeAudition = frameOf.get(slot!) ?? 0;
+    followAudition();
+  }
+
+  $("wavePreviewPlay").addEventListener("click", () => {
+    void auditionDrawn(false);
+  });
+  $("wavePreviewSweep").addEventListener("click", () => {
+    void auditionDrawn(true);
+  });
+  $("wavePreviewStop").addEventListener("click", () => {
+    stopAudition();
+  });
+
+  /*
+   * The level, which belongs to the page rather than to a table: it stays where it was put for the
+   * next audition and for the staged import's own Play, both of which go through the same gain.
+   */
+  const volume = $<HTMLInputElement>("wavePreviewVolume");
+  volume.value = String(Math.round(auditionVolume() * 100));
+  volume.addEventListener("input", () => {
+    setAuditionVolume(Number(volume.value) / 100);
+  });
+
+  return { show, refresh, reconnected };
 }

@@ -137,8 +137,24 @@ export type ChunkChecksum = (slice: Uint8Array, offset: number, whole: Uint8Arra
 
 export interface WriteStoredFileOptions {
   transport: ApiTransport;
-  /** The listing entry for the destination. **Required** — see `refuseUnlessEmpty`. */
-  target: Entry;
+  /**
+   * The listing entry for the destination. **Required for a slot** — see `refuseUnlessEmpty`.
+   *
+   * Omitted only with `control`, for a route that stores nothing. The two are exclusive: a write
+   * either has a destination whose contents were checked, or it is a command with no destination
+   * at all, and there is no third case where one stands in for the other.
+   */
+  target?: Entry;
+  /**
+   * This path is a **command**, not a slot: nothing is listed there, nothing is overwritten and
+   * there is nothing to copy first.
+   *
+   * Set only by `safeWriteControl`, which holds the list of routes this is true of. It exists so
+   * that case can say *there is no target* rather than hand the empty-slot rule a made-up entry
+   * claiming the slot is free — which would be forging the one piece of evidence that rule is
+   * there to demand.
+   */
+  control?: boolean;
   msgId?: number;
   timeoutMs?: number;
   /**
@@ -394,7 +410,17 @@ export async function writeStoredFile(
     onProgress,
   } = options;
 
-  refuseUnlessEmpty(target, path, options.overwrite === true);
+  if (options.control === true) {
+    if (target !== undefined) {
+      throw new ListingError(`${path} was sent as a control and also given a slot to check`);
+    }
+  } else if (!target) {
+    throw new ListingError(
+      `${path} needs the destination's listing entry before anything is written to it`,
+    );
+  } else {
+    refuseUnlessEmpty(target, path, options.overwrite === true);
+  }
   if (bytes.length === 0) throw new ListingError("refusing to write an empty file");
   refuseWrongForm(bytes, path);
 

@@ -22,7 +22,7 @@
  * the only copy of that work, and an undo they have to discover after the fact is not consent.
  */
 
-import { deviceFor, storedPatternName, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
+import { deviceFor, storedPattern, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { planRearrange, applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
@@ -149,7 +149,7 @@ renderToolNav($("toolnav"), "manager");
 registerBackup(async (report) => {
   try {
     report.say("Looking for an instrument…");
-    const connected = drive?.connected ?? (await chooseDevice(picker));
+    const connected = drive?.connected ?? (await chooseDevice(picker, status));
 
     const { backup, failed } = await backupDevice(connected, {
       onList: () => report.say("Listing the +Drive…"),
@@ -694,14 +694,16 @@ function renderSongs(): void {
     drag,
     // Summarised through the device, the same call the pattern grid uses — so a name in a song row
     // and the same name in the grid can never disagree.
-    patternNameFor: (slot) => {
+    patternFor: (slot) => {
       const image = state.session?.image;
       const device = state.device;
-      if (!image || !device) return undefined;
+      // Nothing open: "no name to show" rather than a claim about the number, which cannot be
+      // judged without knowing how many patterns the device has.
+      if (!image || !device) return { kind: "unnamed" };
       // The number came out of a stored song row, so it is data and data can be damaged.
-      // `storedPatternName` is the reader for that case; `summarise` is for a caller that chose
-      // the index itself and should hear about a typo.
-      return storedPatternName(device, image, slot);
+      // `storedPattern` is the reader for that case; `summarise` is for a caller that chose the
+      // index itself and should hear about a typo.
+      return storedPattern(device, image, slot);
     },
     onField: (row, field, value) => {
       editSong(`set song row ${row + 1} ${field}`, (image, s) => setRow(image, s, row, { [field]: value }));
@@ -739,7 +741,7 @@ function renderSongs(): void {
  */
 async function driveDevice(): Promise<ConnectedDevice | undefined> {
   try {
-    return await chooseDevice(picker);
+    return await chooseDevice(picker, status);
   } catch (error) {
     status(`No instrument: ${error instanceof Error ? error.message : String(error)}`, "error");
     return undefined;
@@ -1590,7 +1592,7 @@ function beginProject(
 async function browseDrive(): Promise<void> {
   status("Looking for an instrument…");
   try {
-    const connected = drive?.connected ?? (await chooseDevice(picker));
+    const connected = drive?.connected ?? (await chooseDevice(picker, status));
     status(`Listing the +Drive on ${connected.name}…`);
     const projects = await listDeviceProjects(connected);
     drive = { connected, projects };
@@ -1768,7 +1770,7 @@ async function loadFromDevice(): Promise<void> {
   let connected: ConnectedDevice;
   status("Looking for an instrument…");
   try {
-    connected = await chooseDevice(picker);
+    connected = await chooseDevice(picker, status);
   } catch (error) {
     status(
       error instanceof DeviceSourceError ? error.message : `MIDI refused: ${String(error)}`,

@@ -296,26 +296,47 @@ const DN2: Device = {
 
 /** Identify the device a decoded image belongs to. */
 /**
- * The name of a pattern a **stored record** points at, or `undefined` when there is no name.
+ * What a pattern index read **out of a project** turns out to be.
+ *
+ * Three answers rather than a name and `undefined`, because two of those cases are nothing alike.
+ * A pattern with no name is ordinary — every factory pattern is unnamed. An index the project
+ * **cannot** have is damage, and the owner asked on 2026-10-13 that damage be said out loud rather
+ * than drawn as a blank.
+ *
+ * A record whose version this build cannot read is deliberately *not* a fourth case. It reads as
+ * `unnamed`, because it is not damage: OS 1.11 writes version-4 pattern records, and calling a
+ * current project corrupt because it is newer than DNX would be the worst kind of wrong answer.
+ */
+export type StoredPattern =
+  /** A readable record with a name. */
+  | { kind: "named"; name: string }
+  /** In range, and nothing to show: unnamed, or a version this build does not read. */
+  | { kind: "unnamed" }
+  /** **Damage.** No project on this device has this pattern, so the stored number cannot be right. */
+  | { kind: "outOfRange"; index: number; count: number };
+
+/**
+ * Read a pattern index that came out of stored bytes rather than out of a call site.
  *
  * `summarise` asserts the index, which is right for a caller that chose the number: a typo in a
  * call site should be loud. This is for the other kind of caller, the one reading an index *out of
  * a project* — a song row, a chain, anything the instrument wrote — where the number is data and
  * data can be damaged. rivvi's project holds 196 in a song row, and a page that drew that row died
- * of a `RangeError` rather than showing a row with no name.
+ * of a `RangeError` rather than showing the row.
  *
- * So the two callers are kept apart instead of softening `summarise` for both. An out-of-range
- * index is not an error here; it is a pattern this project does not have, which is a thing a
- * person can be shown.
+ * So the two callers are kept apart instead of softening `summarise` for both.
+ *
+ * A name is whatever the record holds once trimmed, including a name made only of punctuation:
+ * the instrument lets somebody type one, and deciding here that it does not count would hide a
+ * name that is really there.
  */
-export function storedPatternName(
-  device: Device,
-  image: Uint8Array,
-  index: number,
-): string | undefined {
-  if (!Number.isInteger(index) || index < 0 || index >= device.patternCount) return undefined;
+export function storedPattern(device: Device, image: Uint8Array, index: number): StoredPattern {
+  if (!Number.isInteger(index) || index < 0 || index >= device.patternCount) {
+    return { kind: "outOfRange", index, count: device.patternCount };
+  }
   const summary = device.summarise(image, index);
-  return summary.readable ? summary.name : undefined;
+  const name = summary.readable ? (summary.name ?? "").trim() : "";
+  return name === "" ? { kind: "unnamed" } : { kind: "named", name };
 }
 
 export function deviceFor(image: Uint8Array): Device {

@@ -885,3 +885,81 @@ export function recordWriteMessage(
   }
   return { text: parts.join(" "), level: result.untransmittable.length > 0 ? "warn" : "ok" };
 }
+
+/* ---- a control, which is not a slot ---------------------------------------------------------- */
+
+/**
+ * Paths that are **commands**, not places anything is stored.
+ *
+ * Deliberately a list and not a pattern. Every entry is a route the firmware answers by *doing*
+ * something rather than by keeping bytes, and each one needs the same argument made for it before
+ * it is added — that the empty-slot rule has nothing to check there, which is a claim about that
+ * route and not about a shape of path.
+ */
+const CONTROL_PATHS: readonly string[] = [
+  // The wavetable erase. `/wavepool` lists 0..128; 129 is not a project and a read of it is
+  // refused at the open. See `device/wavetableerase.ts` and the firmware's erase contract.
+  "/wavepool/129",
+];
+
+export interface SafeControlWriteOptions {
+  transport: ApiTransport;
+  /** Must be one of `CONTROL_PATHS`. Anything else is refused here. */
+  path: string;
+  bytes: Uint8Array;
+  /** The page's write switch, called before anything is sent, as every other path takes it. */
+  gate: () => void;
+  msgId?: number;
+  timeoutMs?: number;
+  onStatus?: (message: string) => void;
+}
+
+/**
+ * Send a command to a control route.
+ *
+ * **Why this exists rather than `safeWriteFile`.** That one is built around a slot: it requires a
+ * listing entry for the destination, refuses to write where it cannot prove what is there, takes
+ * a copy of what it is about to replace, and reads the bytes back to prove they landed. Every one
+ * of those is right for a slot and meaningless for a command — `/wavepool/129` is not listed, holds
+ * nothing, replaces nothing, and refuses to be read. Fabricating a listing entry to get past the
+ * empty-slot rule would be forging exactly the evidence that rule exists to demand.
+ *
+ * So it is a different door, kept narrow three ways:
+ *
+ * - **The path must be a known control.** An allowance written for one route is implemented as
+ *   that route, not as a shape anything could match.
+ * - **The gate is still required**, because the write switch is about reaching the instrument at
+ *   all, not about what is being written.
+ * - **It asks nobody anything, and says so.** A control's question cannot be phrased here —
+ *   "erase every wavetable" is not a sentence a generic writer could compose, and a vague one is
+ *   worse than none. The workflow that owns the command owns the question, and
+ *   `safewrite.test.ts` keeps the list of what may call this to one.
+ *
+ * There is no read-back, because the route refuses a read. The proof is whatever the command was
+ * supposed to change, read through its own listings by the caller.
+ */
+export async function safeWriteControl(options: SafeControlWriteOptions): Promise<void> {
+  const { transport, path, bytes } = options;
+
+  requireGate(options.gate);
+  if (!CONTROL_PATHS.includes(path)) {
+    throw new WriteRefusal(
+      `${path} is not a control route. This path exists for commands the instrument acts on, ` +
+        `and a slot that stores something must go through safeWriteFile, which backs it up and ` +
+        `proves it landed.`,
+    );
+  }
+  if (bytes.length === 0) throw new WriteRefusal("refusing to send an empty command");
+
+  options.onStatus?.(`Sending the command to ${path}…`);
+  await writeStoredFile(path, bytes, undefined, {
+    transport,
+    // No target, because there is nothing listed there. `control` is how that is said; handing
+    // the empty-slot rule an invented entry claiming the slot is free would forge the one piece
+    // of evidence it exists to demand.
+    control: true,
+    permit: PERMIT,
+    ...(options.msgId === undefined ? {} : { msgId: options.msgId }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  });
+}

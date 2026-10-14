@@ -32,9 +32,9 @@
  * the pool's geometry widens, and nothing has to be re-imported. The size is a bet on the format,
  * and this module is the honesty about today.
  *
- * ## Slot order is the automatic pool, and soon it is only the default
+ * ## Slot order is what following the store means, and soon it is only the default
  *
- * `poolPlacement` and `automaticEntries` describe the pool the firmware builds for a project that
+ * `poolPlacement` and `storeOrderEntries` describe the pool the firmware builds for a project that
  * has no pool of its own: every playable table in store-slot order. Every project does that today.
  * Once the `/wavepool` records land, a project with a record of its own ignores this entirely, so
  * these two functions answer *what a project with no record plays*, and `poolfile.ts` answers the
@@ -72,7 +72,14 @@ export const POOL_BYTES = POOL_WAVES * POOL_POINTS * 2;
  */
 export const POOL_ENTRIES = 128;
 
-/** `TBL 0` and `TBL 1` are the baked tables; the pool starts here. */
+/**
+ * The stored coarse value of the **first** pool entry. Coarse 0 and 1 are the baked tables.
+ *
+ * **Stored, not shown.** The instrument's TBL cell reads `PRIM` and `HARM` for coarse 0 and 1, and
+ * `T:%03d` of `coarse - 1` for the rest — so pool index 0 stores 2 and reads `T:001`. Confirmed
+ * against `csrc/waverider/page.c` by the firmware session on 2026-10-13, after DNX's help page had
+ * told people to set TBL to one above the pool slot. It is the same number as the pool slot.
+ */
 export const FIRST_POOL_TBL = 2;
 
 /**
@@ -189,7 +196,7 @@ export function poolPlacement(usedSlots: Iterable<number>): Map<number, number |
 }
 
 /**
- * The automatic pool as a pool record's entries: the **store slot** at each **pool index**.
+ * Store order as a pool record's entries: the **store slot** at each **pool index**.
  *
  * `poolPlacement` read the other way round, and the second caller that earns it: a read of
  * `/wavepool/<p>` for a project with no record of its own comes back with exactly this, synthesised
@@ -198,9 +205,9 @@ export function poolPlacement(usedSlots: Iterable<number>): Map<number, number |
  *
  * Takes the slots whose tables the pool will **play**, in any order, which is a narrower set than
  * the slots in use: `unplayableReason` is the judge, and a stored table of the wrong geometry is
- * not in the automatic pool at all.
+ * not in a project's pool at all, however the project follows the store.
  */
-export function automaticEntries(playableSlots: Iterable<number>): (number | undefined)[] {
+export function storeOrderEntries(playableSlots: Iterable<number>): (number | undefined)[] {
   const ordered = [...new Set(playableSlots)].sort((a, b) => a - b).slice(0, POOL_ENTRIES);
   const entries: (number | undefined)[] = new Array<number | undefined>(POOL_ENTRIES).fill(undefined);
   ordered.forEach((slot, index) => {

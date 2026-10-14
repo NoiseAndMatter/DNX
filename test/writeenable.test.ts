@@ -20,6 +20,7 @@ import {
   WriteDisabled, isWriteEnabled, requireWriteEnabled, setWriteEnabled,
 } from "../web/src/writeenable.js";
 import { probeFunctionNames, probeWrite } from "./probesource.js";
+import { ERASE_CONTROL } from "../web/src/settings.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
@@ -127,13 +128,33 @@ test("a core module that writes takes the switch from its host and calls it", ()
   const files: string[] = [];
   walkTs(CORE, files);
 
-  // `safewrite.ts` is the primitive itself, not a caller of it.
+  /*
+   * **A delete counts, and for a while it did not.**
+   *
+   * This scan found callers of `safeWriteRecords` and `safeWriteFile` only. `waveriderdelete.ts`
+   * sends `deleteRequest` straight down the transport — it writes nothing, so it matched neither
+   * pattern, and a core module that destroys a table outright would have been the one thing here
+   * nobody checked for a gate. Added on 2026-10-13 when that module was written, which is the only
+   * reason the hole was noticed at all.
+   *
+   * `storage.ts` is excluded as the place `deleteRequest` is *built*, the same way `safewrite.ts`
+   * is excluded as the primitive rather than a caller of it.
+   */
+  const DESTROYS = /\bsafeWrite(Records|File)\s*\(|\bdeleteRequest\s*\(/;
   const writers = files
     .filter((f) => !f.endsWith(join("device", "safewrite.ts")))
-    .filter((f) => /\bsafeWrite(Records|File)\s*\(/.test(readFileSync(f, "utf8")));
+    .filter((f) => !f.endsWith(join("device", "storage.ts")))
+    .filter((f) => DESTROYS.test(readFileSync(f, "utf8")));
   assert.ok(writers.length >= 1,
     "no core module calls a safe-write function; either the pattern stopped matching or the " +
       "workflows have not moved yet, and this test must be revisited either way");
+
+  // And the delete path specifically, by name: a rename of that module must not silently drop it
+  // out of the scan and leave this passing on the writers alone.
+  assert.ok(
+    writers.some((f) => f.endsWith(join("device", "waveriderdelete.ts"))),
+    "the wavetable delete is no longer in this scan; it destroys a table and must take a gate",
+  );
 
   /**
    * Does this module take a gate, declaring it or naming a host type that does?
@@ -160,13 +181,21 @@ test("a core module that writes takes the switch from its host and calls it", ()
     assert.ok(takesAGate(source, files),
       `${name} writes without taking a gate from its host`);
     const gate = source.search(/\bhost\.gate\(\)/);
-    const send = source.search(/\bsafeWrite(Records|File)\s*\(/);
+    // Whichever destructive call this module makes, not only a safe write: a module that sends
+    // its own delete has a send too, and it is the thing the gate has to come before.
+    const send = source.search(DESTROYS);
     assert.ok(gate > 0, `${name} takes a gate and never calls it`);
     assert.ok(gate < send, `${name} calls the gate after the write, which is not a gate`);
-    // And hands it down. The safe write requires its own `gate` and will not take a caller's
-    // word that one was consulted, so passing the host's switch through is the contract.
-    assert.match(source, /\bgate:\s*host\.gate\b/,
-      `${name} calls the gate but does not pass it to the write that requires one`);
+    /*
+     * And hands it down, **where there is something to hand it to**. The safe write requires its
+     * own `gate` and will not take a caller's word that one was consulted. A module that sends the
+     * request itself has no such callee, and its own call above is then the whole guarantee —
+     * requiring the pass-through there would be asking for a parameter nothing reads.
+     */
+    if (/\bsafeWrite(Records|File)\s*\(/.test(source)) {
+      assert.match(source, /\bgate:\s*host\.gate\b/,
+        `${name} calls the gate but does not pass it to the write that requires one`);
+    }
   }
 
   /*
@@ -257,6 +286,14 @@ test("every control that writes is marked, and every dangerous one has been cons
     }
   }
 
+  /*
+   * **And the one no markup contains.** The settings sheet is built at open, so the scan above
+   * cannot see its erase control however dangerous it is. Named here rather than left out, and
+   * the test below proves it really does carry the attribute and really is registered — without
+   * that, this line would be the lie instead of the omission.
+   */
+  marked.push(ERASE_CONTROL);
+
   assert.deepEqual(unconsidered, [],
     "a dangerous button must either carry data-writes-device or be listed in DOES_NOT_WRITE with " +
       "a reason it cannot reach the instrument");
@@ -272,8 +309,57 @@ test("every control that writes is marked, and every dangerous one has been cons
     // what leaves nothing to overwrite and nothing to back up.
     // `poolWrite` joined on 2026-10-07. It writes a project's pool list, carrying the generation
     // it read so the instrument refuses a write that would discard a front-panel edit.
-    ["dodrivesave", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `wavimportWrite` joined on 2026-10-13 and is the first write control outside the probe. It
+    // sends the staged wavetable imports from the Library, and it is the second control that asks
+    // once for many writes: same rule as `tableWriteAll`, gated per write so the switch stops it
+    // part-way, and refusing the whole run unless every target is empty in a listing read at the
+    // moment of asking. The Library having a write at all is the change worth noticing here — that
+    // pane shipped read-only, and `librarywavetables.test.ts` says what now stands in its place.
+    // `wavepoolAdd` joined on 2026-10-13 as well: the Library's *Add to pool*, which puts a stored
+    // table into a project's list. It is the only write here that changes **what a sound plays**
+    // without sending a byte of audio, and the only one that can change the *kind* of pool a
+    // project has — writing a list for a project that had none pins what it plays today. It asks
+    // once, for one record, and the confirmation says that conversion in words before it goes.
+    // `wavepoolRemove` and `waveTableDelete` joined it hours later, when the owner asked why a
+    // manager could add a table and never take one away. Removing from a pool is the same record
+    // write as adding; deleting is the mode's only destructive control and the only one in the
+    // Library that cannot be undone on the instrument, which is why its copy is taken before the
+    // question rather than after it.
+    // `eraseWavetables` joined on 2026-10-14 and is **the only one of these that no page's markup
+    // contains**: the settings sheet is built in JavaScript, so the scan above cannot see it. That
+    // is exactly the shape of hole this test exists to refuse, so it is named through its exported
+    // id and the next test asserts the attribute is really on it. It empties the whole wavetable
+    // region, which is why it is the only control in the sheet coloured as dangerous.
+    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
+});
+
+test("a write control built in JavaScript registers itself, since no markup scan can find it", () => {
+  /*
+   * **The hole the test above would otherwise have.** It reads `web/*.html`, and the settings
+   * sheet has no markup — every row of it is built at open. A dangerous button created there is
+   * invisible to that scan, so the scan would go on passing while an ungated control sat on the
+   * panel. That is the failure mode this repository keeps paying for: a check that passes by
+   * finding nothing.
+   *
+   * So the three things that make it gated are asserted against the source directly: it carries
+   * the attribute the switch reads, it is given the id named in the list above, and the sheet
+   * runs the scan again once it is in the document — the tool row's own run happened before this
+   * element existed.
+   */
+  const source = readFileSync(join(WEB, "src", "settings.ts"), "utf8");
+
+  assert.equal(ERASE_CONTROL, "eraseWavetables", "the id is named in the list in the test above");
+  assert.match(source, /button\.id = ERASE_CONTROL;/,
+    "the erase control must take the exported id, or the list above names something that does not exist");
+  assert.match(source, /button\.setAttribute\(WRITES_DEVICE, ""\);/,
+    "the erase control must carry the attribute the write switch registers controls by");
+  assert.match(source, /^\s*gateWriteControls\(\);/m,
+    "the sheet must re-run the scan after building, because the tool row's run came first");
+
+  // And it must be the dangerous one, since nothing else on that panel suggests a press matters.
+  assert.match(source, /button\.classList\.add\("danger"\);/,
+    "the erase control must be marked dangerous");
 });
 
 test("the whole page is edged in red while writing is armed", () => {

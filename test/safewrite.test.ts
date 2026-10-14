@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { buildMessage, parseMessage } from "@noiseandmatter/dnx-core/sysex/container.js";
@@ -995,4 +995,78 @@ test("the null round trip checks that it is still null", () => {
   const confirmation = body.slice(ask, body.indexOf("}))", ask));
   assert.match(confirmation, /drift\.same/,
     "the question no longer depends on whether the slot still holds what was captured");
+});
+
+/* ---- the control door ------------------------------------------------------------------------ */
+
+test("a control route is a named list, not a shape anything can match", () => {
+  /*
+   * **The allowance has to be the thing it was argued for.** `safeWriteControl` exists because
+   * `/wavepool/129` is a command: nothing is listed there, nothing is overwritten, and a read of
+   * it is refused — so the empty-slot rule has nothing to check and `safeWriteFile` cannot be
+   * used. That argument is about one route. Written as a pattern — anything under `/wavepool/`,
+   * say, or any path ending in a number above 128 — it would quietly cover routes nobody made
+   * the argument for, and the first of those would be a slot somebody's work is in.
+   */
+  const source = readFileSync(
+    join(import.meta.dirname, "..", "packages/core/src/device/safewrite.ts"),
+    "utf8",
+  );
+
+  const list = /const CONTROL_PATHS: readonly string\[\] = \[([\s\S]*?)\];/.exec(source);
+  assert.ok(list, "CONTROL_PATHS is no longer a literal list — rewrite this test, do not delete it");
+
+  const paths = [...list[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+  assert.deepEqual(paths, ["/wavepool/129"], "a control route was added without this test noticing");
+
+  // And it is a membership test, not a match: `includes` on the list, nothing clever.
+  assert.match(source, /CONTROL_PATHS\.includes\(path\)/,
+    "the control check must be exact membership of that list");
+});
+
+test("the control door asks for the gate and refuses anything else", async () => {
+  const { safeWriteControl } = await import("../packages/core/src/device/safewrite.js");
+
+  // A slot, not a control. This is the case the narrowing exists for.
+  await assert.rejects(
+    safeWriteControl({
+      transport: { request: async () => new Uint8Array(0) } as never,
+      path: "/wavepool/3",
+      bytes: Uint8Array.of(1),
+      gate: () => {},
+    }),
+    (error: unknown) => error instanceof WriteRefusal && /not a control route/.test(String(error)),
+    "a real pool slot must not be writable through the control door",
+  );
+
+  // The switch still applies: reaching the instrument at all is what it governs.
+  await assert.rejects(
+    safeWriteControl({
+      transport: { request: async () => new Uint8Array(0) } as never,
+      path: "/wavepool/129",
+      bytes: Uint8Array.of(1),
+      gate: () => { throw new Error("switched off"); },
+    }),
+    /switched off/,
+    "the gate must be called before anything is sent",
+  );
+});
+
+test("only the erase reaches the control door", () => {
+  /*
+   * One caller, named. A second would mean a second command, and a second command needs its own
+   * argument about why the slot rules do not apply to it — made in review, not discovered here.
+   */
+  const callers: string[] = [];
+  for (const file of sourceFiles("packages/core/src", "web/src", "src")) {
+    const text = withoutComments(readFileSync(file, "utf8"));
+    if (/\bsafeWriteControl\s*\(/.test(text) && !file.endsWith(join("device", "safewrite.ts"))) {
+      callers.push(relative(join(import.meta.dirname, ".."), file).split(sep).join("/"));
+    }
+  }
+  assert.deepEqual(
+    callers,
+    ["packages/core/src/device/wavetableerase.ts"],
+    "something new sends a control command; it needs its own review, not this test's silence",
+  );
 });

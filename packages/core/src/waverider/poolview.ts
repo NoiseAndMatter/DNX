@@ -38,7 +38,7 @@
  *
  * ## Whether anybody wrote this pool changes what the numbers mean
  *
- * A project with no record of its own follows the automatic pool, and the firmware answers a read
+ * A project with no record of its own follows the store, and the firmware answers a read
  * of `/wavepool/<p>` with the entries it would synthesise. They are real — that is what the project
  * plays — but **an upload moves them**: a table landing in a free store slot below the others
  * shifts every later pool index, and every sound keeps its old coarse value. So `authored` is on
@@ -71,7 +71,12 @@ export interface PoolCell {
   index: number;
   /** `index + 1`: what both UIs display. The built-ins sit outside this numbering. */
   shown: number;
-  /** `2 + index`: what a sound stores in TBL1 / TBL2. See 8w on the three numbers. */
+  /**
+   * `2 + index`: what a sound **stores** in TBL1 / TBL2. See 8w on the three numbers.
+   *
+   * Not what the instrument shows. Its cell reads `coarse - 1`, which is `shown` — so anything
+   * put in front of a person uses `shown`, and this is for bytes.
+   */
   coarse: number;
   /** The store slot this entry names, absent on an empty cell. */
   storeSlot?: number;
@@ -84,13 +89,13 @@ export interface PoolCell {
 
 export interface PoolSummary {
   projectSlot: number;
-  /** `untouched` nobody wrote one, `automatic` written as automatic, `list` written as a list. */
+  /** `empty` no record and nothing plays, `follows-store` every stored table, `list` these slots. */
   kind: ReturnType<typeof poolState>;
   /**
    * Somebody wrote this pool, so its indices are pinned.
    *
-   * False for `untouched` and `automatic`, where an upload into a lower store slot moves every
-   * later index and the sounds do not follow.
+   * False for `follows-store`, where an upload into a lower store slot moves every later index and
+   * the sounds do not follow, and for `empty`, where there is nothing to pin.
    */
   authored: boolean;
   cells: PoolCell[];
@@ -155,9 +160,7 @@ export function summarisePool(
       missing++;
       cells.push({
         index, shown, coarse, storeSlot, state: "missing",
-        note:
-          `store slot ${storeSlot} is empty: this table was deleted. The entry still names it, ` +
-          `so this slot plays the built-in Prim. until somebody clears it.`,
+        note: `store slot ${storeSlot} is empty: the table is missing from the +Drive.`,
       });
       continue;
     }
@@ -186,10 +189,30 @@ export function summarisePool(
 }
 
 /**
- * The sentence above the grid: what this project plays, and whether the numbering is pinned.
+ * What the instrument's **TBL** cell reads for a pool index: `T:001` to `T:128`.
  *
- * Here rather than in the page because it is the one place the three states are put into words, and
- * a second wording would eventually disagree with this one about what `automatic` means.
+ * **One place, because the arithmetic has already been got wrong once.** The value a sound stores
+ * is `index + 2`; the unit displays `stored - 1` as `T:%03d`, which is the shown slot — so the
+ * number on screen is the pool slot and nothing has to be added to it. DNX's help told people to
+ * add one from the day it was written until the firmware session checked `csrc/waverider/page.c`
+ * on 2026-10-13.
+ *
+ * Below `T:001` are the two built-ins, which read `PRIM` and `HARM` rather than numbers.
+ */
+export function tblLabel(index: number): string {
+  return `T:${String(index + 1).padStart(3, "0")}`;
+}
+
+/**
+ * The line above the grid: which kind of pool this is, and the counts.
+ *
+ * **A summary, not a lesson.** It used to explain what following the store does to a sound's TBL
+ * when a table is written below it — three sentences of behaviour that is the firmware's, and
+ * which the help already covers under *Three kinds of pool*. The owner's rule, 2026-10-14: the UI
+ * states what is true and the help explains it, so this says the kind and the numbers and stops.
+ *
+ * Here rather than in the page because it is the one place the three kinds are put into words, and
+ * a second wording would eventually disagree with this one about what following the store means.
  */
 export function describePool(summary: PoolSummary): string {
   const where = summary.projectSlot === 0 ? "the working project" : `project slot ${summary.projectSlot}`;
@@ -198,18 +221,14 @@ export function describePool(summary: PoolSummary): string {
     (summary.missing === 0 ? "" : `, ${summary.missing} missing`);
 
   switch (summary.kind) {
-    case "untouched":
-      return (
-        `${where} has no pool of its own, so it plays every stored table in store-slot order: ` +
-        `${counts}. An upload into a lower store slot moves every later slot, and the sounds do ` +
-        `not follow.`
-      );
-    case "automatic":
-      return (
-        `${where} is set to follow the store: ${counts}. The entries are the firmware's, not a ` +
-        `list somebody wrote, so an upload into a lower store slot moves every later slot.`
-      );
+    // **Said rather than left to the counts.** A project with no record of its own plays nothing,
+    // and "0 table(s), 128 free" alone reads as an empty pool somebody could fill rather than as
+    // silence. The owner separated this from follows-the-store on 2026-10-13.
+    case "empty":
+      return `${where} — no pool of its own, so it plays no wavetables. ${counts}.`;
+    case "follows-store":
+      return `${where} — follows the store. ${counts}.`;
     default:
-      return `${where} has a pool of its own: ${counts}. These slots stay where they are.`;
+      return `${where} — a pool of its own. ${counts}.`;
   }
 }

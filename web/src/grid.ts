@@ -127,7 +127,13 @@ export class GridDrag {
     cell.addEventListener("dragend", () => {
       this.from = undefined;
       this.hovering = undefined;
-      for (const el of document.querySelectorAll<HTMLElement>(".slot.dragging, .slot.target")) {
+      /*
+       * **Any dragged element, not only a grid cell.** `bind` takes any element — the song rows
+       * are table rows and so are the wavetable store's — and a selector scoped to `.slot` left
+       * every one of those wearing its `dragging` class after the gesture ended, because nothing
+       * else ever removes it.
+       */
+      for (const el of document.querySelectorAll<HTMLElement>(".dragging, .target")) {
         el.classList.remove("dragging");
         clear(el);
       }

@@ -108,7 +108,7 @@ function clearStored(): number {
  * So the manager lends it a function. A page that has not registers nothing, and the row says where
  * to go rather than offering a button that cannot work.
  */
-export interface BackupReport {
+export interface JobReport {
   /** What is happening, in words. */
   say(message: string): void;
   /**
@@ -128,13 +128,57 @@ export interface ProgressStage {
   state: "pending" | "reading" | "done";
 }
 
-export type BackupRunner = (report: BackupReport) => Promise<void>;
+export type BackupRunner = (report: JobReport) => Promise<void>;
 
 let runBackup: BackupRunner | undefined;
 
 /** Called by a page that can reach an instrument. */
 export function registerBackup(runner: BackupRunner): void {
   runBackup = runner;
+}
+
+/**
+ * Emptying the wavetable region, lent the same way and for the same reason.
+ *
+ * **Why an offer rather than a runner.** The backup is available whenever a page can reach an
+ * instrument, so a function is the whole answer. This one has four ways of being unavailable —
+ * no folder to put the copies in, no instrument, a build nobody has asked yet, a build that
+ * cannot — and they are not interchangeable: one sends you to Settings, one to the tool row, one
+ * to the Wavetables tab, and one is the end of it. A control that collapsed them into *not
+ * available* would send somebody looking in the wrong place.
+ *
+ * The sheet holds the sentence and never composes one. Which of the four applies is a question
+ * about the instrument, and the page that asked the instrument is the one that knows.
+ *
+ * **Asked for, rather than handed over.** A registered snapshot goes stale the moment somebody
+ * connects an instrument or moves to another, and the control would then show a reason that was
+ * true when the page loaded — which is exactly how it came to say *connect an instrument first*
+ * with one connected. A function is read when the sheet is built and again at the press, so there
+ * is no second copy to keep in step and no event anybody has to remember to fire.
+ */
+/**
+ * The erase control's id.
+ *
+ * Exported because it is the one control that writes to an instrument and is **built in
+ * JavaScript rather than written into a page**. `test/writeenable.test.ts` reads the pages'
+ * markup to prove every dangerous button is registered, and a button that is never in a `.html`
+ * file is invisible to that scan — so it is named there, through this, rather than slipping past
+ * a check that would have gone on passing.
+ */
+export const ERASE_CONTROL = "eraseWavetables";
+
+export interface EraseOffer {
+  /** The job, when it can run. */
+  run?: BackupRunner;
+  /** Why it cannot, in words the control shows. Ignored when `run` is set. */
+  unavailable?: string;
+}
+
+let eraseOffer: () => EraseOffer = () => ({});
+
+/** Called once by a page that can reach an instrument. The function is kept, not its answer. */
+export function registerErase(offer: () => EraseOffer): void {
+  eraseOffer = offer;
 }
 
 /**
@@ -146,6 +190,8 @@ export function registerBackup(runner: BackupRunner): void {
 function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
   const label: Record<string, string> = {
     projects: "Projects", soundbanks: "Sounds", kits: "Kits",
+    // The erase's one stage. It is the copying, which is the part that takes minutes.
+    tables: "Tables copied",
   };
   const said: Record<string, string> = {
     pending: "Pending", reading: "In progress", done: "Complete",
@@ -190,6 +236,7 @@ import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder }
 import { installHelpMarkers } from "./helpmarker.js";
 import { readSkipBoot, writeSkipBoot } from "./landing/seen.js";
 import { openOverlay, type Overlay } from "./overlay.js";
+import { WRITES_DEVICE, gateWriteControls } from "./writeenable.js";
 
 /**
  * The DNX folder's control: the folder's name, and what can be done about it.
@@ -262,27 +309,104 @@ function build(panel: HTMLElement): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "set-stages";
   bar.hidden = true;
+
+  /**
+   * Both instrument jobs talk to the same device over the same transport, so only one runs.
+   *
+   * They also share the one bar and the one note below the group, which is the other half of the
+   * reason: two jobs writing to one progress area would each report the other's work.
+   */
+  const instrumentJobs: HTMLButtonElement[] = [];
+  const busy = (on: boolean, except?: HTMLButtonElement): void => {
+    for (const button of instrumentJobs) {
+      if (button !== except) button.disabled = on;
+    }
+  };
+  /** Start a long job: claim the bar, the note and the other button. */
+  const startJob = (button: HTMLButtonElement, runner: BackupRunner): void => {
+    button.disabled = true;
+    busy(true, button);
+    bar.hidden = false;
+    bar.replaceChildren();
+    void runner({
+      say: (message) => { note.textContent = message; },
+      at: (stages) => drawStages(bar, stages),
+    }).finally(() => {
+      button.disabled = false;
+      busy(false);
+    });
+  };
+
   panel.append(group("The instrument", [
     row(
       "Back up the +Drive",
       "Read every project, sound and kit the connected instrument holds into one .dnx file. Empty " +
         "slots are skipped. Nothing on the instrument is changed.",
       runBackup
-        ? action("Back up…", (button) => {
-            button.disabled = true;
-            bar.hidden = false;
-            bar.replaceChildren();
-            void runBackup!({
-              say: (message) => { note.textContent = message; },
-              at: (stages) => drawStages(bar, stages),
-            }).finally(() => { button.disabled = false; });
-          })
+        ? (() => {
+            const button = action("Back up…", () => startJob(button, runBackup!));
+            instrumentJobs.push(button);
+            return button;
+          })()
         : (() => {
             const disabled = action("Back up…", () => {});
             disabled.disabled = true;
             disabled.title = "Open the manager to reach an instrument";
             return disabled;
           })(),
+    ),
+    /*
+     * **The one control in DNX that destroys everything it addresses**, which is why it is
+     * coloured unlike its neighbours and why the description says what it costs before anybody
+     * presses it rather than only in the question afterwards.
+     *
+     * It is here, beside the backup, because what it acts on is the instrument rather than a
+     * table or a project — and directly below the DNX folder it depends on, which is where
+     * somebody sent back by its refusal has to go.
+     */
+    row(
+      "Erase the wavetable region",
+      "Remove every wavetable and every pool list from the connected instrument, returning the " +
+        "+Drive to how Elektron shipped it. A copy of every table is saved to your DNX folder " +
+        "first — minutes on a full store — and then you are asked, with the counts, before " +
+        "anything is sent. Those copies are the only way back.",
+      (() => {
+        const holder = document.createElement("span");
+        holder.className = "erase-control";
+        // Read now for the control's state, and read again at the press: the connection can go
+        // away while the sheet is open, and the run is the thing that must not be stale.
+        const offer = eraseOffer();
+        const button = action("Erase…", () => {
+          const run = eraseOffer().run;
+          if (run) startJob(button, run);
+        });
+        button.classList.add("danger");
+        button.id = ERASE_CONTROL;
+        // The register the write switch reads. `openSettings` re-runs `gateWriteControls` once the
+        // sheet is in the document, because this element did not exist when the tool row did.
+        button.setAttribute(WRITES_DEVICE, "");
+        instrumentJobs.push(button);
+        holder.append(button);
+
+        if (!offer.run) {
+          button.disabled = true;
+          /*
+           * **Written beside the button, not into its `title`.** A disabled button takes no
+           * pointer events in Chrome, so its tooltip never appears — the reason would be there in
+           * the markup and invisible to the person it is for. And the reason is the whole point:
+           * four of them, each sending you somewhere different.
+           */
+          const why = document.createElement("span");
+          why.className = "why";
+          // The page's own sentence, never one composed here. See `EraseOffer`.
+          why.textContent = offer.unavailable ?? "Open the library to reach an instrument.";
+          holder.append(why);
+        }
+        return holder;
+      })(),
+      // Its own `?`, not the group's: the group's opens on what a backup contains, and this is
+      // the one row on the panel whose preconditions and consequences need more than a sentence.
+      "settings/settings-erase",
     ),
   ], "backup/backup-contents"));
   panel.append(bar, note);
@@ -366,6 +490,9 @@ export function openSettings(from?: HTMLElement): void {
     onClose: () => { sheet = undefined; },
   });
   build(sheet.panel);
+  // The sheet's erase control writes to an instrument and is built here, after the tool row ran
+  // its scan. Re-running it is how the switch comes to hold a control that did not exist yet.
+  gateWriteControls();
   installHelpMarkers(sheet.panel);
   sheet.panel.querySelector<HTMLElement>("button, a")?.focus();
 }

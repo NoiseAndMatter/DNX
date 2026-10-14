@@ -18,22 +18,24 @@
  *
  * ## A pool holds store slots, and a sound holds a pool index
  *
- * A sound's `TBL` is a **coarse** value: 0 and 1 are the built-in Prim. and Harm., and `c >= 2` is
- * **pool index** `c - 2`, displayed as **shown slot** `c - 1`, and `c` runs to 129 for the 128th.
+ * A sound's `TBL` is stored as a **coarse** value: 0 and 1 are the built-in Prim. and Harm., and
+ * `c >= 2` is **pool index** `c - 2`. The instrument shows `c - 1`, as `T:001` to `T:128`, which is
+ * the **shown slot** — so what a person reads on the unit is the pool slot and no arithmetic. `c`
+ * runs to 129 for the 128th.
  * The pool record says which **store slot** sits at each pool index. Four numbers for one table, and this module adds the fifth, the
  * project slot. Every field says which it carries, because `coarse - 1` and `coarse - 2` both look
  * right across most of the range.
  *
  * ## Three states, and the generation is what tells two of them apart
  *
- * A project with no record follows the **automatic pool**: every stored 16 x 512 table in
+ * A project with no record of its own **follows the store**: every stored 16 x 512 table in
  * store-slot order, which is what every project did before the lists existed. A **new** project
  * gets a stored **empty** list instead, decided by the owner on 2026-10-06 on the grounds that a
  * new project's sound pool starts empty too. So an empty pool and an absent one are different
  * things that read almost alike, and `poolState` is the one place that separates them.
  *
- * A read of a project with no record does not come back empty. It comes back with the automatic
- * flag set, `generation` 0, and **the entries filled with what that project plays right now**.
+ * A read of a project with no record does not come back empty. It comes back with the
+ * follows-the-store flag set, `generation` 0, and **the entries filled with what that project plays right now**.
  *
  * So a read is a description, not a template for a write. Read it, change one entry, write it back
  * with the flag still set, and the firmware ignores every entry: a write that reports success,
@@ -49,8 +51,9 @@
  * ## The generation is not ours to set
  *
  * The firmware ignores what we send and writes the current generation plus one. That makes the
- * generation the one honest proof that a write landed, including for an automatic write, where
- * there is nothing else to compare: a stored automatic record still reads back with its entries
+ * generation the one honest proof that a write landed, including for a follows-the-store write,
+ * where there is nothing else to compare: a stored follows-the-store record still reads back with
+ * its entries
  * filled. So a write is proved by reading before and after and seeing it advance.
  */
 
@@ -90,7 +93,19 @@ export const CONTENT_KIND_POOL = 0x50;
  */
 export const POOL_FORMAT_VERSION = 2;
 
-/** Entries each version carries. Version 1 is read and never written. */
+/**
+ * Entries each version carries.
+ *
+ * **Version 1 is legacy and on its way out.** The owner decided on 2026-10-14 that version 2 is
+ * the only format shared publicly, so v1 exists here to read records written by builds from
+ * before 2026-10-06 and for nothing else. DNX has never written one.
+ *
+ * It is kept rather than dropped today because a card flashed with one of those builds still has
+ * v1 records on it, and reading somebody's pool as empty would be worse than reading it at all.
+ * **Nothing new should be taught about v1** — no feature, no branch, no test beyond the one that
+ * proves the read still works. When the last of those cards is gone, this map loses its first
+ * entry, `reservedFrom` loses its argument, and the two version checks collapse into one.
+ */
 export const ENTRIES_BY_VERSION: Readonly<Record<number, number>> = { 1: 127, 2: POOL_ENTRIES };
 
 /**
@@ -117,8 +132,22 @@ export const WORKING_PROJECT = 0;
 /** A pool index that holds no table, as the record stores it. The model uses `undefined`. */
 export const NO_TABLE = 0xffff;
 
-/** `flags` bit 0: this project follows the automatic pool, and the entries are not used. */
-export const FLAG_AUTOMATIC = 1 << 0;
+/**
+ * `flags` bit 0: this project **follows the store**, and the entries are not used.
+ *
+ * The firmware's `RF_FOLLOWS_STORE`, also bit 0 of the same u16.
+ *
+ * Both were called *automatic* until 2026-10-13 — "the automatic pool" in the proposal that
+ * introduced these records, `RF_AUTOMATIC` in `csrc/wrstore/records.h`. The owner renamed the
+ * concept because "automatic" says that something happens by itself without saying what, where the
+ * state is that this project's pool *is* the store, in the store's order, new tables included.
+ *
+ * **The bit did not move**, and the two repositories renamed in the same week — DNX in `906b807`,
+ * the firmware in `fef921f` — so a build and a reader of either vintage agree about the byte. Each
+ * side's declaration still names the old identifier, which is the only thing that lets somebody
+ * reading one repository in a year connect it to the other.
+ */
+export const FLAG_FOLLOWS_STORE = 1 << 0;
 
 /** Field offsets in a 512-byte pool record. */
 export const RECORD = {
@@ -142,11 +171,12 @@ export interface PoolRecord {
   /** `0` the working project, `1..128` as `/projects` numbers them. */
   projectSlot: number;
   /**
-   * This project follows the automatic pool.
+   * This project **follows the store**: every playable table, in store-slot order, new ones
+   * included.
    *
    * Then `entries` must be empty, which is what makes the read-then-write trap impossible to send.
    */
-  automatic: boolean;
+  followsStore: boolean;
   /**
    * The **store slot** at each **pool index**, `undefined` where the pool index holds nothing.
    *
@@ -163,7 +193,7 @@ export interface PoolRecord {
 
 /** Build the file for one project's pool. */
 export function buildPoolFile(record: PoolRecord): Uint8Array {
-  const { projectSlot, automatic, entries } = record;
+  const { projectSlot, followsStore, entries } = record;
 
   if (!Number.isInteger(projectSlot) || projectSlot < 0 || projectSlot >= PROJECT_SLOTS) {
     throw new WaveriderError(`project slot ${projectSlot} is outside 0..${PROJECT_SLOTS - 1}`);
@@ -184,17 +214,17 @@ export function buildPoolFile(record: PoolRecord): Uint8Array {
   }
 
   /*
-   * **The trap, refused here rather than sent.** The firmware ignores the entries of an automatic
-   * write, so a record read from an automatic project and written back unchanged looks like a
-   * successful edit and is not one. Refused in both places; see this module's note.
+   * **The trap, refused here rather than sent.** The firmware ignores the entries of a write that
+   * follows the store, so a record read from such a project and written back unchanged looks like
+   * a successful edit and is not one. Refused in both places; see this module's note.
    */
-  if (automatic && used.length > 0) {
+  if (followsStore && used.length > 0) {
     throw new WaveriderError(
-      `project slot ${projectSlot}: an automatic pool cannot carry entries, and this one carries ` +
-        `${used.length}. A record read from a project with no pool of its own comes back with the ` +
-        `automatic flag set and its entries filled with what that project plays, so writing it ` +
-        `back unchanged would be ignored. Clear the flag to pin those entries, or empty the ` +
-        `entries to mean automatic.`,
+      `project slot ${projectSlot}: a pool that follows the store carries no entries, and this ` +
+        `one carries ${used.length}. A record read from a project with no pool of its own comes ` +
+        `back with the follows-the-store flag set and its entries filled with what that project ` +
+        `plays, so writing it back unchanged would be ignored. Clear the flag to pin those ` +
+        `entries, or empty the entries to go on following the store.`,
     );
   }
 
@@ -205,7 +235,7 @@ export function buildPoolFile(record: PoolRecord): Uint8Array {
   putBe32(body, RECORD.generation, record.generation);
   // **Computed, never passed**, as `slotfile.ts` computes its table hash and for the same reason.
   putBe16(body, RECORD.entriesInUse, used.length);
-  putBe16(body, RECORD.flags, automatic ? FLAG_AUTOMATIC : 0);
+  putBe16(body, RECORD.flags, followsStore ? FLAG_FOLLOWS_STORE : 0);
   // Written at `POOL_FORMAT_VERSION`, which is 2 and therefore all 128. A v1 record is read and
   // never written: the firmware converts one on its first write, losslessly, because 127 entries
   // have exactly one 128-entry meaning.
@@ -294,7 +324,7 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
   }
 
   const flags = be16(body, RECORD.flags);
-  if ((flags & ~FLAG_AUTOMATIC) !== 0) {
+  if ((flags & ~FLAG_FOLLOWS_STORE) !== 0) {
     throw new WaveriderError(
       `project slot ${projectSlot}: flags 0x${flags.toString(16)} sets a bit version ` +
         `${POOL_FORMAT_VERSION} does not define`,
@@ -329,8 +359,9 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
     entries[j] = value;
   }
 
-  // Checked for every record, automatic or not: a read always carries a count that matches what it
-  // carries, so a disagreement is a truncated or misread record rather than a kind of pool.
+  // Checked for every record, whether it follows the store or not: a read always carries a count
+  // that matches what it carries, so a disagreement is a truncated or misread record rather than a
+  // kind of pool.
   const claimed = be16(body, RECORD.entriesInUse);
   const actual = entries.filter((slot) => slot !== undefined).length;
   if (claimed !== actual) {
@@ -341,7 +372,7 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
 
   return {
     projectSlot,
-    automatic: (flags & FLAG_AUTOMATIC) !== 0,
+    followsStore: (flags & FLAG_FOLLOWS_STORE) !== 0,
     entries,
     generation: be32(body, RECORD.generation),
   };
@@ -353,50 +384,71 @@ export function readPoolFile(bytes: Uint8Array): PoolRecord {
  * One sector, no entries. The same state as having no record at all, and the only way back to it
  * once a project has one, because the route offers no delete.
  */
-export function automaticPoolFile(projectSlot: number): Uint8Array {
-  return buildPoolFile({ projectSlot, automatic: true, entries: [], generation: 0 });
+export function followsStorePoolFile(projectSlot: number): Uint8Array {
+  return buildPoolFile({ projectSlot, followsStore: true, entries: [], generation: 0 });
 }
 
 /**
- * The record a **new project** gets: stored, not automatic, and holding nothing.
+ * The record a **new project** gets: stored, not following the store, and holding nothing.
  *
- * The owner settled this on 2026-10-06, against the alternative of making CREATE NEW automatic:
- * a new project's **sound** pool starts empty, so its wavetable pool does too. The instrument
- * writes exactly this record when a project is created, so DNX reads it constantly and should be
- * able to write it.
+ * The owner settled this on 2026-10-06, against the alternative of having CREATE NEW follow the
+ * store: a new project's **sound** pool starts empty, so its wavetable pool does too. The
+ * instrument writes exactly this record when a project is created, so DNX reads it constantly and
+ * should be able to write it.
  *
- * It is not the same thing as `automaticPoolFile`, and the difference is audible: an empty list
- * gives a sound nothing but the built-in Prim. and Harm. until tables are added, where an
- * automatic one gives it every playable table on the card.
+ * It is not the same thing as `followsStorePoolFile`, and the difference is audible: an empty list
+ * gives a sound nothing but the built-in Prim. and Harm. until tables are added, where following
+ * the store gives it every playable table on the card.
  */
 export function emptyPoolFile(projectSlot: number): Uint8Array {
-  return buildPoolFile({ projectSlot, automatic: false, entries: [], generation: 0 });
+  return buildPoolFile({ projectSlot, followsStore: false, entries: [], generation: 0 });
 }
 
 /**
  * Which of the three states a read describes.
  *
- * | | generation | automatic | what a sound reaches |
+ * | state | generation | follows the store | what a sound reaches |
  * |---|---|---|---|
- * | `untouched` | 0 | yes | every playable table on the card, in store-slot order |
- * | `automatic` | 1 or more | yes | the same, and the project says so on purpose |
+ * | `follows-store` | any | yes | every playable table on the card, in store-slot order |
+ * | `empty` | 0 | no | nothing: this project has no record, so it has no pool |
  * | `list` | 1 or more | no | exactly the entries, which may be none |
  *
- * `untouched` is a project saved before the lists existed, answered by a record the firmware made
- * up to answer the read. It plays the same as `automatic` and is not the same fact, which is why
- * the generation is the only thing that separates them.
+ * ## The flag decides, and that is a change
+ *
+ * This tested the generation first and called anything at generation 0 `untouched`, which was
+ * right while *no record* and *follows the store* were the same thing. The owner separated them on
+ * 2026-10-13: **a project with no pool of its own now plays nothing.** He found it by opening a
+ * project older than the wavetable firmware and reading its pool, full of all 83 stored tables, as
+ * a bug — it was not, and that it looked like one to the person who commissioned the behaviour was
+ * the argument for changing it.
+ *
+ * So the flag is asked first, and the answer is right **on both firmwares without being told which
+ * is running**:
+ *
+ * - An older build answers a record-less read with the flag set and the entries filled. That is
+ *   `follows-store`, and it is exactly what the project plays.
+ * - A build from `feature/waverider-empty-pool-default` answers with flags 0 and no entries. That
+ *   is `empty`, and it is exactly what that project plays.
+ *
+ * Which matters because the change carries **no new capability bit** — `/modinfo` cannot be asked
+ * which behaviour a build has. Describing the record that came back rather than the firmware's
+ * default is what makes a page correct on an instrument nobody has flashed yet and on one somebody
+ * has.
+ *
+ * `hasStoredPool` still separates a record somebody wrote from one the firmware made up to answer
+ * the read, which is the question `follows-store` no longer answers on its own.
  */
-export function poolState(record: PoolRecord): "untouched" | "automatic" | "list" {
-  if (record.generation === 0) return "untouched";
-  return record.automatic ? "automatic" : "list";
+export function poolState(record: PoolRecord): "empty" | "follows-store" | "list" {
+  if (record.followsStore) return "follows-store";
+  return record.generation === 0 ? "empty" : "list";
 }
 
 /**
  * Whether a read says this project has a pool of its own.
  *
  * `generation` 0 is the firmware's tell for a record it synthesised to answer the read. A project
- * with no record is not distinguishable from one with a stored automatic record by its entries or
- * its flag, only by this.
+ * with no record is not distinguishable from one with a stored follows-the-store record by its
+ * entries or its flag, only by this.
  */
 export function hasStoredPool(record: PoolRecord): boolean {
   return record.generation > 0;

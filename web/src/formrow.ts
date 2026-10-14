@@ -9,8 +9,20 @@
  * The markup they produce is styled by `.set-group`, `.set-row` and `.seg` in `toolnav.css`.
  */
 
-/** A named control with an explanation under the name. */
-export function row(name: string, description: string, control: HTMLElement): HTMLElement {
+/**
+ * A named control with an explanation under the name.
+ *
+ * `help` names a section of the help pages, which puts a `?` beside this row's name — the same
+ * contract `group` has, one level down. It belongs on a row rather than its group wherever one
+ * control needs more than a description can carry. The caller installs the markers once the row
+ * is in the document.
+ */
+export function row(
+  name: string,
+  description: string,
+  control: HTMLElement,
+  help?: string,
+): HTMLElement {
   const el = document.createElement("div");
   el.className = "set-row";
 
@@ -18,6 +30,7 @@ export function row(name: string, description: string, control: HTMLElement): HT
   label.className = "label";
   const title = document.createElement("b");
   title.textContent = name;
+  if (help) title.dataset["help"] = help;
   const why = document.createElement("span");
   why.textContent = description;
   label.append(title, why);

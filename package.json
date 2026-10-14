@@ -39,7 +39,9 @@
     "sheet": "tsx src/cli/sheet.ts",
     "build:web": "node scripts/version.mjs && tsc -p tsconfig.web.json",
     "web": "npm run build:web && tsx src/cli/serve.ts",
-    "projectdiff": "tsx src/cli/projectdiff.ts"
+    "projectdiff": "tsx src/cli/projectdiff.ts",
+    "jobs": "tsx src/cli/jobs.ts",
+    "job": "tsx src/cli/progress.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

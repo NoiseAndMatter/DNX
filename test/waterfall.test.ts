@@ -168,3 +168,52 @@ test("a wider spread moves the far frame and the box follows it", () => {
     `a 400 spread should need a wider box than 100: ${wide.box.width} vs ${narrow.box.width}`,
   );
 });
+
+test("the box is the same whichever frame is current, so the panel cannot jump", () => {
+  /*
+   * **A layout bug found at the instrument on 2026-10-13, not by this suite.**
+   *
+   * The position marker sits below its frame's trough. For the frames nearest the front that is
+   * below everything else drawn, so including it in the measured extent made the box taller for
+   * those frames and shorter for the rest. The pane renders the SVG at `height: auto`, so the
+   * box's aspect ratio *is* the panel's height — and the whole preview grew a few pixels as the
+   * slider passed about 93% of the way along. The owner saw it at frame 14 of 15 and frame 60 of
+   * 64, which is what sent me to this line.
+   *
+   * The invariant is the fix: for one table, every frame reports one box. Asserted across the
+   * whole range rather than at the end, because the old behaviour was correct for most of it and
+   * a test that only checked the first frame would have passed throughout.
+   */
+  for (const waves of [15, 16, 64]) {
+    const bytes = table(waves, 64, (wave, point) =>
+      Math.round(30000 * Math.sin((point / 64) * 2 * Math.PI) * ((wave + 1) / waves)));
+
+    const geometry = GEOMETRY(waves, 64);
+    const none = waterfall(bytes, geometry, undefined);
+    const boxes = new Set<string>([none.viewBox]);
+    for (let frame = 0; frame < waves; frame++) {
+      boxes.add(waterfall(bytes, geometry, frame).viewBox);
+    }
+
+    assert.equal(
+      boxes.size,
+      1,
+      `${waves} frames gave ${boxes.size} different boxes: ${[...boxes].join(" | ")}`,
+    );
+  }
+});
+
+test("the marker still moves even though the box does not", () => {
+  // The other half of the fix: reserving the band must not have pinned the marker itself, which
+  // would make the slider look broken in the opposite way.
+  const bytes = table(16, 64, (_wave, point) => (point < 32 ? 20000 : -20000));
+  const geometry = GEOMETRY(16, 64);
+
+  const first = waterfall(bytes, geometry, 0).marker;
+  const last = waterfall(bytes, geometry, 15).marker;
+  assert.ok(first !== undefined && last !== undefined, "a named frame must get a marker");
+  assert.notEqual(first, last, "the marker must follow the frame");
+
+  // And no marker at all when no frame is named, which is what a fresh read draws.
+  assert.equal(waterfall(bytes, geometry, undefined).marker, undefined);
+});

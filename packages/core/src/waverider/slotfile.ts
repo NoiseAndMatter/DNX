@@ -217,3 +217,43 @@ export function readSlotFile(bytes: Uint8Array): SlotFile {
   // position is zero and the slot is the container's stamped index, so it is put back.
   return { entry: { ...entry, slot }, table };
 }
+
+/**
+ * Turn a saved copy of a slot back into something writable.
+ *
+ * **The other half of the door.** Deleting a table saves the bytes `/waverider/<slot>` returned,
+ * which is exactly what `readSlotFile` parses — but until now nothing in DNX could read one back,
+ * so a delete was a one-way trip and the copy was a file only a hex editor could use. The owner's
+ * instruction on 2026-10-14, about the bulk erase that would have made 83 of those at once: *make
+ * it a two way door*.
+ *
+ * Everything a write needs is in the entry the instrument wrote, so nothing is recomputed and
+ * nothing is converted. In particular:
+ *
+ * - **The geometry is the stored one.** A restore is not an import: there is no proposal, no
+ *   resize and no normalising, because the table is already in the instrument's own form. Putting
+ *   it back through the import path would resample a table that needs no resampling.
+ * - **`sourceHash` and `sourceSize` are carried, not recomputed.** They describe the audio file
+ *   the table was originally made from, which is what lets a later re-import of that same file be
+ *   recognised. Hashing the copy instead would describe the copy and lose that.
+ * - **`gain` is carried for the same reason.** It is a record of what the original conversion
+ *   multiplied by; recomputing it from a table that is already normalised would write 1.
+ *
+ * `slot` is an argument because a copy may go back somewhere other than where it came from — the
+ * slot it was taken from can be occupied again by the time anybody restores it.
+ */
+export function pendingFromSlotFile(bytes: Uint8Array, slot: number): PendingSlot {
+  const { entry, table } = readSlotFile(bytes);
+  return {
+    slot,
+    name: entry.name,
+    waves: entry.waves,
+    points: entry.points,
+    interpolate: entry.interpolate,
+    table,
+    sourceHash: entry.sourceHash,
+    sourceSize: entry.sourceSize,
+    gain: entry.gain,
+    sampleFormat: entry.sampleFormat,
+  };
+}

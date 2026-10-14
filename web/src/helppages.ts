@@ -447,17 +447,18 @@ points at the store directly.`,
       },
       {
         heading: "Store slot, pool slot, and the number in a sound",
-        body: `Set **TBL** on a sound to one more than the pool slot you want.
+        body: `Set **TBL** on a sound to the pool slot you want. It is the same number.
 
-Every table in the pool has three numbers:
+Every table has two numbers:
 
-- **Store slot, 0 to 255.** Where the table sits on the instrument.
-- **Pool slot, 1 to 128.** Where it sits in this project's pool.
-- **The number in a sound.** The pool slot plus one. The first values of **TBL** are the
-  instrument's built-in waveforms.
+- **Store slot, 0 to 255.** Where the table sits on the instrument, shared by every project.
+- **Pool slot, 1 to 128.** Where it sits in this project's pool, and what you set **TBL** to.
 
-One table can be store slot 9, pool slot 2, and 3 in the sound. Every cell shows its store slot
-and its pool slot.`,
+The sound's **TBL** cell reads **T:002** for pool slot 2. Turning it below **T:001** gives the
+instrument's two built-in waveforms, **PRIM** and **HARM**.
+
+One table can be store slot 9 and pool slot 2, and the same table can be a different pool slot in
+another project. Every cell shows its store slot and its pool slot.`,
       },
       {
         heading: "Seeing what a table looks like",
@@ -476,22 +477,114 @@ is the same number a sound's **WT.POS** sets, so frame 24 of 64 is what you hear
 
 - Reading one table costs one read from the instrument. Picking it again afterwards is free.
 - **Refresh** forgets every table it has read.
-- Nothing here changes the instrument, and **Position** moves only the drawing.`,
+- **Play** sounds the frame you picked, and **Sweep** travels the whole table. Both are
+  synthesised here, so nothing reaches the instrument and the sequencer does not move.
+- Nothing in this pane changes the instrument, and **Position** moves only the drawing.`,
+        image: { src: "help/wavetables-preview.png", alt: "The wavetable preview: every frame of a 64-frame table stacked front to back, the picked frame drawn bright with a dashed line under it, and the Position and Volume sliders under it reading frame 24 of 64 at 0.365" },
+      },
+      {
+        id: "wavetable-import",
+        heading: "Putting a wavetable on the instrument",
+        body: `Drop audio files onto the store, check them, and write them in one go.
+
+Before you start:
+
+- A Digitone II whose firmware carries the wavetable store.
+- **WRITE** on, in the tool row.
+- Elektron Transfer and Overbridge closed.
+
+1. Press **Wavetables**, then pick a project from **POOL OF**.
+2. Drag audio files from your computer onto a free slot in the **+Drive wavetables** list.
+3. The slots turn amber and read **staged**. Nothing has been sent.
+4. Click a staged row. Set **name**, **waves** and **points**, and press **Play** to hear it, or
+   **Sweep** to hear it travel from the first frame to the last.
+5. Press **Write staged tables**. One question names every slot it is about to write.
+
+To put a staged table somewhere else, drag its row onto another free slot. **Remove** takes one off
+the list, **Discard all** clears it, and leaving the mode discards everything staged.
+
+A **WAV** file is read exactly as it is. Any other format is handed to the browser, which may change
+the number of samples it has, and the panel says when that happened.`,
+        image: { src: "help/wavetables-import.png", alt: "Three audio files staged on free store slots, marked amber and reading staged, with the panel below showing the name, the waves and points, and the Play and Write staged tables buttons" },
+      },
+      {
+        id: "wavetable-add-to-pool",
+        heading: "Making a table playable: put it in the pool",
+        body: `A table in the store makes no sound until a project's pool points at it. The pool
+slot is the number a sound asks for, so you choose which slot it goes in.
+
+Before you start:
+
+- A table in the **+Drive wavetables** list.
+- **WRITE** on, in the tool row.
+
+1. Press **Wavetables**, then pick the project from **POOL OF**.
+2. Click the table in the **+Drive wavetables** list on the right. **Shift-click** another to take
+   the whole run between them; **Ctrl-click** (**Cmd** on a Mac) adds or removes one.
+3. **Drag them onto the pool slot** you want the first one in. The rest follow in the slots after
+   it, and the slot you are over says how many are landing and what they replace.
+4. One question names every table, every slot, and what each slot holds now.
+
+Rather not drag? Click a pool slot and press **Add to pool** instead, which does the same thing.
+With no pool slot picked it uses the first free one.
+
+On the instrument, set the sound's **TBL** to the pool slot number: for pool slot 5 the cell reads
+**T:005**. Below **T:001** are the two built-in waveforms, **PRIM** and **HARM**.
+
+The pool being replaced is saved to your computer as a file before anything is sent. That copy is
+the only undo there is.
+
+**If the project had no pool of its own**, the question says so before you answer it. Writing one
+fixes the tables it plays today at the slots they are in now, and from then on a table written into
+the store does not join that project until you add it.
+
+The store is shared by every project; a pool is one project's own. So the same table can sit at
+pool slot 3 of one project and pool slot 40 of another, and adding it to one changes nothing
+anywhere else.`,
+      },
+      {
+        id: "wavetable-shape",
+        heading: "Choosing the shape of a table",
+        body: `**waves** is how many frames the table holds. **points** is how long each frame is.
+
+DNX reads how long the file is and proposes a shape. The panel says whether the length divided
+exactly or whether the file has to be stretched to fit.
+
+- **It divided exactly.** The file is very likely already that shape.
+- **Several shapes divide most files**, so the proposal is a convention rather than a measurement.
+  Change the numbers when you know better.
+- **A shape this instrument does not play** is still written and still listed, and it makes no
+  sound. The panel says so before you write, not after.
+
+Every import is made as loud as it can be. The instrument does not undo that, so two tables made
+from differently recorded files come out equally loud.`,
       },
       {
         id: "wavetable-pool-kinds",
         heading: "The three kinds of pool",
-        body: `Check which kind of pool a project has before you upload a table to the instrument.
+        body: `A pool is a record on the **+Drive**, one per project slot, not part of the
+project file — which is why an instrument has to be connected to read one.
 
-The line under the pool says which kind it is:
+The line under the pool says which kind it is.
 
-- **No pool of its own.** Nobody has written one. The instrument plays every stored table in
-  store-slot order.
-- **Automatic.** The same order, written down.
+- **No pool of its own.** Nobody has written one, so the project plays **no** wavetables. Every
+  sound set to a **TBL** number plays the built-in **PRIM** until you put tables in the pool.
+- **Follows the store.** The project plays every stored table in store-slot order, and picks up
+  new ones as they arrive.
 - **A list.** Somebody chose these slots, on the instrument or in DNX.
 
-An upload into a lower store slot moves every later slot. A list stays where it is. In the other
-two kinds, sounds keep their **TBL** numbers and play whatever moved into them.`,
+**A list is what you want for a project you are building.** The pool slot is the number a sound
+reaches, so putting each table where you want it to answer from is the point of keeping one.
+
+When a project **follows the store** the order is the store's, so a table written into a free slot
+below the others moves every later pool slot along by one. Sounds keep their **TBL** numbers and
+play whatever moved into them. That is the behaviour to expect rather than a fault, and a list of
+its own is how a project stops depending on it.
+
+**A project made before the wavetable firmware has no pool of its own**, so it plays nothing until
+you add tables to it. Older firmware answered differently — it gave such a project every stored
+table — so if your pool looks full of tables you did not choose, that instrument has not been
+updated yet.`,
       },
       {
         heading: "When a cell says MISSING",
@@ -501,13 +594,55 @@ and the entry still points at it, so a sound set to that pool slot plays a built
 To fix it:
 
 1. Press **Refresh**. It re-reads the pool and the store together.
-2. If the cell still says MISSING, write a table into that store slot, or set the sound to a
-   different pool slot.
+2. Click the cell and press **Remove from pool** to empty it, or put a table in it with
+   **Add to pool**, or set the sound to a different pool slot.
 
-DNX leaves the entry alone. Clearing it would leave a hole for the next add to drop into, and the
-sound would then play an unrelated table. Adding a table skips a MISSING entry and fills the first
-free one.`,
+DNX never clears one by itself, and adding a table skips a MISSING entry and fills the first truly
+empty one. That is on purpose: an entry emptied without you asking would be a hole the next table
+drops into, and the sound pointing at it would start playing something unrelated.
+
+**Leaving one is riskier than it looks.** If you later write a different table into that store
+slot, the entry starts naming the new table — in every project, with nothing on screen having
+changed. Removing it is the way to avoid that.`,
         image: { src: "help/wavetables-missing.png", alt: "A pool cell naming a store slot that is empty, reading MISSING, with a note saying the table was deleted and the slot now plays the built-in waveform" },
+      },
+      {
+        id: "wavetable-remove",
+        heading: "Taking a table out of a pool, and deleting one",
+        body: `Two different removals. One changes a project's list; the other takes the table off
+the instrument for every project.
+
+Before you start:
+
+- **WRITE** on, in the tool row.
+
+**To take a table out of this project's pool:** click the pool slot on the left, then press
+**Remove from pool**.
+
+The table stays in the store and every other project keeps it. The slot becomes empty, and any
+sound whose **TBL** reads that number plays the built-in **PRIM** from then on. Nothing renumbers:
+the slots after it stay where they are, and the empty one is where the next **Add to pool** lands
+if you do not choose a slot.
+
+**To delete a table from the instrument:** click it in the **+Drive wavetables** list, then press
+**Delete table** in the preview header.
+
+1. DNX saves a copy to your computer first. **There is no undo on the instrument** — that copy is
+   the only way back.
+2. The question names any pool slot of the project you are looking at that points at the table.
+   Those cells will read **MISSING** afterwards.
+3. Only that one project's pool has been read. Any other project may also name the slot, and DNX
+   has not looked.
+
+After deleting, take the MISSING entries out with **Remove from pool**. If you leave them and
+later write a different table into the same store slot, those entries name the new table instead,
+in every project, with nothing on screen having changed.
+
+**To put a deleted table back**, drag its saved copy onto a free slot in the **+Drive wavetables**
+list, exactly as you would an audio file, and press **Write staged tables**. DNX recognises the
+copy and restores the table as it was: same shape, same name, nothing converted and nothing made
+louder. The name and shape boxes are switched off for a restore, because changing them would mean
+rebuilding a table that needs no rebuilding.`,
       },
       {
         id: "wavetable-limits",
@@ -741,6 +876,8 @@ this browser, and none of them is about your projects.`,
         id: "settings-rows",
         heading: "What is in it",
         body: `- **Back up the +Drive** — see *Backup*.
+- **Erase the wavetable region** — take every wavetable off the instrument. See *Erasing the
+  wavetable region* below.
 - **Hide the probe** — keep the probe out of the tool row. On unless you turn it off.
 - **DNX folder** — where DNX saves the files it makes. See *The DNX folder* below.
 - **Motion** — honour your system's reduced-motion setting, or overrule it.
@@ -771,6 +908,48 @@ permission. The status line says which.
 
 **Chrome can ask again after a restart.** Settings then shows the folder as needing permission:
 press **Allow**. **Forget** stops using the folder and leaves its files where they are.`,
+      },
+      {
+        id: "settings-erase",
+        heading: "Erasing the wavetable region",
+        body: `**Erase…** takes every wavetable and every wavetable pool off the instrument, putting
+its +Drive back to how it left the factory. It is for selling the instrument, sending it for
+repair, or going back to the official firmware for good. Nothing else uses it.
+
+**FORMAT +DRIVE and a factory reset do not do this.** They leave the wavetables where they are, so
+this is the only way to remove them.
+
+Before you start:
+
+1. The instrument must be running the custom firmware, connected, and chosen in the **library**.
+2. Open the **Wavetables** tab once, so DNX can ask the instrument what it can do.
+3. Choose a **DNX folder** in these settings. DNX saves one file per wavetable, and a browser
+   blocks that many downloads — without a folder, **Erase…** will not run.
+4. Turn on **WRITE** in the tool row.
+
+Then:
+
+1. Press **Erase…**. DNX reads every wavetable off the instrument and saves a copy into your DNX
+   folder. On a full instrument this takes several minutes, and the bar says how far it has got.
+2. Read the question. It says how many wavetables and pools are going, lists them by name, and
+   says how much was saved.
+3. Press **Erase the region**, or **Cancel**. Cancelling sends nothing, and the copies stay.
+4. DNX reads the instrument back and tells you it is empty.
+
+**The copies are the only way back.** There is no undo on the instrument itself. Put a wavetable
+back by dragging its file onto a free slot in the **Wavetables** tab.
+
+**Do this before you put the official firmware back on.** The official firmware has no way to
+reach these wavetables, so going back first means installing the custom firmware again to erase,
+then the official one again afterwards.
+
+**It clears the pool of every project, not only the one you are looking at.** A pool is kept on the
++Drive rather than inside a project file, so no project is edited by this: your projects, sounds
+and kits are kept somewhere else and are not touched.
+
+**What stays behind is the TBL setting on each sound.** It keeps the number it had and plays the
+built-in Prim, because the wavetable that number pointed at is gone. Point those sounds at a new
+wavetable once you have put one back.`,
       },
       {
         heading: "Why the write switch is not in here",

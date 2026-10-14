@@ -65,6 +65,9 @@ export interface WaterfallView {
  * are a named constant a caller can lean on instead of a set of defaults scattered through the
  * signature. A caller that wants a different stack passes its own.
  */
+/** How far below a frame's trough its position marker sits. */
+const MARKER_GAP = 10;
+
 export const WATERFALL_VIEW: WaterfallView = {
   originX: 260,
   originY: 70,
@@ -248,12 +251,29 @@ export function waterfall(
       `L${round(near.x0 + near.width)} ${round(near.y0)}`,
   ];
 
+  /*
+   * **The marker band is reserved whatever frame is current.**
+   *
+   * The marker sits below its frame's trough, and for the frames nearest the front that is below
+   * everything else drawn — so growing `maxY` to fit it made the box taller for those frames and
+   * shorter for the rest. The pane draws the SVG at `height: auto`, so the box's aspect
+   * decided the rendered height and the whole panel jumped a few pixels as the slider passed about
+   * 93% of the way along: frame 14 of 15, frame 60 of 64. Reported from the instrument on
+   * 2026-10-13.
+   *
+   * So the band is measured from the **nearest** frame, which is the lowest any marker can go, and
+   * added always. The box then depends only on the table, and moving the slider moves nothing but
+   * the marker.
+   */
+  const band = (place: FramePlace): number => place.y0 + place.amplitude + MARKER_GAP;
+  const reserved = band(framePlace(waves - 1, waves, view));
+  if (reserved > maxY) maxY = reserved;
+
   let marker: string | undefined;
   if (current !== undefined && Number.isInteger(current) && current >= 0 && current < waves) {
     const place = framePlace(current, waves, view);
-    const y = place.y0 + place.amplitude + 10;
+    const y = band(place);
     marker = `M${round(place.x0)} ${round(y)} L${round(place.x0 + place.width)} ${round(y)}`;
-    if (y > maxY) maxY = y;
   }
 
   // **Rounded outward, and the box and the `viewBox` are the same numbers.** Rounding the string

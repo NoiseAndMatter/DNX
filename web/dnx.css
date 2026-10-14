@@ -516,6 +516,16 @@ label.file input { display: none; }
 .bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 .25rem; }
 
 /*
+  A set of controls that belongs together, so the row wraps *between* groups instead of through one.
+
+  `.bar` wraps, and with its children loose the break lands wherever it happens to fall: the first
+  sighting was *Export project* alone on a second line with the separator that belongs to it left
+  dangling at the end of the first. A group is a flex box of its own, so it is one item as far as
+  the wrap is concerned and its separator travels with what it separates.
+*/
+.bar .bargroup { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+
+/*
  * A command row directly under the chrome bar, on a full-height app page.
  *
  * `.bar` on its own is a card inside a flowing section, which is right for the expander. Under the
@@ -762,6 +772,58 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .libtable .unread { color: var(--dim); font-style: italic; }
 .libtable .untagged { color: var(--dim); }
 
+/*
+ * Staged wavetable imports, drawn on the store's own rows.
+ *
+ * Amber, which this language already uses for the kit: a staged table is **not yet a thing on the
+ * instrument**, and borrowing teal would make a pending row read as an occupied one at a glance.
+ * Dashed, for the same reason the probe's pending states are: the edge of something provisional.
+ */
+.libtable tbody tr.pending td { color: var(--amber); }
+.libtable tbody tr.pending { cursor: grab; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.pending.selected { background: #2a2419; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.pending td.name { color: var(--amber); font-weight: 600; }
+.pendingmark {
+  font-size: .62rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border: 1px dashed var(--amber);
+  border-radius: 2px;
+  padding: 0 .25rem;
+  margin-right: .3rem;
+  vertical-align: .05rem;
+}
+/* The store says it will take a drop, and the rows say where it would land. */
+.libtablewrap.dropping { outline: 2px dashed var(--amber); outline-offset: -2px; }
+/* Ground and a bar, nothing inserted into the cells: an arrow in `::after` wrapped the row and
+   pushed the number onto a second line. */
+.libtable tbody tr.dropland { background: #2c2514; box-shadow: inset 3px 0 0 var(--amber); }
+.libtable tbody tr.dropland td { color: var(--amber); }
+/* Stepped over: taken already, so the placement looked further down. */
+.libtable tbody tr.dropskip { opacity: .45; }
+/* No room from here, said before the drop rather than after it. */
+.libtable tbody tr.dropfull { background: #3a2020; box-shadow: inset 3px 0 0 var(--salmon); }
+
+/*
+ * A conversation with the instrument owns the panes.
+ *
+ * Clicks on a grid start device reads, and the +Drive takes one at a time — so while one is
+ * running the grids refuse the pointer and say so by going dim. The controls around them are
+ * disabled properly, which is what a keyboard follows; this is for the two that are not
+ * controls.
+ */
+#wavepoolGrid.locked,
+#wavestoreGrid.locked { pointer-events: none; opacity: .55; }
+
+/* The staging panel sits under the store it stages onto, never beside the pool. */
+.section.import { margin-top: .6rem; }
+.section.import .bar { margin-top: .4rem; }
+.section.import .count { color: var(--amber); }
+#wavimportNote .warn { color: var(--salmon); }
+#wavimportNote .ok { color: var(--teal); }
+#wavimportNote p { margin: .35rem 0; }
+#wavimportNote code { color: var(--amber); }
+
 /* ---- progress, in the status bar ------------------------------------------------------
  *
  * Inserted into `#status` by `progress.ts` and removed when the work finishes, so no page needed
@@ -773,23 +835,37 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * That element's text is written with `textContent`, which replaces every child — a bar appended
  * inside it was deleted by the next message about the operation it was drawing. See `progress.ts`.
  */
+/*
+ * A card, not a strip in the corner.
+ *
+ * It used to be 12rem by half a rem at the bottom right with no words on it, which for a +Drive
+ * read meant a minute of an anonymous animated stripe. Centred near the top, with the label in it,
+ * it is the first thing somebody looks at when the page goes quiet.
+ */
 .progress {
-  position: fixed; right: 1rem; bottom: .62rem; z-index: 30;
-  /* Fixed width, so the number beside it cannot shuffle the bar sideways as it changes. */
-  width: 12rem;
-  height: .5rem; border-radius: 999px;
-  background: var(--panel-2); border: 1px solid var(--line-soft);
-  overflow: hidden;
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30;
+  width: min(26rem, calc(100vw - 2rem));
+  display: grid; grid-template-columns: 1fr auto; gap: .3rem .75rem; align-items: center;
+  padding: .7rem .85rem;
+  background: var(--panel-2); border: 1px solid var(--teal-dim); border-radius: 4px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / .45);
 }
-.progress > i {
+.progress > span {
+  grid-column: 1; font-size: .78rem; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.progress > b {
+  grid-column: 2; justify-self: end;
+  font-size: .72rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.progress > .progresstrack {
+  grid-column: 1 / -1; position: relative; overflow: hidden;
+  height: .4rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line-soft);
+}
+.progress > .progresstrack > i {
   display: block; height: 100%; width: 0;
   background: var(--teal);
   transition: width .12s linear;
-}
-/* The percentage sits outside the track, or a bar under 20% has nowhere to put its own label. */
-.progress > b {
-  position: absolute; right: 12.6rem; bottom: -.3rem;
-  font-size: .66rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -798,12 +874,15 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
  * Used where the total genuinely is not known — a +Drive read, where the listing reports a flat
  * 4 MiB allocation rather than the file's size. See `progress.ts`.
  */
-.progress.working { background: var(--panel-2); }
-.progress.working::after {
+/* The travelling stripe belongs to the track now, not to the card. */
+.progress.working > .progresstrack::after {
   content: ""; position: absolute; inset: 0;
   width: 35%;
   background: linear-gradient(90deg, transparent, var(--teal-dim), var(--teal), var(--teal-dim), transparent);
   animation: progress-sweep 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress.working > .progresstrack::after { animation: none; background: var(--teal-dim); width: 100%; }
 }
 @keyframes progress-sweep {
   from { transform: translateX(-100%); }
@@ -919,6 +998,15 @@ body.app > main.split > .side {
 .songtable td.ptn { white-space: nowrap; }
 .songtable .ptnid { font-weight: 600; color: var(--teal); }
 .songtable .ptnname { color: var(--muted); margin-left: .45rem; font-size: .72rem; }
+/*
+  A row naming a pattern the project does not have. Amber rather than salmon: the file is
+  damaged, not about to be destroyed, and every other row on the page is fine. The raw stored
+  number sits where a pattern name like A5 normally does, so the column still scans.
+*/
+.songtable td.ptn.damaged .ptnid { color: var(--amber); }
+.songtable .ptnbad { color: var(--amber); margin-left: .45rem; font-size: .72rem; font-style: italic; }
+.songtable tr.damagedrow td { background: rgba(200, 160, 106, .07); }
+#songRows p.warn { color: var(--amber); margin: 0 0 .5rem; font-size: .78rem; line-height: 1.45; }
 /* Sixteen chips, so muting is a click on a numbered track exactly as it is on the instrument. */
 .songtable td.mutes { white-space: nowrap; line-height: 1; }
 .mutechip {
@@ -1017,9 +1105,54 @@ body.app.insights .slot { cursor: pointer; }
 .wfcontrols { display: flex; align-items: center; gap: .8rem; background: var(--panel);
   border: 1px solid var(--line); border-radius: 3px; padding: .6rem .75rem; }
 .wfcontrols .lbl { margin: 0; white-space: nowrap; }
-.wfcontrols input[type="range"] { flex-grow: 1; min-height: 2.75rem; accent-color: var(--teal); }
+/*
+  The row has to fit: a label, a slider, a readout, three buttons and a second slider. Wrapping
+  is the safety net, but the real fix is that **both sliders may shrink** — a flex item's default
+  `min-width: auto` is its content width, which for a range input is a browser-chosen minimum
+  that refuses to go below about 8rem. That refusal is what pushed the volume off the right edge.
+*/
+.wfcontrols { flex-wrap: wrap; }
+/* A label and its control are one item, so a wrap never separates them. */
+.wfgroup { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.wfgroup-pos { flex: 1 1 10rem; }
+.wfcontrols input[type="range"] { flex: 1 1 auto; min-width: 0; min-height: 2.75rem; }
+.wfcontrols input.wfvol { flex: 0 1 6rem; }
+
+/*
+  A pointer over a line, not a puck on a rail.
+
+  The position slider names a frame in a stack drawn directly above it, so the control should
+  point at it. A round thumb has no direction and sits on the line rather than indicating a
+  place on it. `appearance: none` is required first: with it left alone the browser draws its own
+  control and every rule below is ignored.
+*/
+.wfcontrols input[type="range"] {
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.wfcontrols input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px; background: var(--line); border-radius: 1px;
+}
+.wfcontrols input[type="range"]::-moz-range-track {
+  height: 2px; background: var(--line); border-radius: 1px;
+}
+/* Apex down, touching the line: `margin-top` of minus the full height puts the tip on the track. */
+.wfcontrols input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 9px; margin-top: -9px;
+  background: var(--teal); border: 0; clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.wfcontrols input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 9px; transform: translateY(-5px);
+  background: var(--teal); border: 0; clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.wfcontrols input[type="range"]:focus-visible::-webkit-slider-thumb { background: var(--focus); }
+.wfcontrols input[type="range"]:focus-visible::-moz-range-thumb { background: var(--focus); }
+/* The volume pointer is the quieter of the two: it is not pointing at anything drawn. */
+.wfcontrols input.wfvol::-webkit-slider-thumb { background: var(--teal-dim); }
+.wfcontrols input.wfvol::-moz-range-thumb { background: var(--teal-dim); }
+/* While a note sounds, the marker follows the audio rather than the pointer. */
+.wfstage.sounding { border-color: var(--teal-dim); }
 .wfpos { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--fg);
-  min-width: 11rem; text-align: right; }
+  min-width: 9.5rem; text-align: right; flex-shrink: 0; }
 @media (max-width: 40rem) {
   .wfcontrols { flex-wrap: wrap; }
   .wfpos { min-width: 0; text-align: left; }
