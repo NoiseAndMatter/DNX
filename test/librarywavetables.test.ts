@@ -25,6 +25,8 @@ const STAGING = readFileSync(resolve(HERE, "../web/src/library/importstage.ts"),
 const POOLWRITE = readFileSync(resolve(HERE, "../web/src/library/poolwrite.ts"), "utf8");
 const DELETE = readFileSync(resolve(HERE, "../web/src/library/tabledelete.ts"), "utf8");
 const PAGE = readFileSync(resolve(HERE, "../web/library.html"), "utf8");
+const MAIN = readFileSync(resolve(HERE, "../web/src/library/main.ts"), "utf8");
+const ERASE = readFileSync(resolve(HERE, "../web/src/library/wavetableerase.ts"), "utf8");
 
 /** The element ids in a `const NAME = [...] as const` list. */
 function idList(name: string): string[] {
@@ -339,4 +341,42 @@ test("the button and the drop place tables the same way", () => {
     !/\.filter\(\s*\(slot\) => reading/.test(POOLWRITE),
     "the occupied filter belongs in planAdd, not beside the caller",
   );
+});
+
+test("another instrument is asked, rather than inheriting the last one's answer", () => {
+  /*
+   * **The bug this is here for**, found on 2026-10-14 against the emulator: with the mode open on
+   * a Waverider build, connecting a stock Digitone II left the Waverider's pool and store drawn on
+   * screen, and left `support` saying the erase route was there — so the settings sheet went on
+   * offering *Erase the wavetable region* for an instrument that has no wavetable region. The page
+   * already clears the preset bank cache for exactly this reason, one pane over.
+   *
+   * Asserted against the source because the mode is DOM-bound and this is a wiring promise: that
+   * `connect` calls it, and that what it drops includes the gate answer.
+   */
+  assert.match(SOURCE, /async function reconnected\(\): Promise<void> \{/,
+    "the mode must offer a way to be told the instrument changed");
+  const body = /async function reconnected\(\): Promise<void> \{([\s\S]*?)\n  \}/.exec(SOURCE);
+  assert.ok(body, "reconnected is no longer one function — rewrite this test, do not delete it");
+  for (const dropped of ["support = undefined", "reading = undefined", "tables.clear()"]) {
+    assert.ok(body[1]!.includes(dropped),
+      `reconnected must drop ${dropped}: it describes the instrument that has gone`);
+  }
+
+  assert.match(MAIN, /await wavetables\.reconnected\(\);/,
+    "connect must tell the mode that another instrument answered");
+  const connectBody = /async function connect\(\): Promise<void> \{([\s\S]*?)\n\}/.exec(MAIN);
+  assert.ok(connectBody, "connect is no longer one function — rewrite this test, do not delete it");
+  assert.ok(connectBody[1]!.includes("await wavetables.reconnected();"),
+    "the call belongs in connect, where the new instrument is adopted");
+
+  /*
+   * And the second half of the same bug: the erase control reads the gate's whole answer, so
+   * *asked and this instrument has no store* cannot be reported as *nobody has asked yet*, which
+   * sends somebody to a tab that has already answered.
+   */
+  assert.match(ERASE, /support\(\): WaveriderSupport \| undefined;/,
+    "the erase control must see the whole gate answer, not only its features");
+  assert.match(ERASE, /support\.state === "unsupported"/,
+    "an instrument with no wavetable store must be told so");
 });

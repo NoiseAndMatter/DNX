@@ -45,19 +45,21 @@ import {
   type EraseReview,
   eraseWavetableStore,
 } from "@noiseandmatter/dnx-core/device/wavetableerase.js";
-import { type WaveriderFeatures } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
+import { type WaveriderSupport } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 
 export interface WavetableEraseHost {
   /** The instrument, when one is connected. */
   device(): ConnectedDevice | undefined;
   /**
-   * What the gate said about this build, or `undefined` when it has not been asked.
+   * What the gate said about the connected instrument, or `undefined` when it has not been asked.
    *
-   * The two are different answers and the control says so differently: *no instrument* sends you
-   * to connect one, *not asked* sends you to the Wavetables tab, and *asked and it cannot* is the
-   * end of it.
+   * **The whole answer rather than its `features`**, because every state sends the reader
+   * somewhere different: *not asked* to the Wavetables tab, *no store* nowhere at all, *could not
+   * ask* back to the tab to press Refresh, and a build that answered and has no erase route is the
+   * end of it. Handing over `features` alone collapsed the first three into one sentence, and a
+   * stock Digitone II was told to open a tab it had already answered from.
    */
-  features(): WaveriderFeatures | undefined;
+  support(): WaveriderSupport | undefined;
   status: StatusWriter;
   /** The panes hold a listing that the erase has just invalidated. */
   reread(): Promise<void>;
@@ -84,12 +86,25 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
     }
     if (!host.device()) return { unavailable: "Connect an instrument in the library first." };
 
-    const features = host.features();
-    if (!features) {
+    const support = host.support();
+    if (!support) {
       return {
         unavailable: "Open the library's Wavetables tab, so DNX can ask this build what it can do.",
       };
     }
+    if (support.state === "unsupported") {
+      return {
+        unavailable: "This instrument has no wavetable store, so there is nothing here to erase.",
+      };
+    }
+    if (support.state !== "supported") {
+      return {
+        unavailable:
+          "DNX could not find out what this build can do. Open the library's Wavetables tab and " +
+          "press Refresh, with Elektron Transfer and Overbridge closed.",
+      };
+    }
+    const features = support.features;
     if (!features.erase) {
       return {
         unavailable: features.capabilitiesKnown

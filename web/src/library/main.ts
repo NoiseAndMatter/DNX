@@ -568,6 +568,12 @@ async function connect(): Promise<void> {
    * Digitone II could be shown the other's tags against its own names.
    */
   banks.clear();
+  /*
+   * And neither are its wavetables. The gate's answer, the pool on screen and the tables cached by
+   * slot number all belong to the instrument that has just gone; `reconnected` drops them and asks
+   * this one, redrawing the mode when the page is in it.
+   */
+  await wavetables.reconnected();
 
   // A Digitone has no /kits on its +Drive: a backup of one lists projects and soundbanks, nothing else.
   const hasKits = device.productId !== ProductId.DN1;
@@ -1239,6 +1245,7 @@ $("whichdevice").addEventListener("change", (event) => {
   state.device?.close();
   state.device = undefined;
   banks.clear();
+  void wavetables.reconnected().catch(report);
   clearShownBank("— connect to list a library");
   $<HTMLSelectElement>("kind").disabled = true;
   $<HTMLButtonElement>("browse").disabled = true;

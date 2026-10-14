@@ -113,6 +113,8 @@ export interface WavetableMode {
   show(on: boolean): Promise<void>;
   /** Read the pool and the store again. */
   refresh(): Promise<void>;
+  /** Another instrument answered: forget what the last one said, and ask this one. */
+  reconnected(): Promise<void>;
 }
 
 export function wireWavetables(host: WavetableHost): WavetableMode {
@@ -133,6 +135,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
   /** Where a shift-click measures its run from: the last slot clicked without shift. */
   let anchorSlot: number | undefined;
   let busy = false;
+  /** Whether the panes are ours. `reconnected` re-asks only while they are. */
+  let shown = false;
   /** What Sounds mode had hidden when this mode took the panes. See `SOUNDS_ONLY`. */
   const hiddenBefore = new Map<string, boolean>();
   /**
@@ -256,13 +260,13 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
    * four pages and has no business asking an instrument anything; it is lent a function, which it
    * calls when it opens, so nothing has to be pushed to it as the device and the gate change.
    *
-   * `features` is only answered while a device is still connected: a gate answer outliving the
-   * instrument it describes is a claim about whatever is plugged in next.
+   * It is only answered while a device is still connected: a gate answer outliving the instrument
+   * it describes is a claim about whatever is plugged in next. `reconnected` drops it as well, so
+   * the next instrument is asked rather than inheriting this one's answer.
    */
   wireWavetableErase({
     device: () => host.device(),
-    features: () =>
-      host.device() && support?.state === "supported" ? support.features : undefined,
+    support: () => (host.device() ? support : undefined),
     status: host.status,
     reread: refresh,
   });
@@ -844,24 +848,15 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     }
   }
 
-  async function show(on: boolean): Promise<void> {
-    if (on) {
-      for (const id of SOUNDS_ONLY) {
-        hiddenBefore.set(id, $(id).hidden);
-        $(id).hidden = true;
-      }
-      for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
-      helpFor(headingOf("leftTitle"), "library/wavetable-modes");
-      helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
-    } else {
-      for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
-      for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
-      restoreHelp();
-      staging.show(false);
-      hideOurs();
-      return;
-    }
-
+  /**
+   * Ask the connected instrument what it can do, and draw whatever it says.
+   *
+   * **Separate from `show` because the panes are handed over once and asked more than once.**
+   * The handover saves what Sounds mode had hidden, which may only happen on the way in: running
+   * it a second time would record this mode's own state as Sounds mode's, and leaving would then
+   * hand back a hidden page. A reconnect needs the asking without the saving.
+   */
+  async function enter(): Promise<void> {
     staging.show(true);
     $("wavepoolBar").hidden = false;
     const device = host.device();
@@ -902,6 +897,56 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     controls(true);
     await fillProjects(device);
     await refresh();
+  }
+
+  async function show(on: boolean): Promise<void> {
+    if (on) {
+      for (const id of SOUNDS_ONLY) {
+        hiddenBefore.set(id, $(id).hidden);
+        $(id).hidden = true;
+      }
+      for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
+      helpFor(headingOf("leftTitle"), "library/wavetable-modes");
+      helpFor(headingOf("libraryTitle"), "library/wavetable-limits");
+      shown = true;
+    } else {
+      for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
+      for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
+      restoreHelp();
+      staging.show(false);
+      hideOurs();
+      shown = false;
+      return;
+    }
+
+    await enter();
+  }
+
+  /**
+   * Another instrument answered, so nothing the last one said is evidence about this one.
+   *
+   * **What the gate said is about one instrument.** `support` decides whether the settings sheet
+   * offers the erase and what geometry the store will take, `reading` is one instrument's pool and
+   * store drawn on the screen, and `tables` caches slots by number — a slot number means something
+   * different on the next machine. Connecting a stock Digitone II while this mode was open left a
+   * Waverider's pool on screen and the erase on offer, found on 2026-10-14. It is the hazard the
+   * preset bank cache is cleared for in `main.ts`, one pane over.
+   *
+   * Staged files go too: they were placed on free slots of the instrument that has just gone.
+   */
+  async function reconnected(): Promise<void> {
+    support = undefined;
+    reading = undefined;
+    picked = undefined;
+    previewSlot = undefined;
+    pickedSlots.clear();
+    anchorSlot = undefined;
+    tables.clear();
+    frameOf.clear();
+    staging.show(false);
+    $("wavePreview").hidden = true;
+    if (!shown) return;
+    await enter();
   }
 
   projects().addEventListener("change", () => {
@@ -1027,5 +1072,5 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     setAuditionVolume(Number(volume.value) / 100);
   });
 
-  return { show, refresh };
+  return { show, refresh, reconnected };
 }
