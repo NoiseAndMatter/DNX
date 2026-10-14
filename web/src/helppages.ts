@@ -939,7 +939,13 @@ back by dragging its file onto a free slot in the **Wavetables** tab.
 reach these wavetables, so going back first means installing the custom firmware again to erase,
 then the official one again afterwards.
 
-Your projects, sounds and kits are kept somewhere else on the +Drive and are not touched.`,
+**It clears the pool of every project, not only the one you are looking at.** A pool is kept on the
++Drive rather than inside a project file, so no project is edited by this: your projects, sounds
+and kits are kept somewhere else and are not touched.
+
+**What stays behind is the TBL setting on each sound.** It keeps the number it had and plays the
+built-in Prim, because the wavetable that number pointed at is gone. Point those sounds at a new
+wavetable once you have put one back.`,
       },
       {
         heading: "Why the write switch is not in here",

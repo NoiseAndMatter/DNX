@@ -119,8 +119,18 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
         : `${review.tables} cop${review.tables === 1 ? "y is" : "ies are"} already saved to your ` +
           `DNX folder, ${review.copied.toLocaleString()} bytes in all. Putting those back is how ` +
           `this is undone — there is no undo on the instrument itself.`,
-      `Your projects, sounds and kits are not in this region and are not touched. FORMAT +DRIVE ` +
-        `and a factory reset do not reach it, which is why this exists.`,
+      /*
+       * **The consequence that is not "nothing changes".** A pool is a record on the +Drive, not
+       * part of the project file, so no project is edited by this — but a sound's TBL is a number
+       * held in the project, and those numbers stay. Saying only that projects are untouched
+       * reads as nothing changing for them, which is false for any project that used a wavetable.
+       * The firmware contract names this and the first version of this dialog left it out.
+       */
+      `Your projects, sounds and kits are not in this region and are not touched — a pool is a ` +
+        `record on the +Drive rather than part of a project file. What stays behind is the TBL ` +
+        `number on each sound: it keeps the value it has, and plays the built-in Prim, because ` +
+        `the pool entry it named is gone.`,
+      `FORMAT +DRIVE and a factory reset do not reach this region, which is why this exists.`,
       `Run it before putting stock firmware back on. Stock has no route to this, so flashing ` +
         `stock first means flashing Waverider again to erase, and stock again afterwards.`,
       `If anything has been written to the store since this listing was taken, the instrument ` +
