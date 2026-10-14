@@ -149,7 +149,7 @@ renderToolNav($("toolnav"), "manager");
 registerBackup(async (report) => {
   try {
     report.say("Looking for an instrument…");
-    const connected = drive?.connected ?? (await chooseDevice(picker));
+    const connected = drive?.connected ?? (await chooseDevice(picker, status));
 
     const { backup, failed } = await backupDevice(connected, {
       onList: () => report.say("Listing the +Drive…"),
@@ -741,7 +741,7 @@ function renderSongs(): void {
  */
 async function driveDevice(): Promise<ConnectedDevice | undefined> {
   try {
-    return await chooseDevice(picker);
+    return await chooseDevice(picker, status);
   } catch (error) {
     status(`No instrument: ${error instanceof Error ? error.message : String(error)}`, "error");
     return undefined;
@@ -1592,7 +1592,7 @@ function beginProject(
 async function browseDrive(): Promise<void> {
   status("Looking for an instrument…");
   try {
-    const connected = drive?.connected ?? (await chooseDevice(picker));
+    const connected = drive?.connected ?? (await chooseDevice(picker, status));
     status(`Listing the +Drive on ${connected.name}…`);
     const projects = await listDeviceProjects(connected);
     drive = { connected, projects };
@@ -1770,7 +1770,7 @@ async function loadFromDevice(): Promise<void> {
   let connected: ConnectedDevice;
   status("Looking for an instrument…");
   try {
-    connected = await chooseDevice(picker);
+    connected = await chooseDevice(picker, status);
   } catch (error) {
     status(
       error instanceof DeviceSourceError ? error.message : `MIDI refused: ${String(error)}`,

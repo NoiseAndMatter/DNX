@@ -1,11 +1,11 @@
 # Running the tests that need the emulator
 
-Status: VERIFIED, 2026-10-13. Every number below came from a run on this machine.
+Status: VERIFIED, 2026-10-14. Every number below came from a run on this machine.
 
-Seventeen tests in this repository skip unless an emulator is configured, and for months that was
+Thirty-one tests in this repository skip unless an emulator is configured, and for months that was
 all of them. They are the only tests that put DNX's requests in front of **the firmware's own
-handlers** rather than in front of our model of them. With the three variables below they run, and
-the whole suite goes from 17 skipped to 1.
+handlers** rather than in front of our model of them. With the variables below they run, and
+the whole suite goes from 32 skipped to 1 — 1,910 passing, measured on 2026-10-14.
 
 ## The variables
 
@@ -14,6 +14,7 @@ the whole suite goes from 17 skipped to 1.
 | `DNX_SYSEX_BRIDGE` | `sysex_bridge.exe`, from the digikit Rust emulator |
 | `DNX_EMU_FIRMWARE` | **Stock** Digitone II 1.11, for the tests that assert stock behaviour |
 | `DNX_WAVERIDER_FIRMWARE` | A **modded** image carrying the `/waverider` route |
+| `DNX_ERASE_FIRMWARE` | A modded image carrying the erase capability, `0x80`. Only `erase2` and later have it |
 | `DNX_EMU_STATE` | Optional. A booted snapshot, which saves about 30 s per bridge start |
 | `DNX_DN2_CARD_IMAGE` | Optional. A formatted +Drive underneath, so stock directories are real |
 
@@ -28,6 +29,7 @@ On this machine, as of 2026-10-13:
 DNX_SYSEX_BRIDGE=D:/01_Code/Z_Personal/digikit-rust/out/native/target-host/release/examples/sysex_bridge.exe
 DNX_EMU_FIRMWARE=D:/01_Code/Z_Personal/dn2_firmware/00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx
 DNX_WAVERIDER_FIRMWARE=D:/01_Code/Z_Personal/dn2_firmware/00_Resources/02_Builds/waverider-syncpos2-usbprobe_DN2_1.11.syx
+DNX_ERASE_FIRMWARE=D:/01_Code/Z_Personal/dn2_firmware/00_Resources/02_Builds/waverider-erase2-usbprobe_DN2_1.11.syx
 ```
 
 Prefer `syncpos2` over the newer `destlist2`: syncpos2 is the build on the instrument's current
@@ -37,6 +39,36 @@ has never been flashed is evidence about a build nobody is running.
 Each bridge start boots the OS, which is about 25 s, and every test starts its own. A full emulator
 run is therefore a few minutes rather than a few seconds. That is the price of testing against real
 handlers and it is worth paying.
+
+## The page can use it too
+
+**The same variables, and `npm run web`.** The dev server offers one *Emulator* entry per
+configured image beside the MIDI ports, so the Library and the Manager can be opened and used with
+nothing on the desk. `src/cli/emulatorroute.ts` carries each `ApiTransport.request` across as one
+POST; `web/src/emulatorsource.ts` is the page's side of it.
+
+It exists because the UI was unusable without an instrument. With the Digitone off or mid-flash
+there were no MIDI ports, so the Library could not be opened at all — not to look at a layout, not
+to take a screenshot, not to run a release check that has nothing to do with the wire.
+
+| | |
+|---|---|
+| Works | the +Drive API: listings, opening a stored project, the wavetable store, the pool, writes, the erase |
+| Refused | the dump protocol — *Open device…*, the active project, *Write to device*. There is no MIDI peripheral to carry it, and the page says so rather than timing out |
+| Absent | anything on the card. It is blank unless `DNX_DN2_CARD_IMAGE` is set, so there are no presets, kits or projects to browse |
+| Never | the deployed static build. It has no server, the page's probe 404s, and no entry appears |
+
+**One bridge at a time.** Choosing a different image closes the one running and boots the new one,
+about 25 s. Two pages using the emulator share it, and one of them closing takes it away from the
+other.
+
+The picker rule is worth knowing before it looks like a bug: **one connected instrument still wins
+outright**, emulator images listed or not. The picker appears so an image can be chosen
+deliberately, with the instrument already selected. With no instrument and one image, that image is
+taken; with no instrument and several, it refuses and asks, for the reason in the warning above.
+
+`test/emulatorroutebridge.test.ts` runs the page's own transport module over the route against real
+firmware, rather than re-sending the POST it sends.
 
 ## What this does and does not prove
 

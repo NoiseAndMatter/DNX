@@ -559,7 +559,7 @@ function clearShownBank(sub: string): void {
  */
 async function connect(): Promise<void> {
   status("Looking for an instrument…");
-  const device = await chooseDevice(picker);
+  const device = await chooseDevice(picker, status);
   state.device?.close();
   state.device = device;
   /*

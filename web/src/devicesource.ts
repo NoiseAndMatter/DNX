@@ -44,7 +44,8 @@ import {
 import type { ProjectManifest, ProjectPayload } from "@noiseandmatter/dnx-core/project/container.js";
 import { type ApiTransport } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { DeviceLink, type PortPair, candidatePairs } from "./devicelink.js";
-import { type DeviceChoice } from "./devicechoice.js";
+import { type DeviceChoice, isEmulatorPort } from "./devicechoice.js";
+import { connectEmulator, emulatorChoices } from "./emulatorsource.js";
 import { type ConnectedDevice, DeviceSourceError, identify } from "@noiseandmatter/dnx-core/device/identify.js";
 import { PRODUCT_NAMES } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
@@ -83,10 +84,29 @@ export interface ConnectOptions {
    * than one model.
    */
   port?: string;
+  /**
+   * Somewhere to say what is taking so long, when something is.
+   *
+   * Only the emulator uses it, and only to say that booting a firmware image is about half a
+   * minute. A connect that takes that long with nothing on screen is indistinguishable from one
+   * that has hung, which is a mistake this project has made on the device path twice.
+   */
+  onStatus?: (message: string) => void;
 }
 
 /**
- * Every Digitone on the MIDI ports, identified and then **let go of**.
+ * Every Digitone on the MIDI ports, identified and then **let go of**, plus any emulator image.
+ *
+ * ## The emulator is listed, not substituted
+ *
+ * It comes last, after whatever answered on the ports, and it is only there when the dev server
+ * offers one — `emulatorChoices` returns nothing on a deployed build. So a page with an instrument
+ * connected sees the instrument first and the emulator as an extra line, and a page with no
+ * instrument at all sees something it can still work with instead of a refusal.
+ *
+ * **No MIDI is no longer fatal when there is an emulator.** That used to throw before anything
+ * else could be offered, which is exactly the case this was built for: the instrument off or
+ * mid-flash, and a UI change that needs looking at.
  *
  * The manager needs this and the expander does not. On the expander each device has a fixed role,
  * so `connectDevice({ want })` says everything: the Digitone 1 is the source and the Digitone II is
@@ -98,8 +118,19 @@ export interface ConnectOptions {
  * wire, and it means a picker nobody chooses from has not quietly claimed two ports.
  */
 export async function listDevices(): Promise<DeviceChoice[]> {
-  const { inputs, outputs } = await ports();
   const found: DeviceChoice[] = [];
+  const emulators = await emulatorChoices();
+
+  let midi: { inputs: MIDIInput[]; outputs: MIDIOutput[] };
+  try {
+    midi = await ports();
+  } catch (error) {
+    // A browser with no Web MIDI, or a machine with no ports. Still an answer when an emulator is
+    // configured; the original refusal when there is nothing else to offer.
+    if (emulators.length === 0) throw error;
+    return emulators;
+  }
+  const { inputs, outputs } = midi;
 
   for (const pair of candidatePairs(inputs, outputs)) {
     let device: ConnectedDevice;
@@ -118,7 +149,7 @@ export async function listDevices(): Promise<DeviceChoice[]> {
     });
     device.close();
   }
-  return found;
+  return [...found, ...emulators];
 }
 
 async function ports(): Promise<{ inputs: MIDIInput[]; outputs: MIDIOutput[] }> {
@@ -157,6 +188,10 @@ async function ports(): Promise<{ inputs: MIDIInput[]; outputs: MIDIOutput[] }> 
  * no listeners behind on ports the page is not using.
  */
 export async function connectDevice(options: ConnectOptions = {}): Promise<ConnectedDevice> {
+  // Before Web MIDI is touched at all, because an emulator is reachable on a machine that has no
+  // MIDI ports — which is the whole situation it exists for.
+  if (isEmulatorPort(options.port)) return await connectEmulator(options.port!, options.onStatus);
+
   const { inputs, outputs } = await ports();
 
   const all = candidatePairs(inputs, outputs);

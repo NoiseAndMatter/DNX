@@ -23,6 +23,7 @@ import {
   describeChoice,
   listDevices,
 } from "./devicesource.js";
+import { isEmulatorPort } from "./devicechoice.js";
 
 export interface DevicePicker {
   /** The select that appears when more than one instrument answers. */
@@ -41,8 +42,14 @@ export function devicePicker(select: HTMLSelectElement): DevicePicker {
 }
 
 /** The instrument to work with: the one chosen, the only one there, or a refusal asking to choose. */
-export async function chooseDevice(picker: DevicePicker): Promise<ConnectedDevice> {
-  if (picker.port !== undefined) return await connectDevice({ port: picker.port });
+export async function chooseDevice(
+  picker: DevicePicker,
+  onStatus?: (message: string) => void,
+): Promise<ConnectedDevice> {
+  const connect = async (port: string): Promise<ConnectedDevice> =>
+    await connectDevice({ port, ...(onStatus ? { onStatus } : {}) });
+
+  if (picker.port !== undefined) return await connect(picker.port);
 
   const found = await listDevices();
   if (found.length === 0) {
@@ -51,23 +58,51 @@ export async function chooseDevice(picker: DevicePicker): Promise<ConnectedDevic
         "application is holding it.",
     );
   }
-  if (found.length === 1) {
-    picker.port = found[0]!.port;
-    return await connectDevice({ port: picker.port });
+
+  /*
+   * **The automatic choice is about instruments, not entries.** `listDevices` offers emulator
+   * images beside whatever answered on the ports, and they must not change what happens when an
+   * instrument is connected: one instrument still wins outright, with however many images listed
+   * next to it. The picker is still drawn in that case, showing the instrument as the choice,
+   * because taking the emulator deliberately is the whole point of listing it.
+   *
+   * With no instrument answering and exactly one image, that image is taken — the case the bridge
+   * was built for, and refusing it would mean a picker with one option. With several images and no
+   * instrument it refuses and asks, because the images are not interchangeable and guessing
+   * between them is the mistake `docs/emulator-tests.md` was written about.
+   */
+  const instruments = found.filter((f) => !isEmulatorPort(f.port));
+  const automatic =
+    instruments.length === 1
+      ? instruments[0]
+      : instruments.length === 0 && found.length === 1
+        ? found[0]
+        : undefined;
+
+  if (found.length > 1) renderDevicePicker(picker, found, automatic?.port);
+  if (automatic) {
+    picker.port = automatic.port;
+    return await connect(picker.port);
   }
 
-  renderDevicePicker(picker, found);
   if (!picker.select.value) {
     throw new DeviceSourceError(
-      `${found.length} instruments are connected: ${found.map((f) => f.name).join(", ")}. ` +
+      `${found.length} devices are available: ${found.map((f) => f.name).join(", ")}. ` +
         `Choose one from the list and try again.`,
     );
   }
   picker.port = picker.select.value;
-  return await connectDevice({ port: picker.port });
+  return await connect(picker.port);
 }
 
-function renderDevicePicker(picker: DevicePicker, found: DeviceChoice[]): void {
+/**
+ * Show the list, and show which entry is in use when one was obvious.
+ *
+ * `preselect` is only ever the choice the caller is about to make anyway. The empty first option
+ * stays the default in every other case, because a select that quietly defaulted to its first
+ * entry would reintroduce the guess this control exists to remove.
+ */
+function renderDevicePicker(picker: DevicePicker, found: DeviceChoice[], preselect?: string): void {
   const { select } = picker;
   const previous = select.value;
   select.hidden = false;
@@ -84,5 +119,6 @@ function renderDevicePicker(picker: DevicePicker, found: DeviceChoice[]): void {
     ),
   );
   // Kept across a re-list, so listing again does not silently move the page to another instrument.
-  if (found.some((f) => f.port === previous)) select.value = previous;
+  const keep = found.some((f) => f.port === previous) ? previous : preselect;
+  if (keep !== undefined && found.some((f) => f.port === keep)) select.value = keep;
 }

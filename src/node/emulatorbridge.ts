@@ -311,21 +311,38 @@ export class EmulatorBridge implements ApiTransport {
    * it instead would work for exactly as long as the two counters happened to agree.
    */
   async request(bytes: Uint8Array, msgId: number, timeoutMs: number): Promise<ApiFrame> {
-    const { replies } = await this.exchange(bytes, Math.max(timeoutMs, 30_000));
+    return (await this.requestRaw(bytes, msgId, timeoutMs)).frame;
+  }
+
+  /**
+   * The same request, with the reply's **bytes** alongside its parsed form.
+   *
+   * For the dev-server route in `src/cli/emulatorroute.ts`, which hands the reply to a browser.
+   * Sending the bytes and letting the page decode them keeps `decodeMessage` the only decoder on
+   * either side, so a field added to `ApiFrame` cannot be quietly dropped by a JSON shape written
+   * to match it. The rule for *which* reply answers a request stays here, once, where it is
+   * already tested — the route does not get a second copy of it.
+   */
+  async requestRaw(
+    bytes: Uint8Array,
+    msgId: number,
+    timeoutMs: number,
+  ): Promise<{ frame: ApiFrame; raw: Uint8Array }> {
+    const { replies, raw } = await this.exchange(bytes, Math.max(timeoutMs, 30_000));
     if (replies.length === 0) {
       throw new BridgeError(
         `the firmware produced no reply to message ${msgId}. That is an explicit no-reply from the ` +
           `bridge rather than a timeout, so the handler either does not exist or declined it.`,
       );
     }
-    const answer = replies.find((frame) => frame.respId === msgId);
-    if (!answer) {
+    const at = replies.findIndex((frame) => frame.respId === msgId);
+    if (at < 0) {
       throw new BridgeError(
         `asked for ${msgId} and got ${replies.length} reply/replies answering ` +
           `${replies.map((r) => r.respId ?? "nothing").join(", ")}`,
       );
     }
-    return answer;
+    return { frame: replies[at]!, raw: raw[at]! };
   }
 
   /** Stop the bridge. EOF on its stdin is how it is meant to end. */

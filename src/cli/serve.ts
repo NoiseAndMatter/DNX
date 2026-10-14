@@ -7,7 +7,14 @@
  * smallest thing that provides one: static files from `web/`, no dependencies, no caching,
  * localhost only.
  *
- * ## One endpoint: `/template.dn2prj`
+ * ## Two endpoints that are not files
+ *
+ * `/emulator/*` is the second, and it lives in `emulatorroute.ts`: it lets the page use the
+ * firmware running in the emulator as though it were a connected instrument, so the UI can be
+ * worked on with nothing on the desk. It answers 404 when no emulator is configured, which is also
+ * what the deployed static build does — so the page has one code path for both.
+ *
+ * ## `/template.dn2prj`
  *
  * The browser cannot read the corpus, so the page used to make you pick the same blank
  * project by hand every single time. The CLI has no such problem — it locates the template
@@ -35,6 +42,7 @@ import { createServer } from "node:http";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findTemplate } from "../node/open.js";
+import { EMULATOR_ROUTE, closeEmulator, emulatorImages, handleEmulator } from "./emulatorroute.js";
 import { htmlFallback, resolveStaticPath } from "./staticpath.js";
 
 // fileURLToPath rather than `.pathname` with a drive-letter regex: the latter leaves forward
@@ -106,6 +114,21 @@ function newestSourceTime(dir: string): number {
 createServer((request, response) => {
   const path = decodeURIComponent((request.url ?? "/").split("?")[0]!);
 
+  // **The one route that is not a file.** It speaks to the emulator so the page can be used with
+  // no instrument on the desk; it answers 404 when this machine has no emulator configured, which
+  // is also what the deployed static build does, so the page needs no switch. See
+  // `emulatorroute.ts` for the two limits — the +Drive API only, and the dev server only.
+  if (path === EMULATOR_ROUTE || path.startsWith(`${EMULATOR_ROUTE}/`)) {
+    handleEmulator(request, response, path).catch((error: unknown) => {
+      // `handleEmulator` reports its own failures; this is the one it could not. Answering
+      // rather than leaving the socket open: a page waiting on a dead request looks like a
+      // firmware that went quiet, which is the hardest failure to attribute later.
+      if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain" });
+      response.end(`the emulator route failed: ${String(error)}`);
+    });
+    return;
+  }
+
   if (path === TEMPLATE_ROUTE) {
     const template = findTemplate();
     if (!template) {
@@ -160,5 +183,20 @@ createServer((request, response) => {
       ? `Template: ${template} — the page will load it, no need to pick one.`
       : "No template found. The page will ask you for one; set DN_TEMPLATE to skip that.",
   );
+  const images = emulatorImages();
+  console.log(
+    images.length > 0
+      ? `Emulator: ${images.map((i) => `${i.key} (${i.file})`).join(", ")} — offered beside the ` +
+        `MIDI ports. +Drive only; the dump protocol needs a real wire.`
+      : "No emulator configured. See docs/emulator-tests.md to use the page without an instrument.",
+  );
   console.log("Nothing leaves this machine — the page does all its work locally.");
 });
+
+// A booted emulator is a child process holding a firmware image. Ctrl-C on the server should not
+// leave one running: an orphan answers nobody and the next boot waits 25 s behind it.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    void closeEmulator().finally(() => process.exit(0));
+  });
+}
