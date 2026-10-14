@@ -9,31 +9,25 @@ Until a PNG is on disk, its slot renders a labelled placeholder carrying the sec
 That is harmless and deliberate: **sections are written before the shots are taken**, so a page
 half-captured reads as in progress rather than broken.
 
-## Capture status, 2026-10-13
+## Capture status, 2026-10-14
 
-**23 of the 25 referenced PNGs exist.** 9 pages, 41 sections, 25 screenshot slots. Counted from the
+**26 of the 26 referenced PNGs exist.** 9 pages, 41 sections, 26 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
-Two outstanding shots, both of which need the instrument in a state only a write produces.
-
-**When a cell says MISSING** needs a pool entry naming a store slot that is empty, which means
-deleting a stored table that a pool names. **Putting a wavetable on the instrument** needs files
-staged on free store slots, which needs a connected instrument and a wavetable file to drop; the
-staging itself sends nothing, so that one can be taken with **WRITE** off and is the easier of the
-two. Both wait for a session at the instrument.
+**Nothing is outstanding.** The last three went in on 2026-10-14, against the Waverider emulator
+rather than an instrument: three WAV files generated in the page, written to an empty store, one
+pooled and then deleted. All three are pictures of controls and of what DNX itself drew, so the
+emulator's blank card is not a limit on them — see the rule below.
 
 `wavetables-pane.png` was taken 2026-10-09 against a Digitone II whose firmware carries the
 wavetable store, and sat untracked until 2026-10-12 — long enough for the page that references it to
 reach main and render a placeholder there. The count below is what catches that, which is why it is
 counted from `web/help/` rather than written down.
 
-**A third is owed but not yet in the manifest.** *Seeing what a table looks like*, added
-2026-10-10 with the wavetable preview, describes a surface rather than a rule, so by the test
-above it should carry a picture. It has no `image` yet because the drawing needs a table: an
-instrument with the wavetable store, a slot with something in it, and the preview open on that
-slot. Reading is enough to take it — no write — so it goes with the next session that has the
-instrument to hand. A slot is deliberately not reserved for it here: a row in the manifest
-naming a file nobody has taken is what `test/helppages.test.ts` exists to catch.
+*Seeing what a table looks like* was the third, owed since 2026-10-10 and carried here without a
+reserved slot until it existed — a row naming a file nobody has taken is what `test/helppages.test.ts`
+exists to catch. It is taken at frame 24 of 64, position 0.365, which is the example the section's
+own text uses.
 
 The two Library preset shots came last in the first round, because both are the instrument's +Drive
 pane and it holds nothing until a **Digitone II** answers. They were taken against `/soundbanks/A`,
@@ -90,8 +84,9 @@ closing step. Re-open any suspect image before committing it.
 | `library-two-panes.png` | Library | Why both are on one page | captured |
 | `library-search.png` | Library | Finding a preset | captured |
 | `wavetables-pane.png` | Library | The Wavetables mode | captured |
-| `wavetables-import.png` | Library | Putting a wavetable on the instrument | outstanding, **no longer blocked** — the staging panel is a controls shot, so the emulator serves it |
-| `wavetables-missing.png` | Library | When a cell says MISSING | outstanding, **no longer blocked** — write two tables to the emulator, pool them, delete one |
+| `wavetables-import.png` | Library | Putting a wavetable on the instrument | captured |
+| `wavetables-missing.png` | Library | When a cell says MISSING | captured |
+| `wavetables-preview.png` | Library | Seeing what a table looks like | captured |
 | `probe-connect.png` | Probe | Finding an instrument | captured |
 | `probe-request.png` | Probe | Asking for one object | captured |
 | `probe-drive.png` | Probe | The +Drive | captured |

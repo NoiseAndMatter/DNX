@@ -480,6 +480,7 @@ is the same number a sound's **WT.POS** sets, so frame 24 of 64 is what you hear
 - **Play** sounds the frame you picked, and **Sweep** travels the whole table. Both are
   synthesised here, so nothing reaches the instrument and the sequencer does not move.
 - Nothing in this pane changes the instrument, and **Position** moves only the drawing.`,
+        image: { src: "help/wavetables-preview.png", alt: "The wavetable preview: every frame of a 64-frame table stacked front to back, the picked frame drawn bright with a dashed line under it, and the Position and Volume sliders under it reading frame 24 of 64 at 0.365" },
       },
       {
         id: "wavetable-import",
