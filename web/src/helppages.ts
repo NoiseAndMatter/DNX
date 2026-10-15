@@ -256,7 +256,7 @@ the session.`,
 
 **Browse +Drive…** shows the 128 project slots. Choose one slot to open it. This project is
 **read-only**. A write goes to the *active* project of the instrument, not to the slot that you
-opened.
+opened. Example: changes for slot 47 go to the active project.
 
 - To get a file, push **Export**.
 - To write to a slot, push **Save to +Drive…**.`,
@@ -416,8 +416,10 @@ when you drop it into the pool. **You cannot move a Digitone II preset to a Digi
 
 - **Only FM TONE has an equivalent.** WAVETONE, FM DRUM and SWARMER do not exist on a Digitone.
 - **The third LFO is not available.** A Digitone II has three LFOs. A Digitone has two.
-- **Other settings are not available.** A Digitone sound has 23 bytes of settings that a
-  Digitone II preset does not have. DNX does not guess these values.
+- **Other settings are not available.** A Digitone sound has 302 bytes. 226 of them have a known
+  source in the 359 bytes of a Digitone II preset. 53 more never change, so DNX could fill them.
+  The other 23 bytes hold settings that a Digitone II preset does not have. DNX does not guess
+  these values.
 
 The library opens only **Digitone II projects** for pool work. You can browse, tag, search and
 rename the presets of a Digitone.`,
@@ -435,7 +437,8 @@ rename the presets of a Digitone.`,
 3. Push **Rename…**.
 4. Type the new name. The maximum is 16 characters. The instrument has no lowercase, so DNX
    stores lowercase as uppercase.
-5. Read the question, then confirm.
+5. Read the question.
+6. Confirm.
 
 Before DNX sends the name, it saves the current preset to *Copies before writing* in the DNX
 folder, or to your downloads. The file is a **.dn2snd** from a Digitone II or a **.dnsnd** from a
@@ -535,7 +538,7 @@ Before you start:
 into that number of parts. DNX stretches each part to a full wave.
 
 **blend** keeps the waves of the file and adds mixed waves between them. The original waves do not
-change when *(new waves − 1)* is a multiple of *(file waves − 1)*, for example 7 waves to 61. At
+change when *(new waves − 1)* is a multiple of *(file waves − 1)*. Example: 7 waves to 61. At
 other values, DNX also mixes the original waves a little. **blend** is off when the file does not
 divide into full waves.
 
@@ -581,8 +584,9 @@ If the project **follows the store**, the question tells you. After the write, t
 only the tables in its list. New tables in the store do not go into this project until you add
 them.
 
-All projects use the same store. Each project has its own pool. When you add a table to one pool,
-other pools do not change.`,
+All projects use the same store. Each project has its own pool. Thus one table can be pool slot 3
+in one project and pool slot 40 in a different project. When you add a table to one pool, other
+pools do not change.`,
       },
       {
         id: "wavetable-shape",
@@ -735,8 +739,10 @@ in. Use it to see if an instrument is silent or busy.
 sends nothing, and the status bar tells you.
 
 If a request times out, or a listing is short, make sure that no other application uses the port.
-When Overbridge or Elektron Transfer uses the port, the replies are short. Close the two
-applications and send the request again.`,
+When Overbridge or Elektron Transfer uses the port, the replies are short.
+
+1. Close the two applications.
+2. Send the request again.`,
         image: { src: "help/probe-connect.png", alt: "The probe's output and input pickers with the identify and listen controls" },
       },
       {
