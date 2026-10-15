@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   STOCK_BOUNDS,
+  blendToWaves,
   fitToGeometry,
   proposeGeometry,
   type FitBounds,
@@ -236,4 +237,74 @@ test("the fit satisfies the conversion it exists to feed", () => {
     // Peak-normalised, so the loudest sample is full scale. The device does not undo this.
     assert.equal(peak(readTableSamples(converted.payload)), 32_767);
   }
+});
+
+/**
+ * A table of `waves` cycles of `points`, each cycle a constant level, so a blended wave's value
+ * says exactly which two sources it mixed and in what proportion.
+ *
+ * Constant cycles are the one shape every resize path returns unchanged, which is what lets the
+ * assertions below be about the blend rather than about the resampler under it.
+ */
+function levels(...values: number[]): { samples: Float32Array; waves: number } {
+  const points = 64;
+  const samples = new Float32Array(values.length * points);
+  values.forEach((value, wave) => samples.fill(value, wave * points, (wave + 1) * points));
+  return { samples, waves: values.length };
+}
+
+test("blend keeps the first and last waves, and fills between them", () => {
+  const { samples } = levels(0, 1);
+  const fit = blendToWaves(samples, { waves: 2, points: 64 }, { waves: 3, points: 64 });
+
+  assert.equal(fit.method, "blended");
+  assert.equal(fit.samples.length, 3 * 64);
+  assert.equal(fit.samples[0], 0, "the first wave is the file's first");
+  assert.equal(fit.samples[64], 0.5, "the middle one is half of each");
+  assert.equal(fit.samples[128], 1, "the last wave is the file's last");
+});
+
+test("blend keeps every original exactly when the counts line up", () => {
+  // 7 cycles to 61 waves: 60 is a multiple of 6, so source k lands on output 10k exactly.
+  const { samples } = levels(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7);
+  const fit = blendToWaves(samples, { waves: 7, points: 64 }, { waves: 61, points: 64 });
+  for (let k = 0; k < 7; k++) {
+    assert.ok(
+      Math.abs(fit.samples[k * 10 * 64]! - (0.1 + 0.1 * k)) < 1e-6,
+      `source wave ${k} must come through as output wave ${k * 10}`,
+    );
+  }
+});
+
+test("blend at a count that does not line up still starts and ends on the originals", () => {
+  // 7 to 64: 63 is not a multiple of 6, so the originals in between are mixed too. The ends are not.
+  const { samples } = levels(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7);
+  const fit = blendToWaves(samples, { waves: 7, points: 64 }, { waves: 64, points: 64 });
+  assert.ok(Math.abs(fit.samples[0]! - 0.1) < 1e-6, "the first wave is the file's first");
+  assert.ok(Math.abs(fit.samples[63 * 64]! - 0.7) < 1e-6, "the last wave is the file's last");
+  // And every wave lies between its two neighbouring sources: a blend never overshoots.
+  for (let i = 0; i < 64; i++) {
+    const v = fit.samples[i * 64]!;
+    assert.ok(v >= 0.1 - 1e-6 && v <= 0.7 + 1e-6, `wave ${i} is ${v}, outside the sources`);
+  }
+});
+
+test("blend is not a re-cut: the cycles stay whole", () => {
+  /*
+   * The difference the owner heard. A re-cut of 7 cycles into 64 waves gives fragments, so a
+   * constant-level cycle is spread across several output waves at the same level; a blend gives
+   * mixes, so wave 1 of a 0 → 1 pair already sits between them rather than at either.
+   */
+  const { samples } = levels(0, 1);
+  const recut = fitToGeometry(samples, { waves: 4, points: 64 });
+  const blended = blendToWaves(samples, { waves: 2, points: 64 }, { waves: 4, points: 64 });
+  assert.equal(recut.samples[64], 0, "a re-cut's second wave is still a piece of the first cycle");
+  assert.ok(Math.abs(blended.samples[64]! - 1 / 3) < 1e-6, "a blend's second wave is a third of the way");
+});
+
+test("blend refuses a file that is not the shape it was told", () => {
+  assert.throws(
+    () => blendToWaves(new Float32Array(1000), { waves: 7, points: 2048 }, { waves: 64, points: 2048 }),
+    (error: unknown) => error instanceof WaveriderError && /blending needs the file to be 7 x 2048/.test(String(error)),
+  );
 });

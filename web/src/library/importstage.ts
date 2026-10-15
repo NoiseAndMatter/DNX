@@ -51,6 +51,7 @@ import {
 } from "@noiseandmatter/dnx-core/waverider/slotfile.js";
 import { type FitBounds, type Geometry, proposeGeometry } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import {
+  type ImportChoice,
   type PlannedImport,
   placeFrom,
   planImport,
@@ -129,6 +130,11 @@ type Staged =
        * Absent when nothing divided, and the panel then names the sample count instead.
        */
       source?: Geometry;
+      /**
+       * Blend up from `source` instead of re-cutting the file. Off unless somebody turns it on:
+       * the re-cut is the default the owner chose to keep. Only offered when `source` exists.
+       */
+      blend: boolean;
     }
   | {
       kind: "copy";
@@ -165,8 +171,24 @@ export function wireImport(host: ImportHost): ImportStaging {
   const nameBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportName");
   const wavesBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportWaves");
   const pointsBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportPoints");
+  const blendBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportBlend");
 
   /** Rebuild `plan` for the picked table, or clear it and say why. */
+  /**
+   * What to build from a staged file, in one place, so the panel and the write plan the same table.
+   *
+   * The blend applies only when it is on **and** the file has a shape to blend from: a file that
+   * divides into nothing has no cycles to keep, and the toggle is disabled for it anyway.
+   */
+  function choiceFor(entry: Extract<Staged, { kind: "audio" }>): ImportChoice {
+    return {
+      slot: entry.slot,
+      stem: entry.stem,
+      geometry: entry.geometry,
+      ...(entry.blend && entry.source ? { blendFrom: entry.source } : {}),
+    };
+  }
+
   function replan(): void {
     plan = undefined;
     const entry = picked === undefined ? undefined : staged.get(picked);
@@ -176,7 +198,7 @@ export function wireImport(host: ImportHost): ImportStaging {
     try {
       plan = planImport(
         { bytes: entry.decoded.bytes, samples: entry.decoded.samples },
-        { slot: entry.slot, stem: entry.stem, geometry: entry.geometry },
+        choiceFor(entry),
       );
     } catch (error: unknown) {
       // Shown in the note rather than thrown: an impossible geometry is something the person typed
@@ -237,6 +259,9 @@ export function wireImport(host: ImportHost): ImportStaging {
     wavesBox().disabled = isCopy;
     pointsBox().disabled = isCopy;
     nameBox().disabled = isCopy;
+    const blend = blendBox();
+    blend.checked = entry.kind === "audio" && entry.blend;
+    blend.disabled = entry.kind !== "audio" || entry.source === undefined;
 
     const bounds = host.bounds();
     const notes: string[] = [];
@@ -283,7 +308,8 @@ export function wireImport(host: ImportHost): ImportStaging {
         `<p>Going to store slot <strong>${entry.slot}</strong>` +
           (plan.fit.method === "exact"
             ? ` as ${fitted.waves} x ${fitted.points} — no resample required.</p>`
-            : ` — resampled from ${from} to ${fitted.waves} x ${fitted.points}.</p>`),
+            : ` — ${plan.fit.method === "blended" ? "blended" : "resampled"} from ${from} to ` +
+              `${fitted.waves} x ${fitted.points}.</p>`),
       );
       const gain = plan.converted.gain;
       if (gain > 1.001) {
@@ -436,6 +462,7 @@ export function wireImport(host: ImportHost): ImportStaging {
           decoded,
           geometry: proposal.geometry,
           ...(proposal.exact ? { source: proposal.geometry } : {}),
+          blend: false,
         });
         picked ??= slot;
       } catch (error: unknown) {
@@ -501,7 +528,7 @@ export function wireImport(host: ImportHost): ImportStaging {
             ? pendingFor(entry, undefined)
             : planImport(
                 { bytes: entry.decoded.bytes, samples: entry.decoded.samples },
-                { slot: entry.slot, stem: entry.stem, geometry: entry.geometry },
+                choiceFor(entry),
               ).pending;
         if (!built) throw new Error("nothing to write");
         pendings.push(built);
@@ -730,6 +757,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       // boxes are disabled for it. Guarded here too, so a stray event cannot reach the fields.
       if (entry.kind === "copy") return;
       entry.stem = nameBox().value.trim() || entry.stem;
+      entry.blend = blendBox().checked && entry.source !== undefined;
       const waves = Number(wavesBox().value);
       const points = Number(pointsBox().value);
       if (Number.isInteger(waves) && waves > 0 && Number.isInteger(points) && points > 0) {
@@ -737,8 +765,11 @@ export function wireImport(host: ImportHost): ImportStaging {
       }
       replan();
       renderPanel();
+      // The row in the store says the shape too, and it went on saying the old one: the panel was
+      // redrawn and the store was not.
+      host.redraw();
     };
-    for (const id of ["wavimportName", "wavimportWaves", "wavimportPoints"]) {
+    for (const id of ["wavimportName", "wavimportWaves", "wavimportPoints", "wavimportBlend"]) {
       $(id).addEventListener("change", rebuild);
     }
 

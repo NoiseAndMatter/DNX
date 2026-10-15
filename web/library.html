@@ -327,6 +327,9 @@
             <input id="wavimportWaves" type="number" min="1" max="64" step="1" title="Frames in the table.">
             <label class="lbl" for="wavimportPoints">points</label>
             <input id="wavimportPoints" type="number" min="64" max="4096" step="1" title="Points per frame. A power of two.">
+            <!-- Off: more waves re-cut the file. On: the file's own waves are kept and mixed. -->
+            <label class="lbl" for="wavimportBlend">blend</label>
+            <input id="wavimportBlend" type="checkbox" title="Keep the file's own waves and mix new ones between them, instead of cutting the file into more pieces.">
           </div>
           <div class="bar">
             <button class="btn" id="wavimportPlay" title="Hear this table at middle C">Play</button>

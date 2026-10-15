@@ -502,6 +502,13 @@ Before you start:
    **Sweep** to hear it travel from the first frame to the last.
 5. Press **Write staged tables**. One question names every slot it is about to write.
 
+**More waves than the file has.** Raising **waves** cuts the file into that many pieces, each
+stretched to a full wave. Turn on **blend** to keep the file's own waves and fill the gaps with
+mixes of their neighbours, so the table travels smoothly from the first wave to the last. The
+originals stay exactly as they are when *(new waves − 1)* is a multiple of *(file waves − 1)* —
+7 waves to 61, say — and are mixed a little otherwise. **blend** is off for a file that does not
+divide into whole waves.
+
 To put a staged table somewhere else, drag its row onto another free slot. **Remove** takes one off
 the list, **Discard all** clears it, and leaving the mode discards everything staged.
 

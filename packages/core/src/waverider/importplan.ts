@@ -32,7 +32,7 @@
 
 import { convertTable, type ConvertedTable } from "./convert.js";
 import { WaveriderError } from "./errors.js";
-import { fitToGeometry, type FitResult, type Geometry } from "./fit.js";
+import { blendToWaves, fitToGeometry, type FitResult, type Geometry } from "./fit.js";
 import { INDEX_ENTRIES } from "./layout.js";
 import { tableName } from "./naming.js";
 import { type PendingSlot } from "./slotfile.js";
@@ -60,6 +60,13 @@ export interface ImportChoice {
    * written by DNX should be able to say the same thing a table written anywhere else says.
    */
   interpolate?: boolean;
+  /**
+   * Blend up from this shape instead of re-cutting the file.
+   *
+   * The shape the file already is — so only a file whose sample count divides into whole cycles
+   * can blend. Absent, `geometry` re-cuts the samples as it always has. See `blendToWaves`.
+   */
+  blendFrom?: Geometry;
 }
 
 /** Everything the import decided, so a pane can show it before the write. */
@@ -84,7 +91,9 @@ export function planImport(source: AudioSource, choice: ImportChoice): PlannedIm
   }
   const interpolate = choice.interpolate ?? true;
 
-  const fit = fitToGeometry(source.samples, geometry);
+  const fit = choice.blendFrom
+    ? blendToWaves(source.samples, choice.blendFrom, geometry)
+    : fitToGeometry(source.samples, geometry);
   const converted = convertTable(fit.samples, geometry.waves, geometry.points);
 
   return {
