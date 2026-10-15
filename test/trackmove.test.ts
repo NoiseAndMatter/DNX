@@ -94,6 +94,24 @@ test("the unidentified per-track array is disclosed, not moved on a guess", { sk
   throw new Error("no corpus track carries a non-default entry in the array at kit +10,264");
 });
 
+test("copying onto a track that holds trigs needs confirmation too", { skip }, () => {
+  // A copy is built as an import, which marks nothing as lost. The pattern level asks for this;
+  // the track level used to overwrite without a question.
+  const img = image();
+  const { index, tracks } = busyPattern(img);
+  const [from, to] = tracks as [number, number];
+
+  const plan = planTrackMove(img, deviceFor(img), index, copyMany([from], to));
+  assert.deepEqual(plan.destructive.map((d) => d.track), [to], "the copy destroys what the destination held");
+  assert.throws(
+    () => applyTrackMove(img, deviceFor(img), index, copyMany([from], to)),
+    /would destroy 1 track holding \d+ trigs\. Nothing was changed\./,
+  );
+
+  // A swap loses nothing: each track's contents land on the other.
+  assert.deepEqual(planTrackMove(img, deviceFor(img), index, swap(from, to)).destructive, []);
+});
+
 test("destroying a track needs confirmation", { skip }, () => {
   const img = image();
   const { index, tracks } = busyPattern(img);

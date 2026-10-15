@@ -328,9 +328,18 @@ export function planTrackMove(
   // A destination loses whatever it held, unless its own contents go somewhere else. Only the
   // sequence half owns trigs, so a preset-only operation destroys no notes — it still replaces
   // a preset, which `changed` reports, but calling that a loss of N trigs would be false.
+  //
+  // **Survives** means the track's contents land on some track. `rereference` alone is not that:
+  // a copy is built as an import, which records nothing about the track it lands on, so
+  // `rereference` hands back the track itself while the copy overwrites it. Asking where the
+  // contents went *and* that they arrived there covers the move, the swap and the copy alike.
+  const survives = (t: number): boolean => {
+    const to = rereference(shuffle, t);
+    return to !== undefined && sourceOf(shuffle, to) === t;
+  };
   const destructive = carries(scope, "sequence")
     ? changed
-        .filter((t) => counts[t]! > 0 && rereference(shuffle, t) === undefined)
+        .filter((t) => counts[t]! > 0 && !survives(t))
         .map((t) => ({ track: t, trigCount: counts[t]! }))
     : [];
 
