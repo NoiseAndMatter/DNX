@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { encode87 } from "@noiseandmatter/dnx-core/sysex/codec.js";
 import { API_SELECTOR, Code, RESPONSE_BIT, deviceRequest, versionRequest } from "@noiseandmatter/dnx-core/device/api.js";
-import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID } from "@noiseandmatter/dnx-core/device/messageids.js";
+import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID, MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
 import { isForeignReply } from "../web/src/othertraffic.js";
 import {
   DeviceSession,
@@ -268,4 +268,20 @@ test("two sessions share nothing, so two devices cannot collide", async () => {
   assert.equal(dn2.pending, 1, "the other session is untouched by it");
   dn2.receive(reply(two.idsSent()[0]!, Code.Device, 20, 0, 0));
   assert.equal((await b).body[0], 20);
+});
+
+test("a session on a shared port numbers from the port's allocator, never over a waiting id", () => {
+  // A +Drive listing reserved the first id and is waiting on it. An identify on the same port
+  // used to number from the same first id on its own, and the listing took the Device reply.
+  const ids = new MessageIds();
+  const listing = ids.reserve(1);
+
+  const fake = new Fake();
+  const session = new DeviceSession(fake, { ...fake.options(), ids });
+  void session.request(Code.Device, deviceRequest).catch(() => {});
+  void session.request(Code.Version, versionRequest).catch(() => {});
+
+  assert.equal(listing, FIRST_MESSAGE_ID);
+  assert.deepEqual(fake.idsSent(), [FIRST_MESSAGE_ID + 1, FIRST_MESSAGE_ID + 2]);
+  assert.equal(ids.reserve(1), FIRST_MESSAGE_ID + 3, "and the allocator knows they are taken");
 });

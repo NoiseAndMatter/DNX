@@ -49,7 +49,7 @@ import { connectEmulator, emulatorChoices } from "./emulatorsource.js";
 import { type ConnectedDevice, DeviceSourceError, identify } from "@noiseandmatter/dnx-core/device/identify.js";
 import { PRODUCT_NAMES } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { layoutFor } from "@noiseandmatter/dnx-core/project/dn2image.js";
-import { IDS_FOR, reserveMessageIds } from "./messageids.js";
+import { IDS_FOR, pageMessageIds, reserveMessageIds } from "./messageids.js";
 
 // Re-exported so a page importing "a device" gets its description from the same place. The
 // definition lives in `devicechoice.ts`, which needs no MIDI and therefore no browser.
@@ -252,6 +252,9 @@ export async function connectDevice(options: ConnectOptions = {}): Promise<Conne
 async function identifyPair(pair: PortPair): Promise<ConnectedDevice> {
   return await identify(new DeviceLink(pair.input, pair.output), {
     portName: pair.output.name ?? "the output port",
+    // The page's numbering, so the Device and Version requests cannot share an id with a +Drive
+    // conversation already waiting on this port.
+    session: { ids: pageMessageIds },
   });
 }
 
