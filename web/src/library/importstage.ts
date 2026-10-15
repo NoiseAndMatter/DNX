@@ -80,7 +80,8 @@ export interface ImportHost {
    * Released **before** `reread`, because the mode's own refresh is the next conversation and a
    * lock still held would make it refuse itself.
    */
-  lock(on: boolean): void;
+  /** Lock the panes. `lock(true)` is false when another job holds the instrument; nothing ran. */
+  lock(on: boolean): boolean;
   /**
    * Redraw from what the pane already holds.
    *
@@ -573,8 +574,8 @@ export function wireImport(host: ImportHost): ImportStaging {
       });
     };
 
+    if (!host.lock(true)) return;
     writing = true;
-    host.lock(true);
     $<HTMLButtonElement>("wavimportWrite").disabled = true;
     stopAudition();
     host.status("Checking the slots are still empty…");

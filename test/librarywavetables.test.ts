@@ -399,20 +399,22 @@ test("one conversation at a time: every device path takes the pane and gives it 
    * takes the lock itself — a module still holding it would make the re-read refuse, and the pane
    * would sit there describing an instrument it had just changed.
    */
-  assert.match(SOURCE, /function lock\(on: boolean\): void \{/, "the mode owns the lock");
-  const lockBody = /function lock\(on: boolean\): void \{([\s\S]*?)\n  \}/.exec(SOURCE);
+  assert.match(SOURCE, /function lock\(on: boolean\): boolean \{/, "the mode owns the lock");
+  const lockBody = /function lock\(on: boolean\): boolean \{([\s\S]*?)\n  \}/.exec(SOURCE);
   assert.ok(lockBody, "lock is no longer one function — rewrite this test, do not delete it");
   assert.ok(lockBody[1]!.includes("busy = on"), "the flag the handlers read is the lock's own");
   assert.ok(lockBody[1]!.includes('classList.toggle("locked", on)'),
     "the grids must stop taking clicks: their rows are what start a read");
+  // And the instrument is the page's: a Settings backup or erase underneath refuses the lock.
+  assert.match(SOURCE, /claimDevice\("The library"\)/, "the lock holds the instrument for the page");
 
   // The mode's two own reads.
   for (const [name, body] of [
     ["refresh", /async function refresh\(\): Promise<void> \{([\s\S]*?)\n  \}/.exec(SOURCE)],
-    ["the preview read", /previewBusy = true;([\s\S]*?)previewBusy = false;/.exec(SOURCE)],
+    ["the preview read", /if \(!device \|\| previewBusy\) return;([\s\S]*?)previewBusy = false;/.exec(SOURCE)],
   ] as const) {
     assert.ok(body, `${name} is no longer one block — rewrite this test, do not delete it`);
-    assert.ok(body[1]!.includes("lock(true)"), `${name} must take the pane`);
+    assert.ok(body[1]!.includes("if (!lock(true)) return;"), `${name} must take the pane, and stop when it cannot`);
   }
 
   for (const [name, source] of [
@@ -420,7 +422,7 @@ test("one conversation at a time: every device path takes the pane and gives it 
     ["the pool write", POOLWRITE],
     ["the delete", DELETE],
   ] as const) {
-    assert.match(source, /host\.lock\(true\);/, `${name} must take the pane while it writes`);
+    assert.match(source, /if \(!host\.lock\(true\)\) return;/, `${name} must take the pane while it writes, and stop when it cannot`);
     assert.match(source, /host\.lock\(false\);/, `${name} must give it back`);
     const release = source.indexOf("host.lock(false);");
     const reread = source.indexOf("host.reread()");

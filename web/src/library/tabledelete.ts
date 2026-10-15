@@ -52,7 +52,8 @@ export interface TableDeleteHost {
    * The +Drive takes one conversation at a time, and the pane's controls can start a second.
    * Released **before** `reread`, because that read is the mode's own and takes the pane itself.
    */
-  lock(on: boolean): void;
+  /** Lock the panes. `lock(true)` is false when another job holds the instrument; nothing ran. */
+  lock(on: boolean): boolean;
   reread(): Promise<void>;
 }
 
@@ -150,8 +151,8 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
       return;
     }
 
+    if (!host.lock(true)) return;
     deleting = true;
-    host.lock(true);
     redraw();
     try {
       const result = await deleteTableSlot({

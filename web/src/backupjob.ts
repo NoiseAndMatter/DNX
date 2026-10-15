@@ -26,6 +26,7 @@ import { type BackupRunner } from "./settings.js";
 import { type StatusWriter } from "./statusbar.js";
 import { backupDevice } from "./backup.js";
 import { backupFileName, packBackup } from "./dnxfile.js";
+import { claimDevice, deviceJobRefusal } from "./devicejob.js";
 
 export interface BackupJobHost {
   /**
@@ -42,6 +43,12 @@ export interface BackupJobHost {
 /** The runner to hand `registerBackup`. */
 export function backupJob(host: BackupJobHost): BackupRunner {
   return async (report) => {
+    const release = claimDevice("A backup");
+    if (!release) {
+      report.say(deviceJobRefusal());
+      host.status(deviceJobRefusal(), "warn");
+      return;
+    }
     try {
       report.say("Looking for an instrument…");
       const connected = await host.device();
@@ -95,6 +102,8 @@ export function backupJob(host: BackupJobHost): BackupRunner {
     } catch (error) {
       report.say(`Backup stopped: ${String(error)}`);
       host.status(`Backup stopped: ${String(error)}`, "error");
+    } finally {
+      release();
     }
   };
 }

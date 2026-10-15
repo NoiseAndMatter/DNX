@@ -78,7 +78,8 @@ export interface PoolWriteHost {
    * The +Drive takes one conversation at a time, and the pane's controls can start a second.
    * Released **before** `reread`, because that read is the mode's own and takes the pane itself.
    */
-  lock(on: boolean): void;
+  /** Lock the panes. `lock(true)` is false when another job holds the instrument; nothing ran. */
+  lock(on: boolean): boolean;
   /** Read the pool and the store again, because a write changed what is out there. */
   reread(): Promise<void>;
 }
@@ -257,8 +258,8 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
   ): Promise<void> {
     const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
 
+    if (!host.lock(true)) return;
     writing = true;
-    host.lock(true);
     redraw();
     /*
      * **The outcome is said again after the re-read.** The re-read writes its own status line,
