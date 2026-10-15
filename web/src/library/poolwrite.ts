@@ -40,7 +40,7 @@ import { askConfirm } from "../dialog.js";
 import { $ } from "../dom.js";
 import { type ConnectedDevice, apiTransport } from "../devicesource.js";
 import { pageMessageIds } from "../messageids.js";
-import { type StatusWriter } from "../statusbar.js";
+import { type StatusKind, type StatusWriter } from "../statusbar.js";
 import { downloadBackup } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
@@ -232,8 +232,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
 
     lines.push(
       `The 512-byte record being replaced is saved as a file first, which is the only undo there is.`,
-      `The generation just read goes with the write, so an edit on the instrument's front panel in ` +
-        `between is refused and nothing is written.`,
+      `If the pool changes on the instrument before the write, DNX sends nothing.`,
     );
     return lines;
   }
@@ -252,6 +251,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
    */
   async function send(
     device: ConnectedDevice,
+    reading: PoolReading,
     entries: readonly (number | undefined)[],
     describe: () => string,
   ): Promise<void> {
@@ -260,6 +260,16 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     writing = true;
     host.lock(true);
     redraw();
+    /*
+     * **The outcome is said again after the re-read.** The re-read writes its own status line,
+     * so an outcome said only before it was gone before anybody could read it, the refusal of a
+     * stale list included.
+     */
+    let outcome: [string, StatusKind] | undefined;
+    const say = (message: string, kind: StatusKind): void => {
+      outcome = [message, kind];
+      host.status(message, kind);
+    };
     try {
       const result = await writePool({
         transport: apiTransport(device),
@@ -272,6 +282,9 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
         },
         projectSlot: host.projectSlot(),
         entries,
+        // The entries are this reading's with one edit, so this reading's generation is the one
+        // the write must still match. See `expectedGeneration`.
+        expectedGeneration: reading.record.generation,
         onBackup: downloadBackup(
           (message) => host.status(message, "ok"),
           () => `the pool of ${where}`,
@@ -280,12 +293,17 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       });
 
       if (result.cancelled) {
-        host.status("Cancelled — nothing was sent.", "warn");
+        say("Cancelled — nothing was sent.", "warn");
         return;
       }
 
       if (result.landed) {
-        host.status(describe(), "ok");
+        say(describe(), "ok");
+        return;
+      }
+
+      if (result.stale === true) {
+        say("The pool changed on the instrument. Nothing was sent. The pane shows it as it is now.", "warn");
         return;
       }
 
@@ -294,7 +312,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
        * write and a malformed one both answer ok and change nothing, so the guess is labelled as
        * one and the record on the instrument is named rather than assumed.
        */
-      host.status(
+      say(
         `The pool was not written. ${result.problem ?? "The entries read back are not the ones sent."}` +
           (result.probablyStale === true
             ? ` The generation moved by something other than this write, so the likeliest cause is ` +
@@ -304,7 +322,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
         "error",
       );
     } catch (error: unknown) {
-      host.status(`The pool write failed: ${String(error)}`, "error");
+      say(`The pool write failed: ${String(error)}`, "error");
     } finally {
       writing = false;
       host.lock(false);
@@ -312,6 +330,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       // again rather than redrawing what it had. `redraw` follows from the mode's own render.
       await host.reread();
       redraw();
+      if (outcome) host.status(...outcome);
     }
   }
 
@@ -383,7 +402,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       return;
     }
 
-    await send(device, edit.entries, () =>
+    await send(device, reading, edit.entries, () =>
       `Pool slot ${shown(index)} is empty. Store slot ${storeSlot} is still in the store.`);
   }
 
@@ -502,7 +521,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       return;
     }
 
-    await send(device, placement.entries, () =>
+    await send(device, reading, placement.entries, () =>
       (landed.length === 1
         ? `Pool slot ${shown(first)} now names store slot ${landed[0]!.storeSlot}.`
         : `${describeSlots(landed)} now name ${landed.length} tables.`) +
