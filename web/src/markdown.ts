@@ -4,9 +4,9 @@
  * ## Why not a library
  *
  * DNX has **no runtime dependencies**, and a help renderer is a poor reason to acquire the first
- * one. What the help pages actually use is headings, bold, code, links, bullets, ordered lists,
- * tables and blockquotes. That is a hundred lines, and the alternative is 40 KB shipped to a
- * musician so a `?` can render a bold word.
+ * one. What the help pages actually use is headings, bold, code, links, bullets, ordered lists
+ * (one nested inside another by indenting it), tables and blockquotes. That is a hundred lines,
+ * and the alternative is 40 KB shipped to a musician so a `?` can render a bold word.
  *
  * ## Every string that reaches HTML is escaped first
  *
@@ -82,6 +82,42 @@ function tableRow(line: string, cell: "td" | "th"): string {
   return `<tr>${cells.map((c) => `<${cell}>${inline(c.trim())}</${cell}>`).join("")}</tr>`;
 }
 
+const LIST_ITEM = /^([-*]|\d+\.)\s+(.*)$/;
+
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+/**
+ * One list from `at`, with any deeper-indented list nested inside the item above it.
+ *
+ * A step that offers choices ("Do one of these steps:") needs its options under it, not as a
+ * second list beside the steps. Returns the index of the first line after the list.
+ */
+function list(lines: string[], at: number, out: string[]): number {
+  const depth = indentOf(lines[at]!);
+  const ordered = /^\d+\./.test(lines[at]!.trim());
+  const items: string[] = [];
+  while (at < lines.length) {
+    const line = lines[at]!;
+    const match = LIST_ITEM.exec(line.trim());
+    if (!match) break;
+    const indent = indentOf(line);
+    if (indent > depth && items.length > 0) {
+      const nested: string[] = [];
+      at = list(lines, at, nested);
+      items[items.length - 1] = items.at(-1)!.replace(/<\/li>$/, `${nested.join("")}</li>`);
+      continue;
+    }
+    if (indent < depth || /^\d+\./.test(match[1]!) !== ordered) break;
+    items.push(`<li>${inline(match[2]!)}</li>`);
+    at++;
+  }
+  const tag = ordered ? "ol" : "ul";
+  out.push(`<${tag}>${items.join("")}</${tag}>`);
+  return at;
+}
+
 /** Markdown to HTML. Block level, then inline within each block. */
 export function mdToHtml(source: string): string {
   const lines = fold(source).split("\n");
@@ -121,18 +157,8 @@ export function mdToHtml(source: string): string {
       continue;
     }
 
-    if (/^[-*]\s/.test(text) || /^\d+\.\s/.test(text)) {
-      const ordered = /^\d+\.\s/.test(text);
-      const items: string[] = [];
-      while (at < lines.length) {
-        const item = lines[at]!.trim();
-        const match = ordered ? /^\d+\.\s+(.*)$/.exec(item) : /^[-*]\s+(.*)$/.exec(item);
-        if (!match) break;
-        items.push(`<li>${inline(match[1]!)}</li>`);
-        at++;
-      }
-      const tag = ordered ? "ol" : "ul";
-      out.push(`<${tag}>${items.join("")}</${tag}>`);
+    if (LIST_ITEM.test(text)) {
+      at = list(lines, at, out);
       continue;
     }
 

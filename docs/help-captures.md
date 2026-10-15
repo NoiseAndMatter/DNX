@@ -11,7 +11,7 @@ half-captured reads as in progress rather than broken.
 
 ## Capture status, 2026-10-14
 
-**26 of the 26 referenced PNGs exist.** 9 pages, 41 sections, 26 screenshot slots. Counted from the
+**26 of the 26 referenced PNGs exist.** 9 pages, 50 sections, 26 screenshot slots. Counted from the
 source rather than adjusted: every `image.src` across `HELP_PAGES` enumerated against `web/help/`.
 
 **Nothing is outstanding.** The last three went in on 2026-10-14, against the Waverider emulator
@@ -88,12 +88,12 @@ closing step. Re-open any suspect image before committing it.
 | `manager-drive.png` | Manager | Opening from an instrument | captured |
 | `backup-picker.png` | Manager | Opening a project out of a backup | captured |
 | `manager-song.png` | Manager | Songs | captured |
-| `insights-cycle.png` | Insights | How long a pattern really takes | captured |
+| `insights-cycle.png` | Insights | The length of a pattern | captured |
 | `insights-reset.png` | Insights | What the reset interrupts | captured |
 | `insights-dormant.png` | Insights | Trigs the sequencer never reaches | captured |
 | `insights-pitch.png` | Insights | Voices, pitch and key | captured |
 | `insights-compare.png` | Insights | Comparing patterns | captured |
-| `library-two-panes.png` | Library | Why both are on one page | captured |
+| `library-two-panes.png` | Library | The pool and the library | captured |
 | `library-search.png` | Library | Finding a preset | captured |
 | `wavetables-pane.png` | Library | The Wavetables mode | captured |
 | `wavetables-import.png` | Library | Putting a wavetable on the instrument | captured |
@@ -138,14 +138,17 @@ pending costs a reader nothing; a picture of an empty box costs them the belief 
 
 ## Sections with no screenshot, on purpose
 
-Fifteen of the 39 sections carry no image on purpose, and one more is waiting for hardware
-(above). A section explaining a rule rather than a surface does not
-need one, and an invented picture is worse than none: *Nothing leaves this machine*, *What DNX will
-not do*, *Apply, then export or write*, *What it writes*, *Writing*, *Every write backs up first*,
-*If something goes wrong*, *A .dnx is a zip*, *What manifest.json is for*, and *Why the write switch
-is not in here*. Four of the wavetable sections are the same case: *Store slot, pool slot, and the
-number in a sound*, *The three kinds of pool*, *What this mode cannot tell you*, and *When an
-instrument has no wavetables*.
+24 of the 50 sections carry no image on purpose. A section about a rule or a procedure with no
+surface of its own does not need one, and an invented picture is worse than none: *Nothing leaves
+this machine*, *The front page and the version*, *A Digitone and a Digitone II*, *What DNX will not
+do*, *Apply, then export or write*, *What it writes*, *A Digitone or a Digitone II*, *Presets move in
+one direction*, *Renaming a preset*, *Writing*, *Every write backs up first, and refuses without
+one*, *Close Elektron Transfer and Overbridge first*, *If something goes wrong*, *A .dnx is a zip*,
+*What manifest.json is for*, *The DNX folder* and *Erasing the wavetable region*. Seven wavetable
+sections are the same case: *Store slot, pool slot, and the number in a sound*, *Making a table
+playable: put it in the pool*, *Choosing the shape of a table*, *The three kinds of pool*, *Taking a
+table out of a pool, and deleting one*, *What this mode cannot tell you* and *When an instrument has
+no wavetables*.
 
 **Add a section rather than a sentence** when a new concept arrives, so it gets its own slot instead
 of being folded into a paragraph belonging to a picture of something else.

@@ -182,11 +182,11 @@ test("the overview's model chart names what is Digitone II only, as the code gat
   const chart = overview?.sections.find((section) => section.heading === "A Digitone and a Digitone II")?.body ?? "";
   assert.ok(chart, "the overview lost its model chart");
   for (const row of [
-    /Open device, reading the loaded project \| no: use Browse \+Drive \| yes/,
-    /a pattern's 16 tracks \| no \| yes/,
+    /Open device, read the loaded project \| no: use Browse \+Drive \| yes/,
+    /the 16 tracks of a pattern \| no \| yes/,
     /songs \| no \| yes/,
     /Insights \| yes \| yes/,
-    /kits \| no: none on its \+Drive \| yes/,
+    /kits \| no: there are no kits on its \+Drive \| yes/,
   ]) {
     assert.match(chart, row);
   }
@@ -216,4 +216,16 @@ test("the help never tells anybody to add one to a pool slot", () => {
 
   // And the right form is present, so this test fails if the section is deleted rather than fixed.
   assert.match(text, /T:005/, "the help should show what the cell actually reads");
+});
+
+test("an indented list nests inside the step above it", () => {
+  const html = mdToHtml("1. Click the cell.\n2. Do one of these steps:\n   - Remove it.\n   - Replace it.\n3. Push **Refresh**.");
+  assert.equal(
+    html,
+    "<ol><li>Click the cell.</li><li>Do one of these steps:<ul><li>Remove it.</li><li>Replace it.</li></ul></li>" +
+      "<li>Push <strong>Refresh</strong>.</li></ol>",
+  );
+  const library = HELP_PAGES.find((page) => page.key === "library");
+  const missing = library?.sections.find((s) => s.heading === "When a cell says MISSING");
+  assert.match(mdToHtml(missing!.body), /Do one of these steps:<ul>/, "the MISSING options sit under their step");
 });

@@ -86,10 +86,10 @@ test("the refusal for a Digitone 1 project states the rule, not a delay", () => 
   assert.doesNotMatch(block, /not joined up yet/, "and does not read as a delay");
 });
 
-test("the help says presets travel one way, with both of the owner's reasons", () => {
+test("the help says presets move in one direction, with both of the owner's reasons", () => {
   const library = HELP_PAGES.find((page) => page.key === "library");
-  const section = library?.sections.find((s) => s.heading === "Presets travel one way");
+  const section = library?.sections.find((s) => s.heading === "Presets move in one direction");
   assert.ok(section, "the library help lost its one-way section");
   assert.match(section!.body, /FM TONE/, "only FM TONE has an equivalent");
-  assert.match(section!.body, /third LFO/, "and the third LFO is lost");
+  assert.match(section!.body, /third LFO/, "and the third LFO is not available");
 });

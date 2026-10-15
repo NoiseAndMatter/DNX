@@ -20,12 +20,12 @@
  *
  * ## The one thing this has to say out loud
  *
- * A project with no pool of its own plays every stored table in store-slot order. **Writing a pool
- * for it is not only an addition** — it pins the tables it plays today at the positions they are in
- * now, and from then on a table added to the store no longer joins that project by itself. That is
- * usually what somebody wants and it is never what they asked for in words, so the confirmation
- * says it before anything is sent. `poolState` is what distinguishes the case; the record carries
- * it and `pooledit.ts` deliberately cannot see it.
+ * A project that **follows the store** plays every stored table in store-slot order. Writing a list
+ * for it pins the tables it plays today at the positions they are in now, and from then on a table
+ * added to the store no longer joins that project by itself. Nobody asks for that in words, so the
+ * confirmation says it before anything is sent. A project with **no pool of its own** plays nothing,
+ * so there is nothing to pin and no such line. `poolState` is what distinguishes the cases; the
+ * record carries it and `pooledit.ts` deliberately cannot see it.
  *
  * ## Everything else is the house write path
  *
