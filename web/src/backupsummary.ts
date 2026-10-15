@@ -110,6 +110,25 @@ function warningsFor(backup: OpenedBackup): string[] {
     }
   }
 
+  // What the backup itself recorded as missed. Said here because this is when it matters.
+  const failed = backup.manifest.failed ?? [];
+  if (failed.length > 0) {
+    const named = failed.length <= 4
+      ? failed.map((f) => f.name).join(", ")
+      : `${failed.slice(0, 3).map((f) => f.name).join(", ")} and ${failed.length - 3} more`;
+    warnings.push(
+      `${count(failed.length, "slot")} could not be read when this backup was taken: ${named}. ` +
+      `${failed.length === 1 ? "It is" : "They are"} not in it.`,
+    );
+  }
+  const skipped = backup.manifest.skipped ?? [];
+  if (skipped.length > 0) {
+    warnings.push(
+      `The +Drive also held ${skipped.join(", ")}, which DNX cannot read. This backup does not ` +
+      `contain ${skipped.length === 1 ? "it" : "them"}.`,
+    );
+  }
+
   if (backup.unlisted.length > 0) {
     warnings.push(
       `${count(backup.unlisted.length, "file")} in this zip ${backup.unlisted.length === 1
