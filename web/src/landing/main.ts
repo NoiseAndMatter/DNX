@@ -25,7 +25,7 @@ import { wireInstrumentCommands } from "../instrumentcommands.js";
 import { DNXLoader } from "./dnxloader.js";
 import { DNX_BUILD } from "../version.js";
 import { browserSupport, folderNote, unsupportedMessage } from "./browsercheck.js";
-import { bootDurationMs, isFirstRun, readSkipBoot, rememberSeen, writeSkipBoot } from "./seen.js";
+import { bootDurationMs, isFirstRun, readSkipBoot, rememberSeen, writeSkipBoot } from "../seen.js";
 import { chooseFolder, folderState, folderSupported } from "../dnxfolder.js";
 import { renderToolNav } from "../toolnav.js";
 import { $ } from "../dom.js";

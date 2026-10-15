@@ -121,10 +121,7 @@ const FILES = [
 /**
  * Every violation today. Delete a line when its import goes; never add one.
  */
-const KNOWN = [
-  // A module every page shares, reaching into the landing page's folder.
-  "web/src/settings.ts -> ./landing/seen.js",
-];
+const KNOWN: string[] = [];
 
 test("every folder imports only what its layer allows, apart from the listed violations", () => {
   const found = FILES.flatMap((file) => violationsOf(repoPath(file), specifiersOf(file), code(file)));
