@@ -1,4 +1,19 @@
 /**
+ * The decoded path of a request URL, or undefined when it does not decode.
+ *
+ * `decodeURIComponent` throws on a lone `%` or a cut UTF-8 sequence. Thrown inside the request
+ * listener, that ended the whole server, and the emulator child it had booted kept running with
+ * nothing left to close it. A typo in the address bar must cost a 400, not the server.
+ */
+export function requestPath(url: string | undefined): string | undefined {
+  try {
+    return decodeURIComponent((url ?? "/").split("?")[0]!);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Resolving a URL path to a file inside one directory, and refusing anything outside it.
  *
  * Extracted from `serve.ts` because it was wrong on Windows for months and nothing could

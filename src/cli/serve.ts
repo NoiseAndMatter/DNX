@@ -43,7 +43,7 @@ import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findTemplate } from "../node/open.js";
 import { EMULATOR_ROUTE, closeEmulator, emulatorImages, handleEmulator } from "./emulatorroute.js";
-import { htmlFallback, resolveStaticPath } from "./staticpath.js";
+import { htmlFallback, requestPath, resolveStaticPath } from "./staticpath.js";
 
 // fileURLToPath rather than `.pathname` with a drive-letter regex: the latter leaves forward
 // slashes on Windows, which made the containment check below never match, and leaves %20
@@ -112,7 +112,12 @@ function newestSourceTime(dir: string): number {
 }
 
 createServer((request, response) => {
-  const path = decodeURIComponent((request.url ?? "/").split("?")[0]!);
+  const path = requestPath(request.url);
+  if (path === undefined) {
+    response.writeHead(400, { "content-type": "text/plain" });
+    response.end("That address does not decode.");
+    return;
+  }
 
   // **The one route that is not a file.** It speaks to the emulator so the page can be used with
   // no instrument on the desk; it answers 404 when this machine has no emulator configured, which

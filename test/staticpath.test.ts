@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { htmlFallback, resolveStaticPath } from "../src/cli/staticpath.js";
+import { htmlFallback, requestPath, resolveStaticPath } from "../src/cli/staticpath.js";
 
 /**
  * The regression these exist for: `npm run web` served "not found" for every request on
@@ -95,4 +95,13 @@ test("a path that already has an extension gets no fallback", () => {
 
 test("a directory-shaped path gets no fallback", () => {
   assert.equal(htmlFallback(`${sep}srv${sep}web${sep}`), undefined);
+});
+
+test("an address that does not decode is undefined, never a throw", () => {
+  // A throw here ended the server, and left a booted emulator running with nothing to close it.
+  assert.equal(requestPath("/%"), undefined);
+  assert.equal(requestPath("/%E0%A4%A"), undefined);
+  assert.equal(requestPath("/library.html?x=1"), "/library.html");
+  assert.equal(requestPath("/a%20b.html"), "/a b.html");
+  assert.equal(requestPath(undefined), "/");
 });
