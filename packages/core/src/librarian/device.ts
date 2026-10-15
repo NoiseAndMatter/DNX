@@ -150,6 +150,37 @@ export interface Device {
   songState(image: Uint8Array): SongState;
 }
 
+/**
+ * The storage version of the pattern record at `index`, read from its first word.
+ *
+ * One read of four bytes. `summarise` gives the same number, but decodes the whole pattern to do it.
+ */
+export function patternVersionAt(device: Device, image: Uint8Array, index: number): number {
+  const offset = device.kind === "dn1" ? DN1_PATTERN.versionOffset : DN2_PATTERN.versionOffset;
+  return versionOf(patternRecord(image, index, device.layout), offset);
+}
+
+/**
+ * True when a record of `version` keeps its fields at the offsets DNX writes.
+ *
+ * **Wider than `writableVersions`, and that is the point.** `writableVersions` is what the manager
+ * rearranges. This is what any code may write bytes into at the offsets of the version it authors:
+ *
+ * - Digitone II version 4, from OS 1.11, has the track size of version 3, and DNX reads it with
+ *   the version-3 layout. Every project an updated instrument holds is version 4, so refusing it
+ *   here would refuse every current Digitone II.
+ * - Digitone II version 2 is 4 bytes shorter per track. Bytes written at version-3 offsets land
+ *   in the wrong fields: a corrupted pattern that still loads.
+ * - Both Digitone 1 versions keep every field in one place. Only the version word differs.
+ *
+ * A version DNX cannot read is never the same layout.
+ */
+export function sharesWrittenLayout(device: Device, version: number): boolean {
+  if (device.kind === "dn1") return DN1_PATTERN_VERSIONS.includes(version);
+  const size = TRACK_SIZE_BY_VERSION[version];
+  return size !== undefined && size === TRACK_SIZE_BY_VERSION[DN2_PATTERN_VERSION];
+}
+
 const latin1 = new TextDecoder("latin1");
 
 /** Read a fixed-width name field, stopping at the first NUL. */

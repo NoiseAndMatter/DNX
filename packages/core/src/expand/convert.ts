@@ -41,6 +41,8 @@ import {
   type Dn1Track,
 } from "../project/dn1.js";
 import { DN1_LAYOUT, DN2_KIT, DN2_LAYOUT, fitsLayout } from "../project/dn2image.js";
+import { DN2_DEVICE, patternVersionAt, sharesWrittenLayout } from "../librarian/device.js";
+import { patternName } from "../project/naming.js";
 import {
   KIT_MIDI_MASK_OFFSET,
   PATTERN as DN2_PATTERN,
@@ -731,6 +733,25 @@ export function convertProject(
   if (!fitsLayout(template, DN2_LAYOUT)) {
     throw new ConversionError(
       `DN2 template must be ${DN2_LAYOUT.imageSizes.join(" or ")} bytes, got ${template.length}`,
+    );
+  }
+  /*
+   * **The size says Digitone II, not which layout its patterns have.** Every trig, lock and
+   * setting below is written at version-3 offsets into the template's own records. A version-2
+   * record keeps its tracks 4 bytes shorter, so those bytes would land in the wrong fields and
+   * the pattern would still load. Refused before anything is written.
+   */
+  const written = Math.min(options.patternLimit ?? DN1_LAYOUT.patternCount, DN1_LAYOUT.patternCount);
+  const foreign = Array.from({ length: written }, (_, i) => i).filter(
+    (i) => !sharesWrittenLayout(DN2_DEVICE, patternVersionAt(DN2_DEVICE, template, i)),
+  );
+  if (foreign.length > 0) {
+    const version = patternVersionAt(DN2_DEVICE, template, foreign[0]!);
+    throw new ConversionError(
+      `the destination's pattern ${patternName(foreign[0]!)}` +
+        (foreign.length > 1 ? ` and ${foreign.length - 1} more` : "") +
+        ` ${foreign.length > 1 ? "are" : "is"} storage version ${version}, which keeps its fields ` +
+        `at other offsets. Nothing was converted.`,
     );
   }
 

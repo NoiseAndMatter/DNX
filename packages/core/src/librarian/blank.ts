@@ -26,6 +26,7 @@
  */
 
 import { type Device } from "./device.js";
+import { KIT as DN1_KIT, PATTERN as DN1_PATTERN } from "../project/dn1.js";
 import { DN1_BLANK, DN2_BLANK, decodeBlank } from "./blankdata.js";
 
 /**
@@ -59,14 +60,27 @@ export function blankSource(device: Device): string {
  *
  * Returns fresh copies, so a caller can write into them without disturbing the cached
  * originals or another slot's blank.
+ *
+ * `version` is the storage version of the record the blank replaces. **Digitone 1 only.** The
+ * captured blank is version 10, and an OS 1.43 project holds version 11. The two are the same
+ * bytes at the same offsets, so the blank takes the version of the slot it replaces and the
+ * project keeps one generation: `rebuild.ts` refuses a mix, because the instrument skips the
+ * migration older records need. On the Digitone II the versions are not known to be the same
+ * bytes, so nothing is stamped there.
  */
 export function blankPatternKit(
   device: Device,
   slot: number,
+  version?: number,
 ): { pattern: Uint8Array; kit: Uint8Array } {
   const source = decoded(device.kind);
   const pattern = Uint8Array.from(source.pattern);
   const kit = Uint8Array.from(source.kit);
+
+  if (device.kind === "dn1" && version !== undefined) {
+    new DataView(pattern.buffer).setUint32(DN1_PATTERN.versionOffset, version, false);
+    new DataView(kit.buffer).setUint32(DN1_KIT.versionOffset, version, false);
+  }
 
   // The record carries the slot it believes it occupies.
   pattern[device.slotIndexOffset] = slot;

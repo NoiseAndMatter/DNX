@@ -37,7 +37,14 @@
 import { kitRecord, patternRecord } from "../project/dn2image.js";
 import { checkDn2PatternRecord } from "../project/dn2pattern.js";
 import { blankFits, blankPatternKit, blankSource } from "./blank.js";
-import { type Device, type DeviceKind, type SongState, deviceFor } from "./device.js";
+import {
+  type Device,
+  type DeviceKind,
+  type SongState,
+  deviceFor,
+  patternVersionAt,
+  sharesWrittenLayout,
+} from "./device.js";
 import { type Shuffle, outOfRange, sourceOf, touchedSlots } from "./shuffle.js";
 
 export class RearrangeError extends Error {}
@@ -147,6 +154,16 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
     if (from === undefined) {
       const destination = device.summarise(image, to);
       emptied.push(to);
+      // The blank is written at the authored offsets, so the slot it replaces must keep its
+      // fields there. See `sharesWrittenLayout`.
+      if (!sharesWrittenLayout(device, destination.version)) {
+        findings.push({
+          severity: "blocker",
+          message:
+            `Pattern ${to} is storage version ${destination.version}, which keeps its fields at ` +
+            `other offsets. Refusing to clear a record we cannot rewrite.`,
+        });
+      }
       if (destination.occupied) {
         destructive.push({
           slot: to,
@@ -312,7 +329,7 @@ export function applyRearrange(
     // A vacated slot gets the captured blank, already stamped with its new slot index.
     const { pattern, kit } =
       from === undefined
-        ? blankPatternKit(device, to)
+        ? blankPatternKit(device, to, patternVersionAt(device, image, to))
         : {
             pattern: patternRecord(image, from, device.layout),
             kit: kitRecord(image, from, device.layout),
