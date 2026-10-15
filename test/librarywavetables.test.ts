@@ -130,19 +130,24 @@ test("the one write the mode has is gated per write and asks once", () => {
    * - The per-write confirm that answers yes is **not exported**, so nothing else can pick up a
    *   hook that says yes without asking.
    */
-  assert.match(STAGING, /writeTableToSlot/, "the staging module should be the one that writes");
-  assert.match(STAGING, /gate: requireWriteEnabled/, "each write must pass the gate itself");
+  // The sequence is core's, shared with the probe's folder batch; the staging module only words it.
+  const BATCH = readFileSync(resolve(HERE, "../packages/core/src/device/waveriderbatch.ts"), "utf8");
+  assert.match(STAGING, /writeTablesToSlots\(/, "the staging module writes through the shared batch");
+  assert.match(STAGING, /gate: requireWriteEnabled/, "and hands it the WRITE switch");
   assert.match(STAGING, /askConfirm\(/, "the run must ask once before writing");
 
-  const yes = /confirm: \(\) => Promise\.resolve\(true\)/;
-  assert.match(STAGING, yes, "the per-write confirm should answer yes after the single question");
-  assert.ok(
-    !/export\s+(const|function)\s+\w*[Cc]onfirm/.test(STAGING),
-    "a confirm hook that answers yes without asking must stay local to this module",
-  );
+  assert.match(BATCH, /gate: host\.gate/, "each write must pass the gate itself");
+  assert.match(BATCH, /\(\): Promise<boolean> => Promise\.resolve\(true\)/,
+    "the per-write confirm should answer yes after the single question");
+  for (const source of [STAGING, BATCH]) {
+    assert.ok(
+      !/export\s+(const|function)\s+\w*([Cc]onfirm|[Aa]sked)/.test(source),
+      "a confirm hook that answers yes without asking must stay local",
+    );
+  }
 
   // And the listing is read at the moment of asking, not taken from what the pane already has.
-  assert.match(STAGING, /readStoreListing/, "the empty-slot check must use a fresh listing");
+  assert.match(BATCH, /readStoreListing/, "the empty-slot check must use a fresh listing");
 });
 
 test("the pool write is gated per write, asks once, and keeps its yes to itself", () => {
@@ -548,4 +553,23 @@ test("blend is a toggle that changes how the table is built, and says when it di
   assert.match(STAGING, /entry\.blend && entry\.source \? \{ blendFrom: entry\.source \}/,
     "the blend applies only when the file has whole waves to keep");
   assert.match(STAGING, /"blended" : "resampled"/, "the line says blended rather than resampled");
+});
+
+test("an import that stops part-way says where, why, and how many went in", async () => {
+  const { importOutcome } = await import("../web/src/library/importoutcome.js");
+  const written = [{ slot: 50 }] as never[];
+  const [message, kind] = importOutcome(
+    { kind: "stopped", written, at: { slot: 51, name: "SECOND" } as never, problem: "no reply to 0x4054 within 10000ms" },
+    3,
+  );
+  assert.equal(kind, "error");
+  assert.equal(message, "Stopped at slot 51 (SECOND): no reply to 0x4054 within 10000ms. 1 table written, 2 not sent.");
+  const [gated] = importOutcome(
+    { kind: "stopped", written: [], at: { slot: 2, name: "STOPA" } as never, problem: "WRITE is off. Nothing was sent." },
+    2,
+  );
+  assert.equal(gated, "Stopped at slot 2 (STOPA): WRITE is off. Nothing was sent. 0 tables written, 2 not sent.");
+  // And the button reports a throw rather than dropping it.
+  assert.match(STAGING, /writeAll\(\)\.catch\(/);
+  assert.doesNotMatch(STAGING, /void writeAll\(\)/);
 });
