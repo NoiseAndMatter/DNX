@@ -222,6 +222,34 @@ for (const [name, render] of CASES) {
   });
 }
 
+/** What `dataset` hands back for an attribute value: the entities decoded once. */
+function decodedAttribute(raw: string): string {
+  return raw.replace(/&(lt|gt|quot|#39|amp);/g, (_, name: string) =>
+    ({ lt: "<", gt: ">", quot: '"', "#39": "'", amp: "&" })[name]!);
+}
+
+test("a preset name never reaches a tooltip body as markup", () => {
+  /*
+   * `mount.ts` puts the decoded body into `innerHTML`. A name interpolated without its own escape
+   * comes out of that decode as live markup. Track 6 is named `<b>&` for exactly this: a body that
+   * still holds `<b>&` after one decode would render it, and three crafted names joined in one
+   * pitch-column body can make a working tag.
+   */
+  const leaks: string[] = [];
+  for (const [name, render] of CASES) {
+    for (const match of render().matchAll(/data-tip-b="([^"]*)"/g)) {
+      if (decodedAttribute(match[1]!).includes("<b>&")) leaks.push(`${name}: ${match[1]}`);
+    }
+  }
+  assert.deepEqual(leaks, []);
+});
+
+test("the tooltip title is set as text", () => {
+  const mount = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src", "analysis", "mount.ts"), "utf8");
+  assert.match(mount, /title\.textContent = el\.dataset\["tipT"\]/);
+  assert.doesNotMatch(mount, /innerHTML = `<span class="t">/);
+});
+
 test("no fixture is left over from a case that was removed", { skip: UPDATE }, () => {
   const names = new Set(CASES.map(([name]) => name));
   const stale = readdirSync(FIXTURES).filter((file) => !names.has(file));

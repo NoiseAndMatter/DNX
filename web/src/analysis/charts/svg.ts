@@ -25,6 +25,9 @@ export const TIP_SELECTOR = "[data-tip-t]";
 /**
  * Attach the shared tooltip to a mark.
  *
+ * **`title` is plain text.** `mount.ts` sets it with `textContent`, so a name goes in as it is and
+ * is never escaped here by the caller: escaping it would print the entities.
+ *
  * **`body` may carry markup, and the escaping is a deliberate round trip.** What is written here is
  * escaped into an attribute; the browser decodes it once when `mount.ts` reads `dataset.tipB`; that
  * result is set as `innerHTML`, so any tags the caller put in render. A *value* interpolated into

@@ -59,8 +59,8 @@ export function repaint(el: HTMLElement, draw: Draw): void {
  * `innerHTML`, so listeners attached to the marks would be thrown away on every resize and every
  * control change. The document survives both.
  *
- * `innerHTML` is correct here and safe — see `tip()` in `charts.ts` for the escaping round trip
- * that makes it so.
+ * The title goes in as text and the body as markup. See `tip()` in `charts/svg.ts` for the
+ * escaping round trip that keeps the body safe.
  *
  * Returns a function that removes the listeners, for a page that tears its charts down.
  */
@@ -78,7 +78,13 @@ export function attachTooltip(tipEl: HTMLElement): () => void {
   const over = (e: PointerEvent) => {
     const el = (e.target as Element | null)?.closest?.(TIP_SELECTOR) as HTMLElement | null;
     if (!el) return;
-    tipEl.innerHTML = `<span class="t">${el.dataset["tipT"] ?? ""}</span>${el.dataset["tipB"] ?? ""}`;
+    // The title is text, always: it carries preset and pattern names off somebody's file. Only
+    // the body is markup, and `tip()` says what its callers must escape.
+    const title = document.createElement("span");
+    title.className = "t";
+    title.textContent = el.dataset["tipT"] ?? "";
+    tipEl.replaceChildren(title);
+    tipEl.insertAdjacentHTML("beforeend", el.dataset["tipB"] ?? "");
     tipEl.classList.add("on");
     place(e);
   };
