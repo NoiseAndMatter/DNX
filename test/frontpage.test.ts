@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { browserSupport, folderNote, unsupportedMessage } from "../web/src/landing/browsercheck.js";
-import { FIRST_RUN_MS, RETURN_MS } from "../web/src/landing/seen.js";
+import { FIRST_RUN_MS, RETURN_MS } from "../web/src/seen.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 

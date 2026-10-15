@@ -1,8 +1,8 @@
 /**
  * Has DNX been opened on this browser before, and does the reader want the boot screen at all.
  *
- * Two questions, one module, because the landing page and the settings sheet both ask and the
- * sheet must not import the page.
+ * Two questions, one module, because the landing page and the settings sheet both ask. It sits at
+ * the shared level so the sheet never imports the landing page's folder.
  *
  * ## The first run is the long one
  *

@@ -246,7 +246,7 @@ import { action, group, row, segmented, toggle } from "./formrow.js";
 import { PREFERENCES_CHANGED, announcePreferencesChanged, readHideProbe, writeHideProbe } from "./probevisibility.js";
 import { allowFolder, chooseFolder, folderState, folderSupported, forgetFolder } from "./dnxfolder.js";
 import { installHelpMarkers } from "./helpmarker.js";
-import { readSkipBoot, writeSkipBoot } from "./landing/seen.js";
+import { readSkipBoot, writeSkipBoot } from "./seen.js";
 import { openOverlay, type Overlay } from "./overlay.js";
 import { WRITES_DEVICE, gateWriteControls } from "./writeenable.js";
 
