@@ -121,11 +121,6 @@ export function currentAudition(): Audition | undefined {
   return playing ? sounding : undefined;
 }
 
-/** Whether an audition is sounding right now, so a pane can show Play or Stop. */
-export function isAuditioning(): boolean {
-  return playing !== undefined;
-}
-
 /** Stop the current audition. Safe when nothing is playing. */
 export function stopAudition(): void {
   if (!playing) return;

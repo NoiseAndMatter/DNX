@@ -63,6 +63,3 @@ export function renderPlan(plan: ExpansionPlan): string {
     ${overflow}`;
 }
 
-export function renderSummary(name: string, fileName: string, patterns: number): string {
-  return `<strong>${escapeHtml(name)}</strong> <span class="muted">${escapeHtml(fileName)} · ${patterns} patterns with content</span>`;
-}

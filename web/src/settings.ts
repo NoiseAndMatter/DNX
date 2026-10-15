@@ -193,11 +193,6 @@ export function registerInstrumentCommand(command: InstrumentCommand): void {
   instrumentCommands.set(command.id, command);
 }
 
-/** The registered commands' ids, for `test/writeenable.test.ts`. */
-export function instrumentCommandIds(): string[] {
-  return [...instrumentCommands.keys()];
-}
-
 /**
  * A row per kind: a name, a count, a state, and a bar.
  *
@@ -523,11 +518,6 @@ export function openSettings(from?: HTMLElement): void {
 export function closeSettings(): void {
   sheet?.close();
   sheet = undefined;
-}
-
-/** True while the sheet is open. Exported for tests and for a caller that must not stack sheets. */
-export function settingsOpen(): boolean {
-  return sheet?.open === true;
 }
 
 /** The link that opens it, rendered into the tool row so every page has one. */

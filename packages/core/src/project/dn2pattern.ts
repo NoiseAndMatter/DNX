@@ -57,6 +57,7 @@
  */
 
 import { DN2_LAYOUT, kitRecord, patternRecord, type ImageLayout } from "./dn2image.js";
+import { readFixedName } from "./fixedname.js";
 
 // --- constants ------------------------------------------------------------
 
@@ -555,14 +556,7 @@ export interface Dn2LockRecord {
 // --- primitives -----------------------------------------------------------
 
 const view = (data: Uint8Array) => new DataView(data.buffer, data.byteOffset, data.byteLength);
-const latin1 = new TextDecoder("latin1");
 const signed8 = (b: number) => (b > 127 ? b - 256 : b);
-
-function readName(data: Uint8Array, at: number, size: number): string {
-  const raw = data.subarray(at, at + size);
-  const nul = raw.indexOf(0);
-  return latin1.decode(nul === -1 ? raw : raw.subarray(0, nul));
-}
 
 function assertIndex(index: number, count: number, what: string): void {
   if (!Number.isInteger(index) || index < 0 || index >= count) {
@@ -588,12 +582,6 @@ export function trackRecord(pattern: Uint8Array, index: number): Uint8Array {
 export function stepFlags(track: Uint8Array, step: number): number {
   assertIndex(step, STEP_COUNT, "step");
   return view(track).getUint16(TRACK.flagsOffset + step * 2, false);
-}
-
-/** Read the per-step sound lock for one track. 0xFF means no lock. */
-export function soundLockAt(track: Uint8Array, step: number): number {
-  assertIndex(step, STEP_COUNT, "step");
-  return track[TRACK.soundLockOffset + step]!;
 }
 
 /** Decode the 35-byte per-track settings block. */
@@ -784,7 +772,7 @@ export function readDn2PatternRecord(pattern: Uint8Array, index = 0, midiMask?: 
   return {
     index,
     version: dv.getUint32(PATTERN.versionOffset, false),
-    name: readName(pattern, PATTERN.nameOffset, PATTERN.nameSize),
+    name: readFixedName(pattern, PATTERN.nameOffset, PATTERN.nameSize),
     tempo: dv.getUint16(PATTERN.tempoOffset, false) / 120,
     length: dv.getUint16(PATTERN.lengthOffset, false),
     changeLength: dv.getUint16(PATTERN.changeLengthOffset, false),
@@ -925,15 +913,6 @@ export function checkDn2PatternRecord(pattern: Uint8Array): Dn2PatternCheck {
   }
 
   return { ok: problems.length === 0, problems };
-}
-
-/** Same check, applied to pattern `index` of a decompressed image. */
-export function checkDn2Pattern(
-  image: Uint8Array,
-  index: number,
-  layout: ImageLayout = DN2_LAYOUT,
-): Dn2PatternCheck {
-  return checkDn2PatternRecord(patternRecord(image, index, layout));
 }
 
 /**

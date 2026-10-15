@@ -51,7 +51,7 @@ import {
 } from "../project/rebuild.js";
 import { DumpReader, type ReadReport } from "./dumpreader.js";
 import { RESPONSE_SIZES, type ReadStep, planProjectRead } from "./readplan.js";
-import { WriteCode, dumpWrite, settleMsAfter, storageVersion } from "./dumpwrite.js";
+import { WriteCode, dumpWrite, settleMsAfter } from "./dumpwrite.js";
 import { type SysexPort } from "./port.js";
 import { type WritePermit } from "./writepermit.js";
 
@@ -340,12 +340,6 @@ export async function readBackRecords(
   }
 
   return out;
-}
-
-/** Storage version of a device's own patternKit, for a caller that wants to show it. */
-export function deviceStorageVersion(witness: Uint8Array, layout: ImageLayout): number | undefined {
-  // The kit half opens with BEEFBACE; the pattern half does not, on either family.
-  return storageVersion(witness.subarray(layout.patternSize));
 }
 
 // --- plumbing ------------------------------------------------------------------------------------

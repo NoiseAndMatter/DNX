@@ -24,7 +24,8 @@ import {
   DN2_IMAGE_SIZE,
   DN2_OS111_IMAGE_SIZE,
 } from "./dn2codec.js";
-import { SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "./soundmap.js";
+import { SOUND_NAME_SIZE } from "./soundmap.js";
+import { readFixedName } from "./fixedname.js";
 
 /** Layout constants for one device family's decoded project image. */
 export interface ImageLayout {
@@ -256,20 +257,9 @@ export function patternAsSysexPayload(image: Uint8Array, index: number): Uint8Ar
   return patternKitRecord(image, index, layout);
 }
 
-/** Read the 16 sound-slot names of a DN2 kit. Empty string means an unused slot. */
-export function dn2KitSoundNames(image: Uint8Array, index: number): string[] {
-  const kit = kitRecord(image, index, DN2_LAYOUT);
-  const names: string[] = [];
-  for (let i = 0; i < DN2_KIT.soundCount; i++) {
-    const at = DN2_KIT.soundOffset + i * DN2_KIT.soundSize + SOUND_NAME_OFFSET;
-    names.push(readName(kit, at));
-  }
-  return names;
-}
-
 /** Project name from the image header. 16-byte field directly after the root object version. */
 export function projectName(image: Uint8Array): string {
-  return readName(image, 8);
+  return readFixedName(image, 8, SOUND_NAME_SIZE);
 }
 
 /**
@@ -341,12 +331,6 @@ export function mintProjectId(random: () => number = Math.random): number {
   const hi = Math.floor(random() * 0x10000);
   const lo = Math.floor(random() * 0x10000);
   return ((hi << 16) | lo) >>> 0;
-}
-
-function readName(data: Uint8Array, at: number): string {
-  const raw = data.subarray(at, at + SOUND_NAME_SIZE);
-  const end = raw.indexOf(0);
-  return new TextDecoder("latin1").decode(end === -1 ? raw : raw.subarray(0, end));
 }
 
 function assertIndex(index: number, count: number, what: string): void {

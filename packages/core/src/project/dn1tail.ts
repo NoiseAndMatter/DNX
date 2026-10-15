@@ -371,16 +371,6 @@ export function readProjectSettings(
   };
 }
 
-/**
- * Absolute image offset of the per-track MIDI channel array.
- *
- * Exposed separately because a rearrange wants to permute these eight bytes in place
- * rather than rebuild the settings object around them.
- */
-export function trackMidiChannelOffset(layout: ImageLayout = DN1_LAYOUT): number {
-  return tailRegionBase(layout) + TAIL.settingsOffset + SETTINGS.trackChannelOffset;
-}
-
 // --- songs ----------------------------------------------------------------
 
 /** Slice song record `index` out of the image. */
