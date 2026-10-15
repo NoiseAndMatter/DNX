@@ -521,6 +521,54 @@ test("every trig in a merged Digitone II pattern still plays the sound it played
   assert.ok(checked > 0, "every lock was dangling; no sound was actually carried across");
 });
 
+test("a sound is never placed in the slot a dangling lock names", { skip }, () => {
+  /*
+   * A dangling lock is left pointing where it was. The merge used to place incoming sounds in the
+   * first free destination slots without excluding those numbers, so a lock on an empty source
+   * slot could come out pointing at a sound the merge had just put there.
+   *
+   * Built so that the dangling slot is the destination's first free one: every lower slot gets a
+   * name, every slot from it up is emptied.
+   */
+  let fixture: { image: Uint8Array; pattern: number; slots: number[] } | undefined;
+  for (const path of corpusFiles("02_DN2/01_Projects", ".dn2prj").slice(1)) {
+    const image = imageOf(path);
+    for (let p = 0; p < DN2_LAYOUT.patternCount && !fixture; p++) {
+      const real = [...soundLockedSlots(patternRecord(image, p, DN2_LAYOUT))]
+        .filter((slot) => slot < 128 && poolName(image, slot) !== "").sort((a, b) => a - b);
+      if (real.length >= 2) fixture = { image, pattern: p, slots: real };
+    }
+    if (fixture) break;
+  }
+  if (!fixture) throw new Error("no second DN2 project in the corpus locks two sounds that exist in one pattern");
+
+  const src = Uint8Array.from(fixture.image);
+  const dangling = fixture.slots[0]!;
+  const name = (image: Uint8Array, slot: number): Uint8Array => {
+    const at = DN2_LAYOUT.tailBase + DN2_POOL_OFFSET + slot * DN2_SOUND_SIZE + SOUND_NAME_OFFSET;
+    return image.subarray(at, at + SOUND_NAME_SIZE);
+  };
+  name(src, dangling).fill(0);
+
+  const dest = Uint8Array.from(destination());
+  for (let slot = 0; slot < 128; slot++) {
+    if (slot < dangling) name(dest, slot).fill(0x41);
+    else name(dest, slot).fill(0);
+  }
+
+  const landing = quietSlot(dest);
+  const plan = planPatternMerge({
+    source: src, patterns: [fixture.pattern], destination: dest, landing, confirmOverwrite: true,
+  });
+
+  assert.ok(plan.pool.length > 0, "nothing was placed; this test proves nothing");
+  assert.ok(
+    plan.pool.every((p) => p.to !== dangling),
+    `a sound was placed in slot ${dangling}, which a dangling lock names`,
+  );
+  assert.equal(poolName(plan.image, dangling), "", "the dangling lock's slot must stay empty");
+});
+
 test("a sound the destination already holds is reused, not appended twice", { skip }, () => {
   // Merging the same pattern twice must not keep growing the pool. The second pass finds every
   // sound already there, byte for byte, and points at it.
