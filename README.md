@@ -5,130 +5,146 @@
 **Tools for Elektron Digitone and Digitone II projects, in your browser.**
 **→ [noiseandmatter.github.io/DNX](https://noiseandmatter.github.io/DNX/)**
 
-Expand a Digitone 1 sketch onto a Digitone II's sixteen tracks. Move patterns between slots,
-banks and projects. Browse and rename presets on the +Drive. Back the whole +Drive up. Read
-what a pattern actually plays.
+Expand a Digitone 1 sketch onto the sixteen tracks of a Digitone II. Move patterns between slots,
+banks and projects. Browse and rename presets on the +Drive. Back up the whole +Drive. Read what a
+pattern actually plays.
 
-Nothing is installed and nothing is uploaded. The page talks to the instrument over Web MIDI and
-does all its work locally — DNX has no server and no account.
+You install nothing, and DNX uploads nothing. The page talks to the instrument over Web MIDI and
+does all its work locally. DNX has no server and no account.
 
-> **v0.9.0-beta.1.** It reads and writes real instruments and has been used on them, but it is a
-> beta and it says so. Read *Before you point it at an instrument* below.
+> **v0.9.0-beta.8.** DNX reads and writes real instruments, and people have used it on them. It is
+> still a beta. Read *Before you point it at an instrument* below.
 
 ## What it does
 
-**Expander** — a Digitone 1 has four tracks, so a busy sketch ends up with several sounds crammed
-onto one, switched by sound-locking individual trigs. The expander gives each of those sounds its
-own track on the Digitone II's sixteen, carrying the trigs, the locks and the parameter locks
-with it. Source from a file, from a connected Digitone 1, or from its +Drive.
+**Expander.** A Digitone 1 has four tracks. A busy sketch puts several sounds on one track and
+switches between them with sound locks on single trigs. The expander gives each of those sounds
+its own track on the sixteen tracks of a Digitone II. The trigs, the sound locks and the parameter
+locks go with each sound. The source can be a file, a connected Digitone 1, or its +Drive.
 
-**Manager** — move, copy, swap, clear and rename patterns across a project's banks, with undo.
-Drill into a Digitone II pattern's sixteen tracks and do the same there. Open a project from a
-file, from the +Drive, or read the one loaded on the instrument.
+**Manager.** The manager moves, copies, swaps, clears and renames patterns across the banks of a
+project, with undo. It does the same on the sixteen tracks of a Digitone II pattern. It opens a
+project from a file or from the +Drive, or reads the project that is loaded on the instrument.
 
-**Insights**, inside the manager — what a selected pattern actually plays. Polymeter and when the
-tracks come round, what the PATTERN RESET costs, trigs stored past the end of a track that never
-sound, voice pressure against the device's budget, pitch content and a key fit. Both instruments.
+**Insights**, in the manager, shows what a selected pattern actually plays:
 
-**Library** — browse the +Drive's 2,048 presets with their tags, search them, rename one on the
-instrument, and drag presets into a project's sound pool.
+- polymeter, and when the tracks come round
+- what the PATTERN RESET costs
+- trigs stored past the end of a track, which never sound
+- voice use against the voice limit of the instrument
+- pitch content and a key fit
 
-**Wavetables**, inside the library — on a Digitone II whose firmware carries the wavetable store:
-see what is in the store and in each project's pool, draw a table frame by frame and hear it,
-import audio files onto free slots, put tables into a pool, and delete one. Every write saves a
-copy first.
+Insights works on both instruments.
 
-**Backup** — every project, soundbank and kit on the +Drive into one `.dnx` file, with a manifest.
-It copies the **+Drive**, not the instrument. **The instrument's global settings are not in it and
-no tool can put them there**: MIDI configuration, sync, audio routing and personalisation live in
-the machine rather than in a project, and the instrument offers no way to send them. Restore onto
-a replacement or a reset unit and you get your patterns, presets and project settings back, with
-those left at whatever the target already had.
+**Library.** Browse the 2,048 presets on the +Drive with their tags, and search them. Rename a
+preset on the instrument. Drag presets into the sound pool of a project.
 
-If a future firmware puts something new on the drive, the backup says what it could not read
-rather than passing over it.
+**Wavetables**, in the library, needs a Digitone II with the Waverider firmware. It shows what is in
+the wavetable store and in the pool of each project. It draws a table frame by frame and plays it.
+It imports audio files onto free slots, puts tables into a pool, and deletes tables. Every write
+saves a copy first.
 
-**Probe** — for when something is wrong. Ask an instrument what it is, what firmware it runs and
-which messages it answers; capture whatever it sends. It only ever sends messages classified as
+**Backup.** Save every project, soundbank and kit on the +Drive into one `.dnx` file, with a
+manifest. The backup copies the **+Drive**, not the instrument.
+
+**The global settings of the instrument are not in the backup, and no tool can put them there.**
+MIDI configuration, sync, audio routing and personalisation live in the machine, not in a project.
+The instrument offers no way to send them. Restore a backup onto a replacement or a reset unit, and
+you get your patterns, presets and project settings back. The global settings stay at the values
+the target already had.
+
+If a future firmware puts something new on the +Drive, the backup names what it could not read. It
+does not skip it silently.
+
+**Probe.** Use it when something is wrong. Ask an instrument what it is, which firmware it runs and
+which messages it answers. Capture whatever it sends. The probe only sends messages classified as
 reads.
 
 ## Before you point it at an instrument
 
-DNX writes to hardware that costs more than the computer running it. The safeguards are not
-incidental, and it is worth knowing what they are.
+DNX writes to hardware that costs more than the computer that runs it. Know what the safeguards
+are.
 
-- **Writing is off until you turn it on.** The `WRITE` switch is in the toolbar of every page,
-  and while it is armed the whole page is edged in red so you cannot be armed without seeing it.
-- **A copy is saved before anything is replaced.** Renaming a preset or saving over a project
-  writes the current contents to your computer first. That copy is the only undo there is.
-- **Every write is read back and compared**, and says so when the read-back differs.
-- **Destinations are checked against a fresh listing**, so a slot that filled up since you last
-  looked is refused rather than overwritten.
-- **Close Elektron Transfer and Overbridge first.** Sharing a MIDI port with them has truncated a
-  directory listing to a third of its length and had one application's traffic read as another's
-  answer. DNX now notices when something else is on the port and says so — but closing it is
-  better than being warned about it.
+- **Writing is off until you turn it on.** The `WRITE` switch is in the toolbar of every page.
+  While `WRITE` is on, a red edge surrounds the whole page, so you always see it.
+- **DNX saves a copy before it replaces anything.** When you rename a preset or save over a
+  project, DNX first writes the current contents to your computer. That copy is the only undo.
+- **DNX reads back every write and compares it.** It tells you when the read-back differs.
+- **DNX checks each destination against a fresh listing.** If a slot filled up after you last
+  looked, DNX refuses the write and does not overwrite the slot.
+- **Close Elektron Transfer and Overbridge first.** When DNX shared a MIDI port with them, a
+  directory listing came back at a third of its length. Another time, DNX read the traffic of one
+  application as the answer to its own request. DNX now notices when something else is on the port
+  and tells you. Closing the other applications is still better than the warning.
 
-**What DNX will not do**, on purpose: it will not write to the project currently loaded on the
-instrument, it will not convert a Digitone II preset back to a Digitone 1, and it refuses rather
-than guesses whenever the format is not understood well enough to be sure. Those refusals are
-features. `docs/KNOWN-ISSUES.md` records what is unfinished and how each was found.
+**What DNX will not do**, on purpose:
+
+- It will not write to the project that is loaded on the instrument.
+- It will not convert a Digitone II preset back to a Digitone 1.
+- It refuses, and does not guess, when it does not understand a format well enough to be sure.
+
+These refusals are features. `docs/KNOWN-ISSUES.md` records what is unfinished and how each issue
+was found.
 
 ## What you need
 
-- **A Chromium browser** — Chrome, Edge, Brave, Arc. Firefox and Safari implement no Web MIDI, so
-  they cannot see an instrument at all; the front page says so rather than letting you find out
-  one tool at a time.
-- **A Digitone or a Digitone II** connected over USB, for anything involving an instrument.
-  Working with project files needs no hardware.
+- **A Chromium browser**, for example Chrome, Edge, Brave or Arc. Firefox and Safari have no Web
+  MIDI, so they cannot see an instrument at all. The front page tells you this before you open a
+  tool.
+- **A Digitone or a Digitone II**, connected over USB, for anything that involves an instrument.
+  Work on project files needs no hardware.
 - Nothing else. There is no install step.
 
-Not everything is available on both instruments — the help has a chart, tool by tool.
+Some functions are available on one instrument only. The help has a chart, tool by tool.
 
 ## Something wrong?
 
-Every page has a **report** button beside `help` and `settings`. It opens a filled-in issue on
-GitHub with the version, the tool and your browser already attached, and shows you exactly what
-that is before you post. It carries nothing about your music: no project, file, folder or preset
-names.
+Every page has a **report** button next to `help` and `settings`. It opens a filled-in issue on
+GitHub. The issue already holds the version, the tool and your browser. The page shows you exactly
+what it holds before you post. The issue carries nothing about your music: no project, file,
+folder or preset names.
 
-DNX posts nothing itself and holds no credential — you press the button on GitHub, signed in as
-yourself, which does mean a GitHub account is needed to file one.
+DNX posts nothing itself and holds no credential. You press the button on GitHub, signed in as
+yourself. So you need a GitHub account to file an issue.
 
 ## Where the format knowledge lives
 
-Elektron publishes no format documentation for the Digitone family. Everything here was derived
-from real files and from captures taken off the instrument, and **every claim in `docs/` carries
-a status**: VERIFIED, SOLVED, DECODED, INFERRED, SPECULATIVE or UNKNOWN. Those words are
-load-bearing — a field marked INFERRED has a name taken from its position in a related structure,
-not from anything anybody measured.
+Elektron publishes no format documentation for the Digitone family. Everything here comes from real
+files and from captures taken off the instrument.
 
-**[`docs/README.md`](docs/README.md) says what is in there and which three to read first.** If you
-are here for the file formats rather than for the tool, that is the part worth your time.
+**Every claim in `docs/` carries a status**: VERIFIED, SOLVED, DECODED, INFERRED, SPECULATIVE or
+UNKNOWN. The status words carry meaning. A field marked INFERRED takes its name from its position
+in a related structure, not from a measurement.
+
+**[`docs/README.md`](docs/README.md) says what is in there and which three documents to read
+first.** If you came for the file formats and not for the tool, read that part.
 
 A few findings that appear in no public source:
 
-- The Digitone II's product id is `0x15`.
+- The product id of the Digitone II is `0x15`.
 - Project payloads are **LZ4-compressed** (linked blocks, 32 KB, shared dictionary) inside a ZIP.
-  Windowed entropy reads 3.7–6.2 bits and looks nothing like compressed data, which is a trap.
-- The check field is `crc32(payload[0x1F : len-12])` with a **zero init** — the CRC-32 polynomial,
-  not the standard parameterisation.
-- SysEx payloads are **8-in-7, MSB-first**, and the length field keeps only the low 14 bits, so it
+  Windowed entropy reads 3.7–6.2 bits and looks nothing like compressed data. That is a trap.
+- The check field is `crc32(payload[0x1F : len-12])` with a **zero init**. It uses the CRC-32
+  polynomial, not the standard parameterisation.
+- SysEx payloads are **8-in-7, MSB-first**. The length field keeps only the low 14 bits, so it
   wraps on large dumps.
-- A SysEx pattern payload equals a project pattern record plus its kit record byte for byte, so
+- A SysEx pattern payload equals a project pattern record plus its kit record, byte for byte. So
   findings transfer between the two with no offset translation.
 
 ## How it is put together
 
-Two front ends over one core. **The core is a package**, `packages/core`, published as
-`@noiseandmatter/dnx-core` and platform-free — no DOM, no Web MIDI, no filesystem — because it is
-the part proven byte-for-byte against Elektron's own output, and keeping it that way is what lets
-a page, a command, a test and eventually a phone exercise the same code.
+Two front ends sit over one core. **The core is a package**, `packages/core`, published as
+`@noiseandmatter/dnx-core`. The core is platform-free: no DOM, no Web MIDI, no filesystem. It is
+the part proven byte-for-byte against the output of Elektron's own software. Because it stays
+platform-free, a page, a command, a test and eventually a phone can all run the same code.
 
-What is left in `src/` is DNX's own: `cli` (the terminal commands), `node` (the three modules that
-need a filesystem), `sheet` (the hardware-test sheets), `research` (what we built to ask an
-instrument a question) and `hardwaretest` (what we built to check an answer on one). None of those
-go with the core.
+The rest of `src/` belongs to DNX only. None of it goes with the core:
+
+- `cli`: the terminal commands
+- `node`: the three modules that need a filesystem
+- `sheet`: the hardware-test sheets
+- `research`: what we built to ask an instrument a question
+- `hardwaretest`: what we built to check an answer on one
 
 ```mermaid
 flowchart TD
@@ -156,28 +172,29 @@ flowchart TD
   Y -. "over Web MIDI, carried by the browser" .-> I
 ```
 
-**Every solid arrow is a real import, every one points down, and none point back.** The core
-imports nothing outside the core, and no page imports another page's folder. That is checked rather than
-hoped for: the rule and what breaking it has already cost are in
-[`docs/PRINCIPLES.md`](docs/PRINCIPLES.md). The dotted line is the only thing that is not an
-import; it is the instrument.
+**Every solid arrow is a real import. Every one points down, and none points back.** The core
+imports nothing from outside the core. No page imports the folder of another page.
 
-`expand`, `librarian` and `device` are drawn as one tier because they sit at the same depth, not
-because they are one module. A few consequences worth knowing before reading the code:
+Tests check this rule. [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) gives the rule and what breaking
+it has cost before. The dotted line is the only arrow that is not an import. It is the instrument.
 
-- **`sysex` is the floor.** Everything an instrument says arrives through the 8-in-7 codec, and
-  everything written to one leaves through it.
-- **`project` is where the format knowledge lives**, and it is the most depended-on module in the
-  repository. `docs/` records what it knows and marks each claim with its confidence.
-- **`device` speaks the protocol; the browser carries it.** `device` composes and parses every
-  +Drive message and owns the safeguards — the copy taken before a write, the read-back
-  comparison, the fresh listing a destination is checked against — but it never touches a port. It
-  asks for a transport and the browser supplies one backed by Web MIDI, which is what lets the
-  whole write path be tested with nothing plugged in.
-- **`analysis` describes patterns, not instruments.** Charts never learn what a Digitone is. Each
-  device gets a *producer* in `web/src` that reads its own format through `project` and hands the
-  charts a common shape, which is why Insights works on both without the charts knowing there are
-  two.
+`expand`, `librarian` and `device` share one tier because they sit at the same depth. They are
+not one module. Some consequences to know before you read the code:
+
+- **`sysex` is the floor.** Everything an instrument says arrives through the 8-in-7 codec.
+  Everything that DNX writes to an instrument leaves through it.
+- **`project` is where the format knowledge lives.** It is the module that the most other modules
+  depend on. `docs/` records what it knows and marks each claim with its confidence.
+- **`device` speaks the protocol, and the browser carries it.** `device` composes and parses every
+  +Drive message. It owns the safeguards: the copy taken before a write, the read-back comparison,
+  and the fresh listing that a destination is checked against.
+
+  But `device` never touches a port. It asks for a transport, and the browser supplies one backed
+  by Web MIDI. So the tests can run the whole write path with nothing plugged in.
+- **`analysis` describes patterns, not instruments.** The charts never learn what a Digitone is.
+  Each instrument has a *producer* in `web/src`. The producer reads its own format through
+  `project` and gives the charts a common shape. So Insights works on both instruments, and the
+  charts do not know there are two.
 
 ## Running it yourself
 
@@ -187,20 +204,22 @@ npm run web      # builds and serves at http://127.0.0.1:8173
 npm run verify   # the tests, plus both typecheck passes
 ```
 
-`verify` is what CI runs and what to run before pushing. `npm test` alone does not typecheck:
-`tsx` strips types rather than checking them, so a browser-only type reaching a Node test passes
-the suite and fails `tsc`. That has happened.
+CI runs `verify`. Run it before you push. `npm test` alone does not typecheck. `tsx` strips types
+and does not check them. So a browser-only type that reaches a Node test passes the suite and fails
+`tsc`. This has happened.
 
-There is also a command line, which does most of what the pages do and some things they do not —
+There is also a command line. It does most of what the pages do, and some things they do not:
 `npm run project`, `plan`, `convert`, `copy`, `rearrange`, `rename`, `track`, `rebuild`, `diff`,
-`sheet`. Each prints its own usage, and every one of them is a **dry run by default**.
+`sheet`. Each command prints its own usage. Every command is a **dry run by default**.
 
 ### The test corpus is not in this repository
 
-Many tests validate against real Digitone projects, and those files are the author's own music.
-The corpus is found at run time: `DN_CORPUS` if set, otherwise a sibling `dn_sysex/00_Examples/`.
-Without it those tests **skip** rather than fail, so a fresh clone still runs a green suite over
-the codec, the container, the placement rules and everything else that needs no music.
+Many tests check their results against real Digitone projects. Those files are the author's own
+music. The tests find the corpus at run time: `DN_CORPUS` if it is set, otherwise a sibling
+`dn_sysex/00_Examples/`.
+
+Without the corpus, those tests **skip** and do not fail. So a fresh clone still runs a green
+suite over the codec, the container, the placement rules and everything else that needs no music.
 
 ```
 <corpus>/01_DN1/01_Projects/*.dnprj       Digitone 1 projects
@@ -209,39 +228,42 @@ the codec, the container, the placement rules and everything else that needs no 
 <corpus>/02_DN2/reference_captures/*.syx  native Digitone II SysEx captures
 ```
 
-`.gitignore` refuses project and sound files outright, as a safety net.
+As a safety net, `.gitignore` refuses all project and sound files.
 
 ## Prior art
 
-- [`emnyeca/digitone-syx-toolkit`](https://github.com/emnyeca/digitone-syx-toolkit) — 424
+- [`emnyeca/digitone-syx-toolkit`](https://github.com/emnyeca/digitone-syx-toolkit): 424
   single-variable Digitone II pattern captures. The most valuable public artifact for this work.
-- [`mzero/elk-herd`](https://github.com/mzero/elk-herd) — Digitakt project editor; the model for
-  versioned structs and for preserving unknown regions verbatim.
-- [`bsp2/libanalogrytm`](https://github.com/bsp2/libanalogrytm) — Analog Rytm structures.
-- [`ashojaeddini/digitools`](https://github.com/ashojaeddini/digitools) — Digitone 1 sound tags.
+- [`mzero/elk-herd`](https://github.com/mzero/elk-herd): a Digitakt project editor. It is the model
+  for versioned structs and for keeping unknown regions verbatim.
+- [`bsp2/libanalogrytm`](https://github.com/bsp2/libanalogrytm): Analog Rytm structures.
+- [`ashojaeddini/digitools`](https://github.com/ashojaeddini/digitools): Digitone 1 sound tags.
 
-**Nothing in the core is copied from another project.** Two files name one anyway, because the
-design came from somewhere and saying so is cheaper than being asked: `librarian/shuffle.ts`
-follows the *shape* of elk-herd's `Bank.Shuffle` (BSD 2-Clause, Mark Lentczner), separating a
-described reordering from its application; `device/safewrite.ts` reaches the same six-step
-write sequence as digi-roll's `safe-write.js`, independently — its licence is unstated and its
-code was not read.
+**Nothing in the core is copied from another project.** Two files name a project anyway, because
+the design came from somewhere:
+
+- `librarian/shuffle.ts` follows the *shape* of `Bank.Shuffle` in elk-herd (BSD 2-Clause, Mark
+  Lentczner). It keeps the description of a reordering apart from its application.
+- `device/safewrite.ts` reaches the same six-step write sequence as `safe-write.js` in digi-roll,
+  independently. The licence of digi-roll is unstated, and nobody here read its code.
 
 ## Licence
 
 **[GNU AGPL-3.0-or-later](LICENSE).** In plain terms:
 
 - **Use it for anything, including work you are paid for.** A licence covers the software, not
-  what you make with it. Sequence an album with DNX and sell the album; that is what it is for.
+  what you make with it. Sequence an album with DNX and sell the album. That is what DNX is for.
 - **Fork it, change it, share it.** Keep the notices, and pass on the same freedoms you got.
-- **A modified version stays open.** If you distribute one, or run one as a service other people
-  use, its source has to be available to them. DNX runs in a browser, so the second case is the
-  likely one, which is why every page carries a **source** link: section 13 requires the offer,
-  and the interface is the only place it can live for a page nobody downloads.
+- **A modified version stays open.** If you distribute one, or run one as a service that other
+  people use, you must make its source available to them. DNX runs in a browser, so the second
+  case is the likely one. Section 13 requires the offer of source. For a page that nobody
+  downloads, the interface is the only place for that offer. So every page carries a **source**
+  link.
 
-If you want to build something closed on top of this, ask. A separate licence is available and the
-copyright is in one pair of hands, so it is a conversation rather than a legal project.
+If you want to build something closed on top of this, ask. A separate licence is available. One
+pair of hands holds the copyright, so this is a conversation, not a legal project.
 
+<!-- ste-lint off -->
 ## Author's note
 
 This project started as a simple exercise to port my DN1 projects into the DN2. But by the time I
@@ -270,6 +292,7 @@ around, and not look back. But as it stands this tool doesn't force anyone to us
 Be kind, plant at least one big tree, enjoy life, and make nice free things other people can enjoy.
 
 Angel.
+<!-- ste-lint on -->
 
 ---
 

@@ -256,7 +256,7 @@ test("the README does not claim the whole instrument is backed up", () => {
    */
   const readme = readFileSync(join(ROOT, "README.md"), "utf8");
   assert.doesNotMatch(readme, /Back the whole instrument up/);
-  assert.match(readme, /It copies the \*\*\+Drive\*\*, not the instrument/);
+  assert.match(readme, /copies the \*\*\+Drive\*\*, not the instrument/);
   assert.match(readme, /no tool can put them there/,
     "and says the limit is the instrument's, not DNX's");
 });
