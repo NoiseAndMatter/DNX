@@ -106,7 +106,7 @@ import { TRACK_COUNT as DN2_TRACK_COUNT } from "../project/dn2pattern.js";
 import { SOUND_MACHINE_OFFSET, machineName } from "../project/machine.js";
 import { isMachineRelative } from "../project/machineplock.js";
 import { blankPatternKit } from "./blank.js";
-import { type Device } from "./device.js";
+import { type Device, patternVersionAt, sharesWrittenLayout } from "./device.js";
 import { type Shuffle, rereference, sourceOf, touchedSlots } from "./shuffle.js";
 
 /**
@@ -296,6 +296,19 @@ export function planTrackMove(
 
   if (pattern < 0 || pattern >= device.patternCount) {
     findings.push({ severity: "blocker", message: `No such pattern: ${pattern}.` });
+    return { pattern, scope, ...nothingChanges(), findings, ok: false };
+  }
+
+  // Every region below is read and written at version-3 offsets. A version-2 record keeps its
+  // tracks 4 bytes shorter and gives kit +10,260 another meaning. See `sharesWrittenLayout`.
+  const version = patternVersionAt(device, image, pattern);
+  if (!sharesWrittenLayout(device, version)) {
+    findings.push({
+      severity: "blocker",
+      message:
+        `Pattern ${pattern} is storage version ${version}, which keeps its fields at other ` +
+        `offsets. Refusing to move its tracks.`,
+    });
     return { pattern, scope, ...nothingChanges(), findings, ok: false };
   }
 

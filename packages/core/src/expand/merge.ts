@@ -63,7 +63,7 @@ import {
 import { soundLockedSlots } from "../project/dn2pattern.js";
 import { POOL_SOUND_COUNT, SOUND_NAME_OFFSET, SOUND_NAME_SIZE } from "../project/soundmap.js";
 import { patternName } from "../project/naming.js";
-import { DN1_DEVICE, DN2_DEVICE } from "../librarian/device.js";
+import { DN1_DEVICE, DN2_DEVICE, patternVersionAt, sharesWrittenLayout } from "../librarian/device.js";
 
 /** No lock on this step. */
 const NO_LOCK = 0xff;
@@ -279,6 +279,31 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   const landingSlots = landingSlotsFor(patterns, landing, options.landingMode ?? DEFAULT_LANDING);
   const refusal = landingRefusal(patterns, landingSlots, spec.layout.patternCount);
   if (refusal) throw new MergeRefused(refusal);
+
+  /*
+   * **A record is copied whole, and its lock bytes are rewritten at the authored offsets.** So
+   * every source pattern and every slot it lands on must keep its fields where DNX writes them.
+   * A Digitone II version-2 record does not: its tracks are 4 bytes shorter, so the lock bytes
+   * read and rewritten here would be the next track's, or its settings. A crossing source is
+   * converted first, and `convertProject` refuses a destination of another layout itself.
+   */
+  const destinationDevice = intoDn1 ? DN1_DEVICE : DN2_DEVICE;
+  const sourceDevice = fromDn1 ? DN1_DEVICE : DN2_DEVICE;
+  const foreign = [
+    ...(fromDn1 && !intoDn1 ? [] : patterns
+      .filter((p) => !sharesWrittenLayout(sourceDevice, patternVersionAt(sourceDevice, source, p)))
+      .map((p) => `source pattern ${patternName(p)} is storage version ${patternVersionAt(sourceDevice, source, p)}`)),
+    ...landingSlots
+      .filter((slot) => !sharesWrittenLayout(destinationDevice, patternVersionAt(destinationDevice, destination, slot)))
+      .map((slot) => `destination slot ${patternName(slot)} is storage version ${patternVersionAt(destinationDevice, destination, slot)}`),
+  ];
+  if (foreign.length > 0) {
+    throw new MergeRefused(
+      // Shown verbatim on the page, so it starts as a sentence does.
+      `${foreign.join(", ").replace(/^./, (c) => c.toUpperCase())}. That version keeps its ` +
+        `fields at other offsets. Nothing was changed.`,
+    );
+  }
 
   /*
    * **Planned for the patterns being merged, not for the project they came from.** Expansion

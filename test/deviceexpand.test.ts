@@ -19,6 +19,21 @@ import { PATTERN } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 const DN1_SOUND_SIZE = 302;
 
 /**
+ * A synthetic Digitone II image: every byte `fill`, and every pattern record stamped version 3.
+ *
+ * The conversion refuses a destination whose patterns keep their fields at other offsets, and a
+ * version word of 0 or 0x5A5A5A5A is such a record. A real destination always has one.
+ */
+function dn2Image(fill = 0): Uint8Array {
+  const image = new Uint8Array(DN2_LAYOUT.imageSize).fill(fill);
+  const view = new DataView(image.buffer);
+  for (let i = 0; i < DN2_LAYOUT.patternCount; i++) {
+    view.setUint32(DN2_LAYOUT.headerSize + i * DN2_LAYOUT.patternSize + PATTERN.versionOffset, 3, false);
+  }
+  return image;
+}
+
+/**
  * A DN1 image with one sound-locked trig pointing at `slot`, and optionally a sound in it.
  *
  * Every sound object is **framed**, because `convertProject` refuses an unframed one — a fixture
@@ -91,7 +106,7 @@ test("expanding from a DN1 whose pool was never captured is refused, and says wh
   assert.equal(poolCoverage(source).looksUncaptured, true);
 
   assert.throws(
-    () => planDeviceExpand({ source, destination: new Uint8Array(DN2_LAYOUT.imageSize) }),
+    () => planDeviceExpand({ source, destination: dn2Image() }),
     (e: unknown) =>
       e instanceof DeviceExpandRefused &&
       /the whole pool is empty/i.test(String(e)) &&
@@ -114,14 +129,14 @@ test("a dangling lock in a real project is a warning, not a refusal", () => {
   assert.deepEqual(coverage.missing, [99]);
   assert.equal(coverage.looksUncaptured, false, "one slot holds a sound, so the pool exists");
 
-  const plan = planDeviceExpand({ source, destination: new Uint8Array(DN2_LAYOUT.imageSize) });
+  const plan = planDeviceExpand({ source, destination: dn2Image() });
   assert.match(plan.warnings[0]!, /dangling lock in the project rather than a missing capture/);
 });
 
 test("the refusal can be overridden knowingly, and then it warns instead", () => {
   const plan = planDeviceExpand({
     source: dn1With(42, false),
-    destination: new Uint8Array(DN2_LAYOUT.imageSize),
+    destination: dn2Image(),
     allowIncompletePool: true,
   });
   assert.match(plan.warnings[0]!, /never captured/);
@@ -143,7 +158,7 @@ test("only the slots that differ from the destination are counted", () => {
   // The reason reading the destination first is worth a minute: expanding onto a DN2 that already
   // holds the result costs nothing, and expanding onto a blank costs only the patterns with work.
   const source = dn1With(42, true);
-  const destination = new Uint8Array(DN2_LAYOUT.imageSize);
+  const destination = dn2Image();
 
   const first = planDeviceExpand({ source, destination });
   assert.ok(first.changedSlots.length > 0, "a blank destination differs from a conversion");
@@ -158,7 +173,7 @@ test("only the slots that differ from the destination are counted", () => {
 test("the destination is the template, so its bytes survive where nothing overwrites them", () => {
   // The insight that removes the template file: convertProject transplants into whatever it is
   // given, so a destination read off the target device carries its own header and tail through.
-  const destination = new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
+  const destination = dn2Image(0x5a);
   const plan = planDeviceExpand({ source: dn1With(42, true), destination });
 
   // The tail past the settings record — song table country — is untouched by conversion.
@@ -215,11 +230,11 @@ test("whole-project mode replaces every destination pattern, and keeps the rest 
   const source = dn1With(42, true);
   const marker = DN2_LAYOUT.headerSize + 100 * DN2_LAYOUT.patternSize + 4 + 8 * PATTERN.trackSize + 0x40;
 
-  const kept = new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
+  const kept = dn2Image(0x5a);
   assert.equal(planDeviceExpand({ source, destination: kept }).image[marker], 0x5a,
     "without the replacement the destination's own track 9 comes through, which was the bug");
 
-  const replaced = new Uint8Array(DN2_LAYOUT.imageSize).fill(0x5a);
+  const replaced = dn2Image(0x5a);
   const plan = planDeviceExpand({ source, destination: replaced, replaceDestination: true });
   const { pattern } = blankPatternKit(DN2_DEVICE, 100);
   assert.equal(plan.image[marker], pattern[4 + 8 * PATTERN.trackSize + 0x40],
@@ -230,7 +245,7 @@ test("whole-project mode replaces every destination pattern, and keeps the rest 
 
 test("changes are counted from the destination as opened, and what is left to apply separately", () => {
   const source = dn1With(42, true);
-  const opened = new Uint8Array(DN2_LAYOUT.imageSize);
+  const opened = dn2Image();
   const first = planDeviceExpand({ source, destination: opened });
   assert.ok(first.pendingSlots.length > 0);
 
