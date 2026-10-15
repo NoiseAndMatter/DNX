@@ -53,6 +53,7 @@ import {
   planAdd,
 } from "@noiseandmatter/dnx-core/waverider/pooledit.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { readPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 
 export interface PoolWriteHost {
@@ -93,6 +94,11 @@ export interface PoolWriting {
    * looks right on screen and plays the wrong table on the instrument.
    */
   addAt(storeSlots: readonly number[], firstIndex?: number): Promise<void>;
+  /**
+   * Write a saved pool list back to the project on screen: the copy the erase or a pool write
+   * saved. `fileName` names it in the question. The list is the copy's, whole.
+   */
+  restore(bytes: Uint8Array, fileName: string): Promise<void>;
   /** What a drop would do, for the drag's own hint. No side effects. */
   describeDrop(storeSlots: readonly number[], firstIndex: number): { label: string; status: string } | undefined;
   /**
@@ -252,7 +258,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
   async function send(
     device: ConnectedDevice,
     reading: PoolReading,
-    entries: readonly (number | undefined)[],
+    entries: readonly (number | undefined)[] | "follows-store",
     describe: () => string,
   ): Promise<void> {
     const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
@@ -281,7 +287,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
           confirm: () => Promise.resolve(true),
         },
         projectSlot: host.projectSlot(),
-        entries,
+        ...(entries === "follows-store" ? { followsStore: true } : { entries }),
         // The entries are this reading's with one edit, so this reading's generation is the one
         // the write must still match. See `expectedGeneration`.
         expectedGeneration: reading.record.generation,
@@ -553,5 +559,48 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
     void remove();
   });
 
-  return { redraw, addAt, describeDrop };
+  async function restore(bytes: Uint8Array, fileName: string): Promise<void> {
+    const device = host.device();
+    const reading = host.reading();
+    if (!device || !reading || writing) return;
+
+    let record: ReturnType<typeof readPoolFile>;
+    try {
+      record = readPoolFile(bytes);
+    } catch (error: unknown) {
+      host.status(`${fileName} is not a pool list: ${error instanceof Error ? error.message : String(error)}`, "error");
+      return;
+    }
+
+    const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
+    const named = record.entries.filter((slot): slot is number => slot !== undefined);
+    const missing = [...new Set(named)]
+      .filter((slot) => !reading.store.some((entry) => entry.slot === slot && entry.occupied))
+      .sort((a, b) => a - b);
+
+    const ok = await askConfirm({
+      title: `Restore the pool of ${where}?`,
+      body: [
+        record.followsStore
+          ? `${fileName} is a pool that follows the store.`
+          : `${fileName} names ${named.length} table(s). It is the pool of ` +
+            `${record.projectSlot === 0 ? "the working project" : `project slot ${record.projectSlot}`}.`,
+        ...(missing.length === 0
+          ? []
+          : [`Store slot(s) ${missing.join(", ")} are empty. Those pool slots show MISSING until the tables are back.`]),
+        `The pool of ${where} is replaced. Its current list is saved as a file first.`,
+      ],
+      confirmLabel: "Restore the pool",
+      danger: true,
+    });
+    if (!ok) {
+      host.status("Cancelled — nothing was sent.", "warn");
+      return;
+    }
+
+    await send(device, reading, record.followsStore ? "follows-store" : record.entries, () =>
+      `The pool of ${where} is restored from ${fileName}.`);
+  }
+
+  return { redraw, addAt, describeDrop, restore };
 }

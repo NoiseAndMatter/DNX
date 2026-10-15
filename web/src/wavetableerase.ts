@@ -134,6 +134,11 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     return undefined;
   }
 
+  /** One copy per table and one per pool list. */
+  function copies(counts: { tables: number; lists: number }): number {
+    return counts.tables + counts.lists;
+  }
+
   /**
    * The sentences before the region goes.
    *
@@ -146,10 +151,10 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
         `${review.tables} table${review.tables === 1 ? "" : "s"} and ` +
         `${review.lists} pool list${review.lists === 1 ? "" : "s"}. The store is shared, so this ` +
         `is every project, not one of them.`,
-      review.tables === 0
+      copies(review) === 0
         ? `Nothing was copied, because there is nothing there. Sending the request anyway is how ` +
           `an erase interrupted partway finishes.`
-        : `${review.tables} cop${review.tables === 1 ? "y is" : "ies are"} already saved to your ` +
+        : `${copies(review)} cop${copies(review) === 1 ? "y is" : "ies are"} already saved to your ` +
           `DNX folder, ${review.copied.toLocaleString()} bytes in all. Putting those back is how ` +
           `this is undone — there is no undo on the instrument itself.`,
       /*
@@ -249,11 +254,12 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
           ? `There is nothing to copy. The erase can still be sent, which is how an erase ` +
             `interrupted partway is finished.`
           : `Every one of the ${tables} tables is read off the instrument and written into your ` +
-            `DNX folder, one file each. On a full store that is a few minutes.`,
+            `DNX folder, one file each, and so is every pool list. On a full store that is a few ` +
+            `minutes.`,
         `Nothing is sent to the instrument by this, and nothing on it changes. You are asked ` +
           `again, with the counts, before anything is erased.`,
         `Those copies are the only way back: putting one of them onto a free slot is how a table ` +
-          `comes home.`,
+          `comes home, and dropping a pool list onto the pool is how a project's pool does.`,
       ],
       confirmLabel: tables === 0 ? "Carry on" : "Save the copies",
     });
@@ -301,7 +307,10 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
             "copies",
           );
           copiesSaved += 1;
-          const said = `Backup of store slot ${backup.slots[0]} saved to ${whereSaved(saved)}`;
+          const what = backup.name.startsWith("wavepool-")
+            ? `the pool list of project slot ${backup.slots[0]}`
+            : `store slot ${backup.slots[0]}`;
+          const said = `Backup of ${what} saved to ${whereSaved(saved)}`;
           report.say(said);
           host.status(said, "ok");
         },
@@ -323,9 +332,9 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
 
       if (result.cancelled) {
         const said =
-          result.tables === 0
+          copies(result) === 0
             ? "Cancelled — nothing was sent."
-            : `Cancelled — nothing was sent. The ${result.tables} copies are still saved.`;
+            : `Cancelled — nothing was sent. The ${copies(result)} copies are still saved.`;
         report.say(said);
         host.status(said, "warn");
         return;

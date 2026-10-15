@@ -221,6 +221,31 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     },
   });
 
+  /*
+   * **A saved pool list goes back by dropping it on the pool.** The erase saves one per project,
+   * and a pool write saves the list it replaces. File drops pass through the grid's own drag,
+   * which handles only drags that began on the page.
+   */
+  const poolGridEl = $("wavepoolGrid");
+  poolGridEl.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+  poolGridEl.addEventListener("drop", (event) => {
+    const files = [...(event.dataTransfer?.files ?? [])];
+    if (files.length === 0) return;
+    event.preventDefault();
+    if (files.length > 1) {
+      host.status("Drop one pool list at a time.", "warn");
+      return;
+    }
+    const file = files[0]!;
+    void file.arrayBuffer()
+      .then((buffer) => poolWriting.restore(new Uint8Array(buffer), file.name))
+      .catch((error: unknown) => host.status(`${file.name} could not be read: ${String(error)}`, "error"));
+  });
+
   /**
    * Staging imports onto the store, which is the only thing in this mode that writes.
    *

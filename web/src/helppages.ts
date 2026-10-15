@@ -578,7 +578,8 @@ On the instrument, set **TBL** on the sound to the pool slot number. For pool sl
 **T:005**.
 
 Before DNX sends the new pool, it saves the current pool as a file on your computer. This file is
-the only way to undo the change.
+the only way to undo the change. To write a saved pool back, drop its file onto the pool. DNX
+shows what the file holds and asks before it writes.
 
 If the pool changes on the instrument after DNX reads it, DNX does not write. The pane then shows
 the pool as it is on the instrument. Do the edit again.
@@ -994,21 +995,30 @@ restore the wavetables.
 
 1. Push **Erase…**. A question shows the number of wavetables that DNX will copy.
 2. Push **Save the copies**, or **Cancel**. If you cancel, DNX copies nothing and sends nothing.
-3. DNX reads each wavetable from the instrument and saves a copy in your DNX folder. On a full
-   instrument, this takes some minutes. The bar shows the progress. If DNX cannot save a copy in
+3. DNX reads each wavetable and each pool from the instrument. It saves a copy of each in your
+   DNX folder. On a full instrument, this takes some minutes. The bar shows the progress. If DNX cannot save a copy in
    the folder, it stops and erases nothing.
 4. Read the second question. It shows the number of wavetables and pools to erase, their names,
    and the size of the copies.
 5. Push **Erase the region**, or **Cancel**. If you cancel, DNX sends nothing. The copies stay.
 6. DNX reads the instrument again and tells you that the region is empty.
 
-To restore a wavetable, drag its file onto a free slot in the **Wavetables** mode of the library.
+To restore the wavetables and the pools:
+
+1. In the **Wavetables** mode of the library, drag each \`waverider-N-NAME.bin\` file onto store
+   slot N. N is the slot that the table had before the erase.
+2. Choose a project in the **Project** list.
+3. Drop its \`wavepool-N.bin\` file onto the pool. N is the project slot. The file for the
+   working project is \`wavepool-0.bin\`.
+
+A pool names store slots. If a table goes back to a different slot, its pool entries show
+**MISSING**.
 
 **Erase the wavetables before you install the official firmware.** The official firmware cannot
 remove them. If you install it first, you must install the Waverider firmware again to erase.
 
 **The erase clears the pool of all projects.** The pools are on the +Drive, not in the project
-files. The erase does not change your projects, sounds or kits.
+files. DNX copies them before the erase. The erase does not change your projects, sounds or kits.
 
 **The TBL setting of each sound does not change.** These sounds play the built-in **PRIM**. After
 you restore a wavetable, set the sounds to it again.`,
