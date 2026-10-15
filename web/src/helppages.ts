@@ -673,10 +673,8 @@ the table.
 1. Click the table in the **+Drive wavetables** list.
 2. Push **Delete table** in the preview header. DNX saves a copy to your computer.
 3. Read the question. It shows the pool slots of this project that refer to the table. These cells
-   show **MISSING** after the delete.
+   show **MISSING** after the delete. The question does not show other projects.
 4. Confirm.
-
-DNX reads only the pool of this project. Other projects can also refer to the table.
 
 After the delete, remove the MISSING entries with **Remove from pool**.
 
@@ -697,6 +695,8 @@ For a restore, the name and shape fields are off.`,
 - **The size of a table.** All slots show the same fixed size.
 - **The sounds that use a pool slot.** DNX must read all sounds of a saved project to find them.
   The project on the instrument is not saved until you save it.
+- **The other projects that use a table.** DNX reads the pool of one project at a time. A
+  different project can refer to the same table.
 
 The instrument does not play a table that has a shape that the pool cannot play. The instrument
 shows no name for it. The table stays in the store.`,
