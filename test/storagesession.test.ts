@@ -338,7 +338,7 @@ test("retrying is bounded, and the caller is told which chunk was never answered
 
   await assert.rejects(
     readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 }),
-    /no answer for chunk 2 after 4 attempts/,
+    /no usable answer for chunk 2 after 4 attempts/,
   );
   assert.equal(io.reads.filter((r) => r.seq === 2).length, 4, "four attempts, not nine");
 });
@@ -371,4 +371,46 @@ test("a clean read reports no retries", async () => {
   const file = await readStoredFile("/projects/PRESETS", { transport: io, retryPauseMs: 0 });
 
   assert.equal(file.retries, 0, "so a run that needed help is distinguishable from one that did not");
+});
+
+// --- a frame cut in transit -----------------------------------------------------------------------
+
+/** Like `scripted`, but each reply says whether it arrived with its SysEx end marker. */
+function withEnds(replies: { body: Uint8Array; terminated: boolean }[]): ApiTransport & { sent: number[] } {
+  let at = 0;
+  const sent: number[] = [];
+  return {
+    sent,
+    request(request: Uint8Array, msgId: number): Promise<ApiFrame> {
+      const code = decodeMessage(request).code;
+      sent.push(code);
+      const reply = replies[at++];
+      if (!reply) return Promise.reject(new Error(`no scripted reply for 0x${code.toString(16)}`));
+      return Promise.resolve({ msgId, respId: msgId, code: code | RESPONSE_BIT, body: reply.body, isResponse: true, terminated: reply.terminated });
+    },
+  };
+}
+
+test("a chunk cut in transit is asked for again, and the file still arrives whole", async () => {
+  // One fragment used to end a read that had run for minutes. The same chunk asked again is the
+  // answer to a lost tail, as it already was to silence.
+  const io = withEnds([
+    { body: OPEN_OK, terminated: true },
+    { body: chunk(1, [1, 2], false).subarray(0, 23), terminated: false },
+    { body: chunk(1, [1, 2, 3], true), terminated: true },
+    { body: CLOSE_OK, terminated: true },
+  ]);
+  const file = await readStoredFile("/projects/1", { transport: io, retryPauseMs: 0 });
+  assert.deepEqual([...file.bytes], [1, 2, 3]);
+  assert.deepEqual(io.sent, [StorageCode.Open, StorageCode.Read, StorageCode.Read, StorageCode.Close]);
+});
+
+test("a chunk that never arrives whole still fails the read, naming the cut", async () => {
+  const cut = { body: chunk(1, [1, 2], false).subarray(0, 23), terminated: false };
+  const io = withEnds([{ body: OPEN_OK, terminated: true }, cut, cut, cut, cut, { body: CLOSE_OK, terminated: true }]);
+  await assert.rejects(
+    readStoredFile("/projects/1", { transport: io, retryPauseMs: 0 }),
+    /chunk 0 arrived unterminated/,
+  );
+  assert.equal(io.sent[io.sent.length - 1], StorageCode.Close, "the handle is still released");
 });
