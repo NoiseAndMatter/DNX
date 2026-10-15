@@ -28,12 +28,15 @@ export function importOutcome(outcome: BatchWriteOutcome, total: number): [strin
       return [`${outcome.problem}`, "warn"];
     case "declined":
       return ["Cancelled. Nothing was sent.", "warn"];
-    case "stopped":
+    case "stopped": {
+      // A table that is in the store counts as written, whatever its read-back said.
+      const stored = outcome.written.length + (outcome.landed ? 1 : 0);
       return [
         `Stopped at slot ${outcome.at.slot} (${outcome.at.name}): ${reason(outcome.problem)}. ` +
-          `${tables(outcome.written.length)} written, ${total - outcome.written.length} not sent.`,
+          `${tables(stored)} written, ${total - stored} not sent.`,
         "error",
       ];
+    }
     case "done":
       return [
         `Wrote ${tables(outcome.written.length)}. ${outcome.written.length === 1 ? "It is" : "They are"} ` +

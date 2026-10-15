@@ -588,7 +588,12 @@ export function wireImport(host: ImportHost): ImportStaging {
         onWriting: (done, total, table) =>
           host.status(`Writing ${done + 1} of ${total}: ${table.name} → ${WAVERIDER}/${table.slot}…`),
       });
-      const written = outcome.kind === "done" || outcome.kind === "stopped" ? outcome.written : [];
+      // A table that is in the store leaves the staged list, even one whose read-back differed.
+      const written = outcome.kind === "done"
+        ? outcome.written
+        : outcome.kind === "stopped"
+          ? [...outcome.written, ...(outcome.landed ? [outcome.landed] : [])]
+          : [];
       for (const one of written) {
         staged.delete(one.slot);
         if (picked === one.slot) picked = undefined;
