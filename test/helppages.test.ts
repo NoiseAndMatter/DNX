@@ -182,11 +182,11 @@ test("the overview's model chart names what is Digitone II only, as the code gat
   const chart = overview?.sections.find((section) => section.heading === "A Digitone and a Digitone II")?.body ?? "";
   assert.ok(chart, "the overview lost its model chart");
   for (const row of [
-    /Open device, reading the loaded project \| no: use Browse \+Drive \| yes/,
-    /a pattern's 16 tracks \| no \| yes/,
+    /Open device, read the loaded project \| no: use Browse \+Drive \| yes/,
+    /the 16 tracks of a pattern \| no \| yes/,
     /songs \| no \| yes/,
     /Insights \| yes \| yes/,
-    /kits \| no: none on its \+Drive \| yes/,
+    /kits \| no: there are no kits on its \+Drive \| yes/,
   ]) {
     assert.match(chart, row);
   }
