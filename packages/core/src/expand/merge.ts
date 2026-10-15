@@ -348,7 +348,9 @@ export function planPatternMerge(options: MergeOptions): MergePlan {
   );
 
   // --- place them ------------------------------------------------------------------------------
-  const free = freePoolSlots(destination, spec);
+  // Not the slots a dangling lock names. Those locks are left pointing where they were, so a
+  // sound placed in one of them would start playing on trigs that played nothing.
+  const free = freePoolSlots(destination, spec).filter((slot) => !empty.includes(slot));
   const pool: PoolPlacement[] = [];
   const dropped: number[] = [];
   const remap = new Map<number, number>();
