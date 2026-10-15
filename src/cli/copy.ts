@@ -14,7 +14,7 @@ import { cliArgs, readProjectFile } from "./args.js";
 import { basename } from "node:path";
 import { buildProjectFile } from "../node/projectfile.js";
 import { readProjectName } from "@noiseandmatter/dnx-core/project/dn1.js";
-import { applyPatternCopy, freePoolSlots, planPatternCopy } from "@noiseandmatter/dnx-core/librarian/copy.js";
+import { LibrarianError, applyPatternCopy, freePoolSlots, planPatternCopy } from "@noiseandmatter/dnx-core/librarian/copy.js";
 import { patternName } from "@noiseandmatter/dnx-core/project/naming.js";
 
 function main(): void {
@@ -97,4 +97,12 @@ function main(): void {
   console.log(`\n  written: ${outPath}`);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  // A refusal is a sentence for the person at the terminal, not a stack trace.
+  if (!(error instanceof LibrarianError)) throw error;
+  console.error(`
+  ${error.message}`);
+  process.exit(1);
+}
