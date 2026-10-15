@@ -65,7 +65,7 @@
         fill="var(--ink3)"
          data-tip-t="A — unknown machine" data-tip-b="1 note"/><text x="717.5" y="83.5" text-anchor="middle"
         font-size="9" fill="var(--ink3)">2</text><rect x="681" y="0" width="73" height="118"
-        fill="transparent"  data-tip-t="A — 2 notes" data-tip-b="PAD LOCK ×1 · &lt;b&gt;&amp; ×1"/><text x="717.5" y="132" text-anchor="middle" font-size="10"
+        fill="transparent"  data-tip-t="A — 2 notes" data-tip-b="PAD LOCK ×1 · &amp;lt;b&amp;gt;&amp;amp; ×1"/><text x="717.5" y="132" text-anchor="middle" font-size="10"
       fill="var(--ink2)">A</text><text x="790.5" y="132" text-anchor="middle" font-size="10"
       fill="var(--ink3)">A#</text><text x="863.5" y="132" text-anchor="middle" font-size="10"
       fill="var(--ink2)">B</text><line x1="24" y1="118" x2="900" y2="118"

@@ -58,7 +58,7 @@ export function pitchBars(cells: readonly PitchCell[], w: number): string {
         font-size="${T.value}" fill="var(--ink3)">${c.total}</text>`;
       // One transparent target per column so the tooltip can name the presets for the whole class.
       const rows = Object.entries(c.byPreset).sort((a, b) => b[1] - a[1])
-        .map(([p, n]) => `${p} ×${n}`).join(" · ");
+        .map(([p, n]) => `${escapeHtml(p)} ×${n}`).join(" · ");
       out += `<rect x="${padL + i * slot}" y="0" width="${slot}" height="${plotH}"
         fill="transparent" ${tip(`${c.name} — ${c.total} notes`, rows)}/>`;
     }
@@ -175,7 +175,7 @@ export function trackTimeline(
       // One target for the whole stack: the chord is a property of the group, not of a bar in it.
       out += `<rect x="${x}" y="${y}" width="${Math.max(1, cw)}" height="${rowH}"
         fill="transparent" ${tip(
-          `${trackLabel(row.track)} ${escapeHtml(row.track.preset)} · bar ${Math.floor(c.at / 16) + 1}`,
+          `${trackLabel(row.track)} ${row.track.preset} · bar ${Math.floor(c.at / 16) + 1}`,
           c.stack.map((n) => noteName(n)).join(" ")
           + (c.chord
             ? ` &mdash; <b>${escapeHtml(c.chord.name)}</b>`

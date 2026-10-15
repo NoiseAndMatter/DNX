@@ -130,7 +130,7 @@ export function phaseStrip(
         out += extra;
         out += `<circle cx="${cxp}" cy="${cy}" r="${r}" fill="${fill}" opacity="${op}"
           ${tip(`${trackLabel(t)} step ${g.step + 1}${accented ? " — accent" : ""}`,
-            `${presetOf(t, g)} · ${NOTE_NAMES[rootPc]} · vel ${g.velocity}`
+            `${escapeHtml(presetOf(t, g))} · ${NOTE_NAMES[rootPc]} · vel ${g.velocity}`
             + (g.lockPreset !== undefined ? " · preset lock" : ""))}/>`;
       }
     }
