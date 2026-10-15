@@ -645,7 +645,10 @@ DNX does not clear a MISSING entry automatically. **Add to pool** skips MISSING 
 the first empty slot.
 
 **Do not keep a MISSING entry.** If you write a different table into that store slot, the entry
-refers to the new table in all projects.`,
+refers to the new table in all projects.
+
+The Waverider firmware notes describe what the instrument does with a MISSING entry: [A pool entry
+whose table is gone](https://github.com/angellinares/dn2_firmware_explore/blob/main/docs/for-dnx-waverider-pool.md#a-pool-entry-whose-table-is-gone-asked-by-dnx-2026-10-14).`,
         image: { src: "help/wavetables-missing.png", alt: "A pool cell naming a store slot that is empty, reading MISSING, with a note saying the table was deleted and the slot now plays the built-in waveform" },
       },
       {
