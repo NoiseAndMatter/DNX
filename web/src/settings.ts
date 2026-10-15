@@ -150,47 +150,52 @@ export function registerBackup(runner: BackupRunner): void {
 }
 
 /**
- * Emptying the wavetable region, lent the same way and for the same reason.
+ * A command the device library adds to the instrument group, beside the backup.
  *
- * **Why an offer rather than a runner.** The backup is available whenever a page can reach an
- * instrument, so a function is the whole answer. This one has four ways of being unavailable —
- * no folder to put the copies in, no instrument, a build nobody has asked yet, a build that
- * cannot — and they are not interchangeable: one sends you to Settings, one to the tool row, one
- * to the Wavetables tab, and one is the end of it. A control that collapsed them into *not
- * available* would send somebody looking in the wrong place.
+ * **Registered, so this sheet names no device.** The erase of a Waverider wavetable region is the
+ * first, and it registers itself from `wavetableerase.ts` through `devicecommands.ts`. A fork for
+ * other hardware changes that list and nothing here.
  *
- * The sheet holds the sentence and never composes one. Which of the four applies is a question
- * about the instrument, and the page that asked the instrument is the one that knows.
- *
- * **Asked for, rather than handed over.** A registered snapshot goes stale the moment somebody
- * connects an instrument or moves to another, and the control would then show a reason that was
- * true when the page loaded — which is exactly how it came to say *connect an instrument first*
- * with one connected. A function is read when the sheet is built and again at the press, so there
- * is no second copy to keep in step and no event anybody has to remember to fire.
+ * Every such command writes to an instrument, so its button carries the write switch's attribute
+ * and the danger colour. Its id is the control's id: `test/writeenable.test.ts` names it, because
+ * a button built at open is invisible to the scan of the pages' markup.
  */
-/**
- * The erase control's id.
- *
- * Exported because it is the one control that writes to an instrument and is **built in
- * JavaScript rather than written into a page**. `test/writeenable.test.ts` reads the pages'
- * markup to prove every dangerous button is registered, and a button that is never in a `.html`
- * file is invisible to that scan — so it is named there, through this, rather than slipping past
- * a check that would have gone on passing.
- */
-export const ERASE_CONTROL = "eraseWavetables";
+export interface InstrumentCommand {
+  id: string;
+  title: string;
+  /** What it does and what it costs, said before anybody presses it. */
+  description: string;
+  /** The button. */
+  label: string;
+  /** A help section, `page/section`, for its own `?`. */
+  help?: string;
+  /**
+   * Read when the sheet is built and again at the press.
+   *
+   * **Asked for, rather than handed over.** A registered snapshot goes stale the moment somebody
+   * connects an instrument or moves to another, and the control would then show a reason that was
+   * true when the page loaded. A function has no second copy to keep in step.
+   */
+  offer: () => CommandOffer;
+}
 
-export interface EraseOffer {
+export interface CommandOffer {
   /** The job, when it can run. */
   run?: BackupRunner;
-  /** Why it cannot, in words the control shows. Ignored when `run` is set. */
+  /** Why it cannot, in words the control shows. Ignored when `run` is set. The command's own sentence. */
   unavailable?: string;
 }
 
-let eraseOffer: () => EraseOffer = () => ({});
+const instrumentCommands = new Map<string, InstrumentCommand>();
 
-/** Called once by a page that can reach an instrument. The function is kept, not its answer. */
-export function registerErase(offer: () => EraseOffer): void {
-  eraseOffer = offer;
+/** Called by a page as it wires its commands. A second registration of an id replaces the first. */
+export function registerInstrumentCommand(command: InstrumentCommand): void {
+  instrumentCommands.set(command.id, command);
+}
+
+/** The registered commands' ids, for `test/writeenable.test.ts`. */
+export function instrumentCommandIds(): string[] {
+  return [...instrumentCommands.keys()];
 }
 
 /**
@@ -382,64 +387,43 @@ function build(panel: HTMLElement): HTMLElement {
         return holder;
       })(),
     ),
-    /*
-     * **The one control in DNX that destroys everything it addresses**, which is why it is
-     * coloured unlike its neighbours and why the description says what it costs before anybody
-     * presses it rather than only in the question afterwards.
-     *
-     * It is here, beside the backup, because what it acts on is the instrument rather than a
-     * table or a project — and directly below the DNX folder it depends on, which is where
-     * somebody sent back by its refusal has to go.
-     */
-    row(
-      "Erase the wavetable region",
-      "Remove every wavetable and every pool list from the connected instrument, returning the " +
-        "+Drive to how Elektron shipped it. A copy of every table is saved to your DNX folder " +
-        "first — minutes on a full store — and then you are asked, with the counts, before " +
-        "anything is sent. Those copies are the only way back.",
-      (() => {
-        const holder = document.createElement("span");
-        holder.className = "erase-control";
-        // Read now for the control's state, and read again at the press: the connection can go
-        // away while the sheet is open, and the run is the thing that must not be stale.
-        const offer = eraseOffer();
-        /*
-         * **Named for the command, and the press says what comes first.** The owner, 2026-10-14:
-         * the button may say Erase, but a press that begins by copying every table must say so
-         * before it does. That is the first of the two questions in `wavetableerase.ts`.
-         */
-        const button = action("Erase…", () => {
-          const run = eraseOffer().run;
-          if (run) startJob(button, run);
-        });
-        button.classList.add("danger");
-        button.id = ERASE_CONTROL;
-        // The register the write switch reads. `openSettings` re-runs `gateWriteControls` once the
-        // sheet is in the document, because this element did not exist when the tool row did.
-        button.setAttribute(WRITES_DEVICE, "");
-        instrumentJobs.push(button);
-        holder.append(button);
+    ...[...instrumentCommands.values()].map((command) =>
+      row(
+        command.title,
+        command.description,
+        (() => {
+          const holder = document.createElement("span");
+          holder.className = "erase-control";
+          // Read now for the control's state, and read again at the press: the connection can go
+          // away while the sheet is open, and the run is the thing that must not be stale.
+          const offer = command.offer();
+          const button = action(command.label, () => {
+            const run = command.offer().run;
+            if (run) startJob(button, run);
+          });
+          button.classList.add("danger");
+          button.id = command.id;
+          // The register the write switch reads. `openSettings` re-runs `gateWriteControls` once the
+          // sheet is in the document, because this element did not exist when the tool row did.
+          button.setAttribute(WRITES_DEVICE, "");
+          instrumentJobs.push(button);
+          holder.append(button);
 
-        if (!offer.run) {
-          button.disabled = true;
-          /*
-           * **Written beside the button, not into its `title`.** A disabled button takes no
-           * pointer events in Chrome, so its tooltip never appears — the reason would be there in
-           * the markup and invisible to the person it is for. And the reason is the whole point:
-           * four of them, each sending you somewhere different.
-           */
-          const why = document.createElement("span");
-          why.className = "why";
-          // The page's own sentence, never one composed here. See `EraseOffer`.
-          why.textContent = offer.unavailable ?? "Open the library to reach an instrument.";
-          holder.append(why);
-        }
-        return holder;
-      })(),
-      // Its own `?`, not the group's: the group's opens on what a backup contains, and this is
-      // the one row on the panel whose preconditions and consequences need more than a sentence.
-      "settings/settings-erase",
-    ),
+          if (!offer.run) {
+            button.disabled = true;
+            /*
+             * **Written beside the button, not into its `title`.** A disabled button takes no
+             * pointer events in Chrome, so its tooltip never appears, and the reason is the point.
+             */
+            const why = document.createElement("span");
+            why.className = "why";
+            why.textContent = offer.unavailable ?? "Connect an instrument in this tool first.";
+            holder.append(why);
+          }
+          return holder;
+        })(),
+        command.help,
+      )),
   ], "backup/backup-contents"));
   /*
    * **The select these two commands choose an instrument with, where the page has none of its
@@ -529,7 +513,7 @@ export function openSettings(from?: HTMLElement): void {
     onClose: () => { sheet = undefined; },
   });
   build(sheet.panel);
-  // The sheet's erase control writes to an instrument and is built here, after the tool row ran
+  // The sheet's instrument commands write to an instrument and are built here, after the tool row ran
   // its scan. Re-running it is how the switch comes to hold a control that did not exist yet.
   gateWriteControls();
   installHelpMarkers(sheet.panel);

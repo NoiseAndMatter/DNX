@@ -59,7 +59,7 @@ import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider
 import { wireImport } from "./importstage.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
-import { provideWaveriderSupport } from "../instrumentcommands.js";
+import { provideWaveriderSupport } from "../wavetableerase.js";
 import { type ListedProject, WORKING_PROJECT, renderProjectList } from "./projectlist.js";
 import {
   auditionFrame,

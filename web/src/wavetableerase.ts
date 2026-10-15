@@ -45,7 +45,8 @@ import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.j
 import { folderState, folderSupported } from "./dnxfolder.js";
 import { pageMessageIds } from "./messageids.js";
 import { downloadBackup } from "./safewriteui.js";
-import { type EraseOffer, type JobReport, registerErase } from "./settings.js";
+import { type CommandOffer, type JobReport, registerInstrumentCommand } from "./settings.js";
+import { type DeviceCommandHost } from "./devicecommands.js";
 import { type StatusWriter } from "./statusbar.js";
 import { requireWriteEnabled } from "./writeenable.js";
 import {
@@ -57,21 +58,29 @@ import {
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
 
-export interface WavetableEraseHost {
-  /**
-   * The gate's answer, when a tool on this page has already asked this instrument.
-   *
-   * Optional, and only an accelerator: the Wavetables tab asks the gate to draw its panes, so on
-   * the library the answer is already in hand. Everywhere else the press asks for itself rather
-   * than sending somebody to another tool to unlock a command about their instrument.
-   */
-  support?(): WaveriderSupport | undefined;
-  status: StatusWriter;
-  /** A pane holding a listing this has invalidated, where there is one. */
-  reread?(): Promise<void>;
+/**
+ * The erase control's id.
+ *
+ * Exported because the control is **built in JavaScript rather than written into a page**.
+ * `test/writeenable.test.ts` reads the pages' markup to prove every dangerous button is registered,
+ * and a button that is never in a `.html` file is invisible to that scan, so it is named there.
+ */
+export const ERASE_CONTROL = "eraseWavetables";
+
+let lentSupport: (() => WaveriderSupport | undefined) | undefined;
+
+/**
+ * Lend the gate's answer, from a tool that has already asked this instrument.
+ *
+ * Optional, and only an accelerator: the Wavetables mode asks the gate to draw its panes, so on
+ * the library the answer is already in hand. Everywhere else the press asks for itself. Asked at
+ * the moment of use rather than stored, so an instrument that has gone takes its answer with it.
+ */
+export function provideWaveriderSupport(find: () => WaveriderSupport | undefined): void {
+  lentSupport = find;
 }
 
-export function wireWavetableErase(host: WavetableEraseHost): void {
+export function wireWavetableErase(host: DeviceCommandHost): void {
   let erasing = false;
 
   /**
@@ -83,7 +92,8 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
    * disabled button with no reason. The instrument and the gate are now settled at the press,
    * where asking them is allowed and the answer can be said in a sentence.
    */
-  function offer(): EraseOffer {
+  function offer(): CommandOffer {
+    if (host.held !== undefined) return { unavailable: host.held };
     if (erasing) return { unavailable: "An erase is already running." };
     if (!folderSupported()) {
       return {
@@ -102,7 +112,7 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
    * its `features`: a stock Digitone II that has answered must not be told nobody has asked.
    */
   async function gateRefusal(device: ConnectedDevice, report: JobReport): Promise<string | undefined> {
-    let support = host.support?.();
+    let support = lentSupport?.();
     if (!support) {
       report.say("Asking this instrument what it can do…");
       support = await askWaveriderSupport({ transport: apiTransport(device), ids: pageMessageIds });
@@ -335,5 +345,21 @@ export function wireWavetableErase(host: WavetableEraseHost): void {
     }
   }
 
-  registerErase(offer);
+  /*
+   * **The one control in DNX that destroys everything it addresses**, which is why the description
+   * says what it costs before anybody presses it rather than only in the question afterwards.
+   */
+  registerInstrumentCommand({
+    id: ERASE_CONTROL,
+    title: "Erase the wavetable region",
+    description:
+      "Remove every wavetable and every pool list from the connected instrument, returning the " +
+      "+Drive to how Elektron shipped it. A copy of every table is saved to your DNX folder " +
+      "first — minutes on a full store — and then you are asked, with the counts, before " +
+      "anything is sent. Those copies are the only way back.",
+    // The button may say Erase; the press asks first whether to save the copies. The owner, 2026-10-14.
+    label: "Erase…",
+    help: "settings/settings-erase",
+    offer,
+  });
 }
