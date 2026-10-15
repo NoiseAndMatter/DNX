@@ -42,9 +42,8 @@ import { askConfirm } from "./dialog.js";
 import { type ConnectedDevice, apiTransport } from "./devicesource.js";
 import { reachInstrument } from "./instrument.js";
 import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
-import { folderState, folderSupported } from "./dnxfolder.js";
+import { FolderSaveError, folderState, folderSupported, saveFileToFolder, whereSaved } from "./dnxfolder.js";
 import { pageMessageIds } from "./messageids.js";
-import { downloadBackup } from "./safewriteui.js";
 import { type CommandOffer, type JobReport, registerInstrumentCommand } from "./settings.js";
 import { type DeviceCommandHost } from "./devicecommands.js";
 import { type StatusWriter } from "./statusbar.js";
@@ -266,6 +265,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     }
 
     erasing = true;
+    let copiesSaved = 0;
     try {
       const result = await eraseWavetableStore({
         transport: apiTransport(device),
@@ -288,15 +288,23 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
               danger: true,
             }),
         },
-        // No firmware string on purpose: with one, `downloadBackup` wraps a stored file into a
-        // project container, and a wavetable slot is not a project. Same as the single delete.
-        onBackup: downloadBackup(
-          (message) => {
-            report.say(message);
-            host.status(message, "ok");
-          },
-          (backup) => `store slot ${backup.slots[0]}`,
-        ),
+        /*
+         * **Into the folder or not at all.** Every other copy falls back to a download, and a
+         * download Chrome holds back after about ten is not a copy. The second question says the
+         * copies are in the DNX folder, so a copy that misses it stops the run before anything is
+         * sent. Raw bytes on purpose: a wavetable slot is not a project, so nothing is wrapped.
+         */
+        onBackup: async (backup) => {
+          const saved = await saveFileToFolder(
+            new Blob([backup.bytes as BlobPart], { type: "application/octet-stream" }),
+            backup.name,
+            "copies",
+          );
+          copiesSaved += 1;
+          const said = `Backup of store slot ${backup.slots[0]} saved to ${whereSaved(saved)}`;
+          report.say(said);
+          host.status(said, "ok");
+        },
         onStatus: (message) => {
           report.say(message);
           host.status(message);
@@ -335,7 +343,11 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       report.say(said);
       host.status(said, "error");
     } catch (error: unknown) {
-      const said = `The erase failed: ${String(error)}`;
+      const said = error instanceof FolderSaveError
+        ? `${error.message} Nothing was erased.` + (copiesSaved === 0 ? "" :
+          ` The ${copiesSaved} cop${copiesSaved === 1 ? "y" : "ies"} saved before it ${copiesSaved === 1 ? "is" : "are"} ` +
+          `in your DNX folder.`)
+        : `The erase failed: ${String(error)}`;
       report.say(said);
       host.status(said, "error");
     } finally {

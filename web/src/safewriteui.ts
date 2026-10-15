@@ -9,9 +9,9 @@
  *
  * ## The copy is saved, and the status line says where
  *
- * `saveFile` writes it into the DNX folder when one is chosen, and that write lands or throws. With
- * no folder it is a download, and a blocked or cancelled download does not throw, so then this can
- * only say the file was offered. Either way the status line names where it went, so somebody who did
+ * `saveFile` writes it into the DNX folder when one is chosen. With no folder, or when the folder
+ * write fails, it is a download, and a blocked or cancelled download does not throw, so then this
+ * can only say the file was offered. Either way the status line names where it went, so somebody who did
  * not get the file knows to look for it before trusting the write.
  *
  * digi-roll solves the same problem by also stashing the backup inside the browser, so its console

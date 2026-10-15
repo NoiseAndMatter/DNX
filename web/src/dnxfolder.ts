@@ -99,14 +99,29 @@ export async function freeName(dir: DirectoryLike, name: string): Promise<string
   throw new Error(`${name} and the next 999 numbered names are all taken`);
 }
 
-/** Save into the chosen folder, or download, given where the folder and the download come from. */
+/** A save that had to land in the folder and did not. Nothing was downloaded instead. */
+export class FolderSaveError extends Error {
+  override name = "FolderSaveError";
+}
+
+/**
+ * Save into the chosen folder, or download, given where the folder and the download come from.
+ *
+ * `fallback: "refuse"` throws `FolderSaveError` where the default would download. That is for a
+ * caller whose next step deletes the original: a download Chrome holds back is not a copy, and the
+ * wavetable erase says the copies are in the folder.
+ */
 export async function saveFileWith(
   blob: Blob,
   name: string,
   kind: FileKind,
   env: SaveEnvironment,
+  fallback: "download" | "refuse" = "download",
 ): Promise<Saved> {
   const offer = (why?: string): Saved => {
+    if (fallback === "refuse") {
+      throw new FolderSaveError(`${name} was not saved in the DNX folder: ${(why ?? "no folder is chosen").replace(/\.+$/, "")}.`);
+    }
     env.download(blob, name);
     return why === undefined ? { where: "download", name } : { where: "download", name, why };
   };
@@ -243,6 +258,11 @@ export async function folderState(): Promise<FolderState> {
 /** Save a file into the DNX folder when one is chosen, and download it otherwise. */
 export function saveFile(blob: Blob, name: string, kind: FileKind): Promise<Saved> {
   return saveFileWith(blob, name, kind, { folder: storedFolder, download: saveBlob });
+}
+
+/** Save a file into the DNX folder, or throw `FolderSaveError`. Never a download. */
+export function saveFileToFolder(blob: Blob, name: string, kind: FileKind): Promise<Saved> {
+  return saveFileWith(blob, name, kind, { folder: storedFolder, download: saveBlob }, "refuse");
 }
 
 /**

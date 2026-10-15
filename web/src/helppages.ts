@@ -992,7 +992,8 @@ restore the wavetables.
 1. Push **Erase…**. A question shows the number of wavetables that DNX will copy.
 2. Push **Save the copies**, or **Cancel**. If you cancel, DNX copies nothing and sends nothing.
 3. DNX reads each wavetable from the instrument and saves a copy in your DNX folder. On a full
-   instrument, this takes some minutes. The bar shows the progress.
+   instrument, this takes some minutes. The bar shows the progress. If DNX cannot save a copy in
+   the folder, it stops and erases nothing.
 4. Read the second question. It shows the number of wavetables and pools to erase, their names,
    and the size of the copies.
 5. Push **Erase the region**, or **Cancel**. If you cancel, DNX sends nothing. The copies stay.
