@@ -217,3 +217,15 @@ test("the help never tells anybody to add one to a pool slot", () => {
   // And the right form is present, so this test fails if the section is deleted rather than fixed.
   assert.match(text, /T:005/, "the help should show what the cell actually reads");
 });
+
+test("an indented list nests inside the step above it", () => {
+  const html = mdToHtml("1. Click the cell.\n2. Do one of these steps:\n   - Remove it.\n   - Replace it.\n3. Push **Refresh**.");
+  assert.equal(
+    html,
+    "<ol><li>Click the cell.</li><li>Do one of these steps:<ul><li>Remove it.</li><li>Replace it.</li></ul></li>" +
+      "<li>Push <strong>Refresh</strong>.</li></ol>",
+  );
+  const library = HELP_PAGES.find((page) => page.key === "library");
+  const missing = library?.sections.find((s) => s.heading === "When a cell says MISSING");
+  assert.match(mdToHtml(missing!.body), /Do one of these steps:<ul>/, "the MISSING options sit under their step");
+});
