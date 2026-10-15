@@ -13,6 +13,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   FOLDER_LAYOUT,
+  FolderSaveError,
   type DirectoryLike,
   type FileLike,
   type FolderHandle,
@@ -139,6 +140,33 @@ test("a write that fails still delivers the file, as a download", async () => {
   assert.equal(saved.where, "download");
   assert.match(whereSaved(saved), /writing to DNX files failed: The disk is full/);
   assert.deepEqual(downloads, ["D.dn2prj"]);
+});
+
+test("a save that must land in the folder throws instead of downloading", async () => {
+  // The wavetable erase deletes the originals next, so a download Chrome may hold back is no copy.
+  const failing = new FakeRoot("DNX files");
+  failing.failWrites = true;
+  const lapsed = new FakeRoot("DNX files", "denied");
+  for (const folder of [async () => failing, async () => lapsed, async () => undefined]) {
+    const { downloads, env } = environment(folder);
+    await assert.rejects(
+      saveFileWith(bytes("x"), "waverider-3-PAD.bin", "copies", env, "refuse"),
+      (error: unknown) => error instanceof FolderSaveError && /^waverider-3-PAD\.bin was not saved in the DNX folder: .*[^.]\.$/.test(error.message),
+    );
+    assert.deepEqual(downloads, []);
+  }
+
+  const root = new FakeRoot("DNX files");
+  const { downloads, env } = environment(async () => root);
+  const saved = await saveFileWith(bytes("x"), "waverider-3-PAD.bin", "copies", env, "refuse");
+  assert.deepEqual(saved, { where: "folder", folder: "DNX files", path: "Copies before writing/waverider-3-PAD.bin" });
+  assert.deepEqual(downloads, []);
+});
+
+test("the wavetable erase saves its copies only into the folder", () => {
+  const source = readFileSync(join(WEB_SRC, "wavetableerase.ts"), "utf8");
+  assert.match(source, /onBackup: async \(backup\) => \{\s*const saved = await saveFileToFolder\(/);
+  assert.doesNotMatch(source, /downloadBackup/);
 });
 
 test("storage that refuses to answer is treated as no folder", async () => {
