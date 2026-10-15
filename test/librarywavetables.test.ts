@@ -375,7 +375,7 @@ test("another instrument is asked, rather than inheriting the last one's answer"
    * *asked and this instrument has no store* cannot be reported as *nobody has asked yet*, which
    * sends somebody to a tab that has already answered.
    */
-  assert.match(ERASE, /support\?\(\): WaveriderSupport \| undefined;/,
+  assert.match(ERASE, /provideWaveriderSupport\(find: \(\) => WaveriderSupport \| undefined\)/,
     "the erase control must see the whole gate answer, not only its features");
   assert.match(ERASE, /support\.state === "unsupported"/,
     "an instrument with no wavetable store must be told so");

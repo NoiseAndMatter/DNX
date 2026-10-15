@@ -20,10 +20,17 @@ import {
   WriteDisabled, isWriteEnabled, requireWriteEnabled, setWriteEnabled,
 } from "../web/src/writeenable.js";
 import { probeFunctionNames, probeWrite } from "./probesource.js";
-import { ERASE_CONTROL } from "../web/src/settings.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, "..", "web");
+
+/**
+ * The erase control's id, read from its module's source. Importing the module would pull Web MIDI
+ * types into the Node typecheck; the id is one exported literal.
+ */
+const ERASE_CONTROL = /export const ERASE_CONTROL = "(\w+)";/.exec(
+  readFileSync(join(WEB, "src", "wavetableerase.ts"), "utf8"),
+)?.[1] ?? "";
 const CORE = join(HERE, "..", "packages", "core", "src");
 
 /** Every `.ts` file under a directory, collected into `into`. */
@@ -348,18 +355,22 @@ test("a write control built in JavaScript registers itself, since no markup scan
    * element existed.
    */
   const source = readFileSync(join(WEB, "src", "settings.ts"), "utf8");
+  const erase = readFileSync(join(WEB, "src", "wavetableerase.ts"), "utf8");
 
+  // The sheet builds every registered instrument command the same way; the erase is one of them.
   assert.equal(ERASE_CONTROL, "eraseWavetables", "the id is named in the list in the test above");
-  assert.match(source, /button\.id = ERASE_CONTROL;/,
-    "the erase control must take the exported id, or the list above names something that does not exist");
+  assert.match(erase, /registerInstrumentCommand\(\{\s*id: ERASE_CONTROL,/,
+    "the erase must register under the exported id, or the list above names something that does not exist");
+  assert.match(source, /button\.id = command\.id;/,
+    "a registered command's control must take the command's id");
   assert.match(source, /button\.setAttribute\(WRITES_DEVICE, ""\);/,
-    "the erase control must carry the attribute the write switch registers controls by");
+    "an instrument command must carry the attribute the write switch registers controls by");
   assert.match(source, /^\s*gateWriteControls\(\);/m,
     "the sheet must re-run the scan after building, because the tool row's run came first");
 
   // And it must be the dangerous one, since nothing else on that panel suggests a press matters.
   assert.match(source, /button\.classList\.add\("danger"\);/,
-    "the erase control must be marked dangerous");
+    "an instrument command must be marked dangerous");
 });
 
 test("the whole page is edged in red while writing is armed", () => {

@@ -661,3 +661,19 @@ test("every page offers the source, because the licence requires it", () => {
     "the link must be appended to the row every page mounts, not to one page");
   assert.match(source, /AGPL/, "the reason has to survive next to the code that satisfies it");
 });
+
+test("the shared instrument commands and the settings sheet name no device command", () => {
+  /*
+   * The backup is DNX's own. Every command a device adds, such as the Waverider erase, is listed
+   * in `devicecommands.ts` and registers itself with the sheet, so a fork for other hardware edits
+   * that one list. Found by review on 2026-10-15, when `instrumentcommands.ts` imported the erase.
+   */
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "src");
+  for (const file of ["instrumentcommands.ts", "settings.ts"]) {
+    const imports = readFileSync(join(SRC, file), "utf8").match(/^import .*$/gm) ?? [];
+    assert.deepEqual(imports.filter((line) => /waverider|wavetable|wavepool/i.test(line)), [],
+      `${file} imports a device command; register it from devicecommands.ts instead`);
+  }
+  assert.match(readFileSync(join(SRC, "devicecommands.ts"), "utf8"), /wireWavetableErase/,
+    "the device command list is where the erase is named");
+});

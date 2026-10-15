@@ -79,6 +79,7 @@ import { dumpProductFor } from "@noiseandmatter/dnx-core/device/dumprequest.js";
 import { DeviceSession } from "@noiseandmatter/dnx-core/device/session.js";
 import { $ } from "../dom.js";
 import { renderToolNav } from "../toolnav.js";
+import { wireInstrumentCommands } from "../instrumentcommands.js";
 
 /*
  * Imported for what they wire, not for what they export. Each of these attaches its own controls
@@ -98,6 +99,11 @@ import "./writeslot.js";
 // Drawn rather than written into the HTML, so the row cannot say different things on different
 // pages. Immediately, because a navigation control that appears late is one you click through.
 renderToolNav($("toolnav"), "probe");
+// The probe holds the MIDI ports its own way, so the device commands show why they are not here
+// rather than opening a second connection underneath it.
+wireInstrumentCommands({
+  held: "The probe holds the instrument's ports itself. Erase from any other tool.",
+});
 
 // Also immediately, and for the same reason: the `?` on each card is how this page explains
 // itself now that the explanation is not lying across the results. See `help.ts`.
