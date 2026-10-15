@@ -580,6 +580,9 @@ On the instrument, set **TBL** on the sound to the pool slot number. For pool sl
 Before DNX sends the new pool, it saves the current pool as a file on your computer. This file is
 the only way to undo the change.
 
+If the pool changes on the instrument after DNX reads it, DNX does not write. The pane then shows
+the pool as it is on the instrument. Do the edit again.
+
 If the project **follows the store**, the question tells you. After the write, the project plays
 only the tables in its list. New tables in the store do not go into this project until you add
 them.

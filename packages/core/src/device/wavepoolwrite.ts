@@ -91,6 +91,16 @@ export interface WritePoolOptions {
   /** Write the follows-the-store record instead of a list. Refused together with `entries`. */
   followsStore?: boolean;
   /**
+   * The generation of the record the entries were built from.
+   *
+   * **Pass it whenever `entries` came from an earlier read.** The compare-and-swap protects only
+   * the window between this function's own read and its write. A list built from a reading taken
+   * minutes ago, sent with the fresh generation, passes the check and discards whatever changed
+   * in between. With this set, a record that has moved since is refused before the backup and
+   * before a byte is sent. Omitted means the caller's list does not depend on what is there.
+   */
+  expectedGeneration?: number;
+  /**
    * Handed the record that is about to be replaced, before a byte is sent.
    *
    * Required, like every other overwrite in core: a pool slot almost always holds a record, so
@@ -120,6 +130,11 @@ export interface WritePoolResult {
    * than our write is the only evidence there is, and it is evidence rather than proof.
    */
   probablyStale?: boolean;
+  /**
+   * Certain, where `probablyStale` is a guess: the record had moved from `expectedGeneration`
+   * before anything was sent, so nothing was.
+   */
+  stale?: boolean;
   problem?: string;
 }
 
@@ -185,6 +200,23 @@ export async function writePool(options: WritePoolOptions): Promise<WritePoolRes
    */
   status(`Reading the pool at ${poolPath(projectSlot)}…`);
   const before = await readRecord(transport, host, projectSlot, timeoutMs);
+
+  if (options.expectedGeneration !== undefined && before.generation !== options.expectedGeneration) {
+    return {
+      projectSlot,
+      cancelled: false,
+      written: 0,
+      committed: false,
+      landed: false,
+      before,
+      after: before,
+      stale: true,
+      probablyStale: true,
+      problem:
+        `the pool of project slot ${projectSlot} changed on the instrument after DNX read it ` +
+        `(generation ${options.expectedGeneration}, now ${before.generation}). Nothing was sent.`,
+    };
+  }
 
   const bytes = buildPoolFile({
     projectSlot,

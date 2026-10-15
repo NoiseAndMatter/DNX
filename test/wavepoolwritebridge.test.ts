@@ -105,6 +105,56 @@ test("a pool record lands at a non-zero project slot, and backs up only an overw
   });
 });
 
+test("a list built from an older reading is refused before anything is sent", { skip }, async () => {
+  /*
+   * The library's case. The pane reads the pool, the person edits it on the instrument, then
+   * drops a table in DNX. The list DNX builds is the old reading plus one entry. Sent with the
+   * generation `writePool` reads now, the compare-and-swap would pass and the front-panel edit
+   * would be gone. `expectedGeneration` is the generation the list was built from.
+   */
+  await withBridge(async (bridge) => {
+    const projectSlot = 11;
+    const setup = await writePool({
+      transport: bridge, host, projectSlot, entries: [1, 2, 3],
+      onBackup: () => {}, timeoutMs: TIMEOUT,
+    });
+    assert.equal(setup.landed, true, "the setup write did not land");
+    const shown = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
+
+    // The front panel: slot 7 gets a table while the pane still shows `shown`.
+    const panel = await writePool({
+      transport: bridge, host, projectSlot, entries: [1, 2, 3, undefined, undefined, undefined, 40],
+      onBackup: () => {}, timeoutMs: TIMEOUT,
+    });
+    assert.equal(panel.landed, true, "the front-panel stand-in did not land");
+
+    // DNX adds store slot 9 at pool slot 4, from the reading on screen.
+    let backedUp = 0;
+    const mine = await writePool({
+      transport: bridge, host, projectSlot, entries: [1, 2, 3, 9],
+      expectedGeneration: shown.generation,
+      onBackup: () => { backedUp += 1; },
+      timeoutMs: TIMEOUT,
+    });
+    assert.equal(mine.stale, true, "a moved record must be reported as stale");
+    assert.equal(mine.landed, false);
+    assert.equal(mine.written, 0, "nothing may be sent for a stale list");
+    assert.equal(backedUp, 0, "the refusal comes before the backup");
+
+    const now = await readPoolRecord(bridge, new MessageIds(), projectSlot, TIMEOUT);
+    assert.equal(now.entries[6], 40, "the front-panel entry was discarded");
+    assert.equal(now.entries[3], undefined, "the stale entry was written");
+
+    // And the same edit from a fresh reading goes through.
+    const again = await writePool({
+      transport: bridge, host, projectSlot, entries: [...now.entries.slice(0, 3), 9, ...now.entries.slice(4)],
+      expectedGeneration: now.generation,
+      onBackup: () => {}, timeoutMs: TIMEOUT,
+    });
+    assert.equal(again.landed, true, "a write from a fresh reading must land");
+  });
+});
+
 test("a stale generation is refused and the record is left alone", { skip }, async () => {
   /*
    * The case the compare-and-swap exists for: two writers, and the second must not silently
@@ -112,8 +162,9 @@ test("a stale generation is refused and the record is left alone", { skip }, asy
    * it answers `commit ok` and writes nothing — so the only way to see it is to read the entries.
    *
    * The stale token has to go on the wire directly, because `writePool` re-reads and sends the
-   * current generation, which is the right behaviour and precisely what makes it the wrong tool
-   * for producing a stale write.
+   * current generation, which is precisely what makes it the wrong tool for producing a stale
+   * write. A caller whose list came from an earlier read passes `expectedGeneration`; the next
+   * test covers that.
    *
    * **Through `safeWriteFile`, not through `writeStoredFile`.** The primitive takes a
    * `WritePermit` that only `safewrite.ts` can mint, and a test reaching past that is the exact
