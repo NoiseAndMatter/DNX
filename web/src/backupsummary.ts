@@ -89,6 +89,7 @@ function warningsFor(backup: OpenedBackup): string[] {
   if (backup.damaged.length > 0) {
     const missing = backup.damaged.filter((d) => d.fault === "missing");
     const wrong = backup.damaged.filter((d) => d.fault === "length");
+    const corrupt = backup.damaged.filter((d) => d.fault === "corrupt");
     // Named, up to a point. Somebody with three bad slots wants to know which three; somebody with
     // three hundred wants the number and a reason to stop reading.
     const name = (list: typeof backup.damaged): string => list.length <= 4
@@ -100,6 +101,12 @@ function warningsFor(backup: OpenedBackup): string[] {
         `${count(missing.length, "entry", "entries")} listed in the manifest ` +
         `${missing.length === 1 ? "is" : "are"} not in the file: ${name(missing)}. ` +
         "Everything else here is intact.",
+      );
+    }
+    if (corrupt.length > 0) {
+      warnings.push(
+        `${count(corrupt.length, "file")} in the backup ${corrupt.length === 1 ? "is" : "are"} ` +
+        `damaged: ${name(corrupt)}. Those cannot be opened or restored; the rest can.`,
       );
     }
     if (wrong.length > 0) {

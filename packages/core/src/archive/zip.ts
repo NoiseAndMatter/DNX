@@ -86,6 +86,8 @@ interface PackedEntry {
   /** Of the original bytes, not of `compressed`. */
   crc: number;
   size: number;
+  /** The file ends before the compressed bytes its header declares. Never set on a write. */
+  cut?: boolean;
 }
 
 /**
@@ -119,7 +121,10 @@ function packedEntriesOf(file: Uint8Array): PackedEntry[] {
       throw new ZipError(`entry "${name}" uses unsupported compression method ${method}`);
     }
 
-    entries.push({ name, method, compressed: file.subarray(dataStart, dataStart + compressedSize), crc, size });
+    entries.push({
+      name, method, compressed: file.subarray(dataStart, dataStart + compressedSize), crc, size,
+      ...(dataStart + compressedSize > file.length ? { cut: true } : {}),
+    });
     at = dataStart + compressedSize;
   }
 
@@ -223,6 +228,59 @@ export function readZip(file: Uint8Array, inflate: Inflate): Map<string, Uint8Ar
       entry.method === METHOD_STORED ? entry.compressed : inflate(entry.compressed),
     ]),
   );
+}
+
+/** An entry `readZipEntriesAsync` could not read back intact, and why. */
+export interface ZipFault {
+  name: string;
+  why: string;
+}
+
+/**
+ * Read every entry that is intact, and name every one that is not.
+ *
+ * **For a zip of independent files, a backup above all.** `readZipAsync` reads a project file,
+ * whose two entries are useless apart, so one bad entry rightly fails the whole read. A backup
+ * holds a thousand files that each stand alone, and one bad block in sound 500 must not cost
+ * every project. So each entry is judged on its own:
+ *
+ * - **cut short:** the file ends inside its compressed bytes;
+ * - **does not decompress:** the codec rejects it;
+ * - **wrong length or checksum:** it decompressed, and is not the file that was stored. The
+ *   checksum is the CRC-32 every zip entry carries, which catches a changed byte a length check
+ *   cannot.
+ *
+ * An entry with a fault is left out of `files`, so no caller can use its bytes by mistake.
+ */
+export async function readZipEntriesAsync(
+  file: Uint8Array,
+  inflate: InflateAsync,
+): Promise<{ files: Map<string, Uint8Array>; faults: ZipFault[] }> {
+  const files = new Map<string, Uint8Array>();
+  const faults: ZipFault[] = [];
+  for (const entry of packedEntriesOf(file)) {
+    if (entry.cut) {
+      faults.push({ name: entry.name, why: "the file ends inside this entry" });
+      continue;
+    }
+    let data: Uint8Array;
+    try {
+      data = entry.method === METHOD_STORED ? entry.compressed : await inflate(entry.compressed);
+    } catch {
+      faults.push({ name: entry.name, why: "it does not decompress" });
+      continue;
+    }
+    if (data.length !== entry.size) {
+      faults.push({ name: entry.name, why: `it is ${data.length} bytes, and its header says ${entry.size}` });
+      continue;
+    }
+    if (crc32(data) !== entry.crc) {
+      faults.push({ name: entry.name, why: "its checksum does not match" });
+      continue;
+    }
+    files.set(entry.name, data);
+  }
+  return { files, faults };
 }
 
 /** The same, for a host whose decompressor is asynchronous. */

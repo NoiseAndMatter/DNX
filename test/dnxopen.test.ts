@@ -124,6 +124,27 @@ test("a listed entry the zip does not hold costs that entry and nothing else", a
   assert.equal(opened.damaged[0]!.entry.name, "KLAP FP", "and the reader is told which one is gone");
 });
 
+test("an entry that fails its checksum is damaged, and every other entry still opens", async () => {
+  // A bad block inside one file used to fail the whole read with a raw TypeError, or, where the
+  // bytes still decompressed to the right length, pass as intact. The zip's own CRC-32 says which.
+  const zip = Uint8Array.from(await packBackup(backup()));
+  const name = new TextEncoder().encode("soundbanks/A/012 KLAP FP.dn2snd");
+  let header = -1;
+  for (let at = 0; at < zip.length - 30 && header === -1; at++) {
+    if (zip[at] === 0x50 && zip[at + 1] === 0x4b && zip[at + 2] === 3 && zip[at + 3] === 4 &&
+        name.every((b, i) => zip[at + 30 + i] === b)) header = at;
+  }
+  assert.notEqual(header, -1, "the sound's local header was not found");
+  zip[header + 14]! ^= 0xff;
+
+  const opened = await openBackup(zip);
+  assert.equal(opened.entries.length, 1, "the project survives");
+  assert.equal(opened.damaged.length, 1);
+  assert.equal(opened.damaged[0]!.fault, "corrupt");
+  assert.equal(opened.damaged[0]!.entry.name, "KLAP FP");
+  assert.match(opened.damaged[0]!.why ?? "", /checksum/);
+});
+
 test("a file that is not the length the manifest recorded is damaged, not restorable", async () => {
   /*
    * A truncated file written to a slot is a corrupt project, not a failed write — the instrument

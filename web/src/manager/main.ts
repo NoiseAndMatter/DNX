@@ -24,6 +24,8 @@
 
 import { deviceFor, storedPattern, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
+import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
+import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { planRearrange, applyRearrange } from "@noiseandmatter/dnx-core/librarian/rearrange.js";
 import {
@@ -1669,8 +1671,14 @@ async function load(file: File): Promise<void> {
  * out of a `.dnx` arrives through exactly the path a picked file does — same session, same undo,
  * same warnings about songs.
  */
-async function adopt(loaded: LoadedProject, from?: SlotOrigin): Promise<void> {
-  state.file = loaded;
+/**
+ * A project with no manifest is an image and a name. It opens and edits like any other, and
+ * Export stays off, because a project file's manifest has to carry a real firmware string.
+ */
+type Opened = LoadedProject | { fileName: string; image: Uint8Array };
+
+async function adopt(loaded: Opened, from?: SlotOrigin): Promise<void> {
+  state.file = "manifest" in loaded ? loaded : undefined;
   // A picked file has no slot behind it; a project out of a backup does, and says which.
   beginProject(loaded.image, from);
   const device = state.device!;
@@ -1678,7 +1686,7 @@ async function adopt(loaded: LoadedProject, from?: SlotOrigin): Promise<void> {
   $("device").hidden = false;
   $("device").textContent = device.name;
   $("projname").textContent = device.projectName(loaded.image);
-  $<HTMLButtonElement>("export").disabled = false;
+  $<HTMLButtonElement>("export").disabled = state.file === undefined;
   // The dropzone is the empty state and gets hidden for good once a project is open, so
   // without this there is no way to open a second one short of reloading the page.
   $("reopen").hidden = false;
@@ -1966,8 +1974,18 @@ async function openBackupFile(file: File): Promise<void> {
    * to write, and a claim nothing can act on would be a promise in a variable.
    */
   const slot = slotOfProjectSource(chosen.entry.source);
+  /*
+   * **A `.payload` entry is a project without its file.** `backupDevice` writes one when the
+   * instrument did not give its firmware: the payload is whole, and there is nothing honest to
+   * put in a manifest. Read as a zip it failed with "no ZIP entries found". Read as the payload it
+   * is, it opens, and only Export stays off.
+   */
+  const bare = name.endsWith(".payload");
   await adopt(
-    await readProjectFile(name, chosen.bytes),
+    bare
+      // The stored form, compressed, exactly as a project file's payload entry holds it.
+      ? { fileName: name, image: decodeProjectImage(parsePayload(chosen.bytes).raw).image }
+      : await readProjectFile(name, chosen.bytes),
     slot === undefined ? undefined : {
       slot,
       name: chosen.entry.name,
@@ -1977,11 +1995,12 @@ async function openBackupFile(file: File): Promise<void> {
   status(
     `${name} open, from ${file.name}. It came off ${backup.manifest.device.name} at ` +
       `${chosen.entry.source}.` +
-      (slot === undefined
+      (slot === undefined || bare
         ? ""
         : ` Save to +Drive… can put it back in slot ${slot} of a ${backup.manifest.device.name}.`) +
-      " Nothing has been written to any instrument.",
-    "ok",
+      " Nothing has been written to any instrument." +
+      (bare ? " Export and Save to +Drive are off: the backup has no firmware version for this project." : ""),
+    bare ? "warn" : "ok",
   );
 }
 

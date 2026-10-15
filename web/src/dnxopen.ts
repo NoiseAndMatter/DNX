@@ -39,7 +39,7 @@
  * instrument will see is the one to believe.
  */
 
-import { readZip, ZipError } from "./zip.js";
+import { readZipEntries, ZipError } from "./zip.js";
 import { DNX_VERSION, type BackupEntry, type BackupManifest } from "./dnxfile.js";
 
 /** A file that is not a backup this reader can be trusted with. */
@@ -63,10 +63,15 @@ export interface OpenedEntry {
 /** An entry that cannot be restored, and what is wrong with it. */
 export interface DamagedEntry {
   entry: BackupEntry;
-  /** `missing` — not in the zip. `length` — there, and not the size the manifest recorded. */
-  fault: "missing" | "length";
+  /**
+   * `missing` — not in the zip. `length` — there, and not the size the manifest recorded.
+   * `corrupt` — in the zip and unreadable: cut short, not decompressing, or failing its checksum.
+   */
+  fault: "missing" | "length" | "corrupt";
   /** Bytes found, for a length fault. */
   found?: number;
+  /** What is wrong with it, for a corrupt one. */
+  why?: string;
 }
 
 export interface OpenedBackup {
@@ -143,8 +148,12 @@ function placeOf(source: string): { kind: string; bank?: string } {
  */
 export async function openBackup(file: Uint8Array): Promise<OpenedBackup> {
   let files: Map<string, Uint8Array>;
+  let faults: Map<string, string>;
   try {
-    files = await readZip(file);
+    // Entry by entry: one unreadable file costs that file, never the rest of the backup.
+    const read = await readZipEntries(file);
+    files = read.files;
+    faults = new Map(read.faults.map((fault) => [fault.name, fault.why]));
   } catch (error) {
     // A `.dnx` is a zip, so "this is not a zip" is the same sentence as "this is not a backup", and
     // the reader should hear the second one.
@@ -154,6 +163,10 @@ export async function openBackup(file: Uint8Array): Promise<OpenedBackup> {
     throw error;
   }
 
+  const manifestFault = faults.get(MANIFEST);
+  if (manifestFault !== undefined) {
+    throw new DnxError(`${MANIFEST} in this backup is damaged: ${manifestFault}. Nothing in it can be placed.`);
+  }
   const raw = files.get(MANIFEST);
   if (!raw) {
     throw new DnxError(
@@ -189,15 +202,19 @@ export async function openBackup(file: Uint8Array): Promise<OpenedBackup> {
   const damaged: DamagedEntry[] = [];
 
   for (const entry of manifest.entries) {
+    const why = faults.get(entry.file);
+    if (why !== undefined) {
+      damaged.push({ entry, fault: "corrupt", why });
+      continue;
+    }
     const bytes = files.get(entry.file);
     if (!bytes) {
       damaged.push({ entry, fault: "missing" });
       continue;
     }
     if (bytes.length !== entry.bytes) {
-      // **Length is the only check the manifest can support**, and it is worth having: a truncated
-      // file written to a slot is a corrupt project, not a failed write. The manifest records no
-      // checksum, so this cannot prove a file is intact — only catch one that plainly is not.
+      // **The manifest's own length, on top of the zip's checksum.** The checksum proves the
+      // entry is the file the zip was given; this catches a zip given the wrong file.
       damaged.push({ entry, fault: "length", found: bytes.length });
       continue;
     }

@@ -273,8 +273,11 @@ date of the backup, and each project, sound and kit. Choose a project to open it
 
 DNX counts and names the sounds and kits, but you cannot use them yet.
 
-If a part of the backup is damaged, DNX **names the missing items at the top**. The other items
-open.`,
+If a part of the backup is damaged, DNX **names the damaged items at the top**. The other items
+open.
+
+If the instrument did not give its firmware version during the backup, its projects open, but
+**Export** and **Save to +Drive…** are off.`,
         image: { src: "help/backup-picker.png", alt: "The contents of a backup: the instrument and date it was taken, its projects listed by slot, and its sounds and kits counted" },
       },
       {

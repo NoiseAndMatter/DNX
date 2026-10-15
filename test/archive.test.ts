@@ -45,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import { crc32 as zlibCrc32 } from "node:zlib";
 import { buildZip as buildZipSync } from "../src/node/zip.js";
 import { parseProject } from "../src/node/projectfile.js";
-import { buildZip as buildZipAsync, crc32, readZip } from "../web/src/zip.js";
+import { buildZip as buildZipAsync, crc32, readZip, readZipEntries } from "../web/src/zip.js";
 import { DN1_PROJECTS, DN2_PROJECTS, NO_CORPUS, SKIP_REASON, corpusFiles } from "./corpus.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "archive");
@@ -339,4 +339,53 @@ test("every corpus project reads, and survives a rebuild", { skip: NO_CORPUS && 
       assert.deepEqual(await readZip(rebuilt), entries, `${label}: ${path}: an entry changed through a rebuild`);
     }
   }
+});
+
+// --- one bad entry costs that entry -------------------------------------------------------------
+
+/** Where the local header of `name` starts in a zip DNX wrote. */
+function localHeaderOf(zip: Uint8Array, name: string): number {
+  const encoded = new TextEncoder().encode(name);
+  for (let at = 0; at + 30 + encoded.length <= zip.length; at++) {
+    if (zip[at] !== 0x50 || zip[at + 1] !== 0x4b || zip[at + 2] !== 3 || zip[at + 3] !== 4) continue;
+    const nameLength = zip[at + 26]! | (zip[at + 27]! << 8);
+    if (nameLength === encoded.length && encoded.every((b, i) => zip[at + 30 + i] === b)) return at;
+  }
+  throw new Error(`no local header for ${name}`);
+}
+
+const THREE = [
+  { name: "projects/001 A.dn2prj", data: sample(4_000) },
+  { name: "projects/002 B.dn2prj", data: sample(5_000) },
+  { name: "soundbanks/A/001 C.dn2snd", data: sample(3_000) },
+];
+
+test("a wrong checksum, a broken stream and a cut-off end each cost only their own entry", async () => {
+  const zip = await buildZipAsync(THREE);
+
+  // A checksum that no longer matches: the bytes decompress, and are not the file that was stored.
+  const badCrc = Uint8Array.from(zip);
+  badCrc[localHeaderOf(badCrc, THREE[1]!.name) + 14]! ^= 0xff;
+  const crcRead = await readZipEntries(badCrc);
+  assert.deepEqual([...crcRead.files.keys()], [THREE[0]!.name, THREE[2]!.name]);
+  assert.deepEqual(crcRead.faults, [{ name: THREE[1]!.name, why: "its checksum does not match" }]);
+
+  // A stream the codec refuses: the first byte of the deflate data set to an invalid block type.
+  const badStream = Uint8Array.from(zip);
+  const at = localHeaderOf(badStream, THREE[0]!.name);
+  badStream[at + 30 + THREE[0]!.name.length] = 0xff;
+  const streamRead = await readZipEntries(badStream);
+  assert.deepEqual([...streamRead.files.keys()], [THREE[1]!.name, THREE[2]!.name]);
+  assert.equal(streamRead.faults[0]!.name, THREE[0]!.name);
+
+  // A copy interrupted partway: the last entry runs off the end of the file.
+  const cut = zip.subarray(0, localHeaderOf(zip, THREE[2]!.name) + 60);
+  const cutRead = await readZipEntries(cut);
+  assert.deepEqual([...cutRead.files.keys()], [THREE[0]!.name, THREE[1]!.name]);
+  assert.deepEqual(cutRead.faults, [{ name: THREE[2]!.name, why: "the file ends inside this entry" }]);
+
+  // And the intact zip has no faults and every byte.
+  const whole = await readZipEntries(zip);
+  assert.deepEqual(whole.faults, []);
+  for (const entry of THREE) assert.deepEqual(whole.files.get(entry.name), entry.data);
 });
