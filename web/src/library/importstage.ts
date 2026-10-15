@@ -42,8 +42,11 @@ import { type StatusWriter } from "../statusbar.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { decodeTableFile, type DecodedFile } from "./decodeaudio.js";
 import { auditionTable, stopAudition } from "./tableaudio.js";
-import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
-import { WAVERIDER, writeTableToSlot } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import { WAVERIDER } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import {
+  type BatchWriteOutcome, writeTablesToSlots,
+} from "@noiseandmatter/dnx-core/device/waveriderbatch.js";
+import { importOutcome } from "./importoutcome.js";
 import { readTableSamples } from "@noiseandmatter/dnx-core/waverider/convert.js";
 import {
   type PendingSlot,
@@ -538,115 +541,69 @@ export function wireImport(host: ImportHost): ImportStaging {
       }
     }
 
-    /*
-     * A listing read now, not the one on screen. The claim being made is that these slots are empty
-     * at the moment of asking, and the pane's reading may be minutes old.
-     */
-    host.status("Checking the slots are still empty…");
-    let listing;
-    try {
-      listing = await readStoreListing(apiTransport(device), pageMessageIds);
-    } catch (error: unknown) {
-      host.status(`Could not read the store listing: ${String(error)}`, "error");
-      return;
-    }
-    const inTheWay = entries
-      .map((entry) => listing.find((slot) => slot.slot === entry.slot))
-      .filter((slot) => slot?.occupied === true)
-      .map((slot) => `${slot!.slot}${slot!.name ? ` (${slot!.name})` : ""}`);
-    if (inTheWay.length > 0) {
-      host.status(
-        `Nothing sent. These slots are no longer empty: ${inTheWay.join(", ")}. Refresh and move ` +
-          `the staged tables.`,
-        "error",
-      );
-      return;
-    }
-
     const judgeBounds = host.bounds();
-    const unplayable = entries.filter(
-      (entry) => unplayableReason(geometryOf(entry), judgeBounds) !== undefined,
-    );
-    const bytes = pendings.reduce((total, one) => total + one.table.length, 0);
-    const lines = [
-      `${entries.length} ${entries.length === 1 ? "table" : "tables"}, ` +
-        `${bytes.toLocaleString()} bytes, one per slot: ` +
-        entries.map((entry) => `${entry.stem} to ${entry.slot}`).join(", ") +
-        `.`,
-      `Every one of those slots is empty in a listing taken just now, so nothing is overwritten ` +
-        `and there is no undo to need.`,
-      `This is the only question. Each write still checks the WRITE switch, so switching it off ` +
-        `stops the rest, and the run stops at the first slot that does not confirm.`,
-    ];
-    if (unplayable.length > 0) {
-      lines.push(
-        `${unplayable.length} of them ${unplayable.length === 1 ? "has a geometry" : "have geometries"} ` +
-          `this instrument stores but does not play: ` +
-          unplayable.map((entry) => `${entry.slot} (${geometryOf(entry).waves} x ${geometryOf(entry).points})`).join(", ") +
-          `. They will be listed and silent.`,
+    const ask = (tables: readonly PendingSlot[]): Promise<boolean> => {
+      const unplayable = entries.filter(
+        (entry) => unplayableReason(geometryOf(entry), judgeBounds) !== undefined,
       );
-    }
-
-    const ok = await askConfirm({
-      title: `Write ${entries.length} ${entries.length === 1 ? "table" : "tables"} to ${WAVERIDER}?`,
-      body: lines,
-      confirmLabel: `Write ${entries.length} ${entries.length === 1 ? "table" : "tables"}`,
-      danger: true,
-    });
-    if (!ok) {
-      host.status("Cancelled — nothing was sent.", "warn");
-      return;
-    }
+      const bytes = tables.reduce((total, one) => total + one.table.length, 0);
+      const lines = [
+        `${entries.length} ${entries.length === 1 ? "table" : "tables"}, ` +
+          `${bytes.toLocaleString()} bytes, one per slot: ` +
+          entries.map((entry) => `${entry.stem} to ${entry.slot}`).join(", ") +
+          `.`,
+        `Every one of those slots is empty in a listing taken just now, so nothing is overwritten ` +
+          `and there is no undo to need.`,
+        `This is the only question. Each write still checks the WRITE switch, so switching it off ` +
+          `stops the rest, and the run stops at the first slot that does not confirm.`,
+      ];
+      if (unplayable.length > 0) {
+        lines.push(
+          `${unplayable.length} of them ${unplayable.length === 1 ? "has a geometry" : "have geometries"} ` +
+            `this instrument stores but does not play: ` +
+            unplayable.map((entry) => `${entry.slot} (${geometryOf(entry).waves} x ${geometryOf(entry).points})`).join(", ") +
+            `. They will be listed and silent.`,
+        );
+      }
+      return askConfirm({
+        title: `Write ${entries.length} ${entries.length === 1 ? "table" : "tables"} to ${WAVERIDER}?`,
+        body: lines,
+        confirmLabel: `Write ${entries.length} ${entries.length === 1 ? "table" : "tables"}`,
+        danger: true,
+      });
+    };
 
     writing = true;
     host.lock(true);
     $<HTMLButtonElement>("wavimportWrite").disabled = true;
     stopAudition();
+    host.status("Checking the slots are still empty…");
+    let outcome: BatchWriteOutcome;
     try {
-      for (let i = 0; i < pendings.length; i++) {
-        const pending = pendings[i]!;
-        host.status(`Writing ${i + 1} of ${pendings.length}: ${pending.name} → ${WAVERIDER}/${pending.slot}…`);
-        const result = await writeTableToSlot({
-          transport: apiTransport(device),
-          host: {
-            ids: pageMessageIds,
-            // Per write, deliberately: this is what makes the WRITE switch a stop button.
-            gate: requireWriteEnabled,
-            // Already asked, about exactly this set. Local and unexported; see the module note.
-            confirm: () => Promise.resolve(true),
-          },
-          table: pending,
-          timeoutMs: 60_000,
-        });
-
-        if (result.cancelled || result.problem !== undefined || !result.listed) {
-          host.status(
-            `Stopped at ${i + 1} of ${pendings.length}. ${i} written. ` +
-              `Slot ${pending.slot}: ${result.problem ?? "cancelled"}. ` +
-              `${pendings.length - i} not sent.`,
-            "error",
-          );
-          return;
-        }
-        staged.delete(pending.slot);
-        if (picked === pending.slot) picked = undefined;
+      outcome = await writeTablesToSlots({
+        transport: apiTransport(device),
+        host: { ids: pageMessageIds, gate: requireWriteEnabled, ask },
+        tables: pendings,
+        ...(judgeBounds === undefined ? {} : { playable: judgeBounds }),
+        onWriting: (done, total, table) =>
+          host.status(`Writing ${done + 1} of ${total}: ${table.name} → ${WAVERIDER}/${table.slot}…`),
+      });
+      const written = outcome.kind === "done" || outcome.kind === "stopped" ? outcome.written : [];
+      for (const one of written) {
+        staged.delete(one.slot);
+        if (picked === one.slot) picked = undefined;
       }
-      host.status(
-        `Wrote ${pendings.length} ${pendings.length === 1 ? "table" : "tables"}. ` +
-          `${pendings.length === 1 ? "It is" : "They are"} in the store and in no pool yet: click ` +
-          `${pendings.length === 1 ? "it" : "one"} on the right, then a pool slot on the left, and ` +
-          `press Add to pool.`,
-        "ok",
-      );
     } finally {
       writing = false;
-      // Let go before the re-read: that read is the mode's own, and it takes the pane itself.
       host.lock(false);
       $<HTMLButtonElement>("wavimportWrite").disabled = false;
       replan();
       renderPanel();
-      await host.reread();
     }
+    // After the lock is released: the re-read is the mode's own, and it takes the pane itself.
+    // It writes its own status line, so the outcome goes out after it and is the line that stays.
+    await host.reread();
+    host.status(...importOutcome(outcome, pendings.length));
   }
 
   function bind(): void {
@@ -806,7 +763,7 @@ export function wireImport(host: ImportHost): ImportStaging {
       host.redraw();
     });
     $("wavimportWrite").addEventListener("click", () => {
-      void writeAll();
+      writeAll().catch((error: unknown) => host.status(`Write failed: ${String(error)}`, "error"));
     });
   }
 
