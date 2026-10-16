@@ -75,9 +75,13 @@ export function backupJob(host: BackupJobHost): BackupRunner {
         "backups",
       );
 
+      // Named up to a point: after a lost connection this is every slot that was left.
+      const named = failed.length <= 4
+        ? failed.map((f) => `${f.slot} ${f.name}`).join(", ")
+        : `${failed.slice(0, 3).map((f) => `${f.slot} ${f.name}`).join(", ")} and ${failed.length - 3} more`;
       const lost = failed.length
-        ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ` +
-          failed.map((f) => `${f.slot} ${f.name}`).join(", ") + "."
+        ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ${named}.` +
+          (failed.length > 1 ? ` ${failed[failed.length - 1]!.why.replace(/^not read: /, "")}.` : "")
         : "";
       const kinds = backup.manifest.contents.join(", ");
       /*

@@ -70,6 +70,14 @@ export interface BackupManifest {
    */
   skipped?: string[];
   /**
+   * Slots the backup listed and could not read, with why.
+   *
+   * **Written into the file, not only said at the time.** The status line that reported them is
+   * gone by the time anybody opens the backup, and a backup that missed slot 7 must still say so
+   * months later. Absent when nothing failed, and in files written before DNX recorded it.
+   */
+  failed?: { source: string; name: string; why: string }[];
+  /**
    * The form the files were read in, across the whole backup.
    *
    * Recorded because a backup read in the wrong form cannot be restored, and a restore should say

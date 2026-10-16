@@ -170,3 +170,21 @@ test("a backup holding nothing the caller can act on says so", () => {
   assert.equal(summary.empty, true);
   assert.equal(summary.groups[0]!.count, 1, "while still saying what is in there");
 });
+
+test("what the backup could not read when it was taken is said when it is opened", () => {
+  // The status line that reported these at the time is long gone by the time a backup is opened.
+  const base = opened();
+  const summary = summariseBackup({
+    ...base,
+    manifest: {
+      ...base.manifest,
+      failed: [{ source: "/projects/7", name: "COREVAULT", why: "no reply" }],
+      skipped: ["samples"],
+    },
+  }, ["projects"]);
+
+  assert.deepEqual(summary.warnings, [
+    "1 slot could not be read when this backup was taken: COREVAULT. It is not in it.",
+    "The +Drive also held samples, which DNX cannot read. This backup does not contain it.",
+  ]);
+});

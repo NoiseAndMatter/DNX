@@ -154,11 +154,19 @@ export interface BackupOptions {
 
 /** A file name that survives a zip, a file system and a round trip through either. */
 function safeName(slot: number, name: string, extension: string): string {
-  const trimmed = name.replace(/[^ -~]/g, "").replace(/[\/:*?"<>|]/g, "-").trim();
   // The slot leads, because it is what addresses the project and what the instrument's own screen
   // shows. Two projects on one +Drive may share a name; two cannot share a slot.
-  return `projects/${String(slot).padStart(3, "0")} ${trimmed || "UNNAMED"}${extension}`;
+  return `projects/${String(slot).padStart(3, "0")} ${safeLeaf(name)}${extension}`;
 }
+
+/**
+ * Reads that fail in a row before the backup takes the instrument to have gone.
+ *
+ * A cable pulled at item 30 of 1,869 used to cost every remaining item an open timeout and a close
+ * timeout, about five hours, with nothing saved until the end. Three in a row is past what a
+ * single bad slot does, and well short of what a lost connection costs.
+ */
+const GIVE_UP_AFTER = 3;
 
 /** One readable thing on the +Drive, wherever it lives. */
 interface DriveItem {
@@ -268,9 +276,14 @@ async function everything(
   return { items, contents, skipped };
 }
 
-/** A single path segment a file system will accept. */
+/**
+ * A single path segment a file system will accept.
+ *
+ * The backslash too: a Windows archive tool reads `A\B` as a folder `A` holding `B`, so a sound
+ * named that way came out of a hand-extracted backup in the wrong place.
+ */
 function safeLeaf(name: string): string {
-  return name.replace(/[^ -~]/g, "").replace(/[\/:*?"<>|]/g, "-").trim() || "UNNAMED";
+  return name.replace(/[^ -~]/g, "").replace(/[\\\/:*?"<>|]/g, "-").trim() || "UNNAMED";
 }
 
 /**
@@ -283,7 +296,7 @@ export async function backupDevice(
   device: ConnectedDevice,
   host: BackupHost,
   options: BackupOptions = {},
-): Promise<{ backup: DeviceBackup; failed: { slot: number; name: string; why: string }[] }> {
+): Promise<{ backup: DeviceBackup; failed: { slot: number; name: string; source: string; why: string }[] }> {
   const kinds = options.kinds ?? ["projects", "soundbanks", "kits"];
   const transport = device.api;
   // A backup's file names are the only thing saying which instrument the bytes came off once the
@@ -337,8 +350,15 @@ export async function backupDevice(
 
   const files: { path: string; bytes: Uint8Array }[] = [];
   const entries: BackupEntry[] = [];
-  const failed: { slot: number; name: string; why: string }[] = [];
+  const failed: { slot: number; name: string; source: string; why: string }[] = [];
   const total = items.length;
+  let inARow = 0;
+  /** The items from `from` on, recorded as not read, and why. */
+  const notRead = (from: number, why: string): void => {
+    for (const item of items.slice(from)) {
+      failed.push({ slot: item.slot, name: item.name, source: item.path, why });
+    }
+  };
 
   /*
    * Counted per kind as well as overall. The totals come from the listing, so every row is complete
@@ -354,7 +374,10 @@ export async function backupDevice(
   const snapshot = (): BackupStage[] => stages.map((g) => ({ ...g }));
 
   for (const [at, item] of items.entries()) {
-    if (options.shouldStop?.()) break;
+    if (options.shouldStop?.()) {
+      notRead(at, "the backup was stopped before it was read");
+      break;
+    }
     const stage = stageOf(item.kind);
     if (stage) stage.state = "reading";
     options.onProgress?.({
@@ -406,8 +429,10 @@ export async function backupDevice(
         // Recorded per entry because the form is the route's, and a restore writes back per entry.
         form: readFormOption(item.path).form === undefined ? "raw" : "stored",
       });
+      inARow = 0;
     } catch (error) {
-      failed.push({ slot: item.slot, name: item.name, why: String(error) });
+      failed.push({ slot: item.slot, name: item.name, source: item.path, why: String(error) });
+      inARow++;
     }
 
     /*
@@ -417,6 +442,12 @@ export async function backupDevice(
     if (stage) {
       stage.done++;
       if (stage.done >= stage.total) stage.state = "done";
+    }
+
+    // Gone, not one bad slot. What was read is kept, and saved like any other backup.
+    if (inARow >= GIVE_UP_AFTER) {
+      notRead(at + 1, `not read: the instrument stopped answering (${GIVE_UP_AFTER} reads in a row failed)`);
+      break;
     }
   }
 
@@ -439,6 +470,9 @@ export async function backupDevice(
         // Empty for every instrument known today. Present so a restore can tell "nothing else was
         // there" from "something else was there and this file does not have it".
         skipped: rest.skipped,
+        ...(failed.length === 0
+          ? {}
+          : { failed: failed.map(({ source, name, why }) => ({ source, name, why })) }),
         // `"mixed"` the moment two routes disagree, which only a custom route can cause today.
         // Derived rather than declared: a constant here was true until `/waverider` stored the raw
         // form, and a manifest that states the wrong form is worse than one that omits it, because
