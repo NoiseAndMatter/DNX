@@ -39,6 +39,7 @@ import { IDS_FOR, reserveMessageIds } from "../messageids.js";
 import { describeBytes } from "../progress.js";
 import { confirmFileWrite, STAGE_LABEL } from "../safewriteui.js";
 import { requireWriteEnabled } from "../writeenable.js";
+import { whileWriting } from "../writing.js";
 
 /**
  * Open, read and close a stored file — the sequence, never a piece of it.
@@ -258,7 +259,7 @@ async function readThenWrite(): Promise<void> {
     // read-back are not optional here either. **The read-back is skipped only for the corruption
     // run**, where the write is meant to be refused and a verifying read would report a failure
     // that is the finding rather than a fault.
-    const result = await safeWriteFile({
+    const result = await whileWriting(() => safeWriteFile({
       // Nothing reaches an instrument until somebody arms the switch. Handed over rather than
       // called here: `safeWriteFile` requires one and throws it before anything is sent, so a
       // control the page forgot to gate still cannot write. See `writeenable.ts`.
@@ -280,7 +281,7 @@ async function readThenWrite(): Promise<void> {
         bar.at(written, total, `${STAGE_LABEL[stage]} ${target}`);
         status(`${STAGE_LABEL[stage]} ${target}: ${describeBytes(written)} of ${describeBytes(total)}…`);
       },
-    });
+    }));
     if (result.cancelled) {
       status("Not written.", "warn");
       verdictCard("Write cancelled", [...log, ["Sent", "nothing"]]);

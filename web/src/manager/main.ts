@@ -129,6 +129,7 @@ import { renderInsights, type InsightsRefusal } from "./insights.js";
 import { dn1PatternSubject } from "@noiseandmatter/dnx-core/analysis/dn1subject.js";
 import { patternSubject } from "@noiseandmatter/dnx-core/analysis/patternsubject.js";
 import { type AnalysisSubject } from "@noiseandmatter/dnx-core/analysis/model.js";
+import { whileWriting } from "../writing.js";
 
 const status = statusBar();
 const progress = progressBar();
@@ -878,7 +879,7 @@ async function saveToDrive(): Promise<void> {
     // 31-byte container header verbatim, which is what carries the stored-form flag the +Drive
     // requires — see `refuseWrongForm`.
     const payload = buildPayload(file.payload.raw, session.image);
-    const result = await writeProjectToDrive({
+    const result = await whileWriting(() => writeProjectToDrive({
       device,
       slot,
       payload,
@@ -904,7 +905,7 @@ async function saveToDrive(): Promise<void> {
       onProgress: (done, total, stage) => {
         progress.at(done, total, STAGE_LABEL[stage]);
       },
-    });
+    }));
 
     if (result.cancelled) {
       status("Not written.", "warn");
@@ -1833,7 +1834,7 @@ async function writeToDevice(): Promise<void> {
   button.disabled = true;
   try {
     status("Working out what changed…");
-    const result = await writeBack(handle, session.image, {
+    const result = await whileWriting(() => writeBack(handle, session.image, {
       onBackup: downloadBackup((message) => status(message)),
       confirm: confirmRecordWrite,
       onStatus: (message) => status(message),
@@ -1844,7 +1845,7 @@ async function writeToDevice(): Promise<void> {
         progress.at(done, total, STAGE_LABEL[stage]);
         status(`${STAGE_LABEL[stage]} ${done}/${total}`);
       },
-    });
+    }));
 
     if (result.cancelled) {
       status("Write cancelled — nothing was sent.", "warn");

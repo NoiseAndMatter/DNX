@@ -40,6 +40,7 @@ import { type PendingSlot } from "@noiseandmatter/dnx-core/waverider/slotfile.js
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { askPlayableBounds } from "./waveriderbounds.js";
 import { xxHash32 } from "@noiseandmatter/dnx-core/waverider/xxhash32.js";
+import { whileWriting } from "../writing.js";
 
 /**
  * The `PendingSlot` for one already-converted file.
@@ -119,7 +120,7 @@ async function writeTable(): Promise<void> {
   writing = true;
   $<HTMLButtonElement>("tableWrite").disabled = true;
   try {
-    const result = await writeTableToSlot({
+    const result = await whileWriting(() => writeTableToSlot({
       transport: apiTransport(output),
       host: {
         ids: pageMessageIds,
@@ -133,7 +134,7 @@ async function writeTable(): Promise<void> {
       ...(playable.bounds === undefined ? {} : { playable: playable.bounds }),
       onStatus: (message) => status(message),
       timeoutMs: 60_000,
-    });
+    }));
 
     if (result.cancelled) {
       status("Cancelled — nothing was sent.", "warn");

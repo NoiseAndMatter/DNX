@@ -42,11 +42,12 @@ import { deleteRequest } from "@noiseandmatter/dnx-core/device/storage.js";
 import { readStoredFile } from "@noiseandmatter/dnx-core/device/storagesession.js";
 import { readFormOption } from "@noiseandmatter/dnx-core/device/storagewrite.js";
 import { WAVERIDER, slotPath } from "@noiseandmatter/dnx-core/device/waveriderwrite.js";
+import { whileWriting } from "../writing.js";
 
 let deleting = false;
 
 $("tableDelete").addEventListener("click", () => {
-  deleteTable().catch((error: unknown) => {
+  whileWriting(deleteTable).catch((error: unknown) => {
     status(`Delete failed: ${String(error)}`, "error");
     verdictCard("Delete failed", [["Error", String(error)]]);
   });

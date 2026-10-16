@@ -37,6 +37,7 @@ import { requireWriteEnabled } from "../writeenable.js";
 import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
 import { deleteTableSlot } from "@noiseandmatter/dnx-core/device/waveriderdelete.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { whileWriting } from "../writing.js";
 
 export interface TableDeleteHost {
   device(): ConnectedDevice | undefined;
@@ -155,7 +156,7 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
     deleting = true;
     redraw();
     try {
-      const result = await deleteTableSlot({
+      const result = await whileWriting(() => deleteTableSlot({
         transport: apiTransport(device),
         host: {
           ids: pageMessageIds,
@@ -170,7 +171,7 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
         ),
         onStatus: (message) => host.status(message),
         timeoutMs: 60_000,
-      });
+      }));
 
       if (result.cancelled) {
         host.status("Cancelled — nothing was sent.", "warn");

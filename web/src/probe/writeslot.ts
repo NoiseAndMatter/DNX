@@ -42,6 +42,7 @@ import { askConfirm } from "../dialog.js";
 import { saveBytesTo, savedTone, whereSaved } from "../dnxfolder.js";
 import { $, escapeHtml } from "../dom.js";
 import { requireWriteEnabled } from "../writeenable.js";
+import { whileWriting } from "../writing.js";
 
 /**
  * The first write that actually changes something.
@@ -75,7 +76,7 @@ export function fillWriteSources(): void {
 }
 
 $("writeSlot").addEventListener("click", () => {
-  writeToChosenSlot().catch((error: unknown) => {
+  whileWriting(writeToChosenSlot).catch((error: unknown) => {
     status(`The write failed: ${String(error)}`, "error");
     verdictCard("Write failed", [["Error", String(error)]]);
   });

@@ -57,6 +57,7 @@ import {
   type WaveriderSupport,
   askWaveriderSupport,
 } from "@noiseandmatter/dnx-core/device/waveridersupport.js";
+import { whileWriting } from "./writing.js";
 
 /**
  * The erase control's id.
@@ -296,7 +297,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     erasing = true;
     let copiesSaved = 0;
     try {
-      const result = await eraseWavetableStore({
+      const result = await whileWriting(() => eraseWavetableStore({
         transport: apiTransport(device),
         host: {
           ids: pageMessageIds,
@@ -351,7 +352,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
             },
           ]),
         timeoutMs: 120_000,
-      });
+      }));
 
       if (result.cancelled) {
         const said =

@@ -38,6 +38,7 @@ import {
   parseEntryList,
   summariseEntryList,
 } from "@noiseandmatter/dnx-core/waverider/entrylist.js";
+import { whileWriting } from "../writing.js";
 
 let writing = false;
 
@@ -96,7 +97,7 @@ async function writeTheirPool(): Promise<void> {
   writing = true;
   $<HTMLButtonElement>("poolWrite").disabled = true;
   try {
-    const result = await writePool({
+    const result = await whileWriting(() => writePool({
       transport: apiTransport(output),
       host: {
         ids: pageMessageIds,
@@ -112,7 +113,7 @@ async function writeTheirPool(): Promise<void> {
         () => `the pool of project slot ${projectSlot}`,
       ),
       onStatus: (message) => status(message),
-    });
+    }));
 
     if (result.cancelled) {
       status("Cancelled — nothing was sent.", "warn");

@@ -822,7 +822,11 @@ To turn it off, click it one time.`,
 5. **It writes.**
 6. **It reads the data again and compares it.**
 
-You cannot turn off step 3.`,
+You cannot turn off step 3.
+
+While DNX writes, the browser asks you before it closes the page or changes tools. Stay on the
+page until the write stops. If you leave, the instrument can keep only a part of the write. The
+copy from step 3 holds the data from before the write.`,
       },
       {
         heading: "What a confirmation tells you",

@@ -61,6 +61,7 @@ import {
   stemFromFileName,
 } from "@noiseandmatter/dnx-core/waverider/importplan.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import { whileWriting } from "../writing.js";
 
 /** The drag type for moving a staged table, so a drop can tell one from a file. */
 const MOVE_TYPE = "application/x-dnx-staged-slot";
@@ -581,14 +582,14 @@ export function wireImport(host: ImportHost): ImportStaging {
     host.status("Checking the slots are still empty…");
     let outcome: BatchWriteOutcome;
     try {
-      outcome = await writeTablesToSlots({
+      outcome = await whileWriting(() => writeTablesToSlots({
         transport: apiTransport(device),
         host: { ids: pageMessageIds, gate: requireWriteEnabled, ask },
         tables: pendings,
         ...(judgeBounds === undefined ? {} : { playable: judgeBounds }),
         onWriting: (done, total, table) =>
           host.status(`Writing ${done + 1} of ${total}: ${table.name} → ${WAVERIDER}/${table.slot}…`),
-      });
+      }));
       // A table that is in the store leaves the staged list, even one whose read-back differed.
       const written = outcome.kind === "done"
         ? outcome.written

@@ -48,6 +48,7 @@ import { type Progress } from "../progress.js";
 import { projectInSlot, readDriveSlot } from "../drivepicker.js";
 import { deviceFor } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
+import { whileWriting } from "../writing.js";
 
 export interface InstrumentHooks {
   /** Progress and news, in the words the status bar should show. */
@@ -185,7 +186,7 @@ export class Instrument {
     image: Uint8Array,
   ): Promise<Awaited<ReturnType<typeof writeBack>>> {
     try {
-      return await writeBack(handle, image, {
+      return await whileWriting(() => writeBack(handle, image, {
         onBackup: downloadBackup((message) => this.hooks.onStatus(message)),
         confirm: confirmRecordWrite,
         onStatus: (message) => this.hooks.onStatus(message),
@@ -193,7 +194,7 @@ export class Instrument {
           this.hooks.progress.at(done, total, STAGE_LABEL[stage]);
           this.hooks.onStatus(`${STAGE_LABEL[stage]} ${done}/${total}`);
         },
-      });
+      }));
     } finally {
       this.hooks.progress.done();
     }
