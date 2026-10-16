@@ -106,6 +106,7 @@ import {
 } from "../devicesource.js";
 import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { chooseDevice, devicePicker } from "../choosedevice.js";
+import { whileWriting } from "../writing.js";
 
 const status = statusBar();
 const progress = progressBar();
@@ -1419,13 +1420,13 @@ async function renameSelected(): Promise<void> {
   state.tagRun++;
   await state.reading?.catch(() => undefined);
 
-  const result = await renamePresetOnDrive({
+  const result = await whileWriting(() => renamePresetOnDrive({
     device,
     bank: bank.bank,
     index: row.index,
     name: typed,
     onStatus: (message) => status(message),
-  });
+  }));
 
   const noted = result.notes.length ? ` (${result.notes.join("; ")})` : "";
   if (result.outcome !== "written") {

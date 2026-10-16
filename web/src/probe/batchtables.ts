@@ -35,6 +35,7 @@ import {
 import { INDEX_ENTRIES } from "@noiseandmatter/dnx-core/waverider/layout.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { askPlayableBounds } from "./waveriderbounds.js";
+import { whileWriting } from "../writing.js";
 
 let running = false;
 
@@ -112,14 +113,14 @@ async function writeAll(): Promise<void> {
   $<HTMLButtonElement>("tableWriteAll").disabled = true;
   status(`Checking slots ${first}..${last} are empty…`);
   try {
-    const outcome = await writeTablesToSlots({
+    const outcome = await whileWriting(() => writeTablesToSlots({
       transport: apiTransport(output),
       host: { ids: pageMessageIds, gate: requireWriteEnabled, ask },
       tables,
       ...(playable.bounds === undefined ? {} : { playable: playable.bounds }),
       onWriting: (done, count, table) =>
         status(`Writing ${done + 1} of ${count}: ${table.name} → ${WAVERIDER}/${table.slot}…`),
-    });
+    }));
     report(outcome, picked.length, first, last, total);
   } finally {
     running = false;

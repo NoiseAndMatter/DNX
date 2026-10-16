@@ -275,7 +275,7 @@ test("both pool edits go through one write, not two copies of it", () => {
    * have to be kept in step through the gate, the backup, the cancelled case and the three ways a
    * write can fail to land, and the half nobody exercised is the one that would drift.
    */
-  const writes = [...POOLWRITE.matchAll(/await writePool\(/g)].length;
+  const writes = [...POOLWRITE.matchAll(/\bwritePool\(\{/g)].length;
   assert.equal(writes, 1, `writePool is called ${writes} times; both edits should share one send`);
 });
 

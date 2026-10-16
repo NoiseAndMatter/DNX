@@ -40,6 +40,7 @@ import { ProductId } from "@noiseandmatter/dnx-core/sysex/devices.js";
 import { askConfirm } from "../dialog.js";
 import { saveBytesTo, savedTone, whereSaved } from "../dnxfolder.js";
 import { requireWriteEnabled } from "../writeenable.js";
+import { whileWriting } from "../writing.js";
 
 /**
  * The only control on this page that changes the instrument.
@@ -58,7 +59,7 @@ $("writeBack").addEventListener("click", () => {
   // **Never `void` a promise on this page.** A rejected `writeBack` used to vanish without a
   // trace: `output.send()` can throw on a 114 KB message, and the only symptom was a UI that did
   // nothing at all. Silence is the one outcome a control that changes an instrument must not have.
-  writeBack().catch((error: unknown) => {
+  whileWriting(writeBack).catch((error: unknown) => {
     status(`The write failed: ${String(error)}`, "error");
     verdictCard("Write failed", [
       ["Error", String(error)],

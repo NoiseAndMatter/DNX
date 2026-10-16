@@ -55,6 +55,7 @@ import {
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { readPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
+import { whileWriting } from "../writing.js";
 
 export interface PoolWriteHost {
   device(): ConnectedDevice | undefined;
@@ -278,7 +279,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       host.status(message, kind);
     };
     try {
-      const result = await writePool({
+      const result = await whileWriting(() => writePool({
         transport: apiTransport(device),
         host: {
           ids: pageMessageIds,
@@ -297,7 +298,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
           () => `the pool of ${where}`,
         ),
         onStatus: (message) => host.status(message),
-      });
+      }));
 
       if (result.cancelled) {
         say("Cancelled — nothing was sent.", "warn");
