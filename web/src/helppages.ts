@@ -900,7 +900,10 @@ DNX skips empty slots. Examples:
 DNX reads the projects first. If the backup stops, it has the projects.
 
 If 3 reads in a row fail, DNX stops and saves what it read. The backup records each slot that it
-did not read. When you open the backup, DNX names these slots.`,
+did not read. When you open the backup, DNX names these slots.
+
+To stop the backup, click **Stop**. DNX saves the items that it read. If it read no items, it
+saves no file.`,
         image: { src: "help/backup-progress.png", alt: "The backup running, with a row for each kind of thing showing how many of its slots have been read" },
       },
       {

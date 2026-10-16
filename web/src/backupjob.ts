@@ -55,6 +55,7 @@ export function backupJob(host: BackupJobHost): BackupRunner {
 
       const { backup, failed } = await backupDevice(connected, {
         onList: () => report.say("Listing the +Drive…"),
+        shouldStop: () => report.stopRequested(),
         onProgress: ({ done, total, name, kind, bytes, stages }) => {
           report.at(stages);
           void total;
@@ -66,6 +67,13 @@ export function backupJob(host: BackupJobHost): BackupRunner {
           );
         },
       });
+
+      const stopped = report.stopRequested();
+      if (stopped && backup.manifest.entries.length === 0) {
+        report.say("Backup stopped. Nothing was read, so nothing was saved.");
+        host.status("Backup stopped. Nothing was saved.", "warn");
+        return;
+      }
 
       const bytes = await packBackup(backup);
       const name = backupFileName(backup.manifest);
@@ -79,7 +87,9 @@ export function backupJob(host: BackupJobHost): BackupRunner {
       const named = failed.length <= 4
         ? failed.map((f) => `${f.slot} ${f.name}`).join(", ")
         : `${failed.slice(0, 3).map((f) => `${f.slot} ${f.name}`).join(", ")} and ${failed.length - 3} more`;
-      const lost = failed.length
+      const lost = stopped
+        ? ` ${failed.length} slot${failed.length === 1 ? " was" : "s were"} not read.`
+        : failed.length
         ? ` ${failed.length} slot${failed.length === 1 ? "" : "s"} could not be read: ${named}.` +
           (failed.length > 1 ? ` ${failed[failed.length - 1]!.why.replace(/^not read: /, "")}.` : "")
         : "";
@@ -96,12 +106,13 @@ export function backupJob(host: BackupJobHost): BackupRunner {
           `not contain ${missed.length === 1 ? "it" : "them"}.`
         : "";
       report.say(
-        `Saved ${whereSaved(saved)} — ${backup.manifest.entries.length} items (${kinds}), ` +
+        `${stopped ? "Backup stopped. " : ""}Saved ${whereSaved(saved)} — ${backup.manifest.entries.length} item${backup.manifest.entries.length === 1 ? "" : "s"} (${kinds}), ` +
           `${describeBytes(bytes.length)}.${lost}${unread}`,
       );
       host.status(
-        missed.length ? "Backup saved, but not everything on the +Drive" : `Backup saved to ${whereSaved(saved)}`,
-        failed.length || missed.length ? "warn" : savedTone(saved),
+        stopped ? `Backup stopped. Part of it saved to ${whereSaved(saved)}`
+        : missed.length ? "Backup saved, but not everything on the +Drive" : `Backup saved to ${whereSaved(saved)}`,
+        stopped || failed.length || missed.length ? "warn" : savedTone(saved),
       );
     } catch (error) {
       report.say(`Backup stopped: ${String(error)}`);
