@@ -45,6 +45,7 @@
  * order, and the fences that guard the writes now read the folder rather than the file.
  */
 
+import { pageMessageIds } from "../messageids.js";
 import { card, listing } from "./cards.js";
 import { status } from "./chrome.js";
 import {
@@ -211,7 +212,8 @@ async function probe(): Promise<void> {
     return;
   }
 
-  const session = new DeviceSession({ send: (bytes) => output.send([...bytes]) });
+  // The page's numbering, shared with the probe's +Drive cards on the same port.
+  const session = new DeviceSession({ send: (bytes) => output.send([...bytes]) }, { ids: pageMessageIds });
 
   // Counted so a failure can say *which* silence this is: nothing arriving at all, or traffic
   // arriving that is not ours. Those have completely different causes and the same symptom.

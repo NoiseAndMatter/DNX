@@ -24,7 +24,7 @@
  * The counter therefore starts at 1 and skips 0 when it wraps.
  */
 
-import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID } from "./messageids.js";
+import { FIRST_MESSAGE_ID, MAX_MESSAGE_ID, type MessageIds } from "./messageids.js";
 import {
   type ApiFrame,
   RESPONSE_BIT,
@@ -71,6 +71,15 @@ export interface SessionOptions {
    * SysEx, or a request the device does not implement, all of which produce no reply at all.
    */
   timeoutMs?: number;
+  /**
+   * The port's one numbering space, when the session shares a port with other conversations.
+   *
+   * **Pass it whenever anything else talks on the same port.** Without it the session numbers from
+   * `FIRST_MESSAGE_ID` on its own, and so does the page's allocator: an `identify` during a +Drive
+   * listing sent its Device request as 8192 while the listing waited on 8192, and the listing took
+   * the Device reply as its own. Replies are matched by id alone.
+   */
+  ids?: MessageIds;
   /** Injectable so tests need no real clock. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -90,6 +99,7 @@ export class DeviceSession {
   private readonly timeoutMs: number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
+  private readonly ids: MessageIds | undefined;
   private closed = false;
 
   /**
@@ -108,6 +118,7 @@ export class DeviceSession {
     this.timeoutMs = options.timeoutMs ?? 2000;
     this.setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = options.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+    this.ids = options.ids;
   }
 
   /** How many requests are waiting for a reply. */
@@ -216,6 +227,10 @@ export class DeviceSession {
 
   /** Next free id, staying above Transfer's range and skipping anything still outstanding. */
   private allocate(): number {
+    if (this.ids) {
+      // The shared allocator never hands out an id twice before it wraps, which is the guarantee.
+      return this.ids.reserve(1);
+    }
     const span = MAX_ID - FIRST_ID + 1;
     for (let tried = 0; tried < span; tried++) {
       const id = this.nextId;
