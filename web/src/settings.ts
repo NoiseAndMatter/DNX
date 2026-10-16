@@ -254,6 +254,7 @@ import { installHelpMarkers } from "./helpmarker.js";
 import { readSkipBoot, writeSkipBoot } from "./seen.js";
 import { openOverlay, type Overlay } from "./overlay.js";
 import { WRITES_DEVICE, gateWriteControls } from "./writeenable.js";
+import { deviceJob, onDeviceJobChange } from "./devicejob.js";
 
 /**
  * The DNX folder's control: the folder's name, and what can be done about it.
@@ -328,29 +329,42 @@ function build(panel: HTMLElement): HTMLElement {
   bar.hidden = true;
 
   /**
-   * Both instrument jobs talk to the same device over the same transport, so only one runs.
-   *
-   * They also share the one bar and the one note below the group, which is the other half of the
-   * reason: two jobs writing to one progress area would each report the other's work.
+   * The job buttons that can run on this page. A button with no runner is not in it, so a job
+   * ending never switches on a control that had nothing to run.
    */
   const instrumentJobs: HTMLButtonElement[] = [];
-  const busy = (on: boolean, except?: HTMLButtonElement): void => {
-    for (const button of instrumentJobs) {
-      if (button !== except) button.disabled = on;
-    }
+  let running = false;
+  /**
+   * **The instrument is the page's, not this sheet's.** Every job takes it through
+   * `devicejob.ts`, so a sheet closed and reopened while a backup runs draws its buttons off, and
+   * so does a write in the library. They come back when the holder lets go. The jobs also share
+   * the one bar and the one note below the group: two jobs writing to one progress area would
+   * each report the other's work.
+   */
+  const reflect = (): void => {
+    const holder = deviceJob();
+    for (const button of instrumentJobs) button.disabled = holder !== undefined || running;
+    if (holder !== undefined && !running) note.textContent = `${holder} is using the instrument.`;
   };
-  /** Start a long job: claim the bar, the note and the other button. */
-  const startJob = (button: HTMLButtonElement, runner: BackupRunner): void => {
-    button.disabled = true;
-    busy(true, button);
+  const unsubscribe = onDeviceJobChange(() => {
+    if (!panel.isConnected) {
+      unsubscribe();
+      return;
+    }
+    reflect();
+  });
+  /** Start a long job in this sheet's bar and note. The job claims the instrument itself. */
+  const startJob = (_button: HTMLButtonElement, runner: BackupRunner): void => {
+    running = true;
+    reflect();
     bar.hidden = false;
     bar.replaceChildren();
     void runner({
       say: (message) => { note.textContent = message; },
       at: (stages) => drawStages(bar, stages),
     }).finally(() => {
-      button.disabled = false;
-      busy(false);
+      running = false;
+      reflect();
     });
   };
 
@@ -406,7 +420,7 @@ function build(panel: HTMLElement): HTMLElement {
           // The register the write switch reads. `openSettings` re-runs `gateWriteControls` once the
           // sheet is in the document, because this element did not exist when the tool row did.
           button.setAttribute(WRITES_DEVICE, "");
-          instrumentJobs.push(button);
+          if (offer.run) instrumentJobs.push(button);
           holder.append(button);
 
           if (!offer.run) {
@@ -499,6 +513,8 @@ function build(panel: HTMLElement): HTMLElement {
     row("DNX", "Free software under the AGPL-3.0. Read it, fork it, change it.", source),
   ]));
 
+  // Drawn with whatever holds the instrument now: a job started before this sheet opened.
+  reflect();
   return panel;
 }
 

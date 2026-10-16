@@ -39,6 +39,7 @@
  */
 
 import { askConfirm } from "./dialog.js";
+import { claimDevice, deviceJobRefusal } from "./devicejob.js";
 import { type ConnectedDevice, apiTransport } from "./devicesource.js";
 import { reachInstrument } from "./instrument.js";
 import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
@@ -192,8 +193,30 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     return undefined;
   }
 
+  /**
+   * The erase, holding the instrument for this page. The panes read again after it lets go: the
+   * re-read is the library's own job and takes the instrument itself.
+   */
   async function run(report: JobReport): Promise<void> {
     if (erasing) return;
+    const release = claimDevice("The wavetable erase");
+    if (!release) {
+      report.say(deviceJobRefusal());
+      host.status(deviceJobRefusal(), "warn");
+      return;
+    }
+    let sent = false;
+    try {
+      sent = await erase(report);
+    } finally {
+      release();
+    }
+    // Whatever happened, the listing the panes hold is no longer evidence about the instrument.
+    if (sent) await host.reread?.().catch(() => undefined);
+  }
+
+  /** True once the erase itself started, which is when the panes have to read again. */
+  async function erase(report: JobReport): Promise<boolean> {
 
     let device: ConnectedDevice;
     try {
@@ -205,7 +228,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       const gone = String(error instanceof Error ? error.message : error);
       report.say(gone);
       host.status(gone, "warn");
-      return;
+      return false;
     }
 
     const gate = await gateRefusal(device, report).catch(
@@ -214,14 +237,14 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     if (gate) {
       report.say(gate);
       host.status(gate, "warn");
-      return;
+      return false;
     }
 
     const refusal = await folderReady();
     if (refusal) {
       report.say(refusal);
       host.status(refusal, "warn");
-      return;
+      return false;
     }
 
     /*
@@ -241,7 +264,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       const said = `The store could not be listed, so nothing was done: ${String(error)}`;
       report.say(said);
       host.status(said, "error");
-      return;
+      return false;
     }
 
     const agreed = await askConfirm({
@@ -267,7 +290,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       const said = "Nothing was copied and nothing was sent.";
       report.say(said);
       host.status(said, "info");
-      return;
+      return false;
     }
 
     erasing = true;
@@ -337,7 +360,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
             : `Cancelled — nothing was sent. The ${copies(result)} copies are still saved.`;
         report.say(said);
         host.status(said, "warn");
-        return;
+        return true;
       }
       if (result.erased) {
         const said =
@@ -346,7 +369,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
           `DNX folder.`;
         report.say(said);
         host.status(said, "ok");
-        return;
+        return true;
       }
       const said = `The region was not erased. ${result.problem ?? "The listings still show it in use."}`;
       report.say(said);
@@ -361,9 +384,8 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       host.status(said, "error");
     } finally {
       erasing = false;
-      // Whatever happened, the listing the panes hold is no longer evidence about the instrument.
-      await host.reread?.().catch(() => undefined);
     }
+    return true;
   }
 
   /*

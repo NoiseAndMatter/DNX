@@ -35,6 +35,7 @@
  * somebody away from a feature their instrument has. Each state gets its own sentence.
  */
 
+import { claimDevice, deviceJobRefusal } from "../devicejob.js";
 import { type ConnectedDevice, apiTransport, listDeviceProjects } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
@@ -412,7 +413,24 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     "kind",
   ] as const;
 
-  function lock(on: boolean): void {
+  /**
+   * Lock the panes while one job talks to the instrument, and hold the instrument for the page.
+   * See `devicejob.ts`: a Settings backup or erase running underneath is refused here, and the
+   * panes are refused there.
+   */
+  let releaseDevice: (() => void) | undefined;
+  function lock(on: boolean): boolean {
+    if (on) {
+      const release = claimDevice("The library");
+      if (!release) {
+        host.status(deviceJobRefusal(), "warn");
+        return false;
+      }
+      releaseDevice = release;
+    } else {
+      releaseDevice?.();
+      releaseDevice = undefined;
+    }
     busy = on;
     for (const id of WHILE_BUSY) {
       const control = document.getElementById(id);
@@ -431,6 +449,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       poolWriting.redraw();
       tableDeleting.redraw();
     }
+    return true;
   }
 
   function controls(on: boolean): void {
@@ -831,12 +850,12 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       return;
     }
     if (!device || previewBusy) return;
+    if (!lock(true)) return;
 
     $("wavePreview").hidden = false;
     slider().disabled = true;
     previewMessage(`Reading store slot ${slot}…`);
     previewBusy = true;
-    lock(true);
     try {
       const file = await readStoredFile(`/waverider/${slot}`, {
         transport: apiTransport(device),
@@ -880,7 +899,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (busy) return;
 
     const projectSlot = Number(projects().value);
-    lock(true);
+    if (!lock(true)) return;
     try {
       host.status(`Reading the wavetable store and the pool of project slot ${projectSlot}…`);
       picked = undefined;
