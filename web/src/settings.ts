@@ -119,6 +119,8 @@ export interface JobReport {
    * read. A row each says that at a glance, and says which kinds have not started.
    */
   at(stages: readonly ProgressStage[]): void;
+  /** Whether somebody pressed Stop. Only the backup offers Stop: a write runs to its end. */
+  stopRequested(): boolean;
 }
 
 export interface ProgressStage {
@@ -131,6 +133,22 @@ export interface ProgressStage {
 export type BackupRunner = (report: JobReport) => Promise<void>;
 
 let runBackup: BackupRunner | undefined;
+
+/**
+ * The running backup's Stop, kept outside the sheet. A sheet closed and opened again while the
+ * backup runs draws a new Stop button, and that button must reach the same backup.
+ */
+let backupStop: { requested: boolean } | undefined;
+
+/**
+ * What the running job last said, and the sheet it says it to.
+ *
+ * Both outside the sheet for the same reason as `backupStop`: a job outlives the sheet that
+ * started it, and a sheet opened again mid-job must show that job's words and rows, then its
+ * ending, rather than the last line the old sheet drew.
+ */
+let jobView: { said: string; stages?: readonly ProgressStage[] } | undefined;
+let liveSheet: { note: HTMLElement; bar: HTMLElement; reflect: () => void } | undefined;
 
 /**
  * The select the instrument commands choose with, lent by whoever wired them.
@@ -328,7 +346,6 @@ function build(panel: HTMLElement): HTMLElement {
    * ending never switches on a control that had nothing to run.
    */
   const instrumentJobs: HTMLButtonElement[] = [];
-  let running = false;
   /**
    * **The instrument is the page's, not this sheet's.** Every job takes it through
    * `devicejob.ts`, so a sheet closed and reopened while a backup runs draws its buttons off, and
@@ -336,9 +353,20 @@ function build(panel: HTMLElement): HTMLElement {
    * the one bar and the one note below the group: two jobs writing to one progress area would
    * each report the other's work.
    */
+  const stopBackup = action("Stop", () => {
+    if (!backupStop) return;
+    backupStop.requested = true;
+    reflect();
+  });
+  stopBackup.hidden = true;
   const reflect = (): void => {
     const holder = deviceJob();
+    const running = jobView !== undefined;
     for (const button of instrumentJobs) button.disabled = holder !== undefined || running;
+    // Gone as soon as the backup lets go of the instrument, which is before its own `finally`.
+    stopBackup.hidden = backupStop === undefined || holder === undefined;
+    stopBackup.disabled = backupStop?.requested ?? false;
+    stopBackup.textContent = backupStop?.requested ? "Stopping…" : "Stop";
     if (holder !== undefined && !running) note.textContent = `${holder} is using the instrument.`;
   };
   const unsubscribe = onDeviceJobChange(() => {
@@ -348,18 +376,39 @@ function build(panel: HTMLElement): HTMLElement {
     }
     reflect();
   });
-  /** Start a long job in this sheet's bar and note. The job claims the instrument itself. */
-  const startJob = (_button: HTMLButtonElement, runner: BackupRunner): void => {
-    running = true;
+  liveSheet = { note, bar, reflect };
+  if (jobView) {
+    note.textContent = jobView.said;
+    if (jobView.stages) {
+      bar.hidden = false;
+      drawStages(bar, jobView.stages);
+    }
+  }
+  /** Start a long job in the open sheet's bar and note. The job claims the instrument itself. */
+  const startJob = (_button: HTMLButtonElement, runner: BackupRunner, stoppable = false): void => {
+    const stop = stoppable ? { requested: false } : undefined;
+    if (stop) backupStop = stop;
+    const view: NonNullable<typeof jobView> = { said: "" };
+    jobView = view;
     reflect();
     bar.hidden = false;
     bar.replaceChildren();
     void runner({
-      say: (message) => { note.textContent = message; },
-      at: (stages) => drawStages(bar, stages),
+      say: (message) => {
+        view.said = message;
+        if (liveSheet) liveSheet.note.textContent = message;
+      },
+      at: (stages) => {
+        view.stages = stages;
+        if (!liveSheet) return;
+        liveSheet.bar.hidden = false;
+        drawStages(liveSheet.bar, stages);
+      },
+      stopRequested: () => stop?.requested ?? false,
     }).finally(() => {
-      running = false;
-      reflect();
+      if (backupStop === stop) backupStop = undefined;
+      if (jobView === view) jobView = undefined;
+      liveSheet?.reflect();
     });
   };
 
@@ -372,9 +421,9 @@ function build(panel: HTMLElement): HTMLElement {
         const holder = document.createElement("span");
         holder.className = "erase-control";
         const button = action("Back up…", () => {
-          if (runBackup) startJob(button, runBackup);
+          if (runBackup) startJob(button, runBackup, true);
         });
-        holder.append(button);
+        holder.append(button, stopBackup);
         if (runBackup) {
           instrumentJobs.push(button);
         } else {
