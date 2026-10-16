@@ -553,12 +553,10 @@ export interface SongMeta {
 
 const latin1Encode = (text: string, size: number): Uint8Array => {
   const out = new Uint8Array(size);
-  for (let i = 0; i < Math.min(text.length, size); i++) {
-    const code = text.charCodeAt(i);
-    // Latin-1 only: the device has no way to show anything else, and a multi-byte character would
-    // silently become two wrong ones.
-    out[i] = code <= 0xff ? code : 0x3f;
-  }
+  // Latin-1 only: the device has no way to show anything else. A character outside it is dropped,
+  // as the project name's writer drops it. Walking UTF-16 units turned one emoji into "??".
+  const kept = [...text].filter((ch) => ch.codePointAt(0)! <= 0xff);
+  for (let i = 0; i < Math.min(kept.length, size); i++) out[i] = kept[i]!.codePointAt(0)!;
   return out;
 };
 
@@ -591,6 +589,15 @@ export function writeSong(
   index: number,
   song: Omit<Song, "index" | "loops">,
   layout: ImageLayout = DN2_LAYOUT,
+  /**
+   * The bytes each row had where it was read, parallel to `song.rows`.
+   *
+   * **The row is 29 bytes and `writeRow` writes the decoded ones.** The rest are not claimed to be
+   * padding (+27 turned out to be swing). An edit that moves rows passes each one's bytes so they
+   * move with it; a row without bytes is written onto zeros, as a new row is on the instrument.
+   * Omitted, each row is written over whatever its slot held, as before.
+   */
+  raws?: readonly (Uint8Array | undefined)[],
 ): Uint8Array {
   if (song.rows.length !== song.rowCount) {
     throw new Dn2SongError(
@@ -612,8 +619,16 @@ export function writeSong(
     tempo: song.tempo,
   });
   for (let r = 0; r < SONG.rowCount; r++) {
-    if (r < song.rowCount) writeRow(record, r, song.rows[r]!);
-    else clearRow(record, r);
+    if (r >= song.rowCount) {
+      clearRow(record, r);
+      continue;
+    }
+    if (raws) {
+      const raw = raws[r];
+      if (raw) rawRow(record, r).set(raw);
+      else clearRow(record, r);
+    }
+    writeRow(record, r, song.rows[r]!);
   }
   return out;
 }
