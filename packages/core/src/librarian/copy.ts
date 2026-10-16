@@ -37,7 +37,7 @@ import {
   readSoundPool,
   type Dn1Sound,
 } from "../project/dn1.js";
-import { DN1_LAYOUT } from "../project/dn2image.js";
+import { DN1_LAYOUT, fitsLayout } from "../project/dn2image.js";
 
 export class LibrarianError extends Error {}
 
@@ -124,6 +124,20 @@ function run(
   destinationImage: Uint8Array,
   destinationIndex: number,
 ): { plan: CopyPlan; merged: MergePlan } {
+  /*
+   * **Digitone 1 to Digitone 1, enforced.** Every count, name and pool slot this plan reports is
+   * read at Digitone 1 offsets. Handed a Digitone II project, the merge underneath did the right
+   * thing and the plan around it read the wrong bytes, so its overwrite warning could be missing
+   * while real work was replaced. The merge serves the other directions directly.
+   */
+  for (const [image, which] of [[sourceImage, "source"], [destinationImage, "destination"]] as const) {
+    if (!fitsLayout(image, DN1_LAYOUT)) {
+      throw new LibrarianError(
+        `the ${which} is not a Digitone 1 project. This command copies between Digitone 1 ` +
+          `projects; use the expander to bring Digitone 1 patterns onto a Digitone II.`,
+      );
+    }
+  }
   assertIndex(sourceIndex, "sourceIndex");
   assertIndex(destinationIndex, "destinationIndex");
 

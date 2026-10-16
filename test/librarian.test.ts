@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { parseProject } from "../src/node/projectfile.js";
 import { decodeProjectImage } from "@noiseandmatter/dnx-core/project/dn2codec.js";
 import { readPattern, readSoundPool } from "@noiseandmatter/dnx-core/project/dn1.js";
+import { DN1_LAYOUT, DN2_LAYOUT } from "@noiseandmatter/dnx-core/project/dn2image.js";
 import {
   applyPatternCopy,
   freePoolSlots,
@@ -154,4 +155,13 @@ test("a full destination pool is refused rather than silently mis-mapped", { ski
   assert.throws(() => applyPatternCopy(src, from, dst, 0), LibrarianError);
   const forced = applyPatternCopy(src, from, dst, 0, { force: true });
   assert.equal(forced.plan.ok, false, "force should still report the plan as not ok");
+});
+
+test("the copy command refuses a Digitone II project rather than reading it at Digitone 1 offsets", () => {
+  // The merge underneath handles a Digitone II; the plan around it does not, and its overwrite
+  // warning read Digitone 1 offsets in a Digitone II image.
+  const dn2 = new Uint8Array(DN2_LAYOUT.imageSize);
+  const dn1 = new Uint8Array(DN1_LAYOUT.imageSize);
+  assert.throws(() => planPatternCopy(dn2, 0, dn2, 1), (e: unknown) => e instanceof LibrarianError && /the source is not a Digitone 1 project/.test(String(e)));
+  assert.throws(() => planPatternCopy(dn1, 0, dn2, 1), (e: unknown) => e instanceof LibrarianError && /the destination is not a Digitone 1 project/.test(String(e)));
 });
