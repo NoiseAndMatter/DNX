@@ -11,8 +11,10 @@
  */
 
 import {
+  type ZipFault,
   buildZipAsync,
   readZipAsync,
+  readZipEntriesAsync,
   type ZipEntry,
 } from "@noiseandmatter/dnx-core/archive/zip.js";
 
@@ -35,4 +37,9 @@ export function buildZip(entries: readonly ZipEntry[]): Promise<Uint8Array> {
 /** Read every entry of a ZIP, decompressing what needs it. */
 export function readZip(file: Uint8Array): Promise<Map<string, Uint8Array>> {
   return readZipAsync(file, (data) => through(data, new DecompressionStream("deflate-raw")));
+}
+
+/** Every intact entry, and the ones that are not. See `readZipEntriesAsync`. */
+export function readZipEntries(file: Uint8Array): Promise<{ files: Map<string, Uint8Array>; faults: ZipFault[] }> {
+  return readZipEntriesAsync(file, (data) => through(data, new DecompressionStream("deflate-raw")));
 }
