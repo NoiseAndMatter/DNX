@@ -17,6 +17,7 @@ import {
   SONG,
   SONG_TABLE,
   SWING_BASE,
+  rawRow,
   readSong,
   songRecord,
   writeSong,
@@ -228,4 +229,37 @@ test("editing one song leaves its neighbours readable and empty", () => {
     assert.equal(song.rowCount, 0);
     assert.deepEqual(song.rows, []);
   }
+});
+
+// --- the bytes nobody has decoded ---------------------------------------------------------------
+
+/** Mark each row's byte +3, which no field decodes, with the row's own number. */
+function marked(n: number): Uint8Array {
+  const image = withSong(n);
+  const record = songRecord(image, 0);
+  for (let r = 0; r < n; r++) rawRow(record, r)[3] = 0x40 + r;
+  return image;
+}
+const markOf = (image: Uint8Array, rows: number): number[] =>
+  Array.from({ length: rows }, (_, r) => rawRow(songRecord(image, 0), r)[3]!);
+
+test("a deleted row takes its undecoded bytes with it, and the rows below bring theirs", () => {
+  // The rows used to be rewritten field by field into the slots they landed in, so row 1's
+  // fields arrived at slot 0 on top of row 0's other bytes.
+  const after = deleteRow(marked(3), 0, 0);
+  assert.deepEqual(patterns(after), [1, 2]);
+  assert.deepEqual(markOf(after, 3), [0x41, 0x42, 0], "the freed last slot is cleared");
+});
+
+test("a moved row and a copied row keep their bytes; a changed row keeps its own", () => {
+  assert.deepEqual(markOf(moveRow(marked(3), 0, 0, 2), 3), [0x41, 0x42, 0x40]);
+  assert.deepEqual(markOf(insertRow(marked(2), 0, 0), 3), [0x40, 0x40, 0x41], "the device copies the whole row");
+  assert.deepEqual(markOf(setRow(marked(2), 0, 1, { repeats: 4 }), 2), [0x40, 0x41]);
+  assert.deepEqual(markOf(toggleRowMute(marked(2), 0, 0, 3), 2), [0x40, 0x41]);
+});
+
+test("a song name drops what the instrument cannot show, as the project name does", () => {
+  // One emoji is two UTF-16 units, and walking units wrote it as "??".
+  const renamed = renameSong(withSong(1), 0, "A\u{1F3B5}B");
+  assert.equal(readSong(renamed, 0).name, "AB");
 });

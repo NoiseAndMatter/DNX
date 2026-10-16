@@ -33,7 +33,9 @@ import {
   LIMITS,
   SONG,
   SWING_BASE,
+  rawRow,
   readSong,
+  songRecord,
   writeSong,
 } from "../project/dn2song.js";
 import { type ImageLayout, DN2_LAYOUT } from "../project/dn2image.js";
@@ -64,14 +66,29 @@ export function blankRow(): SongRow {
 }
 
 /** Read a song, change it, write it back. Every operation below is one of these. */
+/**
+ * Read a song, change it, write it back, with every row's own bytes going where the row goes.
+ *
+ * `carry(copy, of)` says a new row object is `of`, changed or copied: its bytes go with it. A row
+ * passed through unchanged keeps them already. Without this a deleted or moved row left its
+ * undecoded bytes behind in the slot it had, under the decoded fields of another row.
+ */
 function edit(
   image: Uint8Array,
   index: number,
-  change: (song: Song) => Omit<Song, "index" | "loops">,
+  change: (song: Song, carry: (copy: SongRow, of: SongRow) => SongRow) => Omit<Song, "index" | "loops">,
   layout: ImageLayout = DN2_LAYOUT,
 ): Uint8Array {
   const song = readSong(image, index, layout);
-  return writeSong(image, index, change(song), layout);
+  const record = songRecord(image, index, layout);
+  const raws = new Map<SongRow, Uint8Array>(song.rows.map((row, r) => [row, rawRow(record, r).slice()]));
+  const carry = (copy: SongRow, of: SongRow): SongRow => {
+    const raw = raws.get(of);
+    if (raw) raws.set(copy, raw);
+    return copy;
+  };
+  const next = change(song, carry);
+  return writeSong(image, index, next, layout, next.rows.map((row) => raws.get(row)));
 }
 
 function requireRow(song: Song, row: number): void {
@@ -90,12 +107,12 @@ export function setRow(
   values: Partial<SongRow>,
   layout: ImageLayout = DN2_LAYOUT,
 ): Uint8Array {
-  return edit(image, index, (song) => {
+  return edit(image, index, (song, carry) => {
     requireRow(song, row);
     const rows = [...song.rows];
     // Spread over the row as read, so a caller changing one field cannot blank the rest by
     // omission — the failure mode of passing a whole row through a form.
-    rows[row] = { ...rows[row]!, ...values };
+    rows[row] = carry({ ...rows[row]!, ...values }, rows[row]!);
     return { ...song, rows };
   }, layout);
 }
@@ -131,14 +148,15 @@ export function insertRow(
   after: number,
   layout: ImageLayout = DN2_LAYOUT,
 ): Uint8Array {
-  return edit(image, index, (song) => {
+  return edit(image, index, (song, carry) => {
     if (song.rowCount >= SONG.rowCount) {
       throw new SongEditError(`a song holds ${SONG.rowCount} rows and this one is full`);
     }
     if (song.rowCount > 0) requireRow(song, after);
 
     const rows = [...song.rows];
-    const source = song.rowCount === 0 ? blankRow() : { ...rows[after]! };
+    // A copy of the row, bytes and all, which is what the device's own insert makes.
+    const source = song.rowCount === 0 ? blankRow() : carry({ ...rows[after]! }, rows[after]!);
     rows.splice(after + 1, 0, source);
     return { ...song, rows, rowCount: rows.length };
   }, layout);
@@ -249,11 +267,11 @@ export function toggleRowMute(
   if (!Number.isInteger(track) || track < 1 || track > 16) {
     throw new SongEditError(`track ${track} is outside 1..16`);
   }
-  return edit(image, index, (song) => {
+  return edit(image, index, (song, carry) => {
     requireRow(song, row);
     const rows = [...song.rows];
     const bit = 1 << (track - 1);
-    rows[row] = { ...rows[row]!, mute: rows[row]!.mute ^ bit };
+    rows[row] = carry({ ...rows[row]!, mute: rows[row]!.mute ^ bit }, rows[row]!);
     return { ...song, rows };
   }, layout);
 }
