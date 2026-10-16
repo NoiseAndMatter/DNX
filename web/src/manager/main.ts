@@ -22,6 +22,7 @@
  * the only copy of that work, and an undo they have to discover after the fact is not consent.
  */
 
+import { deviceNoteFor, registerDeviceNote } from "../reportissue.js";
 import { deviceFor, storedPattern, type Device } from "@noiseandmatter/dnx-core/librarian/device.js";
 import { type DriveProject } from "@noiseandmatter/dnx-core/device/drive.js";
 import { parsePayload } from "@noiseandmatter/dnx-core/project/container.js";
@@ -144,6 +145,8 @@ renderToolNav($("toolnav"), "manager");
  * commands then run through this page's own select instead of growing a second one.
  */
 provideInstrument(async () => drive?.connected ?? (await chooseDevice(picker, status)));
+// The report button names the instrument this page is connected to, and nothing when it is not.
+registerDeviceNote(() => deviceNoteFor(drive?.connected));
 wireInstrumentCommands({ status });
 
 interface State {

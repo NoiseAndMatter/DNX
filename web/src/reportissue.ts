@@ -67,6 +67,12 @@ export function registerDeviceNote(note: DeviceNote): void {
   describeDevice = note;
 }
 
+/** How a connected instrument reads in a report: its name, and its firmware when it gave one. */
+export function deviceNoteFor(device: { name: string; firmwareVersion?: string } | undefined): string | undefined {
+  if (!device) return undefined;
+  return device.firmwareVersion ? `${device.name} · ${device.firmwareVersion}` : device.name;
+}
+
 /** The lines DNX attaches to a report, in the order they are most use to a reader. */
 export function contextLines(tool: PageId, device = describeDevice?.()): string[] {
   const lines = [`DNX ${DNX_BUILD}`, `Tool: ${tool}`];

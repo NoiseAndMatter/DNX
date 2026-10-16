@@ -362,7 +362,7 @@ defaults: a "default" FX or mixer block is **copied out of a device-written blan
 chosen by us.
 
 **Verify what we write.** Every export is re-read and checked before it is offered. We have
-`checkDn2Pattern` and a differential analyser; not using them would be a choice.
+`checkDn2PatternRecord` and a differential analyser; not using them would be a choice.
 
 **Never modify the project that was opened.** Always a new file, always stamped.
 

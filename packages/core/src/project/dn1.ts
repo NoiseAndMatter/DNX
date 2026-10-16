@@ -60,6 +60,7 @@
  */
 
 import { DN1_LAYOUT, type ImageLayout, fitsLayout } from "./dn2image.js";
+import { readFixedName } from "./fixedname.js";
 
 // --- constants ------------------------------------------------------------
 
@@ -105,19 +106,6 @@ export const MIDI_TRACK_COUNT = 4;
 
 /** Size of a sound object inside a project image. */
 export const SOUND_SIZE = 302;
-
-/**
- * Bytes of a project sound object that are byte-identical to the corresponding
- * 282-byte SysEx sound dump, once the version field is normalised.
- *
- * Verified on six of the eight sounds that appear both in the factory SysEx banks and
- * in a project image. The other two differ earlier only because the user edited them
- * after loading; there is no structural difference before this offset.
- */
-export const SOUND_SYSEX_COMMON_PREFIX = 174;
-
-/** Size of a sound object in a DN1 SysEx sound dump. The project form is 20 bytes longer. */
-export const SYSEX_SOUND_SIZE = 282;
 
 /** Pattern record internals. Offsets are relative to the start of the record. */
 export const PATTERN = {
@@ -314,19 +302,11 @@ export interface Dn1LockRecord {
 // --- primitives -----------------------------------------------------------
 
 const view = (data: Uint8Array) => new DataView(data.buffer, data.byteOffset, data.byteLength);
-const latin1 = new TextDecoder("latin1");
 
 function matchesAt(data: Uint8Array, magic: Uint8Array, at: number): boolean {
   if (at < 0 || at + magic.length > data.length) return false;
   for (let i = 0; i < magic.length; i++) if (data[at + i] !== magic[i]) return false;
   return true;
-}
-
-/** Read a fixed-width name field, stopping at the first NUL. */
-function readName(data: Uint8Array, at: number, size: number): string {
-  const raw = data.subarray(at, at + size);
-  const nul = raw.indexOf(0);
-  return latin1.decode(nul === -1 ? raw : raw.subarray(0, nul));
 }
 
 function assertIndex(index: number, count: number, what: string): void {
@@ -502,7 +482,7 @@ export function readPattern(
   return {
     index,
     version: dv.getUint32(PATTERN.versionOffset, false),
-    name: readName(pattern, PATTERN.nameOffset, PATTERN.nameSize),
+    name: readFixedName(pattern, PATTERN.nameOffset, PATTERN.nameSize),
     tempo: dv.getUint16(PATTERN.tempoOffset, false) / 120,
     slotIndex: pattern[PATTERN.slotIndexOffset]!,
     tracks,
@@ -524,7 +504,7 @@ export function readSound(image: Uint8Array, offset: number): Dn1Sound {
     offset,
     version: dv.getUint32(4, false),
     tagBits: dv.getUint32(8, false),
-    name: readName(data, 0x0c, 0x10),
+    name: readFixedName(data, 0x0c, 0x10),
     nameField: data.subarray(0x0c, 0x1c),
     framed,
     data,
@@ -543,17 +523,6 @@ export function readSoundPool(image: Uint8Array, layout: ImageLayout = DN1_LAYOU
   const out: Dn1Sound[] = [];
   for (let i = 0; i < POOL.soundCount; i++) out.push(readSound(image, base + i * SOUND_SIZE));
   return out;
-}
-
-/** Resolve a trig's sound lock to the pool entry it names. */
-export function resolveSoundLock(
-  image: Uint8Array,
-  trig: Dn1Trig,
-  layout: ImageLayout = DN1_LAYOUT,
-): Dn1Sound | undefined {
-  if (trig.soundLock === undefined) return undefined;
-  const base = layout.tailBase + POOL.soundOffset;
-  return readSound(image, base + trig.soundLock * SOUND_SIZE);
 }
 
 // --- kits -----------------------------------------------------------------
@@ -580,13 +549,13 @@ export function readKit(image: Uint8Array, index: number, layout: ImageLayout = 
 
   const macroNames: string[] = [];
   for (let i = 0; i < KIT.macroCount; i++) {
-    macroNames.push(readName(kit, KIT.macroOffset + i * KIT.macroSize, 12));
+    macroNames.push(readFixedName(kit, KIT.macroOffset + i * KIT.macroSize, 12));
   }
 
   return {
     index,
     version: dv.getUint32(KIT.versionOffset, false),
-    name: readName(kit, KIT.nameOffset, KIT.nameSize),
+    name: readFixedName(kit, KIT.nameOffset, KIT.nameSize),
     levels,
     sounds,
     midi,
@@ -646,5 +615,5 @@ export function checkDn1Image(image: Uint8Array, layout: ImageLayout = DN1_LAYOU
 
 /** Project name from the image header. 16-byte field after the u32be version. */
 export function readProjectName(image: Uint8Array): string {
-  return readName(image, 8, 16);
+  return readFixedName(image, 8, 16);
 }

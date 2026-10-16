@@ -1047,7 +1047,7 @@ Ordered by how much it blocks writing a valid DN2 pattern.
 | `readTrigSlots(record)` | the raw 6-byte trigger slots, holes skipped |
 | `readLockTable(record)` | the 80-record parameter-lock table, order preserved |
 | `readTrackSettings(track)` | the 35-byte settings block, decoded and verbatim |
-| `stepFlags(track, step)` / `soundLockAt(track, step)` | single-field accessors |
+| `stepFlags(track, step)` | single-field accessor |
 | `readMidiTrackMask(image, index)` / `midiTrackMaskOf(kit)` | the kit-side synth/MIDI mask |
 | `checkDn2PatternRecord(record)` | assert the documented geometry; passes on all 1,571 records |
 

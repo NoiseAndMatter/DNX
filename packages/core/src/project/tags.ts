@@ -106,10 +106,6 @@ export function tagIndex(name: TagName): number {
   return TAG_NAMES.indexOf(name);
 }
 
-export function hasTag(tagBits: number, name: TagName): boolean {
-  return (tagBits & (1 << tagIndex(name))) !== 0;
-}
-
 /** Every tag set in a bitfield, in bit order. */
 export function decodeTags(tagBits: number): TagName[] {
   const out: TagName[] = [];

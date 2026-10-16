@@ -191,21 +191,6 @@ export function rebuildMessage(msg: SysExMessage): Uint8Array {
 
 /** Parse every message in a .syx file. */
 export function parseFile(data: Uint8Array): SysExMessage[] {
-  const messages: Uint8Array[] = [];
-  const offsets: number[] = [];
-  let i = 0;
-  while (i < data.length) {
-    const start = data.indexOf(SYSEX_START, i);
-    if (start === -1) break;
-    const end = data.indexOf(SYSEX_END, start + 1);
-    if (end === -1) {
-      throw new SysExParseError(
-        `Unterminated SysEx message starting at byte ${start}: no F7 before end of file`,
-      );
-    }
-    messages.push(data.subarray(start, end + 1));
-    offsets.push(start);
-    i = end + 1;
-  }
-  return messages.map((m, idx) => parseMessage(m, idx, offsets[idx]!));
+  // Each message is a view into `data`, so its offset in the file is the difference of the two.
+  return splitMessages(data).map((m, idx) => parseMessage(m, idx, m.byteOffset - data.byteOffset));
 }

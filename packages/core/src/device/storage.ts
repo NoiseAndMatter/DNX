@@ -231,21 +231,6 @@ export function openRequest(
  */
 export const STORED_FORM = 0x01;
 
-/**
- * The two bodies that froze a Digitone 1, kept so nobody rediscovers them.
- *
- * **Not exported as something to send.** They exist to be named in the documentation and in the
- * probe's dropdown as *"this is the one that froze it"*, which is worth more than deleting them —
- * a deleted experiment gets re-run.
- */
-export function frozenOpenBodies(projectId: number): { id: Uint8Array; idChunk: Uint8Array } {
-  const idChunk = new Uint8Array(9);
-  idChunk.set(u32Bytes(projectId), 0);
-  idChunk.set(u32Bytes(DEFAULT_CHUNK_SIZE), 4);
-  idChunk[8] = 1;
-  return { id: u32Bytes(projectId), idChunk };
-}
-
 /** Every open reply Transfer received answered 2,048, on three different files. */
 export const DEFAULT_CHUNK_SIZE = 2048;
 

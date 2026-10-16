@@ -117,3 +117,15 @@ test("the button is in the shared row, so no page can be without it", () => {
   const nav = readFileSync(join(ROOT, "web/src/toolnav.ts"), "utf8");
   assert.match(nav, /renderReportLink\(nav, current\)/);
 });
+
+test("the pages that connect name their instrument in a report, with its firmware when known", async () => {
+  const { deviceNoteFor } = await import("../web/src/reportissue.js");
+  assert.equal(deviceNoteFor({ name: "Digitone II", firmwareVersion: "1.11" }), "Digitone II · 1.11");
+  assert.equal(deviceNoteFor({ name: "Digitone" }), "Digitone");
+  assert.equal(deviceNoteFor(undefined), undefined);
+  // `registerDeviceNote` had no caller, so the line the module promises never appeared.
+  for (const page of ["library/main.ts", "manager/main.ts"]) {
+    const source = readFileSync(new URL(`../web/src/${page}`, import.meta.url), "utf8");
+    assert.match(source, /registerDeviceNote\(\(\) => deviceNoteFor\(/, `${page} lends no instrument note`);
+  }
+});

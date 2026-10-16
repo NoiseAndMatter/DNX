@@ -174,10 +174,6 @@ export function closeHelp(): void {
   overlay = undefined;
 }
 
-export function helpOpen(): boolean {
-  return overlay?.open === true;
-}
-
 /**
  * The link in the tool row, on every page.
  *

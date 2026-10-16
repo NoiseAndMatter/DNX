@@ -1027,7 +1027,6 @@ const project = parseProject(new Uint8Array(readFileSync(path)));
 const { image } = decodeProjectImage(project.payload.raw);
 
 projectName(image);                     // "MORNING_JAM"
-dn2KitSoundNames(image, 0);             // 16 slot names for pattern 0's kit
 patternAsSysexPayload(image, 0);        // 99,840 bytes, identical to a SysEx dump payload
 ```
 

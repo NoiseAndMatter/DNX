@@ -54,6 +54,7 @@ import {
 import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
 import { isSongTableEmpty } from "../project/dn1tail.js";
 import { Dn2SongError, isSongTableEmpty as isDn2SongTableEmpty } from "../project/dn2song.js";
+import { readFixedName } from "../project/fixedname.js";
 
 export type DeviceKind = "dn1" | "dn2";
 
@@ -181,15 +182,6 @@ export function sharesWrittenLayout(device: Device, version: number): boolean {
   return size !== undefined && size === TRACK_SIZE_BY_VERSION[DN2_PATTERN_VERSION];
 }
 
-const latin1 = new TextDecoder("latin1");
-
-/** Read a fixed-width name field, stopping at the first NUL. */
-function readName(data: Uint8Array, at: number, size: number): string {
-  const raw = data.subarray(at, at + size);
-  const nul = raw.indexOf(0);
-  return latin1.decode(nul === -1 ? raw : raw.subarray(0, nul));
-}
-
 /** Both families expose trigs the same shape, so one counter serves both. */
 function countSoundLocks(
   tracks: readonly { trigs: readonly { soundLock?: number }[] }[],
@@ -283,7 +275,7 @@ const DN2: Device = {
      * the whole 89,088-byte record, and going through `readDn2Pattern` here would copy it again.
      */
     const normalised = asVersion3(record);
-    const name = readName(normalised, DN2_PATTERN.nameOffset, DN2_PATTERN.nameSize);
+    const name = readFixedName(normalised, DN2_PATTERN.nameOffset, DN2_PATTERN.nameSize);
     const pattern = readDn2PatternRecord(
       normalised, index, readMidiTrackMask(image, index, DN2_LAYOUT));
     const trigCount = pattern.tracks.reduce((n, t) => n + t.trigs.length, 0);

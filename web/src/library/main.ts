@@ -25,6 +25,7 @@
  * offsets over DN1 bytes.
  */
 
+import { deviceNoteFor, registerDeviceNote } from "../reportissue.js";
 import { auditPool, describePoolAudit, type PoolAudit } from "@noiseandmatter/dnx-core/librarian/poolaudit.js";
 import { BANKS } from "@noiseandmatter/dnx-core/project/naming.js";
 import {
@@ -1290,6 +1291,8 @@ const wavetables = wireWavetables({
  * in the select this page already has.
  */
 provideInstrument(async () => state.device ?? (await chooseDevice(picker, status)));
+// The report button names the instrument this page is connected to, and nothing when it is not.
+registerDeviceNote(() => deviceNoteFor(state.device));
 wireInstrumentCommands({ status, reread: () => wavetables.refresh() });
 
 /** Which mode the page is in. Sounds, until somebody asks for the other. */

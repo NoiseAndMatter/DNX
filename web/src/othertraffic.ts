@@ -52,17 +52,6 @@ export function isForeignReply(respId: number | undefined): boolean {
   return respId !== undefined && respId >= 0 && respId < FOREIGN_BELOW;
 }
 
-/** What the page says when it has seen traffic that is not its own. */
-export function describeOtherTraffic(count: number): string {
-  const replies = count === 1 ? "one reply" : `${count.toLocaleString()} replies`;
-  return (
-    `Another application is using this instrument's MIDI port. DNX has seen ${replies} answering ` +
-    `a request it never sent. **Elektron Transfer or Overbridge is the usual cause**, and the two ` +
-    `of them sharing a port with DNX have truncated a directory listing to a third of its length ` +
-    `and had one application's traffic read as the other's answer. Close it and read again.`
-  );
-}
-
 type Listener = (count: number) => void;
 
 let count = 0;
