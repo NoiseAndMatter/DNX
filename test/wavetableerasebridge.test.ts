@@ -21,6 +21,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { test } from "node:test";
 import { EmulatorBridge, bridgePaths } from "../src/node/emulatorbridge.js";
 import { MessageIds } from "@noiseandmatter/dnx-core/device/messageids.js";
@@ -95,11 +96,12 @@ test("the region is empty afterwards, by its own listings", { skip }, async () =
     assert.equal(await used(bridge, WAVERIDER), 3, "the fixture did not land");
     assert.ok((await used(bridge, "/wavepool")) >= 1, "no pool list to erase");
 
-    const copies: number[] = [];
+    const lists = await used(bridge, "/wavepool");
+    const copies: { name: string; bytes: Uint8Array }[] = [];
     const result = await eraseWavetableStore({
       transport: bridge,
       host,
-      onBackup: (backup) => { copies.push(backup.bytes.length); },
+      onBackup: (backup) => { copies.push({ name: backup.name, bytes: backup.bytes }); },
       timeoutMs: TIMEOUT,
     });
 
@@ -112,9 +114,13 @@ test("the region is empty afterwards, by its own listings", { skip }, async () =
     assert.equal(await used(bridge, WAVERIDER), 0, "tables are still listed");
     assert.equal(await used(bridge, "/wavepool"), 0, "pool lists are still listed");
 
-    // And a copy of every table was handed over before any of it went.
-    assert.equal(copies.length, 3, "one copy per table");
-    for (const size of copies) assert.ok(size > 16 * 512 * 2, `a copy was only ${size} bytes`);
+    // And a copy of every table and every pool list was handed over before any of it went.
+    const tables = copies.filter((c) => c.name.startsWith("waverider-"));
+    const pools = copies.filter((c) => c.name.startsWith("wavepool-"));
+    assert.equal(tables.length, 3, "one copy per table");
+    for (const { bytes } of tables) assert.ok(bytes.length > 16 * 512 * 2, `a copy was only ${bytes.length} bytes`);
+    assert.equal(pools.length, lists, "one copy per pool list");
+    for (const { bytes } of pools) readPoolFile(bytes);
   });
 });
 
@@ -126,6 +132,7 @@ test("saying no leaves everything where it was, with the copies already taken", 
    */
   await withBridge(async (bridge) => {
     await fill(bridge);
+    const lists = await used(bridge, "/wavepool");
 
     const order: string[] = [];
     const result = await eraseWavetableStore({
@@ -141,7 +148,7 @@ test("saying no leaves everything where it was, with the copies already taken", 
 
     assert.equal(result.cancelled, true);
     assert.equal(result.erased, false);
-    assert.deepEqual(order, ["copied", "copied", "copied", "asked"], "the copies must come first");
+    assert.deepEqual(order, [...Array(3 + lists).fill("copied"), "asked"], "the copies must come first");
     assert.equal(await used(bridge, WAVERIDER), 3, "a refused erase must change nothing");
   });
 });

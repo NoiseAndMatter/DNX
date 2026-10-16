@@ -12,8 +12,13 @@
  * ## Every table is copied before anything is sent
  *
  * The owner's condition for it existing at all, 2026-10-14: *make it a two way door*. So this
- * reads every used slot off the card and hands each one to the backup hook **before the question
- * is asked**, and a single failed read abandons the whole run with nothing sent. That is minutes
+ * reads every used slot off the card, and every used pool list, and hands each one to the backup
+ * hook **before the question is asked**. A single failed read abandons the whole run with nothing
+ * sent.
+ *
+ * The pool lists were not copied at first, found by audit on 2026-10-16. Restoring every table
+ * still left each project's pool gone: which table sat at which TBL number exists nowhere else.
+ * A list is 512 bytes, so the copies cost one read each. That is minutes
  * on a full store, and it is the feature rather than an overhead on it: the copies are what makes
  * the erase reversible, and `pendingFromSlotFile` reads them back.
  *
@@ -53,9 +58,9 @@ const WAVEPOOL = "/wavepool";
 
 /** What a person is told before the whole region goes. */
 export interface EraseReview {
-  /** Entries `/waverider` lists as used, and therefore how many copies were saved. */
+  /** Entries `/waverider` lists as used. Each one has a copy. */
   tables: number;
-  /** Project slots `/wavepool` lists as used. */
+  /** Project slots `/wavepool` lists as used. Each one has a copy too. */
   lists: number;
   /** Total bytes copied, so the question can say how much was rescued. */
   copied: number;
@@ -78,7 +83,7 @@ export interface EraseOptions {
    */
   onBackup: BackupHook;
   onStatus?: (message: string) => void;
-  /** `done` of `total` tables copied, for a bar: this is the part that takes minutes. */
+  /** `done` of `total` copies taken, tables then pool lists, for a bar: this takes minutes. */
   onProgress?: (done: number, total: number) => void;
   timeoutMs?: number;
 }
@@ -144,10 +149,11 @@ export async function eraseWavetableStore(options: EraseOptions): Promise<EraseR
    */
   const names: string[] = [];
   let copied = 0;
+  const total = before.tables.length + before.lists.length;
   for (const [nth, entry] of before.tables.entries()) {
     const path = slotPath(entry.index);
     status(`Copying ${nth + 1} of ${before.tables.length}: ${entry.name || path}…`);
-    progress(nth, before.tables.length);
+    progress(nth, total);
 
     // A read that fails stops everything, here, with nothing sent. See this module's note.
     const copy = await readStoredFile(path, {
@@ -165,7 +171,27 @@ export async function eraseWavetableStore(options: EraseOptions): Promise<EraseR
     copied += copy.bytes.length;
     names.push(entry.name || `slot ${entry.index}`);
   }
-  progress(before.tables.length, before.tables.length);
+
+  // The pool lists, the same way. The name carries the project slot, which a restore reads back.
+  for (const [nth, entry] of before.lists.entries()) {
+    const path = `${WAVEPOOL}/${entry.index}`;
+    status(`Copying pool list ${nth + 1} of ${before.lists.length}…`);
+    progress(before.tables.length + nth, total);
+    const copy = await readStoredFile(path, {
+      transport,
+      ...readFormOption(path),
+      msgId: host.ids.reserve(IDS_FOR.oneObject),
+      timeoutMs,
+    });
+    await options.onBackup({
+      name: `wavepool-${entry.index}.bin`,
+      kind: "storedFile",
+      bytes: copy.bytes,
+      slots: [entry.index],
+    });
+    copied += copy.bytes.length;
+  }
+  progress(total, total);
 
   const agreed = await host.confirm({
     tables: before.tables.length,
