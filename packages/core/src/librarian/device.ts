@@ -52,7 +52,7 @@ import {
   readMidiTrackMask,
 } from "../project/dn2pattern.js";
 import { type DeviceSpec, DN1_SPEC, DN2_SPEC } from "../project/spec.js";
-import { isSongTableEmpty } from "../project/dn1tail.js";
+import { isSlotArrayEmpty, isSongTableEmpty } from "../project/dn1tail.js";
 import { Dn2SongError, isSongTableEmpty as isDn2SongTableEmpty } from "../project/dn2song.js";
 import { readFixedName } from "../project/fixedname.js";
 
@@ -149,6 +149,14 @@ export interface Device {
   projectName(image: Uint8Array): string;
   summarise(image: Uint8Array, index: number): PatternSummary;
   songState(image: Uint8Array): SongState;
+  /**
+   * True when the project holds data DNX cannot read, and that data may belong to patterns.
+   *
+   * A move, copy or swap carries the pattern record and nothing else, so data of this kind stays
+   * where it was. Omitted where no such region is known. On the Digitone 1 it is the 1,024-record
+   * array of `docs/dn1-tail-format.md` §4, used in 3 of 53 corpus projects.
+   */
+  holdsUnreadData?(image: Uint8Array): boolean;
 }
 
 /**
@@ -244,6 +252,10 @@ const DN1: Device = {
 
   songState(image) {
     return isSongTableEmpty(image, DN1_LAYOUT) ? "empty" : "occupied";
+  },
+
+  holdsUnreadData(image) {
+    return !isSlotArrayEmpty(image, DN1_LAYOUT);
   },
 };
 

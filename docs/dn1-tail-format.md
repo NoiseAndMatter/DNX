@@ -451,6 +451,9 @@ Ordered by how much it matters.
 3. **Guard on the 1,024-slot array (§4).** Empty in 50 of 53 projects and in all 9 that
    have DN2 conversions. If occupied, refuse: the array *may* be per-track and we cannot
    tell.
+   A pattern move, copy or swap in the manager warns on the same check and does not
+   refuse. The array may also be per-pattern, and a pattern operation does not carry it.
+   `isSlotArrayEmpty()` makes this check.
 4. **Copy everything else verbatim.** The CC records, the mixer block, the zero fills and
    the terminator are either constant across the whole corpus or carry no track index.
 
