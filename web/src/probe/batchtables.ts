@@ -154,11 +154,13 @@ function report(outcome: BatchWriteOutcome, count: number, first: number, last: 
     case "stopped": {
       const at = outcome.at;
       const done = outcome.written.length;
+      // `landed`: the table at the stop is in the store, and its read-back is what failed.
+      const stored = done + (outcome.landed ? 1 : 0);
       verdictCard(`Batch stopped at ${done + 1} of ${count}`, [
-        ["Written", done === 0 ? "none" : `${done} table(s), slots ${first}..${at.slot - 1}`],
-        ["Stopped on", `${at.name} → ${WAVERIDER}/${at.slot}`],
+        ["Written", stored === 0 ? "none" : `${stored} table(s), slots ${first}..${outcome.landed ? at.slot : at.slot - 1}`],
+        ["Stopped on", `${at.name} → ${WAVERIDER}/${at.slot}${outcome.landed ? ", in the store" : ""}`],
         ["Why", outcome.problem],
-        ["Left", `${count - done} file(s) not sent`],
+        ["Left", `${count - stored} file(s) not sent`],
       ]);
       status(`Batch stopped at slot ${at.slot}: ${outcome.problem}`, "error");
       return;

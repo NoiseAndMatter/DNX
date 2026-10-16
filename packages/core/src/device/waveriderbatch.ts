@@ -72,8 +72,14 @@ export type BatchWriteOutcome =
   | { kind: "gated"; problem: string }
   /** The person said no. Nothing was sent. */
   | { kind: "declined" }
-  /** Stopped at `at`. `written` were written and verified before it; the rest were not sent. */
-  | { kind: "stopped"; written: WriteTableResult[]; at: PendingSlot; problem: string }
+  /**
+   * Stopped at `at`. `written` were written and verified before it; the rest were not sent.
+   *
+   * `landed` is set when `at` itself **is in the store**: the listing shows the slot in use and
+   * the problem came after, a read-back that differs. Counting it as not sent would leave it
+   * staged on a slot the next run is refused for, and moving it would write the table twice.
+   */
+  | { kind: "stopped"; written: WriteTableResult[]; at: PendingSlot; problem: string; landed?: WriteTableResult }
   | { kind: "done"; written: WriteTableResult[] };
 
 export async function writeTablesToSlots(options: BatchWriteOptions): Promise<BatchWriteOutcome> {
@@ -122,7 +128,10 @@ export async function writeTablesToSlots(options: BatchWriteOptions): Promise<Ba
       return { kind: "stopped", written, at: table, problem: messageOf(error) };
     }
     if (result.cancelled || result.problem !== undefined || !result.listed) {
-      return { kind: "stopped", written, at: table, problem: result.problem ?? "cancelled" };
+      return {
+        kind: "stopped", written, at: table, problem: result.problem ?? "cancelled",
+        ...(result.listed ? { landed: result } : {}),
+      };
     }
     written.push(result);
   }

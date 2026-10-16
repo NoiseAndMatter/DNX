@@ -571,6 +571,17 @@ test("an import that stops part-way says where, why, and how many went in", asyn
     2,
   );
   assert.equal(gated, "Stopped at slot 2 (STOPA): WRITE is off. Nothing was sent. 0 tables written, 2 not sent.");
+  // A table that is in the store and failed only its read-back is written, not "not sent".
+  const [landed] = importOutcome(
+    {
+      kind: "stopped", written, at: { slot: 51, name: "SECOND" } as never,
+      problem: "the slot is in use but the read-back differs: byte 40", landed: { slot: 51 } as never,
+    },
+    3,
+  );
+  assert.equal(landed, "Stopped at slot 51 (SECOND): the slot is in use but the read-back differs: byte 40. 2 tables written, 1 not sent.");
+  // And the import takes it off the staged list with the rest.
+  assert.match(STAGING, /\.\.\.\(outcome\.landed \? \[outcome\.landed\] : \[\]\)/);
   // And the button reports a throw rather than dropping it.
   assert.match(STAGING, /writeAll\(\)\.catch\(/);
   assert.doesNotMatch(STAGING, /void writeAll\(\)/);
