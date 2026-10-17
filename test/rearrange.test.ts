@@ -300,6 +300,23 @@ test("DN1: a project with no song reports its song table as empty", { skip: skip
   assert.ok(state === "empty" || state === "occupied", `unexpected DN1 song state ${state}`);
 });
 
+/** A Digitone 1 project whose 1,024-record array is in use. See `docs/dn1-tail-format.md` §4. */
+const DN1_ARRAY_FILE = "049 JAM.dnprj";
+
+test("DN1: a move in a project with unread data warns, and one without it does not", {
+  skip: skipDn1 || !have(DN1_PROJECTS, DN1_ARRAY_FILE),
+}, () => {
+  const warns = (img: Uint8Array): boolean =>
+    planRearrange(img, swap(0, 5)).findings.some((f) => /data that DNX cannot read/.test(f.message));
+
+  const used = image(DN1_PROJECTS, DN1_ARRAY_FILE);
+  assert.equal(warns(used), true);
+  const plan = planRearrange(used, swap(0, 5));
+  assert.equal(plan.ok, true, "a warning, not a refusal");
+
+  assert.equal(warns(image(DN1_PROJECTS, DN1_FILE)), false);
+});
+
 /**
  * This asserted `unknown` until 2026-08-15, when the DN2 song table was located on hardware.
  *

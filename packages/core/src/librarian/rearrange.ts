@@ -250,6 +250,17 @@ export function planRearrange(image: Uint8Array, shuffle: Shuffle): RearrangePla
     });
   }
 
+  // A warning, not a blocker: what the data is, and whether a move on the instrument rewrites it,
+  // is not known. See `Device.holdsUnreadData`.
+  if (changes.length > 0 && device.holdsUnreadData?.(image)) {
+    findings.push({
+      severity: "warning",
+      message:
+        `This project holds data that DNX cannot read. A move, copy or swap may leave it out of ` +
+        `step with the patterns.`,
+    });
+  }
+
   if (destructive.length > 0) {
     const total = destructive.reduce((n, c) => n + c.trigCount, 0);
     findings.push({
