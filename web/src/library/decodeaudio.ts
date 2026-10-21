@@ -26,7 +26,7 @@
  */
 
 import { sharedAudioContext } from "../audiocontext.js";
-import { looksLikeWav, mixToMono, readWavFile } from "@noiseandmatter/dnx-core/waverider/wavfile.js";
+import { looksLikeWav, mixToMono, readWavFile } from "@noiseandmatter/dnx-core/audio/wavfile.js";
 
 /** What a dropped file turned out to be. */
 export interface DecodedFile {

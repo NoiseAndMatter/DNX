@@ -1,6 +1,6 @@
 # What is in `docs/`
 
-Twenty-eight files, and they are not the same kind of thing. This says which, and which three to
+Twenty-nine files, and they are not the same kind of thing. This says which, and which three to
 read first.
 
 Elektron publishes no format documentation for the Digitone family. Everything here was derived
@@ -69,6 +69,7 @@ decision nobody can revisit. Each says at the top when it was written.
 | [`expansion-design.md`](expansion-design.md) | **built.** How sound-locked DN1 trigs become 16 DN2 tracks |
 | [`song-mode-plan.md`](song-mode-plan.md) | **partly built.** Songs are read and shown; editing is not |
 | [`SOUND-AND-KIT-PLAN.md`](SOUND-AND-KIT-PLAN.md) | **design only.** Nothing here is implemented |
+| [`samples.md`](samples.md) | **back end built.** The sample library, import, pool and transfer plans. No page and no device writer yet |
 | [`STRUCTURE-AUDIT.md`](STRUCTURE-AUDIT.md) | **partly acted on.** A sweep of every file against `PRINCIPLES.md`, sized as independent PRs |
 | [`UI-CONSISTENCY.md`](UI-CONSISTENCY.md) | **open.** Why the four tools look like four utilities |
 | [`hardware-test-rearrange.md`](hardware-test-rearrange.md) | **done, and it is now a result.** Nine operations on a Digitone II, all passed |

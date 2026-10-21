@@ -14,8 +14,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { looksLikeWav, mixToMono, readWavFile } from "@noiseandmatter/dnx-core/waverider/wavfile.js";
-import { WaveriderError } from "@noiseandmatter/dnx-core/waverider/errors.js";
+import { looksLikeWav, mixToMono, readWavFile } from "@noiseandmatter/dnx-core/audio/wavfile.js";
+import { AudioError } from "@noiseandmatter/dnx-core/audio/errors.js";
 
 interface Chunk {
   id: string;
@@ -196,13 +196,13 @@ test("what cannot be read exactly is refused by name", () => {
    */
   assert.throws(
     () => readWavFile(riff([fmt(6, 1, 8000, 8), { id: "data", body: [1, 2, 3, 4] }])),
-    (error: unknown) => error instanceof WaveriderError && /not uncompressed PCM/.test(error.message),
+    (error: unknown) => error instanceof AudioError && /not uncompressed PCM/.test(error.message),
   );
-  assert.throws(() => readWavFile(riff([fmt(1, 1, 44_100, 16)])), WaveriderError);
-  assert.throws(() => readWavFile(riff([{ id: "data", body: [1, 2] }])), WaveriderError);
-  assert.throws(() => readWavFile(Uint8Array.from([1, 2, 3])), WaveriderError);
+  assert.throws(() => readWavFile(riff([fmt(1, 1, 44_100, 16)])), AudioError);
+  assert.throws(() => readWavFile(riff([{ id: "data", body: [1, 2] }])), AudioError);
+  assert.throws(() => readWavFile(Uint8Array.from([1, 2, 3])), AudioError);
   // A declared rate of zero would divide by zero downstream.
-  assert.throws(() => readWavFile(riff([fmt(1, 1, 0, 16), { id: "data", body: [0, 0] }])), WaveriderError);
+  assert.throws(() => readWavFile(riff([fmt(1, 1, 0, 16), { id: "data", body: [0, 0] }])), AudioError);
 });
 
 test("mixing to mono averages, and reports a cancellation it cannot prevent", () => {
@@ -218,5 +218,5 @@ test("mixing to mono averages, and reports a cancellation it cannot prevent", ()
   assert.equal(opposed.peak, 0);
   assert.equal(opposed.firstChannelPeak, 1);
 
-  assert.throws(() => mixToMono([]), WaveriderError);
+  assert.throws(() => mixToMono([]), AudioError);
 });
