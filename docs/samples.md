@@ -147,9 +147,35 @@ These need an answer from the firmware side, and the owner, before DNX writes a 
    asked. A read-only query sweep on the DN2 under 1.11 waits for the owner's go.
 7. **Limits.** The largest sample, and the most objects and folders, which size the metadata.
 
+## The Bloom prototype store
+
+**Local only.** Bloom is not released, so this code stays off the public repo for now. The firmware
+session proposed the store on 2026-10-25. It follows the Waverider store, and ekFS's own layout
+replaces it later.
+
+| File | Job |
+|---|---|
+| `sample/blsm.ts` | The superblock (`"BLSM"`), the 128-byte index entry, and the region's geometry |
+| `sample/storefile.ts` | The files `/samples/<n>` and `/samples/index` |
+| `device/samplestore.ts` | `BloomSampleStore`, the implementation of `SampleDeviceStore` |
+| `src/cli/samplesend.ts` | `npm run sample-send`: import one file and send it to the emulator |
+
+The rules that matter:
+
+1. **The firmware allocates.** DNX sends a start and an extent of zero. The commit writes the
+   chosen extent, first fit in 512 KiB units, into the stored entry.
+2. **`/samples/index` is the proof.** One read gives the superblock and all 1,024 entries. A write
+   counts only when the index holds the sample's identity and payload hash afterwards.
+3. **The payload is `int16` big-endian.** The identity stays the hash of the little-endian bytes.
+4. **At most 8 MiB of payload.** That is 87 s of mono or 43 s of stereo.
+5. **A remove takes no backup.** DNX holds the master copy. The person still confirms each delete.
+
+`test/samplestore.test.ts` runs the store in the emulator when `DNX_BLOOM_FIRMWARE` is set. Nothing
+has gone to the unit.
+
 ## Not built yet
 
 - No page uses the library, the import or the preview.
 - Nothing stores the master copy's bytes. The DNX folder is the likely place.
 - No project format holds a sample list, because the DN2 has no sample machine yet.
-- No device implementation of `devicestore.ts`.
+- No device implementation of `devicestore.ts` for format v1. The Bloom prototype store above is the only one.

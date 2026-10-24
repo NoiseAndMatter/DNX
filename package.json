@@ -36,6 +36,7 @@
     "trackhwtest": "tsx src/cli/trackhwtest.ts",
     "tags": "tsx src/cli/tags.ts",
     "convert": "tsx src/cli/convert.ts",
+    "sample-send": "tsx src/cli/samplesend.ts",
     "sheet": "tsx src/cli/sheet.ts",
     "build:web": "node scripts/version.mjs && tsc -p tsconfig.web.json",
     "web": "npm run build:web && tsx src/cli/serve.ts",
