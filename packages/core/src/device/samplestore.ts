@@ -124,10 +124,9 @@ export class BloomSampleStore implements SampleDeviceStore {
     host.gate();
 
     this.status(`Reading ${SAMPLE_INDEX_PATH}…`);
+    // An all-zero index file is the empty store, and the first write creates group A. Any other
+    // invalid index is refused by `readIndexFile`.
     const before = await this.readIndex();
-    if (!before.superblock) {
-      throw new SampleStoreError(`the device's sample store has no valid superblock, so it is not formatted`);
-    }
     if (before.entries.some((e) => sameSample(entryIdentity(e), id))) return;
     const n = firstFreeEntry(before);
     if (n === undefined) throw new SampleStoreError(`all ${INDEX_ENTRIES} sample entries are in use`);

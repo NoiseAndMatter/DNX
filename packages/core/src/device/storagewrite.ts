@@ -265,9 +265,9 @@ export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
    */
   modinfo: FORM_RAW,
   /**
-   * The Bloom prototype store, `/samples/<n>` and `/samples/index`. **Stated by the firmware
-   * session's proposal of 2026-10-25, not measured yet**: raw, `0x1D` = 0. The first emulator run
-   * is the measurement, and this note changes when it happens.
+   * The Bloom prototype store, `/samples/<n>` and `/samples/index`. Measured 2026-10-25 in
+   * digikit's emulator on the `bloom1` build: a 384,171-byte file DNX built was written, read back
+   * raw and compared equal outside the allocated fields. **An emulator, not hardware.**
    */
   samples: FORM_RAW,
 };
