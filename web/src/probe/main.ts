@@ -91,6 +91,7 @@ import { wireInstrumentCommands } from "../instrumentcommands.js";
 import "./drive.js";
 import "./drivefile.js";
 import "./writetable.js";
+import "./writesample.js";
 import "./batchtables.js";
 import "./writepool.js";
 import "./deletetable.js";
@@ -298,7 +299,8 @@ async function probe(): Promise<void> {
     for (const id of ["tableFile", "tableSlot", "tableName", "tableWaves", "tablePoints", "tableWrite",
       "tableFiles", "tableFirstSlot", "tableWriteAll",
       "poolProject", "poolList", "poolFollowsStore", "poolWrite",
-      "tableDeleteSlot", "tableDelete"]) {
+      "tableDeleteSlot", "tableDelete",
+      "sampleFile", "sampleName", "sampleMono", "sampleNormalise", "sampleList", "sampleWrite"]) {
       $<HTMLInputElement>(id).disabled = false;
     }
 

@@ -18,8 +18,11 @@ import type { SampleId } from "./identity.js";
 export interface SampleDeviceStore {
   /** Every sample the device holds, by identity. */
   holdings(): Promise<SampleId[]>;
-  /** Send one sample. `onProgress` reports bytes sent of the total. */
-  put(id: SampleId, sample: StoredSample, onProgress?: (sent: number, total: number) => void): Promise<void>;
+  /**
+   * Send one sample. `onProgress` reports bytes sent of the total. `"present"` means the device
+   * already held it and nothing was sent.
+   */
+  put(id: SampleId, sample: StoredSample, onProgress?: (sent: number, total: number) => void): Promise<"sent" | "present">;
   /** Remove one sample from the device. The master copy is not touched. */
   remove(id: SampleId): Promise<void>;
 }

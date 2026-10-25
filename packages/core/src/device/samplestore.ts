@@ -112,6 +112,8 @@ export class BloomSampleStore implements SampleDeviceStore {
   /**
    * Send one sample to the first free entry, unless the device already holds it.
    *
+   * Returns `"present"` when it was already there and nothing was sent.
+   *
    * Throws for every outcome that is not "stored and proven", including a cancel, so a caller
    * cannot mistake a declined write for a sent one.
    */
@@ -119,7 +121,7 @@ export class BloomSampleStore implements SampleDeviceStore {
     id: SampleId,
     sample: StoredSample,
     onProgress?: (sent: number, total: number) => void,
-  ): Promise<void> {
+  ): Promise<"sent" | "present"> {
     const { transport, host } = this.options;
     host.gate();
 
@@ -127,7 +129,7 @@ export class BloomSampleStore implements SampleDeviceStore {
     // An all-zero index file is the empty store, and the first write creates group A. Any other
     // invalid index is refused by `readIndexFile`.
     const before = await this.readIndex();
-    if (before.entries.some((e) => sameSample(entryIdentity(e), id))) return;
+    if (before.entries.some((e) => sameSample(entryIdentity(e), id))) return "present";
     const n = firstFreeEntry(before);
     if (n === undefined) throw new SampleStoreError(`all ${INDEX_ENTRIES} sample entries are in use`);
 
@@ -173,6 +175,7 @@ export class BloomSampleStore implements SampleDeviceStore {
         `entry ${n} is in the index, and the read-back differs: ${result.mismatches.map((m) => m.reason).join("; ")}`,
       );
     }
+    return "sent";
   }
 
   /** Delete every entry that holds `id`. Asks before each one. */

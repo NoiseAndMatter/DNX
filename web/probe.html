@@ -318,6 +318,23 @@ main { flex: 1; overflow: auto; padding: .9rem; display: flex; flex-direction: c
       <label class="lbl" for="poolFollowsStore">follows the store</label>
       <input id="poolFollowsStore" type="checkbox" disabled title="Write the follows-the-store record instead of a list: every playable table in store order, new ones included. The entries box is ignored.">
       <button class="btn danger" data-writes-device id="poolWrite" disabled title="Write this project's pool list, carrying the generation just read so a concurrent edit is refused.">Write pool</button>
+
+      <!--
+        **The Bloom prototype store, /samples. Local only: Bloom is not released.** A WAV or AIFF
+        is converted to 16-bit 48 kHz here, then sent to the lowest free entry. The firmware picks
+        where on the +Drive it goes. A Bloom track's SMPL value plays the entry of that number, so
+        the first sample goes to entry 0 on an empty store. Proof is /samples/index afterwards.
+      -->
+      <label class="lbl" for="sampleFile">sample</label>
+      <input id="sampleFile" type="file" accept=".wav,.aif,.aiff,audio/wav,audio/aiff" disabled title="WAV or AIFF. Converted to 16-bit 48 kHz before it is sent.">
+      <label class="lbl" for="sampleName">name</label>
+      <input id="sampleName" type="text" value="" size="16" disabled title="Up to 63 characters. Empty uses the file name.">
+      <label class="lbl" for="sampleMono">mono</label>
+      <input id="sampleMono" type="checkbox" disabled title="Average the channels into one.">
+      <label class="lbl" for="sampleNormalise">normalise</label>
+      <input id="sampleNormalise" type="checkbox" disabled title="Scale the peak to 98 % of full scale.">
+      <button class="btn" id="sampleList" disabled title="Read /samples/index and show every stored sample. Sends nothing to the store.">List samples</button>
+      <button class="btn danger" data-writes-device id="sampleWrite" disabled title="Convert the file and write it to the lowest free /samples entry.">Write sample</button>
     </div>
   </section>
 </div>
