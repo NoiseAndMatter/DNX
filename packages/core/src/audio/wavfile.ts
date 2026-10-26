@@ -28,7 +28,7 @@
  * fixed offset would fail on real material.
  */
 
-import { WaveriderError } from "./errors.js";
+import { AudioError } from "./errors.js";
 
 /** One file's samples, by channel, at the rate the file itself declares. */
 export interface WavAudio {
@@ -57,13 +57,13 @@ export function looksLikeWav(bytes: Uint8Array): boolean {
 /**
  * Read `bytes` as a WAV file.
  *
- * Throws `WaveriderError` for anything it cannot read exactly. The caller is expected to have
+ * Throws `AudioError` for anything it cannot read exactly. The caller is expected to have
  * checked `looksLikeWav` first and to treat a throw here as "this is a WAV and it is broken or
  * compressed", which is a different message from "this is not a WAV".
  */
 export function readWavFile(bytes: Uint8Array): WavAudio {
   if (!looksLikeWav(bytes)) {
-    throw new WaveriderError("this is not a RIFF/WAVE file");
+    throw new AudioError("this is not a RIFF/WAVE file");
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
@@ -104,13 +104,13 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
     at = body + size + (size % 2);
   }
 
-  if (dataAt < 0) throw new WaveriderError("this WAV has no data chunk");
-  if (channelCount <= 0) throw new WaveriderError("this WAV declares no channels");
-  if (sampleRate <= 0) throw new WaveriderError(`this WAV declares a sample rate of ${sampleRate}`);
+  if (dataAt < 0) throw new AudioError("this WAV has no data chunk");
+  if (channelCount <= 0) throw new AudioError("this WAV declares no channels");
+  if (sampleRate <= 0) throw new AudioError(`this WAV declares a sample rate of ${sampleRate}`);
 
   const bytesPerSample = bitsPerSample >> 3;
   if (bytesPerSample <= 0) {
-    throw new WaveriderError(`this WAV declares ${bitsPerSample} bits per sample`);
+    throw new AudioError(`this WAV declares ${bitsPerSample} bits per sample`);
   }
 
   let read: (offset: number) => number;
@@ -140,7 +140,7 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
     read = (offset) => view.getInt32(offset, true) / 2_147_483_648;
     name = "32 bit PCM";
   } else {
-    throw new WaveriderError(
+    throw new AudioError(
       `this WAV is format ${formatTag} at ${bitsPerSample} bits, which is not uncompressed PCM or ` +
         `IEEE float. Export it as 16, 24 or 32 bit WAV and import that.`,
     );
@@ -148,7 +148,7 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
 
   const frameBytes = bytesPerSample * channelCount;
   const frames = Math.floor(dataBytes / frameBytes);
-  if (frames === 0) throw new WaveriderError("this WAV's data chunk holds no complete frames");
+  if (frames === 0) throw new AudioError("this WAV's data chunk holds no complete frames");
 
   const channels: Float32Array[] = [];
   for (let c = 0; c < channelCount; c++) channels.push(new Float32Array(frames));
@@ -178,7 +178,7 @@ export function mixToMono(channels: readonly Float32Array[]): {
   peak: number;
   firstChannelPeak: number;
 } {
-  if (channels.length === 0) throw new WaveriderError("there are no channels to mix");
+  if (channels.length === 0) throw new AudioError("there are no channels to mix");
   const frames = channels[0]!.length;
   const samples = new Float32Array(frames);
 
