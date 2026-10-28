@@ -89,11 +89,22 @@ function tsFiles(dir: string): string[] {
 
 const CORE = tsFiles(join(ROOT, ...CORE_SRC));
 
+/**
+ * digikit's client, copied unchanged (its README forbids an edit here). It reads `Date.now` only
+ * for reply timeouts, which decide when to stop waiting, never what an output holds. Only that
+ * read is allowed: `Math.random` or `new Date()` in it still fails.
+ */
+const VENDORED_TIMEOUTS = "packages/core/src/vendor/digikit/";
+const allowed = (path: string, api: string): boolean =>
+  path.startsWith(VENDORED_TIMEOUTS) && api === "Date.now";
+
 test("nothing in core reads the clock or the dice except as a seam's default", () => {
   assert.ok(CORE.length > 40, `only ${CORE.length} core files found; the walk is wrong`);
 
   const offenders = CORE.flatMap((file) =>
-    ambientReads(code(file)).map((api) => `${repoPath(file)} reads ${api}`));
+    ambientReads(code(file))
+      .filter((api) => !allowed(repoPath(file), api))
+      .map((api) => `${repoPath(file)} reads ${api}`));
 
   assert.deepEqual(offenders, [],
     "these make an output depend on when it ran. Take it as a parameter or an option, the way " +

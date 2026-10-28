@@ -26,3 +26,39 @@ type HostTimer = number | { readonly __hostTimer: unique symbol };
 declare function setTimeout(handler: (...args: any[]) => void, timeout?: number): HostTimer;
 declare function clearTimeout(id: HostTimer | undefined): void;
 declare function atob(data: string): string;
+
+/*
+ * For digikit's vendored client (`vendor/digikit/`): the converter is WebAssembly, uploads and
+ * VERIFY use SHA-256, and a reply wait can be cancelled. Browsers and Node 20 and later provide
+ * all of these.
+ */
+
+type BufferSource = ArrayBufferView | ArrayBuffer;
+
+declare namespace WebAssembly {
+  class Memory {
+    readonly buffer: ArrayBuffer;
+  }
+  interface Instance {
+    readonly exports: Record<string, unknown>;
+  }
+  function instantiate(
+    bytes: BufferSource,
+    imports?: Record<string, unknown>,
+  ): Promise<{ instance: Instance }>;
+}
+
+declare const crypto: {
+  readonly subtle: { digest(algorithm: string, data: BufferSource): Promise<ArrayBuffer> };
+};
+
+declare class AbortSignal {
+  readonly aborted: boolean;
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
+  removeEventListener(type: "abort", listener: () => void): void;
+}
+
+declare class AbortController {
+  readonly signal: AbortSignal;
+  abort(): void;
+}
