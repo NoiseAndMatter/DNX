@@ -51,7 +51,12 @@ export function provideInstrument(
  * picker beside it, and a second select would be a second memory of which instrument this is.
  */
 export function instrumentSelect(): HTMLSelectElement {
-  own ??= devicePicker(document.createElement("select"));
+  if (!own) {
+    const picker = devicePicker(document.createElement("select"));
+    // The picker remembers its first choice. Without this, picking the other entry did nothing.
+    picker.select.addEventListener("change", () => { picker.port = undefined; });
+    own = picker;
+  }
   own.select.hidden = own.select.options.length === 0;
   own.select.title = "Which connected instrument these commands work with";
   return own.select;

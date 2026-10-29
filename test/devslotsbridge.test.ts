@@ -20,6 +20,13 @@ import {
   NEEDS_DIAGNOSTIC_FIRMWARE,
   captureDevslots,
 } from "@noiseandmatter/dnx-core/device/devslots.js";
+import {
+  SETTINGS_FILES,
+  SETTING_FIELDS,
+  fieldValue,
+  readSettingsFile,
+  settingsFromCapture,
+} from "@noiseandmatter/dnx-core/device/devsettings.js";
 
 const DEVSLOTS = process.env["DNX_DEVSLOTS_FIRMWARE"];
 const skip = !bridgePaths()
@@ -65,6 +72,21 @@ test("a devslots build: six files, block files, and a CRC table that matches its
   const first = new DataView(table.buffer, table.byteOffset, 4).getUint32(0);
   const block = files.find((f) => f.path === "/devslots/1512")!.bytes.subarray(31, 31 + 65_536);
   assert.equal(first, crc32(block));
+});
+
+test("a devslots build: the settings backup reads the running header", { skip, timeout: TIMEOUT }, async () => {
+  const io = await EmulatorBridge.start({ firmware: DEVSLOTS!, startupMs: TIMEOUT });
+  open.add(io);
+  const files = await captureDevslots({ transport: io, ids: new MessageIds(), files: SETTINGS_FILES });
+  const file = settingsFromCapture(files, {
+    taken: new Date(),
+    dnx: "test",
+    instrument: { name: "emulator", os: null },
+  });
+  assert.equal(file.osBuild, "0059");
+  const { header } = readSettingsFile(JSON.stringify(file));
+  const usb = SETTING_FIELDS.find((f) => f.option === "SYSTEM > USB CONFIG")!;
+  assert.doesNotMatch(fieldValue(header, usb).text, /not named/);
 });
 
 test("stock firmware: refused before any file is opened", { skip, timeout: TIMEOUT }, async () => {

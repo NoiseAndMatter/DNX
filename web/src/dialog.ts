@@ -159,6 +159,33 @@ export function askText(options: TextOptions): Promise<string | undefined> {
   });
 }
 
+/**
+ * Show something to read, with one Close button. Resolves when it closes.
+ *
+ * For a table a decision is not made from, so `wide` lets it take more of the screen than a
+ * question does.
+ */
+export function showContent(options: AskCommon & { content: HTMLElement; wide?: boolean }): Promise<void> {
+  return new Promise((resolve) => {
+    const { dialog, body } = frame(options);
+    if (options.wide) dialog.classList.add("wide");
+    body.append(options.content);
+
+    const form = document.createElement("form");
+    form.method = "dialog";
+    const row = document.createElement("div");
+    row.className = "askbuttons";
+    const close = button(options.cancelLabel ?? "Close");
+    close.classList.add("primary");
+    row.append(close);
+    form.append(row);
+    body.append(form);
+
+    open(dialog, () => resolve());
+    close.focus();
+  });
+}
+
 /** The dialog, its heading, its prose and its list — everything above the buttons. */
 function frame(options: AskCommon): { dialog: HTMLDialogElement; body: HTMLElement } {
   const dialog = document.createElement("dialog");

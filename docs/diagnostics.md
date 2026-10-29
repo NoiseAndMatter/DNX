@@ -38,6 +38,37 @@ The image id is `unknown` in the name when `/modinfo` does not parse, for exampl
 
 The zip holds no project, sound, kit or name from the +Drive. The slots contain the working project, but only a block read reaches it, and only the blocks somebody types.
 
+## Back up the device settings
+
+The instrument keeps PERSONALIZE, USB CONFIG and probably MASTER TUNE in the first 256 bytes of the saved state, outside the +Drive. Only the diagnostics firmware can read them.
+
+1. Press **Back up**.
+2. DNX reads `/devslots/0`, `/1` and `/2`. If `devslots` is not there, it stops with the same message as Capture.
+3. DNX saves `dn2-settings_YYYYMMDD-HHMM_<OS build>.json` in the `Backups` subfolder.
+4. DNX shows the settings in a table.
+
+The file holds the running header (`/devslots/2`) as hex, and each slot's header beside it. The table shows each option with its value and its bytes. A value that nobody measured shows as a number with "not named yet". The bytes that have no name show as numbers.
+
+MIDI CONFIG is not in the backup. CLOCK SEND survived a power cycle on the unit, but the header did not change. Its store is not found yet.
+
+Stock's record ends at `+0x51`. The bytes `+0x52` and `+0x53` are the PERSONALIZE toggles of the reloadconfirm and arpscale mods. Stock does not read them, and they are 0 when the mod is not installed.
+
+DNX checks the checksum at `+0x04` and says when it does not match. The checksum is the sum of the 18 big-endian words from `+0x08` to `+0x4f`, each XORed with its number counted from 1. It does not cover `+0x50` and after. The formula matched the stored value in five real headers on 2026-10-29.
+
+The offsets were measured on OS 1.11 (build 0059). For a file from another build, DNX says that some values can be wrong.
+
+### Show or compare
+
+<!-- ste-lint ignore -->
+1. Press **Open…**.
+2. Choose one settings file to show it, or two files to compare them.
+
+In a comparison, a row that differs has a `≠` mark. The table also lists the other header bytes that differ, for example the checksum at `+0x04`.
+
+### Restore
+
+DNX does not write the settings. A slot holds the whole 12.9 MB state, and a bad slot affects the start-up. A write needs new firmware code that calls stock's own setters. To restore, open the file and set each value on the instrument by hand. The table is in menu order: SYSTEM, then PERSONALIZE.
+
 ## Releasing the instrument
 
 The capture opens its own connection, never the page's, and closes it at the end, also after an error. DNX drops its listeners and leaves the MIDI port open for the page, as every other DNX job does. Closing the tab releases the port.
@@ -47,4 +78,5 @@ If replies to requests DNX did not send arrive during the run, the message says 
 ## Tests
 
 - `test/devslots.test.ts`: the block numbers, the list check, the refusal before any open, the read order, the names, and the zip.
+- `test/devsettings.test.ts`: the header out of a devslots file, the settings file, the values, and the differences.
 - `test/devslotsbridge.test.ts`: the route in the emulator with `DNX_DEVSLOTS_FIRMWARE`, and stock as the control. See [`emulator-tests.md`](emulator-tests.md).
