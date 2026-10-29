@@ -42,6 +42,7 @@ import { connectInstrument } from "./instrument.js";
 import { pageMessageIds } from "./messageids.js";
 import { foreignReplyCount } from "./othertraffic.js";
 import { row } from "./formrow.js";
+import { settingsRows } from "./devsettings.js";
 import {
   type BackupRunner,
   type DiagnosticsJobs,
@@ -159,6 +160,7 @@ function rows(jobs: DiagnosticsJobs): HTMLElement[] {
         `${BLOCKS_PER_SOURCE - 1}.`,
       blocks,
     ),
+    ...settingsRows(jobs),
   ];
 }
 

@@ -660,7 +660,26 @@ dialog.ask {
   width: min(34rem, calc(100vw - 2rem));
   max-height: min(32rem, calc(100vh - 4rem));
 }
+/* A table to read, not a question: the device settings view. */
+dialog.ask.wide { width: min(52rem, calc(100vw - 2rem)); max-height: calc(100vh - 4rem); }
 dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
+
+/* The device settings table. A differing row is marked by its first cell as well as its colour. */
+.settable-wrap { overflow-x: auto; margin: 0 0 .7rem; }
+.settable { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.settable th, .settable td {
+  text-align: left; padding: .22rem .5rem; border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+.settable th { color: var(--muted); font-weight: 600; }
+.settable tr.info td { color: var(--muted); }
+.settable tr.differs td { color: var(--amber); }
+.settable tr.differs td.mark::before { content: "\2260"; }
+.settable td.mark { width: 1rem; color: var(--amber); }
+/* Last, so an info or differing row keeps its offset dim. */
+.settable tr td.off { font-family: ui-monospace, Consolas, monospace; color: var(--dim); }
+.setraw { font-size: .7rem; color: var(--muted); margin: 0 0 .7rem; }
+.setraw pre { margin: .4rem 0 0; font-size: .68rem; color: var(--dim); overflow-x: auto; }
 .askbody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; }
 .askbody > h2 {
   margin: 0 0 .7rem; font-size: .78rem; letter-spacing: .02em;
