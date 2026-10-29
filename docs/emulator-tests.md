@@ -15,6 +15,7 @@ the whole suite goes from 32 skipped to 1 — 1,910 passing, measured on 2026-10
 | `DNX_EMU_FIRMWARE` | **Stock** Digitone II 1.11, for the tests that assert stock behaviour |
 | `DNX_WAVERIDER_FIRMWARE` | A **modded** image carrying the `/waverider` route |
 | `DNX_ERASE_FIRMWARE` | A modded image carrying the erase capability, `0x80`. Only `erase2` and later have it |
+| `DNX_DEVSLOTS_FIRMWARE` | A diagnostics image with `/devslots` rev 2 (`devslotsfull1` or later), for the diagnostics capture |
 | `DNX_EMU_STATE` | Optional. A booted snapshot, which saves about 30 s per bridge start |
 | `DNX_DN2_CARD_IMAGE` | Optional. A formatted +Drive underneath, so stock directories are real |
 

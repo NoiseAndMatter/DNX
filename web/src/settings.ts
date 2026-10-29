@@ -206,6 +206,29 @@ export interface CommandOffer {
 
 const instrumentCommands = new Map<string, InstrumentCommand>();
 
+/**
+ * The hidden diagnostics rows, where a page has turned them on (`#diagnostics`).
+ *
+ * **Read-only, so not an `InstrumentCommand`.** Those write, and carry the write switch and the
+ * danger colour. These rows only read, and share the sheet's job pane and the instrument claim.
+ */
+export interface DiagnosticsSection {
+  rows(jobs: DiagnosticsJobs): HTMLElement[];
+}
+
+export interface DiagnosticsJobs {
+  /** A button that must be off while any job holds the instrument. Call once, as it is built. */
+  track(button: HTMLButtonElement): void;
+  /** Run a job in the sheet's bar and note. */
+  start(runner: BackupRunner): void;
+}
+
+let diagnostics: DiagnosticsSection | undefined;
+
+export function registerDiagnostics(section: DiagnosticsSection): void {
+  diagnostics = section;
+}
+
 /** Called by a page as it wires its commands. A second registration of an id replaces the first. */
 export function registerInstrumentCommand(command: InstrumentCommand): void {
   instrumentCommands.set(command.id, command);
@@ -222,6 +245,7 @@ function drawStages(host: HTMLElement, stages: readonly ProgressStage[]): void {
     projects: "Projects", soundbanks: "Sounds", kits: "Kits",
     // The erase's one stage. It is the copying, which is the part that takes minutes.
     tables: "Tables copied",
+    files: "Files read",
   };
   const said: Record<string, string> = {
     pending: "Pending", reading: "In progress", done: "Complete",
@@ -385,7 +409,7 @@ function build(panel: HTMLElement): HTMLElement {
     }
   }
   /** Start a long job in the open sheet's bar and note. The job claims the instrument itself. */
-  const startJob = (_button: HTMLButtonElement, runner: BackupRunner, stoppable = false): void => {
+  const startJob = (_button: HTMLButtonElement | undefined, runner: BackupRunner, stoppable = false): void => {
     const stop = stoppable ? { requested: false } : undefined;
     if (stop) backupStop = stop;
     const view: NonNullable<typeof jobView> = { said: "" };
@@ -489,6 +513,12 @@ function build(panel: HTMLElement): HTMLElement {
    * that cannot be acted on is worse than no command at all. It stays hidden until it has
    * options, which is every case but that one.
    */
+  if (diagnostics) {
+    panel.append(group("Diagnostics", diagnostics.rows({
+      track: (button) => { instrumentJobs.push(button); },
+      start: (runner) => startJob(undefined, runner),
+    })));
+  }
   if (instrumentSelect) panel.append(instrumentSelect());
   panel.append(bar, note);
 

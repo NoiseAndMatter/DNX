@@ -61,6 +61,14 @@ export function instrumentSelect(): HTMLSelectElement {
 export async function reachInstrument(onStatus?: (message: string) => void): Promise<ConnectedDevice> {
   const lent = await lend?.();
   if (lent) return lent;
+  return await connectInstrument(onStatus);
+}
+
+/**
+ * A connection of the caller's own, never the page's, so the caller may close it when it is done.
+ * Chosen with the same select as `reachInstrument`.
+ */
+export async function connectInstrument(onStatus?: (message: string) => void): Promise<ConnectedDevice> {
   instrumentSelect();
   const found = await chooseDevice(own!, onStatus);
   own!.select.hidden = own!.select.options.length === 0;
