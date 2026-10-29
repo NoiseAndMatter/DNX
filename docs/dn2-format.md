@@ -920,6 +920,50 @@ pool are the obvious candidates.
 
 **[verified]** DN1 tail: 94,212 bytes at `0x290200`. Not analysed.
 
+### 7a. Audio routing in the project settings object — 2026-10-29
+
+The project settings object sits at image `0xC3E000` on a 1.11 image. Its known fields are in
+`dn1-tail-format.md` §2. Two track masks follow them.
+
+| Offset from `0xC3E000` | Size | Meaning | Status |
+|---|---|---|---|
+| `+0x50` | 1 | unknown | unknown |
+| `+0x51` | u16be | **SETTINGS > AUDIO ROUTING > TO MAIN**. Bit n is track n+1. A set bit means the track is not sent to main. | **[measured]** |
+| `+0x54` | 1 | unknown | unknown |
+| `+0x55` | u16be | a second track mask, probably the other routing setting on the same page | **[inferred]** |
+
+**How TO MAIN was measured.** On 2026-10-29 a user's project loaded on a DN2 with OS 1.11. Its
+trigs fired, but the audio was silent. The `+0x51` mask had a bit set for every track that had
+trigs. A change to TO MAIN on the instrument brought the sound back. The global mutes were all off.
+
+**The corpus has zeros here.** Every other image in the corpus has zeros at `+0x50` to `+0x56`:
+8 images from OS 1.11 and about 50 from OS 1.10E. So zero means that every track goes to main.
+The layout below `+0x60` is the same in 1.10E, so these fields are not new in 1.11.
+
+**Read the mask before you diagnose a silent project.** A project that sends its tracks away
+from main plays with no sound, and every record in it is valid.
+
+### 7b. The payload header slot byte moves with the project
+
+`+0x18` in the payload header (§0) is the 0-based project slot. **[measured]** On 2026-10-29 a
+`.dn2prj` was written to a different +Drive slot and read back in stored form. The read-back
+differed from the file at one byte only, `+0x18`, which held the new slot. The 12-byte trailer
+did not change, so `+0x18` is outside the CRC region. That agrees with the CRC region starting
+at `0x1F`. The decoded images were identical.
+
+### 7c. The two device settings slots alternate on save
+
+The device settings (the `COKi` block) are stored twice on the +Drive card, at sectors
+`0x40000` and `0x48000`. These are device settings, not project data.
+
+- **[inferred]** Each save writes the whole block to the slot that is not in use. It then zeroes
+  the first byte, the `C` of `COKi`, in the other slot's header. This is read from the save
+  routine of stock OS 1.11 at `0x400f1e26`.
+- **[measured]** On 2026-10-29 both slots were read before and after a power cycle, on a build
+  with a read-only diagnostic route. Before, the slot at `0x48000` held `COKi`, and the slot at
+  `0x40000` held `00 'O' 'K' 'i'`. After, the two had swapped.
+- **[measured]** A change in the settings menu left both slots unchanged until the power cycle.
+
 ---
 
 ## 8. What is still unknown
