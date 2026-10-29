@@ -43,7 +43,7 @@ const PORT_IN_USE =
   "Another application is using the instrument's MIDI port. Close Elektron Transfer and " +
   "Overbridge, then try again.";
 
-const NOT_IN_BACKUP = "MIDI CONFIG is not in this backup. Write down its settings separately.";
+const WITH_PROJECT = "The rest of MIDI CONFIG is saved with the project.";
 const BY_HAND = "To restore, set each value on the instrument by hand.";
 
 /** One file in the view: what the column is called, and its header. */
@@ -125,7 +125,7 @@ function rawDump(columns: readonly Column[]): HTMLElement {
 
 /** The sentences above the table: what it does not hold, and what to check. */
 function notes(columns: readonly Column[]): string[] {
-  const said = [NOT_IN_BACKUP, BY_HAND];
+  const said = [WITH_PROJECT, BY_HAND];
   for (const column of columns) {
     const { file } = column.read;
     if (file.osBuild !== MAPPED_OS_BUILD) {
@@ -257,8 +257,9 @@ export function settingsRows(jobs: DiagnosticsJobs): HTMLElement[] {
   return [
     row(
       "Back up the device settings",
-      "Needs the diagnostics firmware. Saves PERSONALIZE and USB CONFIG to a file in " +
-        "Backups. MIDI CONFIG is not included. Nothing on the instrument is changed.",
+      "Needs the diagnostics firmware. Saves PERSONALIZE, USB CONFIG and CLOCK RECEIVE to a " +
+        "file in Backups. The rest of MIDI CONFIG is saved with the project. Nothing on the " +
+        "instrument is changed.",
       backup,
     ),
     row(

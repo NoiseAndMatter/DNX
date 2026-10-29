@@ -40,7 +40,7 @@ The zip holds no project, sound, kit or name from the +Drive. The slots contain 
 
 ## Back up the device settings
 
-The instrument keeps PERSONALIZE, USB CONFIG and probably MASTER TUNE in the first 256 bytes of the saved state, outside the +Drive. Only the diagnostics firmware can read them.
+The instrument keeps PERSONALIZE, USB CONFIG, CLOCK RECEIVE and probably MASTER TUNE in the first 256 bytes of the saved state, outside the +Drive. Only the diagnostics firmware can read them.
 
 1. Press **Back up**.
 2. DNX reads `/devslots/0`, `/1` and `/2`. If `devslots` is not there, it stops with the same message as Capture.
@@ -49,7 +49,7 @@ The instrument keeps PERSONALIZE, USB CONFIG and probably MASTER TUNE in the fir
 
 The file holds the running header (`/devslots/2`) as hex, and each slot's header beside it. The table shows each option with its value and its bytes. A value that nobody measured shows as a number with "not named yet". The bytes that have no name show as numbers.
 
-MIDI CONFIG is not in the backup. CLOCK SEND survived a power cycle on the unit, but the header did not change. Its store is not found yet.
+The rest of MIDI CONFIG is saved with the project, so a project backup keeps it. That part holds CLOCK SEND, TRANSPORT RECEIVE, TRANSPORT SEND, PROG CH RECEIVE and PROG CH SEND. The settings backup does not show them.
 
 Stock's record ends at `+0x51`. The bytes `+0x52` and `+0x53` are the PERSONALIZE toggles of the reloadconfirm and arpscale mods. Stock does not read them, and they are 0 when the mod is not installed.
 

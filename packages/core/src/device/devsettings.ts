@@ -19,8 +19,8 @@
  *
  * ## Not in the header
  *
- * MIDI CONFIG. CLOCK SEND changed and survived a power cycle on the unit while the header stayed
- * the same, so its store is somewhere else, not found yet. The page says so.
+ * The rest of MIDI CONFIG. Only CLOCK RECEIVE (+0x3e) is here. CLOCK SEND, TRANSPORT and PROG CH
+ * are in the working project's settings block, so a project backup keeps them. The page says so.
  *
  * ## No restore
  *
@@ -71,11 +71,12 @@ const OFF_ON = { 0: "OFF", 1: "ON" } as const;
 
 /**
  * In the instrument's menu order, so a person setting them by hand goes down the list once.
- * SYSTEM first, then PERSONALIZE as the manual orders it (OS 1.10D, 13.7).
+ * SYSTEM first, then CLOCK RECEIVE, then PERSONALIZE as the manual orders it (OS 1.10D, 13.7).
  */
 export const SETTING_FIELDS: readonly SettingField[] = [
   { offset: 0x3c, option: "SYSTEM > USB CONFIG", values: { 0: "USB MIDI", 1: "OVERBRIDGE", 2: "USB AUDIO/MIDI" } },
   { offset: 0x40, option: "SYSTEM > MASTER TUNE (probably, not checked)", length: 4 },
+  { offset: 0x3e, option: "MIDI CONFIG > SYNC > CLOCK RECEIVE", values: OFF_ON },
   { offset: 0x3f, option: "PERSONALIZE > LED INTENSITY", values: { 0: "LOW", 1: "MID" } },
   { offset: 0x45, option: "PERSONALIZE > LED BACKLIGHT", values: OFF_ON },
   { offset: 0x44, option: "PERSONALIZE > REMEMBER SUBPAGE", values: OFF_ON },
@@ -88,7 +89,7 @@ export const SETTING_FIELDS: readonly SettingField[] = [
   { offset: 0x4e, option: "PERSONALIZE > NOTE PREVIEW", values: { 0: "ALWAYS", 1: "PAUSED" } },
   { offset: 0x50, option: "PERSONALIZE > NOTE EDIT MENU", values: { 0: "ANY", 1: "REC" } },
   { offset: 0x3d, option: "Current project slot", info: true, fromOne: true },
-  ...[0x3e, 0x49, 0x4c, 0x4f, 0x51].map((offset) => ({
+  ...[0x49, 0x4c, 0x4f, 0x51].map((offset) => ({
     offset,
     option: "Not named yet",
     info: true,
