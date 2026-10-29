@@ -7,6 +7,7 @@
  */
 
 import { type StatusWriter } from "./statusbar.js";
+import { wireDevslotsCapture } from "./devslotscapture.js";
 import { wireWavetableErase } from "./wavetableerase.js";
 
 export interface DeviceCommandHost {
@@ -19,4 +20,5 @@ export interface DeviceCommandHost {
 
 export const DEVICE_COMMANDS: readonly ((host: DeviceCommandHost) => void)[] = [
   wireWavetableErase,
+  wireDevslotsCapture,
 ];
