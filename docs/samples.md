@@ -36,6 +36,8 @@ Everything is in `packages/core/src/sample/`, except the two audio readers and t
 | `transfer.ts` | What a transfer would send |
 | `devicestore.ts` | The device's store, as an interface only |
 | `web/src/samplepreview.ts` | Play a stored sample in the browser |
+| `digikitstore.ts` | digikit's card store, through digikit's own client |
+| `../vendor/digikit/` | digikit's client and converter, copied unchanged |
 
 The WAV reader moved from `waverider/` to `audio/` when the sample importer became its second
 caller. It throws `AudioError` now, not `WaveriderError`.
@@ -129,6 +131,29 @@ bytes only.
 `devicestore.ts` is an interface with three methods: `holdings`, `put` and `remove`. Nothing
 implements it yet. The implementation follows format v1 and the transport choice.
 
+## digikit's card store
+
+On 2026-10-30 the owner chose digikit's card store as the sample storage for every sample machine. Wavetables keep their own store.
+
+- The store is the `samples/` folder of digikit's store, on DN2 sectors `0x800000` to the card end (about 22 GiB). Folders are part of the paths.
+- Only digikit's runtime writes the store. So an upload needs the digikit runtime in the image. DNX does not keep a second client: `vendor/digikit/` is digikit's own client at commit `11ad79ee`, and its `README.md` says how to update it.
+- `digikitstore.ts` adds a transport over DNX's `SysexPort`. The transport passes only digikit messages (`F0 7D 64 6B`), so traffic for the Elektron API cannot reach the session.
+- digikit's converter, `web/vendor/dksample.wasm`, turns a WAV into the DT2 native file: a 64-byte header, big-endian 16-bit PCM at 48 kHz, and a 16-byte zero trailer.
+- An upload is proven by VERIFY. The runtime reads the file again from the card and sends its sha256, and DNX compares it with the sha256 of the bytes sent. LIST then gives the path, the size and the sha256. LIST does not give the first sector.
+
+What the protocol does and does not do:
+
+- It uploads, lists, deletes, makes folders, reports the free space and verifies.
+- It has no rename and no move. A move is a new upload and a delete.
+- It reads at most 768 bytes per request. DNX has no download yet.
+- On the unit on 2026-10-29, uploads ran at about 216 KB/s. A minute of mono audio takes about 27 s.
+- The runtime puts a file in the first gap that holds it. A file larger than the largest gap is refused, even when the total free space is larger.
+- An upload while the unit loads a sample makes that load fail. It does not damage the store. Do not upload while the unit loads a project.
+
+The store holds the sha256 of each file. A link from a sound by sha256 would survive a move. That is not agreed with digikit yet: its sampler design binds by path. DNX's own identity (above) is xxHash64, not sha256.
+
+The test in `test/digikitstore.test.ts` checks the transport and the converter. Only digikit's runtime can answer the protocol, so `scripts/digikit-emu-store.mjs` runs the store path against digikit's DN2 emulator.
+
 ## Open questions for format v1
 
 These need an answer from the firmware side, and the owner, before DNX writes a sample:
@@ -152,4 +177,4 @@ These need an answer from the firmware side, and the owner, before DNX writes a 
 - No page uses the library, the import or the preview.
 - Nothing stores the master copy's bytes. The DNX folder is the likely place.
 - No project format holds a sample list, because the DN2 has no sample machine yet.
-- No device implementation of `devicestore.ts`.
+- No device implementation of `devicestore.ts`. `digikitstore.ts` does not implement it yet.
