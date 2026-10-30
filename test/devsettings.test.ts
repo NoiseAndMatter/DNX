@@ -67,6 +67,14 @@ test("the backup keeps the running header, and the slots beside it", () => {
   assert.equal(fieldValue(back.header, option("Current project slot")).text, "29");
 });
 
+test("+0x3e is MIDI CONFIG's CLOCK RECEIVE", () => {
+  const field = option("CLOCK RECEIVE");
+  assert.equal(field.offset, 0x3e);
+  assert.equal(fieldValue(header({ 0x3e: 0 }), field).text, "OFF");
+  assert.equal(fieldValue(header({ 0x3e: 1 }), field).text, "ON");
+  assert.ok(!SETTING_FIELDS.some((f) => f.offset === 0x3e && f.info));
+});
+
 test("a running header the active slot does not hold is said", () => {
   const file = settingsFromCapture([
     served("/devslots/0", header({ 0x45: 0 })),
