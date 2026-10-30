@@ -76,6 +76,7 @@ import {
 import { renderRows, renderTagChips, summarise } from "./librarytable.js";
 import { readBankTags } from "./slottags.js";
 import { renamePresetOnDrive } from "./renamepreset.js";
+import { wireSamples } from "./samples.js";
 import { wireWavetables } from "./wavetables.js";
 import { WORKING_PROJECT, renderProjectList } from "./projectlist.js";
 import { provideInstrument } from "../instrument.js";
@@ -561,6 +562,8 @@ async function connect(): Promise<void> {
    * this one, redrawing the mode when the page is in it.
    */
   await wavetables.reconnected();
+  // And the sample store on the card is this instrument's, not the last one's.
+  await samples.reconnected();
 
   // A Digitone has no /kits on its +Drive: a backup of one lists projects and soundbanks, nothing else.
   const hasKits = device.productId !== ProductId.DN1;
@@ -571,7 +574,7 @@ async function connect(): Promise<void> {
     kitOption.title = hasKits ? "" : `${device.name} has no kits on its +Drive`;
   }
   if (!hasKits && kinds.value === "kit") kinds.value = "preset";
-  if (wavetableMode) applyKind();
+  if (mode !== "sounds") applyKind();
   else clearShownBank(`— press Browse to list ${kind()}s`);
 
   $("deviceInfo").hidden = false;
@@ -581,7 +584,7 @@ async function connect(): Promise<void> {
   $<HTMLButtonElement>("driveBrowse").disabled = false;
   status(
     hasKits
-      ? `${device.name} connected. Choose presets, kits or wavetables.`
+      ? `${device.name} connected. Choose presets, kits, wavetables or samples.`
       : `${device.name} connected. It has no kits on its +Drive, so Browse lists its presets.`,
     "ok",
   );
@@ -1234,6 +1237,7 @@ $("whichdevice").addEventListener("change", (event) => {
   state.device = undefined;
   banks.clear();
   void wavetables.reconnected().catch(report);
+  void samples.reconnected().catch(report);
   clearShownBank("— connect to list a library");
   $<HTMLSelectElement>("kind").disabled = true;
   $<HTMLButtonElement>("browse").disabled = true;
@@ -1296,25 +1300,41 @@ provideInstrument(async () => state.device ?? (await chooseDevice(picker, status
 registerDeviceNote(() => deviceNoteFor(state.device));
 wireInstrumentCommands({ status, reread: () => wavetables.refresh() });
 
-/** Which mode the page is in. Sounds, until somebody asks for the other. */
-let wavetableMode = false;
+/**
+ * The sample half of this page: digikit's card store, in a mode of the same two panes.
+ * `samples.ts` has the rest.
+ */
+const samples = wireSamples({
+  device: () => state.device,
+  status,
+});
 
-function setMode(wavetable: boolean): void {
-  wavetableMode = wavetable;
+/** Which mode the page is in. Sounds, until somebody asks for another. */
+type Mode = "sounds" | "wavetable" | "sample";
+let mode: Mode = "sounds";
 
-  if (!wavetable) {
-    // Hands the panes back first, then redraws Sounds mode: the restore puts each element back the
-    // way Sounds mode had it, and the render fills whatever the project and the bank now say.
-    void wavetables.show(false);
+function setMode(next: Mode): void {
+  /*
+   * **Leave first, then enter.** Leaving hands the panes back to Sounds mode at once, and the next
+   * mode saves what Sounds mode shows. Entering from the other mode without leaving it would save
+   * that mode's panes as Sounds mode's.
+   */
+  if (mode === "wavetable") void wavetables.show(false);
+  if (mode === "sample") void samples.show(false);
+  mode = next;
+
+  if (next === "sounds") {
+    // The restore puts each element back the way Sounds mode had it, and the render fills
+    // whatever the project and the bank now say.
     render();
     renderLibrary();
     return;
   }
-  wavetables.show(true).catch(report);
+  (next === "wavetable" ? wavetables : samples).show(true).catch(report);
 }
 
 /**
- * Presets, Kits or Wavetables, from the one dropdown.
+ * Presets, Kits, Wavetables or Samples, from the one dropdown.
  *
  * **It was two controls until 2026-10-14**: Sounds / Wavetables tabs above the panes, and this
  * list choosing presets or kits inside Sounds. The owner read them as two answers to one question
@@ -1325,9 +1345,10 @@ function setMode(wavetable: boolean): void {
  * left disagreeing with what the dropdown says.
  */
 function applyKind(): void {
-  const wavetable = $<HTMLSelectElement>("kind").value === "wavetable";
-  if (wavetable !== wavetableMode) setMode(wavetable);
-  if (!wavetable) clearShownBank(`— press Browse to list ${kind()}s`);
+  const value = $<HTMLSelectElement>("kind").value;
+  const next: Mode = value === "wavetable" ? "wavetable" : value === "sample" ? "sample" : "sounds";
+  if (next !== mode) setMode(next);
+  if (next === "sounds") clearShownBank(`— press Browse to list ${kind()}s`);
 }
 
 // --- finding one of 256 --------------------------------------------------------------------------

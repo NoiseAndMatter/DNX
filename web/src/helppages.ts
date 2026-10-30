@@ -377,8 +377,8 @@ you when this occurs.`,
 instrument. A trig can preset-lock only a preset that is in the pool. The library holds 2,048
 presets.
 
-The list next to **Browse** sets what you work with: **Presets**, **Kits** or **Wavetables**.
-The wavetable sections are at the end of this page.`,
+The list next to **Browse** sets what you work with: **Presets**, **Kits**, **Wavetables** or
+**Samples**. The wavetable and sample sections are at the end of this page.`,
     sections: [
       {
         id: "pool-vs-library",
@@ -728,6 +728,40 @@ three possible replies:
 If the third reply occurs again, close Elektron Transfer and Overbridge. Then try again. Some
 instruments do not tell which functions they have. Then the mode stays off and the warning stays
 on the screen.`,
+      },
+      {
+        id: "sample-store",
+        heading: "The Samples mode",
+        body: `See and manage the samples on the instrument. The samples are in the card store of
+**digikit**. The instrument must run firmware with the digikit runtime. If it does not, the mode
+tells you that the instrument did not answer.
+
+The right pane shows one folder of the store. The line above it shows the free space.
+
+- To open a folder, double-click it.
+- To go to the folder above, push **Up**.
+- To read the store again, push **Refresh**.
+
+**Verify** reads the selected sample from the card again. Then it compares the sha256 of what it
+read with the sha256 that the store lists. It does not change anything.
+
+**New folder…** and **Delete** write to the instrument. Turn on **WRITE** in the toolbar first.
+
+- **Delete** removes the selected sample, or the selected folder if it is empty. DNX keeps no
+  copy of a sample that you delete. Keep your original file.
+- A folder that holds samples cannot be deleted. Delete its samples first.
+- A folder that only the path of a sample makes goes away when you delete its last sample.
+
+The store puts a sample in the first free gap that is large enough. A large sample can be refused
+when the free space is enough in total but no single gap is large enough.
+
+You cannot rename or move a sample yet. You cannot put a sample on the instrument from this page
+yet.`,
+      },
+      {
+        id: "sample-pool",
+        heading: "The sample pool",
+        body: `A project's sample pool is not available yet. The left pane keeps its place for it.`,
       },
     ],
   },

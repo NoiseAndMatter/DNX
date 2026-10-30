@@ -152,6 +152,8 @@ What the protocol does and does not do:
 
 The store holds the sha256 of each file. A link from a sound by sha256 would survive a move. That is not agreed with digikit yet: its sampler design binds by path. DNX's own identity (above) is xxHash64, not sha256.
 
+The Library's **Samples** mode shows the store (`web/src/library/samples.ts`). It lists one folder at a time with the free space, verifies a sample against the card, makes a folder, and deletes a sample or an empty folder. `storelisting.ts` turns a LIST into one folder and holds the store's path rules. A delete keeps no copy, because a copy needs a download, and the owner has not approved one yet. Import comes in a later change. Rename, move and the pool wait on digikit and the owner.
+
 The test in `test/digikitstore.test.ts` checks the transport and the converter. Only digikit's runtime can answer the protocol, so `scripts/digikit-emu-store.mjs` runs the store path against digikit's DN2 emulator.
 
 ## Open questions for format v1
