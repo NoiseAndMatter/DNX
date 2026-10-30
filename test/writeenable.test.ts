@@ -337,7 +337,10 @@ test("every control that writes is marked, and every dangerous one has been cons
     // is exactly the shape of hole this test exists to refuse, so it is named through its exported
     // id and the next test asserts the attribute is really on it. It empties the whole wavetable
     // region, which is why it is the only control in the sheet coloured as dangerous.
-    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    // `samplestoreMkdir` and `samplestoreDelete` joined on 2026-10-30: the Library's Samples mode,
+    // which writes digikit's card store, not the +Drive. Delete asks first and keeps no copy,
+    // because a copy needs a download the owner has not approved, so the question says so.
+    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "samplestoreDelete", "samplestoreMkdir", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 

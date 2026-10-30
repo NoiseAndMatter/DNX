@@ -67,6 +67,8 @@
 /* Each warning the wavetable note carries. The pool's faults are not the page's status line. */
 #wavepoolNote p { margin: .35rem 0; }
 #wavepoolNote .warn { color: var(--salmon); }
+#samplestoreNote p { margin: .35rem 0; }
+#samplestoreNote .warn { color: var(--salmon); }
 
 /* Findings sit under the pool they describe, never beside the library. */
 #findings { margin-top: .8rem; }
@@ -121,6 +123,7 @@
           <option value="preset">Presets</option>
           <option value="kit">Kits</option>
           <option value="wavetable">Wavetables</option>
+          <option value="sample">Samples</option>
         </select>
         <button class="btn" id="browse" disabled>Browse</button>
       </span>
@@ -210,6 +213,11 @@
       -->
       <div class="plan hint" id="wavepoolNote" data-help="library/wavetable-pool-kinds" hidden></div>
       <div class="grid" id="wavepoolGrid" hidden></div>
+
+      <!-- The sample pool: not built yet. The pane keeps its place, as in the Wavetables mode. -->
+      <div class="plan hint" id="samplepoolNote" hidden>
+        <p>Sample pools are not available yet. The store on the right holds the samples.</p>
+      </div>
     </section>
 
     <!--
@@ -241,6 +249,22 @@
       <div class="libtablewrap" id="libraryGrid" hidden></div>
       <!-- The wavetable store: 256 slots, shared by every project, with no banks and no tags. -->
       <div class="libtablewrap" id="wavestoreGrid" hidden></div>
+
+      <!--
+        The sample store: the `samples/` folder of digikit's card store, one folder at a time.
+        Folders are part of the paths, so "Up" and a double-click are the only navigation.
+      -->
+      <div class="bar" id="samplestoreBar" data-help="library/sample-store" hidden>
+        <button class="btn" id="samplestoreUp" disabled title="The folder above this one">Up</button>
+        <code id="samplestorePath"></code>
+        <span class="spacer"></span>
+        <button class="btn" id="samplestoreRefresh" disabled title="Read the store again">Refresh</button>
+        <button class="btn" id="samplestoreVerify" disabled title="Click a sample first.">Verify</button>
+        <button class="btn danger" data-writes-device id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
+        <button class="btn danger" data-writes-device id="samplestoreDelete" disabled title="Click a sample or an empty folder first.">Delete</button>
+      </div>
+      <div class="plan hint" id="samplestoreNote" hidden></div>
+      <div class="libtablewrap" id="samplestoreGrid" hidden></div>
 
       <!--
         **What the table actually looks like, which no row can say.**

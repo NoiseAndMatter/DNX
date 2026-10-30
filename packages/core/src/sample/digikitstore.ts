@@ -16,11 +16,32 @@
  */
 
 import type { SysexPort } from "../device/port.js";
-import { DkSession, hexSha256, type DkInfoFull, type DkTransport } from "../vendor/digikit/dkupload-core.js";
+import {
+  DkError,
+  DkSession,
+  hasCap,
+  hexSha256,
+  storeSpace,
+  type DkEntry,
+  type DkInfoFull,
+  type DkSessionOptions,
+  type DkTransport,
+} from "../vendor/digikit/dkupload-core.js";
 import { Sample, prepareUpload, type Prepared } from "../vendor/digikit/dksample.js";
 import { STORE_FOLDER, openSamples, type SamplesBackend } from "../vendor/digikit/samples.js";
 
-export { STORE_FOLDER, hexSha256, type DkInfoFull, type DkTransport, type Prepared, type SamplesBackend };
+export {
+  DkError,
+  STORE_FOLDER,
+  hasCap,
+  hexSha256,
+  storeSpace,
+  type DkEntry,
+  type DkInfoFull,
+  type DkTransport,
+  type Prepared,
+  type SamplesBackend,
+};
 
 /** The first bytes of every digikit message: SysEx, the non-commercial id 7D, then "dk". */
 const DK_PREFIX = [0xf0, 0x7d, 0x64, 0x6b] as const;
@@ -75,9 +96,17 @@ export function loadConverter(wasm: BufferSource): Promise<Sample> {
   return Sample.create(wasm);
 }
 
-/** The session and the samples back end on one transport. One session per transport. */
-export function openDigikitStore(transport: DkTransport): { session: DkSession; samples: SamplesBackend } {
-  const session = new DkSession(transport);
+/**
+ * The session and the samples back end on one transport. One session per transport.
+ *
+ * `options` reaches the session: a VERIFY of a whole large file needs a longer timeout than the
+ * default 6 s (`verifyTimeoutMs` in `storelisting.ts`).
+ */
+export function openDigikitStore(
+  transport: DkTransport,
+  options?: DkSessionOptions,
+): { session: DkSession; samples: SamplesBackend } {
+  const session = new DkSession(transport, options);
   return { session, samples: openSamples("digikit", { session }) };
 }
 
