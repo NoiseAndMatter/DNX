@@ -69,6 +69,12 @@
 #wavepoolNote .warn { color: var(--salmon); }
 #samplestoreNote p { margin: .35rem 0; }
 #samplestoreNote .warn { color: var(--salmon); }
+/* The import list sits above the store, full width, its buttons under it. */
+#samplestoreStage { display: block; margin: .5rem 0 .8rem; }
+#samplestoreStage .libtable { width: 100%; }
+#samplestoreStage .bar { margin-top: .4rem; }
+#samplestoreStage .warn { color: var(--salmon); }
+#samplestoreStage .libtable td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Findings sit under the pool they describe, never beside the library. */
 #findings { margin-top: .8rem; }
@@ -123,7 +129,7 @@
           <option value="preset">Presets</option>
           <option value="kit">Kits</option>
           <option value="wavetable">Wavetables</option>
-          <option value="sample">Samples</option>
+          <option value="sample" hidden>Samples</option>
         </select>
         <button class="btn" id="browse" disabled>Browse</button>
       </span>
@@ -262,8 +268,23 @@
         <button class="btn" id="samplestoreVerify" disabled title="Click a sample first.">Verify</button>
         <button class="btn danger" data-writes-device id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
         <button class="btn danger" data-writes-device id="samplestoreDelete" disabled title="Click a sample or an empty folder first.">Delete</button>
+        <button class="btn" id="samplestoreImport" disabled title="Read the store first.">Import WAV…</button>
+        <input type="file" id="samplestoreFiles" accept=".wav,audio/wav,audio/x-wav" multiple hidden>
       </div>
       <div class="plan hint" id="samplestoreNote" hidden></div>
+      <!--
+        The import: the WAV files chosen, converted on this computer, with a preview each.
+        Nothing reaches the instrument until Upload.
+      -->
+      <div class="plan" id="samplestoreStage" hidden>
+        <div id="samplestoreStageList"></div>
+        <div class="bar" data-help="library/sample-import">
+          <span class="hint" id="samplestoreStageSum"></span>
+          <span class="spacer"></span>
+          <button class="btn" id="samplestoreClear">Clear</button>
+          <button class="btn danger" data-writes-device id="samplestoreUpload" disabled>Upload</button>
+        </div>
+      </div>
       <div class="libtablewrap" id="samplestoreGrid" hidden></div>
 
       <!--

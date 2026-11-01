@@ -29,6 +29,7 @@ import {
 } from "../vendor/digikit/dkupload-core.js";
 import { Sample, prepareUpload, type Prepared } from "../vendor/digikit/dksample.js";
 import { STORE_FOLDER, openSamples, type SamplesBackend } from "../vendor/digikit/samples.js";
+import { folderPath } from "./storelisting.js";
 
 export {
   DkError,
@@ -141,7 +142,8 @@ export async function putAndVerify(
   await store.samples.put(folder, file, onProgress);
   const check = await store.samples.verify(folder, file);
   if (!check.ok) throw new Error(`VERIFY of ${folder}/${file.name} failed: ${check.message}`);
-  const path = `${STORE_FOLDER}/${folder}/${file.name}`;
+  // `folderPath`, not a template: the top folder is "", and `samples//name` is no path LIST holds.
+  const path = `${folderPath(folder)}/${file.name}`;
   const entry = (await store.session.list(path)).find((e) => e.path === path);
   if (!entry || entry.size !== file.stored.length || entry.sha256 !== check.host) {
     throw new Error(`LIST does not hold ${path} with the size and sha256 sent`);
