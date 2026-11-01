@@ -378,7 +378,8 @@ instrument. A trig can preset-lock only a preset that is in the pool. The librar
 presets.
 
 The list next to **Browse** sets what you work with: **Presets**, **Kits**, **Wavetables** or
-**Samples**. The wavetable and sample sections are at the end of this page.`,
+**Samples**. **Samples** shows only when the instrument runs firmware with the digikit runtime.
+The wavetable and sample sections are at the end of this page.`,
     sections: [
       {
         id: "pool-vs-library",
@@ -733,8 +734,9 @@ on the screen.`,
         id: "sample-store",
         heading: "The Samples mode",
         body: `See and manage the samples on the instrument. The samples are in the card store of
-**digikit**. The instrument must run firmware with the digikit runtime. If it does not, the mode
-tells you that the instrument did not answer.
+**digikit**. The instrument must run firmware with the digikit runtime. DNX asks the instrument
+when you connect it. If the instrument does not answer, the list next to **Browse** does not show
+**Samples**.
 
 The right pane shows one folder of the store. The line above it shows the free space.
 
@@ -745,18 +747,49 @@ The right pane shows one folder of the store. The line above it shows the free s
 **Verify** reads the selected sample from the card again. Then it compares the sha256 of what it
 read with the sha256 that the store lists. It does not change anything.
 
-**New folder…** and **Delete** write to the instrument. Turn on **WRITE** in the toolbar first.
+**New folder…**, **Delete** and **Upload** write to the instrument. Turn on **WRITE** in the
+toolbar first.
 
 - **Delete** removes the selected sample, or the selected folder if it is empty. DNX keeps no
   copy of a sample that you delete. Keep your original file.
 - A folder that holds samples cannot be deleted. Delete its samples first.
-- A folder that only the path of a sample makes goes away when you delete its last sample.
+- A folder goes away when you delete its last sample. This is also true for a folder that you
+  made with **New folder…**.
 
 The store puts a sample in the first free gap that is large enough. A large sample can be refused
 when the free space is enough in total but no single gap is large enough.
 
-You cannot rename or move a sample yet. You cannot put a sample on the instrument from this page
-yet.`,
+You cannot rename or move a sample yet.`,
+      },
+      {
+        id: "sample-import",
+        heading: "Putting samples on the instrument",
+        body: `Import WAV files into the open folder of the store.
+
+1. Open the folder that gets the samples.
+2. Push **Import WAV…**.
+3. Choose one or more WAV files.
+4. Push **Play** next to a file to hear it. DNX plays it on this computer.
+5. Turn on **WRITE** in the toolbar.
+6. Push **Upload**.
+7. Confirm the upload.
+
+DNX converts each file to 16-bit 48 kHz before it sends it. A mono file stays mono, and a stereo
+file stays stereo. **Play** plays the converted audio, which is what the instrument gets.
+
+The list shows each file that DNX cannot send, and why. A name must use ASCII letters, digits,
+spaces and punctuation only. A file with the name of a sample in the folder replaces that sample.
+The list tells you before you upload.
+
+After DNX sends a file, the instrument reads the file again from its card. DNX compares the two.
+The status bar shows each file when it is sent and checked.
+
+**Do not load a project on the instrument during an upload.** A sample that the instrument loads
+during an upload does not load. The store is not damaged. Load the project again after the
+upload.
+
+An upload is slow. A minute of mono audio takes about 30 seconds. A minute of stereo audio takes
+about one minute.`,
       },
       {
         id: "sample-pool",

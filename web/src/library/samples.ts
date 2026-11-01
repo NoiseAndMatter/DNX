@@ -20,10 +20,24 @@
  *
  * ## The writes
  *
- * New folder and Delete write to the store. Each needs the WRITE switch, and Delete asks first.
- * **A delete keeps no copy.** A copy would need a download, and the owner has not approved one
- * yet. So the question says to keep the original file. Rename, move, import and the pool are not
- * here: import comes next, and the rest wait on the owner and digikit.
+ * New folder, Delete and Upload write to the store. Each needs the WRITE switch, and Delete and
+ * Upload ask first. **A delete keeps no copy.** A copy would need a download, and the owner has
+ * not approved one yet. So the question says to keep the original file. Rename, move and the pool
+ * are not here: they wait on the owner and digikit.
+ *
+ * ## Import
+ *
+ * Import WAV converts the chosen files on this computer with digikit's converter
+ * (`web/vendor/dksample.wasm`, 16-bit 48 kHz, mono or stereo as the file is). Nothing is sent yet.
+ * The page shows each file with a preview of the converted audio, and the plan for the open folder
+ * (`sample/importplan.ts`). Upload sends the files one by one, and VERIFY and LIST prove each one
+ * (`putAndVerify`).
+ *
+ * ## Only where the store answers
+ *
+ * The Samples entry of the dropdown is hidden until the instrument answers digikit's INFO. The
+ * page asks once when an instrument connects (`reconnected`), with a one-second try. Firmware
+ * without digikit's runtime does not answer, and the entry stays hidden.
  */
 
 import { askConfirm, askText } from "../dialog.js";
@@ -38,11 +52,16 @@ import {
   DkError,
   dkTransport,
   hasCap,
+  loadConverter,
   openDigikitStore,
+  prepareWav,
+  putAndVerify,
   storeSpace,
   type DkEntry,
   type DkInfoFull,
 } from "@noiseandmatter/dnx-core/sample/digikitstore.js";
+import { type ImportPlan, planImport } from "@noiseandmatter/dnx-core/sample/importplan.js";
+import { readNative } from "@noiseandmatter/dnx-core/sample/nativepcm.js";
 import {
   STORE_FOLDER,
   type StoreFile,
@@ -71,10 +90,20 @@ const SOUNDS_ONLY = [
 ] as const;
 
 /** Elements this mode owns. */
-const OURS = ["samplepoolNote", "samplestoreBar", "samplestoreNote", "samplestoreGrid"] as const;
+const OURS = ["samplepoolNote", "samplestoreBar", "samplestoreNote", "samplestoreStage", "samplestoreGrid"] as const;
 
 /** Controls that reach the instrument, off together while a session runs. */
-const WHILE_BUSY = ["kind", "samplestoreRefresh", "samplestoreUp", "samplestoreVerify", "samplestoreMkdir", "samplestoreDelete"] as const;
+const WHILE_BUSY = [
+  "kind",
+  "samplestoreRefresh",
+  "samplestoreUp",
+  "samplestoreVerify",
+  "samplestoreMkdir",
+  "samplestoreDelete",
+  "samplestoreImport",
+  "samplestoreClear",
+  "samplestoreUpload",
+] as const;
 
 const TITLES = ["leftTitle", "poolSub", "libraryTitle", "librarySub"] as const;
 
@@ -89,9 +118,15 @@ export interface SampleMode {
   show(on: boolean): Promise<void>;
   /** Read the store again. */
   refresh(): Promise<void>;
-  /** Another instrument answered: forget what the last one said. */
-  reconnected(): Promise<void>;
+  /**
+   * Another instrument answered, or none is chosen: forget what the last one said, and ask the new
+   * one whether it has the store. True when it answered.
+   */
+  reconnected(): Promise<boolean>;
 }
+
+/** A converted file waiting for Upload. */
+type Staged = ReturnType<typeof prepareWav>;
 
 /** What the last read found. */
 interface StoreReading {
@@ -125,6 +160,12 @@ export function wireSamples(host: SampleHost): SampleMode {
   const hiddenBefore = new Map<string, boolean>();
   const titlesBefore = new Map<string, string>();
   const helpBefore = new Map<HTMLElement, string>();
+  /** The converted files waiting for Upload, and the files that could not be converted. */
+  let staged: Staged[] = [];
+  let unconverted: { name: string; why: string }[] = [];
+  let converter: ReturnType<typeof loadConverter> | undefined;
+  let audio: AudioContext | undefined;
+  let playing: { name: string; source: AudioBufferSourceNode } | undefined;
 
   function listing(): StoreListing | undefined {
     return reading ? listFolder(reading.entries, folder) : undefined;
@@ -209,6 +250,20 @@ export function wireSamples(host: SampleHost): SampleMode {
         : empty
           ? `Delete the empty folder ${row.name}.`
           : `${row.name} holds samples. Delete them first.`;
+
+    const pick = $<HTMLButtonElement>("samplestoreImport");
+    pick.disabled = !reading;
+    pick.title = reading ? `Choose WAV files for ${folderPath(folder)}/.` : "Read the store first.";
+
+    const plan = currentPlan();
+    const upload = $<HTMLButtonElement>("samplestoreUpload");
+    upload.disabled = !plan || plan.problem !== undefined;
+    upload.title = !plan ? "Choose WAV files first." : plan.problem ?? `Send ${plan.sent} to ${folderPath(folder)}/.`;
+  }
+
+  function currentPlan(): ImportPlan | undefined {
+    if (!reading || staged.length === 0) return undefined;
+    return planImport(reading.entries, folder, staged, reading.free);
   }
 
   function heading(left: string, leftSub: string, right: string, rightSub: string): void {
@@ -242,8 +297,59 @@ export function wireSamples(host: SampleHost): SampleMode {
     where.innerHTML = html;
   }
 
+  function renderStage(): void {
+    const stage = $("samplestoreStage");
+    const plan = currentPlan();
+    stage.hidden = !reading || (staged.length === 0 && unconverted.length === 0);
+    if (stage.hidden) return;
+    const list = $("samplestoreStageList");
+    list.innerHTML = "";
+    const table = document.createElement("table");
+    table.className = "libtable";
+    table.innerHTML = "<thead><tr><th>To import</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
+    const body = document.createElement("tbody");
+    staged.forEach((file, i) => {
+      const row = plan?.files[i];
+      const info = file.info;
+      const tr = document.createElement("tr");
+      tr.className = "occupied";
+      const audioText = info
+        ? `${info.channels === 2 ? "stereo" : "mono"}, ${(info.frames / 48_000).toFixed(2)} s`
+        : "";
+      const state = row?.problem
+        ? `<span class="warn">${escapeHtml(row.problem)}</span>`
+        : row?.replaces
+          ? `<span class="warn">replaces the sample of this name</span>`
+          : "";
+      tr.innerHTML =
+        `<td class="name">${escapeHtml(file.name)}</td><td class="use">${audioText}</td>` +
+        `<td class="n">${kib(file.stored.length)}</td><td>${state}</td><td></td>`;
+      const play = document.createElement("button");
+      play.className = "btn";
+      play.textContent = playing?.name === file.name ? "Stop" : "Play";
+      play.title = "Play the converted audio on this computer.";
+      play.addEventListener("click", () => preview(file));
+      tr.lastElementChild!.append(play);
+      body.append(tr);
+    });
+    for (const bad of unconverted) {
+      const tr = document.createElement("tr");
+      tr.className = "occupied";
+      tr.innerHTML =
+        `<td class="name">${escapeHtml(bad.name)}</td><td class="use"></td><td class="n"></td>` +
+        `<td><span class="warn">${escapeHtml(bad.why)}</span></td><td></td>`;
+      body.append(tr);
+    }
+    table.append(body);
+    list.append(table);
+    $("samplestoreStageSum").textContent = plan
+      ? plan.problem ?? `${plan.sent} ${plan.sent === 1 ? "sample" : "samples"}, ${mib(plan.bytes)}, to ${folderPath(folder)}/`
+      : "No file can be sent.";
+  }
+
   function render(): void {
     if (!shown) return;
+    renderStage();
     $("samplepoolNote").hidden = false;
     $("samplestoreBar").hidden = false;
     $("samplestorePath").textContent = `${folderPath(folder)}/`;
@@ -436,6 +542,139 @@ export function wireSamples(host: SampleHost): SampleMode {
     }
   }
 
+  function stopPreview(): void {
+    if (!playing) return;
+    const { source } = playing;
+    playing = undefined;
+    source.onended = null;
+    source.stop();
+  }
+
+  /** Play `file`'s converted audio here, or stop it when it is the one playing. */
+  function preview(file: Staged): void {
+    const same = playing?.name === file.name;
+    stopPreview();
+    if (same) {
+      renderStage();
+      return;
+    }
+    try {
+      const pcm = readNative(file.stored);
+      audio ??= new AudioContext();
+      const buffer = audio.createBuffer(pcm.channels, Math.max(1, pcm.frames), pcm.rate);
+      pcm.channelData.forEach((data, c) => buffer.getChannelData(c).set(data));
+      const source = audio.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audio.destination);
+      source.onended = () => {
+        if (playing?.source === source) playing = undefined;
+        renderStage();
+      };
+      playing = { name: file.name, source };
+      void audio.resume();
+      source.start();
+    } catch (error) {
+      host.status(`${file.name} cannot be played. ${messageOf(error)}`, "error");
+    }
+    renderStage();
+  }
+
+  /** Convert the chosen WAV files. Nothing is sent. */
+  async function choose(files: readonly File[]): Promise<void> {
+    if (files.length === 0) return;
+    stopPreview();
+    host.status(`Converting ${files.length} ${files.length === 1 ? "file" : "files"}…`);
+    try {
+      converter ??= fetch("vendor/dksample.wasm").then(async (response) => {
+        if (!response.ok) throw new Error(`the converter did not load (${response.status})`);
+        return loadConverter(await response.arrayBuffer());
+      });
+      const sample = await converter;
+      staged = [];
+      unconverted = [];
+      for (const file of files) {
+        try {
+          staged.push(prepareWav(sample, file.name, new Uint8Array(await file.arrayBuffer())));
+        } catch (error) {
+          unconverted.push({ name: file.name, why: messageOf(error) });
+        }
+      }
+    } catch (error) {
+      converter = undefined;
+      host.status(`The files were not converted. ${messageOf(error)}`, "error");
+      return;
+    }
+    render();
+    const plan = currentPlan();
+    host.status(
+      plan && !plan.problem
+        ? `Converted. Press Upload to send ${plan.sent} to ${folderPath(folder)}/.`
+        : "Converted. Some files cannot be sent. The list says why.",
+      plan && !plan.problem ? "ok" : "warn",
+    );
+  }
+
+  function clearStage(): void {
+    stopPreview();
+    staged = [];
+    unconverted = [];
+    render();
+  }
+
+  async function upload(): Promise<void> {
+    const plan = currentPlan();
+    if (!plan || plan.problem) return;
+    const going = staged.filter((_, i) => !plan.files[i]!.problem);
+    const replacing = plan.files.filter((f) => !f.problem && f.replaces).map((f) => f.name);
+    const ok = await askConfirm({
+      title: `Upload ${plan.sent} ${plan.sent === 1 ? "sample" : "samples"} to ${folderPath(folder)}/?`,
+      body: [
+        "DNX checks each file on the card after it is sent.",
+        ...(replacing.length > 0 ? [`This replaces ${replacing.join(", ")}.`] : []),
+        "Do not load a project on the instrument until the upload is done.",
+      ],
+      list: plan.files.filter((f) => !f.problem).map((f) => `${f.name}: ${kib(f.size)}`),
+      confirmLabel: replacing.length > 0 ? "Replace and upload" : "Upload",
+      danger: true,
+    });
+    if (!ok) {
+      host.status("Cancelled. Nothing was sent.", "warn");
+      return;
+    }
+    stopPreview();
+    const into = folder;
+    const sent: string[] = [];
+    try {
+      requireWriteEnabled();
+      const ran = await withStore((store) => whileWriting(async () => {
+        try {
+          for (const file of going) {
+            const n = sent.length + 1;
+            await putAndVerify(store, into, file, (done, total) =>
+              host.status(`Sending ${file.name} (${n} of ${going.length}): ${Math.round((100 * done) / Math.max(1, total))} %`));
+            sent.push(file.name);
+          }
+        } finally {
+          await read(store).catch(() => {});
+        }
+        return true;
+      }));
+      if (ran === undefined) return;
+      staged = [];
+      unconverted = [];
+      render();
+      host.status(`Uploaded ${sent.length} to ${folderPath(into)}/. Each one is verified on the card.`, "ok");
+    } catch (error) {
+      staged = staged.filter((file) => !sent.includes(file.name));
+      render();
+      host.status(
+        `The upload stopped. ${messageOf(error).replace(/([^.])$/, "$1.")}` +
+          (sent.length > 0 ? ` Sent and verified: ${sent.join(", ")}.` : " No file was verified."),
+        "error",
+      );
+    }
+  }
+
   $("samplestoreRefresh").addEventListener("click", () => void refresh());
   $("samplestoreUp").addEventListener("click", () => {
     if (folder !== "") open(folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "");
@@ -443,6 +682,16 @@ export function wireSamples(host: SampleHost): SampleMode {
   $("samplestoreVerify").addEventListener("click", () => void verify());
   $("samplestoreMkdir").addEventListener("click", () => void makeFolder());
   $("samplestoreDelete").addEventListener("click", () => void remove());
+  $("samplestoreImport").addEventListener("click", () => {
+    const input = $<HTMLInputElement>("samplestoreFiles");
+    input.value = "";
+    input.click();
+  });
+  $("samplestoreFiles").addEventListener("change", (event) => {
+    void choose([...((event.target as HTMLInputElement).files ?? [])]);
+  });
+  $("samplestoreClear").addEventListener("click", () => clearStage());
+  $("samplestoreUpload").addEventListener("click", () => void upload());
 
   async function show(on: boolean): Promise<void> {
     if (on) {
@@ -461,16 +710,30 @@ export function wireSamples(host: SampleHost): SampleMode {
     for (const id of SOUNDS_ONLY) $(id).hidden = hiddenBefore.get(id) ?? false;
     for (const id of TITLES) $(id).textContent = titlesBefore.get(id) ?? "";
     for (const id of OURS) $(id).hidden = true;
+    stopPreview();
     restoreHelp();
     shown = false;
   }
 
-  async function reconnected(): Promise<void> {
+  /** Whether this instrument answers digikit, from one quick INFO. */
+  async function answers(): Promise<boolean> {
+    if (!host.device()) return false;
+    try {
+      return (await withStore((store) => store.session.info(true).then(() => true))) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function reconnected(): Promise<boolean> {
     reading = undefined;
     problem = undefined;
     folder = "";
     picked = undefined;
-    if (shown) await refresh();
+    clearStage();
+    const has = await answers();
+    if (shown && has) await refresh();
+    return has;
   }
 
   return { show, refresh, reconnected };

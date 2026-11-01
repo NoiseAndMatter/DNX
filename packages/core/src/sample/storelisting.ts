@@ -91,14 +91,25 @@ export function listFolder(entries: readonly DkEntry[], folder: string): StoreLi
  * One part, so a slash is refused rather than read as two folders.
  */
 export function folderNameProblem(folder: string, name: string): string | undefined {
+  // Room for a slash and a one-letter file name, or the folder can hold nothing.
+  return partProblem("folder", folder, name, 2);
+}
+
+/** Why `name` cannot be a sample in `folder`, or undefined when it can. The rules of a folder name. */
+export function sampleNameProblem(folder: string, name: string): string | undefined {
+  return partProblem("sample", folder, name, 0);
+}
+
+/** One part of a store path. `room` is how many characters must stay free after it. */
+function partProblem(what: "folder" | "sample", folder: string, name: string, room: number): string | undefined {
+  const it = what === "folder" ? "A folder" : "A sample";
   if (name === "") return "Type a name.";
-  if (name.includes("/")) return "A folder name cannot hold a slash.";
-  if (name === "." || name === "..") return "A folder cannot be called . or ..";
-  if (name !== name.trim()) return "A folder name cannot start or end with a space.";
+  if (name.includes("/")) return `${it} name cannot hold a slash.`;
+  if (name === "." || name === "..") return `${it} cannot be called . or ..`;
+  if (name !== name.trim()) return `${it} name cannot start or end with a space.`;
   if (!/^[\x20-\x7e]+$/.test(name)) return "Use letters, digits, spaces and ASCII punctuation only.";
   const inside = cleanFolder(folder) === "" ? name : `${cleanFolder(folder)}/${name}`;
-  // Room for a slash and a one-letter file name, or the folder can hold nothing.
-  if (inside.length + 2 > SAMPLE_PATH_MAX) {
+  if (inside.length + room > SAMPLE_PATH_MAX) {
     return `The path is too long. A sample path holds at most ${SAMPLE_PATH_MAX} characters after ${STORE_FOLDER}/.`;
   }
   return undefined;

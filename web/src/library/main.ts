@@ -562,8 +562,10 @@ async function connect(): Promise<void> {
    * this one, redrawing the mode when the page is in it.
    */
   await wavetables.reconnected();
-  // And the sample store on the card is this instrument's, not the last one's.
-  await samples.reconnected();
+  // And the sample store on the card is this instrument's, not the last one's. The Samples entry
+  // shows only when this instrument answers digikit's store protocol.
+  const hasStore = await samples.reconnected();
+  showSampleEntry(hasStore);
 
   // A Digitone has no /kits on its +Drive: a backup of one lists projects and soundbanks, nothing else.
   const hasKits = device.productId !== ProductId.DN1;
@@ -584,7 +586,7 @@ async function connect(): Promise<void> {
   $<HTMLButtonElement>("driveBrowse").disabled = false;
   status(
     hasKits
-      ? `${device.name} connected. Choose presets, kits, wavetables or samples.`
+      ? `${device.name} connected. Choose ${hasStore ? "presets, kits, wavetables or samples" : "presets, kits or wavetables"}.`
       : `${device.name} connected. It has no kits on its +Drive, so Browse lists its presets.`,
     "ok",
   );
@@ -1238,6 +1240,7 @@ $("whichdevice").addEventListener("change", (event) => {
   banks.clear();
   void wavetables.reconnected().catch(report);
   void samples.reconnected().catch(report);
+  showSampleEntry(false);
   clearShownBank("— connect to list a library");
   $<HTMLSelectElement>("kind").disabled = true;
   $<HTMLButtonElement>("browse").disabled = true;
@@ -1308,6 +1311,21 @@ const samples = wireSamples({
   device: () => state.device,
   status,
 });
+
+/**
+ * The Samples entry of the dropdown, shown only for an instrument whose firmware answers digikit's
+ * store protocol. Without it the entry is hidden, and a page left in Samples mode goes back to
+ * presets.
+ */
+function showSampleEntry(on: boolean): void {
+  const kinds = $<HTMLSelectElement>("kind");
+  const option = kinds.querySelector<HTMLOptionElement>('option[value="sample"]');
+  if (option) option.hidden = !on;
+  if (!on && kinds.value === "sample") {
+    kinds.value = "preset";
+    applyKind();
+  }
+}
 
 /** Which mode the page is in. Sounds, until somebody asks for another. */
 type Mode = "sounds" | "wavetable" | "sample";
