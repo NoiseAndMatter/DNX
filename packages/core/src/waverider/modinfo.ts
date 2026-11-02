@@ -63,7 +63,7 @@ export const MODINFO_VERSION = 1;
 /** `DNMI` at offset 0. */
 export const MODINFO_MAGIC = Uint8Array.of(0x44, 0x4e, 0x4d, 0x49);
 
-/** What the record is today. A longer one is read, which is the point of the length field. */
+/** The record up to Waverider 0.3.7. Later builds carry 512. A longer one reads, because the length field says so. */
 export const MODINFO_BYTES = 256;
 
 /** The route. One file, index 0, write-protected by the session itself. */
@@ -89,6 +89,8 @@ export const INFO = {
   mods: 72,
   /** Where the mod array stops. The four bytes from here are the playable bounds. */
   reserved: 248,
+  /** Mods 12 onward, in a record of `MORE_MODS_FROM_BYTES` or longer. */
+  moreMods: 256,
 } as const;
 
 /**
@@ -125,6 +127,9 @@ export const MOD_ID_BYTES = 12;
 
 /** How many mods a 256-byte record has room for, between `mods` and `reserved`. */
 export const MODS_IN_RECORD = (INFO.reserved - INFO.mods) / MOD_BYTES;
+
+/** The shortest record with the second mod array. A shorter one has its hash or no mods at 256. */
+export const MORE_MODS_FROM_BYTES = 512;
 
 /**
  * One bit per thing DNX does differently.
@@ -357,9 +362,11 @@ export function readModInfo(record: Uint8Array): ModInfo {
   const playable = readPlayable(record, bytes, capabilities);
   const modCount = record[INFO.modCount]!;
   const room = Math.floor((Math.min(bytes, INFO.reserved) - INFO.mods) / MOD_BYTES);
+  const moreRoom =
+    bytes < MORE_MODS_FROM_BYTES ? 0 : Math.floor((bytes - 4 - INFO.moreMods) / MOD_BYTES);
   const mods: ModInfoMod[] = [];
-  for (let i = 0; i < Math.min(modCount, room); i++) {
-    const at = INFO.mods + i * MOD_BYTES;
+  for (let i = 0; i < Math.min(modCount, room + moreRoom); i++) {
+    const at = i < room ? INFO.mods + i * MOD_BYTES : INFO.moreMods + (i - room) * MOD_BYTES;
     const id = text(record, at, MOD_ID_BYTES);
     if (id.length === 0) continue;
     const codeHash = be32(record, at + MOD_ID_BYTES);

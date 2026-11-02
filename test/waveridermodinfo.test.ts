@@ -242,6 +242,40 @@ test("a longer record reads, with its hash at the end rather than at 252", () =>
   assert.equal(info.poolSlots, 128, "the fields it knows still read");
 });
 
+test("a 512-byte record lists mods 12 onward from byte 256, stopping at the count", () => {
+  const eleven = Array.from({ length: 11 }, (_, i) => ({ id: `mod${i + 1}`, hash: 0x1000 + i }));
+  const long = record({ bytes: 512, mods: eleven, modCount: 13 });
+  ascii(long, 256, "twelfth");
+  put32(long, 268, 0x5d24ca05);
+  ascii(long, 272, "thirteenth");
+  ascii(long, 288, "notcounted");
+  put32(long, 508, xxHash32(long.subarray(0, 508)));
+
+  const info = readModInfo(long);
+  assert.equal(info.modCount, 13);
+  assert.equal(info.mods.length, 13);
+  assert.deepEqual(info.mods[10], { id: "mod11", codeHash: 0x100a });
+  assert.deepEqual(info.mods[11], { id: "twelfth", codeHash: 0x5d24ca05 });
+  assert.deepEqual(info.mods[12], { id: "thirteenth" });
+});
+
+test("a count past the room stops at 26 mods, before the hash", () => {
+  const long = record({ bytes: 512, modCount: 40 });
+  for (let at = 256; at < 512; at += 16) ascii(long, at, "x");
+  put32(long, 508, xxHash32(long.subarray(0, 508)));
+
+  const info = readModInfo(long);
+  assert.equal(info.modCount, 40);
+  assert.equal(info.mods.length, 2 + 15, "two low mods and the 15 slots from 256 to 496");
+});
+
+test("a 256-byte record reads nothing past its 11 mods", () => {
+  const eleven = Array.from({ length: 11 }, (_, i) => ({ id: `mod${i + 1}`, hash: 1 }));
+  const info = readModInfo(record({ mods: eleven, modCount: 12 }));
+  assert.equal(info.modCount, 12);
+  assert.equal(info.mods.length, 11);
+});
+
 test("the refusals: not a record, the wrong length, a hash that does not match", () => {
   const notOurs = record();
   notOurs[0] = 0x44 ^ 0xff;
