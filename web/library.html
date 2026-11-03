@@ -210,6 +210,10 @@
         <button class="btn danger" data-writes-device id="wavepoolAdd" disabled title="Click a table in the store on the right, then press this.">Add to pool</button>
         <button class="btn danger" data-writes-device id="wavepoolRemove" disabled title="Click a pool slot that holds a table, then press this. The table stays in the store.">Remove from pool</button>
       </div>
+      <div class="bar" id="wavepoolOriginalsBar" data-help="library/wavetable-originals" hidden>
+        <button class="btn danger" data-writes-device id="wavepoolOriginals" hidden disabled title="Put the original tables in the store">Install</button>
+        <button class="btn danger" data-writes-device id="wavepoolKeepOld" hidden disabled title="For a project saved on a build with built-in tables: put Harm. in pool slot 1 and move the other tables up one">Keep old TBL values</button>
+      </div>
       <!--
         **Above the grid, because it is the answer to what the grid shows.** The note names the
         kind of pool (none, follows the store, a list) and the missing tables. Under 128 cells it

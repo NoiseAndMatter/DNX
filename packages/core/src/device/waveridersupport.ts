@@ -84,6 +84,8 @@ export interface WaveriderFeatures {
    * not a yes.
    */
   erase: boolean;
+  /** The build plays pool tables only, so a `TBL` number that names no table is silent. */
+  poolOnly: boolean;
   /** Rename in place. Off whenever it is not known to be there. */
   rename: boolean;
   /**
@@ -175,6 +177,7 @@ export function featuresFrom(roots: readonly string[], info?: ModInfo): Waveride
       // A build with no capabilities record has never claimed the route, and the control empties
       // the whole region. Silence is not a yes for this one.
       erase: false,
+      poolOnly: false,
     };
   }
 
@@ -193,6 +196,7 @@ export function featuresFrom(roots: readonly string[], info?: ModInfo): Waveride
     capabilitiesKnown: true,
     // The bit and the route both, as above. `/wavepool/129` lives on the pool route.
     erase: info.can.erase && poolRoute,
+    poolOnly: info.can.poolOnly,
     poolSlots: info.poolSlots,
     nameChars: { pool: info.poolNameChars, shown: info.shownNameChars },
     ...(info.playable === undefined ? {} : { playable: info.playable }),

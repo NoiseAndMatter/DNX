@@ -38,6 +38,7 @@ import { type PoolReading } from "@noiseandmatter/dnx-core/device/wavepoolread.j
 import { deleteTableSlot } from "@noiseandmatter/dnx-core/device/waveriderdelete.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { whileWriting } from "../writing.js";
+import { emptyEntryPlays } from "@noiseandmatter/dnx-core/waverider/originaltables.js";
 
 export interface TableDeleteHost {
   device(): ConnectedDevice | undefined;
@@ -46,6 +47,8 @@ export interface TableDeleteHost {
   projectSlot(): number;
   /** The store slot the preview is showing, which is the one this acts on. */
   previewSlot(): number | undefined;
+  /** The instrument reports `poolOnly`, which changes what a named slot plays afterwards. */
+  poolOnly(): boolean;
   status: StatusWriter;
   /**
    * Hold the pane while this module talks to the instrument, and let it go afterwards.
@@ -103,8 +106,8 @@ export function wireTableDelete(host: TableDeleteHost): TableDeleting {
           `${named.map((index) => shownOf(index)).join(", ")} of ${where} ` +
           `${named.length === 1 ? "names" : "name"} this table. ` +
           `${named.length === 1 ? "It" : "They"} will read MISSING afterwards, and a sound whose ` +
-          `TBL reads ${named.map((index) => tblLabel(index)).join(" or ")} will play the ` +
-          `built-in Prim.`,
+          `TBL reads ${named.map((index) => tblLabel(index)).join(" or ")} will play ` +
+          `${emptyEntryPlays(host.poolOnly())}${host.poolOnly() ? "." : ""}`,
       );
     } else {
       lines.push(`No pool slot of ${where} names this table.`);
