@@ -43,6 +43,7 @@ import { claimDevice, deviceJobRefusal } from "./devicejob.js";
 import { type ConnectedDevice, apiTransport } from "./devicesource.js";
 import { reachInstrument } from "./instrument.js";
 import { readStoreListing } from "@noiseandmatter/dnx-core/device/wavepoolread.js";
+import { emptyEntryPlays } from "@noiseandmatter/dnx-core/waverider/originaltables.js";
 import { FolderSaveError, folderState, folderSupported, saveFileToFolder, whereSaved } from "./dnxfolder.js";
 import { pageMessageIds } from "./messageids.js";
 import { type CommandOffer, type JobReport, registerInstrumentCommand } from "./settings.js";
@@ -105,6 +106,9 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
     return { run };
   }
 
+  /** What the last gate answer said, for the question's sentence about an emptied `TBL`. */
+  let poolOnly = false;
+
   /**
    * What this build says about its wavetable store, asked now unless a tool already knows.
    *
@@ -118,6 +122,7 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
       report.say("Asking this instrument what it can do…");
       support = await askWaveriderSupport({ transport: apiTransport(device), ids: pageMessageIds });
     }
+    poolOnly = support.state === "supported" && support.features.poolOnly;
     if (support.state === "unsupported") {
       return "This instrument has no wavetable store, so there is nothing here to erase.";
     }
@@ -168,8 +173,8 @@ export function wireWavetableErase(host: DeviceCommandHost): void {
        */
       `Your projects, sounds and kits are not in this region and are not touched — a pool is a ` +
         `record on the +Drive rather than part of a project file. What stays behind is the TBL ` +
-        `number on each sound: it keeps the value it has, and plays the built-in Prim, because ` +
-        `the pool entry it named is gone.`,
+        `number on each sound: it keeps the value it has, and plays ` +
+        `${emptyEntryPlays(poolOnly)}${poolOnly ? "." : ""} The pool entry it named is gone.`,
       `FORMAT +DRIVE and a factory reset do not reach this region, which is why this exists.`,
       `Run it before putting stock firmware back on. Stock has no route to this, so flashing ` +
         `stock first means flashing Waverider again to erase, and stock again afterwards.`,

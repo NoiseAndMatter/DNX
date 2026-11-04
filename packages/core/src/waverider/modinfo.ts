@@ -166,6 +166,8 @@ export const CAPABILITY = {
    * do it — the worst kind of dead control, because the thing it claims to do is destructive.
    */
   erase: 0x80,
+  /** The build has no tables of its own: `TBL` item 0 is silence, and `T:001` is item 1. */
+  poolOnly: 0x100,
 } as const;
 
 /** `0x08` meant `delete` in rev 1 and said nothing. Named so that nothing reuses it. */
@@ -179,6 +181,7 @@ const KNOWN_CAPABILITIES =
   CAPABILITY.page |
   CAPABILITY.playable |
   CAPABILITY.erase |
+  CAPABILITY.poolOnly |
   RETIRED_CAPABILITY;
 
 export interface ModInfoMod {
@@ -196,6 +199,7 @@ export interface ModInfoCapabilities {
   page: boolean;
   playable: boolean;
   erase: boolean;
+  poolOnly: boolean;
 }
 
 export interface ModInfo {
@@ -385,6 +389,7 @@ export function readModInfo(record: Uint8Array): ModInfo {
       page: (capabilities & CAPABILITY.page) !== 0,
       playable: (capabilities & CAPABILITY.playable) !== 0,
       erase: (capabilities & CAPABILITY.erase) !== 0,
+      poolOnly: (capabilities & CAPABILITY.poolOnly) !== 0,
     },
     unknown: capabilities & ~KNOWN_CAPABILITIES,
     poolSlots: be16(record, INFO.poolSlots),

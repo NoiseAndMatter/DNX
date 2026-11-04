@@ -263,7 +263,7 @@ test("removing from a pool warns that the slot goes quiet and becomes the next h
    * anything, nothing renumbers, and the empty slot is where the next add lands.
    */
   assert.match(POOLWRITE, /clearInPool/, "the removal should use the shared arithmetic");
-  assert.match(POOLWRITE, /play the built-in Prim/, "it must say what the sounds will do");
+  assert.match(POOLWRITE, /play \$\{emptyEntryPlays\(host\.poolOnly\(\)\)\}/, "it must say what the sounds will do");
   assert.match(POOLWRITE, /Nothing renumbers/, "it must say the later slots do not move");
   assert.match(POOLWRITE, /the next table added with no slot chosen lands here/,
     "it must say the empty slot is the next hole");

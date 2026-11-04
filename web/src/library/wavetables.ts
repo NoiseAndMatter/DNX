@@ -58,6 +58,7 @@ import { paintWaterfall } from "./waterfallview.js";
 import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { STOCK_BOUNDS, type FitBounds } from "@noiseandmatter/dnx-core/waverider/fit.js";
 import { wireImport } from "./importstage.js";
+import { wireOriginalTables } from "./originaltables.js";
 import { wirePoolWrite } from "./poolwrite.js";
 import { wireTableDelete } from "./tabledelete.js";
 import { provideWaveriderSupport } from "../wavetableerase.js";
@@ -103,6 +104,7 @@ const SOUNDS_ONLY = [
 /** Elements this mode owns. */
 const OURS = [
   "wavepoolBar",
+  "wavepoolOriginalsBar",
   "wavepoolGrid",
   "wavepoolNote",
   "wavestoreGrid",
@@ -127,6 +129,7 @@ export interface WavetableMode {
 
 export function wireWavetables(host: WavetableHost): WavetableMode {
   let support: WaveriderSupport | undefined;
+  const poolOnly = (): boolean => support?.state === "supported" && support.features.poolOnly;
   let reading: PoolReading | undefined;
   /** The pool index last clicked, so its note stays on screen. */
   let picked: number | undefined;
@@ -282,6 +285,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     projectSlot: () => Number(projects().value),
     pickedSlots: () => chosenSlots(),
     pickedIndex: () => picked,
+    poolOnly,
     status: host.status,
     lock,
     reread: refresh,
@@ -300,9 +304,22 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     reading: () => reading,
     projectSlot: () => Number(projects().value),
     previewSlot: () => previewSlot,
+    poolOnly,
     status: host.status,
     lock,
     reread: refresh,
+  });
+
+  const originals = wireOriginalTables({
+    device: () => host.device(),
+    reading: () => reading,
+    poolOnly,
+    claimed: () => staging.staged(),
+    bounds: storeBounds,
+    status: host.status,
+    lock,
+    reread: refresh,
+    keepOldValues: (harmSlot) => poolWriting.keepOldValues(harmSlot),
   });
 
   /**
@@ -406,6 +423,8 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     "wavepoolRefresh",
     "wavepoolAdd",
     "wavepoolRemove",
+    "wavepoolOriginals",
+    "wavepoolKeepOld",
     "waveTableDelete",
     "wavimportWrite",
     "wavimportClear",
@@ -448,6 +467,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (!on) {
       poolWriting.redraw();
       tableDeleting.redraw();
+      originals.redraw();
     }
     return true;
   }
@@ -460,8 +480,9 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
     if (on) {
       poolWriting.redraw();
       tableDeleting.redraw();
+      originals.redraw();
     } else {
-      for (const id of ["wavepoolAdd", "wavepoolRemove", "waveTableDelete"]) {
+      for (const id of ["wavepoolAdd", "wavepoolRemove", "waveTableDelete", "wavepoolOriginals", "wavepoolKeepOld"]) {
         $<HTMLButtonElement>(id).disabled = true;
       }
     }
@@ -916,6 +937,7 @@ export function wireWavetables(host: WavetableHost): WavetableMode {
       renderPool();
       poolWriting.redraw();
       tableDeleting.redraw();
+      originals.redraw();
       host.status(
         `${describePool(reading.summary)}${
           reading.unlisted === 0

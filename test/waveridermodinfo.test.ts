@@ -115,6 +115,7 @@ test("every field the spec names reads back", () => {
     page: true,
     playable: false,
     erase: false,
+    poolOnly: false,
   });
   assert.equal(info.unknown, 0);
   assert.equal(info.playable, undefined, "no bit, so no bounds, whatever 248..251 hold");
@@ -240,6 +241,15 @@ test("a longer record reads, with its hash at the end rather than at 252", () =>
   const info = readModInfo(long);
   assert.equal(info.bytes, 512);
   assert.equal(info.poolSlots, 128, "the fields it knows still read");
+});
+
+test("bit 0x100 reads as poolOnly, and is no unknown bit", () => {
+  const info = readModInfo(record({ capabilities: 0x137 }));
+  assert.equal(info.can.poolOnly, true);
+  assert.equal(info.unknown, 0);
+  assert.equal(featuresFrom(["waverider", "wavepool", "modinfo"], info).poolOnly, true);
+  assert.equal(featuresFrom(["waverider", "wavepool", "modinfo"], readModInfo(record())).poolOnly, false);
+  assert.equal(featuresFrom(["waverider", "wavepool"]).poolOnly, false, "no record is no claim");
 });
 
 test("a 512-byte record lists mods 12 onward from byte 256, stopping at the count", () => {

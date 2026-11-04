@@ -56,6 +56,10 @@ import { POOL_ENTRIES } from "@noiseandmatter/dnx-core/waverider/pool.js";
 import { readPoolFile } from "@noiseandmatter/dnx-core/waverider/poolfile.js";
 import { tblLabel } from "@noiseandmatter/dnx-core/waverider/poolview.js";
 import { whileWriting } from "../writing.js";
+import {
+  emptyEntryPlays,
+  keepOldTblValues,
+} from "@noiseandmatter/dnx-core/waverider/originaltables.js";
 
 export interface PoolWriteHost {
   device(): ConnectedDevice | undefined;
@@ -73,6 +77,8 @@ export interface PoolWriteHost {
   pickedSlots(): readonly number[];
   /** The pool index the left-hand grid has selected, when one is selected. */
   pickedIndex(): number | undefined;
+  /** The instrument reports `poolOnly`, which changes what an emptied slot plays. */
+  poolOnly(): boolean;
   status: StatusWriter;
   /**
    * Hold the pane while this module talks to the instrument, and let it go afterwards.
@@ -96,6 +102,8 @@ export interface PoolWriting {
    * looks right on screen and plays the wrong table on the instrument.
    */
   addAt(storeSlots: readonly number[], firstIndex?: number): Promise<void>;
+  /** Put Harm. in pool slot 1 and move the rest up one, after a question. See `keepOldTblValues`. */
+  keepOldValues(harmSlot: number): Promise<void>;
   /**
    * Write a saved pool list back to the project on screen: the copy the erase or a pool write
    * saved. `fileName` names it in the question. The list is the copy's, whole.
@@ -359,7 +367,7 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
           ? ` The table stays in the store and every other project keeps it.`
           : ` That store slot is empty anyway — this clears an entry pointing at a table that is` +
             ` already gone.`),
-      `Any sound whose TBL reads ${tblLabel(index)} will play the built-in Prim. from then on. ` +
+      `Any sound whose TBL reads ${tblLabel(index)} will play ${emptyEntryPlays(host.poolOnly())} from then on. ` +
         `Nothing renumbers: the slots after this one stay exactly where they are, and this one ` +
         `becomes the first free slot, so the next table added with no slot chosen lands here.`,
     ];
@@ -538,6 +546,42 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       (last === first ? "" : ""));
   }
 
+  async function keepOldValues(harmSlot: number): Promise<void> {
+    const device = host.device();
+    const reading = host.reading();
+    if (!device || !reading || writing) return;
+
+    let entries;
+    try {
+      entries = keepOldTblValues(reading.record.entries, harmSlot);
+    } catch (error: unknown) {
+      host.status(String(error instanceof Error ? error.message : error), "error");
+      return;
+    }
+
+    const where = host.projectSlot() === 0 ? "the working project" : `project slot ${host.projectSlot()}`;
+    const ok = await askConfirm({
+      title: `Move the pool of ${where} up one slot?`,
+      body: [
+        `Store slot ${describeTable(harmSlot)} goes into pool slot 1. Each table in the pool moves ` +
+          `up one slot.`,
+        `Do this only for a project saved on a build with built-in tables. Its sounds then keep ` +
+          `their tables, and a sound that played Prim. plays nothing.`,
+        `On any other project, every sound with a table changes to a different table.`,
+        `The 512-byte record being replaced is saved as a file first, which is the only undo there is.`,
+      ],
+      confirmLabel: "Move the pool",
+      danger: true,
+    });
+    if (!ok) {
+      host.status("Cancelled — nothing was sent.", "warn");
+      return;
+    }
+
+    await send(device, reading, entries, () =>
+      `Pool slot 1 now names store slot ${harmSlot}. The other tables moved up one.`);
+  }
+
   /** "pool slots 5 to 7", or the individual numbers when a press scattered them among the free. */
   function describeSlots(landed: readonly Placed[]): string {
     const indices = landed.map((one) => one.index);
@@ -604,5 +648,5 @@ export function wirePoolWrite(host: PoolWriteHost): PoolWriting {
       `The pool of ${where} is restored from ${fileName}.`);
   }
 
-  return { redraw, addAt, describeDrop, restore };
+  return { redraw, addAt, keepOldValues, describeDrop, restore };
 }

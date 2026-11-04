@@ -494,7 +494,7 @@ The **TBL** setting of a sound selects a pool slot. The pool slot refers to a st
   this number.
 
 On the instrument, **TBL** shows **T:002** for pool slot 2. Below **T:001** are the two built-in
-waveforms, **PRIM** and **HARM**.
+waveforms, **PRIM** and **HARM**. Firmware with no built-in tables shows no table below **T:001**.
 
 One table can be in store slot 9 and pool slot 2. In a different project, the same table can be
 in a different pool slot. Each cell shows its store slot and its pool slot.`,
@@ -597,6 +597,40 @@ in one project and pool slot 40 in a different project. When you add a table to 
 pools do not change.`,
       },
       {
+        id: "wavetable-originals",
+        heading: "Firmware with no built-in tables: Prim. and Harm.",
+        body: `Some Waverider firmware has no built-in tables. It plays only tables from the pool. On
+this firmware, DNX can put the two original tables, **Prim.** and **Harm.**, in the store. DNX
+does not do this until you confirm.
+
+**To install the tables:**
+
+1. Choose **Wavetables** next to **Browse**.
+2. Turn on **WRITE** in the tool row.
+3. Push **Install Prim. and Harm.** The button shows only if a table is not in the store.
+4. Confirm.
+
+To play a table, add it to the pool of a project.
+
+**To keep the tables of a project that you saved on firmware with built-in tables:**
+
+1. Install the tables.
+2. Choose the project in the **Project** list.
+3. Turn on **WRITE** in the tool row.
+4. Push **Keep old TBL values**, then confirm.
+
+**Harm.** goes into pool slot 1, and each other table moves up one slot. The **TBL** number of each
+sound then plays the same table as before.
+
+- A sound that played **Prim.** plays nothing. Set its **TBL** again.
+- **Do not do this on a project that you made on firmware with no built-in tables.** Each sound
+  with a table then plays a different table.
+- DNX refuses when pool slot 128 holds a table. Remove that table first.
+
+DNX saves the current pool as a file before it writes. To undo the change, drop that file onto the
+pool.`,
+      },
+      {
         id: "wavetable-shape",
         heading: "Choosing the shape of a table",
         body: `**waves** is the number of frames in the table. **points** is the length of each frame.
@@ -620,7 +654,8 @@ project file. To read a pool, connect the instrument.
 The line below the pool shows the kind of pool:
 
 - **No pool of its own.** The project plays **no** wavetables. A sound with a **TBL** number plays
-  the built-in **PRIM** until you add tables to the pool.
+  the built-in **PRIM** until you add tables to the pool. On firmware with no built-in tables, the
+  sound plays nothing.
 - **Follows the store.** The project plays all stored tables in store-slot order. It also plays
   new tables when you add them to the store.
 - **A list.** The pool has the slots that a person chose, on the instrument or in DNX.
@@ -677,7 +712,8 @@ Before you start:
 2. Push **Remove from pool**.
 
 The table stays in the store, and the other projects keep it. The slot becomes empty. A sound with
-that **TBL** number plays the built-in **PRIM**. The other slots do not move. If you do not select
+that **TBL** number plays the built-in **PRIM**, or nothing on firmware with no built-in tables.
+The other slots do not move. If you do not select
 a slot, the next **Add to pool** uses this empty slot.
 
 **To delete a table from the instrument:**
@@ -1100,7 +1136,8 @@ remove them. If you install it first, you must install the Waverider firmware ag
 **The erase clears the pool of all projects.** The pools are on the +Drive, not in the project
 files. DNX copies them before the erase. The erase does not change your projects, sounds or kits.
 
-**The TBL setting of each sound does not change.** These sounds play the built-in **PRIM**. After
+**The TBL setting of each sound does not change.** These sounds play the built-in **PRIM**, or nothing on firmware with no built-in
+tables. After
 you restore a wavetable, set the sounds to it again.`,
       },
     ],
