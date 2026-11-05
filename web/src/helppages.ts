@@ -774,17 +774,21 @@ on the screen.`,
 when you connect it. If the instrument does not answer, the list next to **Browse** does not show
 **Samples**.
 
-The right pane shows one folder of the store. The line above it shows the free space.
+The right pane shows the whole store as an outline. The line above it shows the free space.
 
-- To open a folder, double-click it.
-- To go to the folder above, push **Up**.
+- To open a folder, click it. To close an open folder, click it again.
+- To find a sample or a folder, type in the search box.
 - To read the store again, push **Refresh**.
+
+New files and new folders go to the selected folder. Its path is next to the search box.
 
 **Verify** reads the selected sample from the card again. Then it compares the sha256 of what it
 read with the sha256 that the store lists. It does not change anything.
 
-**New folder…**, **Delete** and **Upload** write to the instrument. Turn on **WRITE** in the
-toolbar first.
+**+ folder**, **New folder…**, **Delete** and **Upload** write to the instrument. Turn on **WRITE**
+in the toolbar first.
+
+**+ folder** on a row makes a folder inside that row's folder.
 
 - **Delete** removes the selected sample, or the selected folder if it is empty. DNX keeps no
   copy of a sample that you delete. Keep your original file.
@@ -800,19 +804,23 @@ You cannot rename or move a sample yet.`,
       {
         id: "sample-import",
         heading: "Putting samples on the instrument",
-        body: `Import WAV files into folders of the store.
+        body: `Put WAV files in folders of the store.
 
-1. Open the folder that gets the samples.
-2. Push **Import WAV…**.
-3. Choose one or more WAV files.
-4. For another folder, open it and do steps 2 and 3 again.
-5. Push **Play** next to a file to hear it. DNX plays it on this computer.
-6. Turn on **WRITE** in the toolbar.
-7. Push **Upload**.
-8. Confirm the upload.
+1. Drop WAV files or a folder on a folder of the store.
+2. For another folder, do step 1 again.
+3. Push **Play** next to a file to hear it. DNX plays it on this computer.
+4. Turn on **WRITE** in the toolbar.
+5. Push **Upload**.
+6. Confirm the upload.
 
-Each file stays with the folder that was open when you chose it. The list shows that folder. To
-take one file off the list, push **Remove**. To take all files off the list, push **Clear**.
+You can also select a folder of the store, push **Import WAV…**, and choose files. A drop on the
+left pane or on an empty part of the store goes to the selected folder.
+
+A folder that you drop keeps its subfolders. DNX adds only its WAV files.
+
+The left pane lists the files to send, and the folder of each file. To send a file to another
+folder, drag its row to that folder. To take one file off the list, push **Remove**. To take all
+files off the list, push **Clear**.
 
 DNX converts each file to 16-bit 48 kHz before it sends it. A mono file stays mono, and a stereo
 file stays stereo. **Play** plays the converted audio, which is what the instrument gets.
@@ -830,11 +838,6 @@ upload.
 
 An upload is slow. A minute of mono audio takes about 30 seconds. A minute of stereo audio takes
 about one minute.`,
-      },
-      {
-        id: "sample-pool",
-        heading: "The sample pool",
-        body: `A project's sample pool is not available yet. The left pane keeps its place for it.`,
       },
     ],
   },
