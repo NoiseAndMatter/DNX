@@ -29,8 +29,10 @@
  *
  * Import WAV converts the chosen files on this computer with digikit's converter
  * (`web/vendor/dksample.wasm`, 16-bit 48 kHz, mono or stereo as the file is). Nothing is sent yet.
- * The page shows each file with a preview of the converted audio, and the plan for the open folder
- * (`sample/importplan.ts`). Upload sends the files one by one, and VERIFY and LIST prove each one
+ * The page shows each file with a preview of the converted audio, and the plan
+ * (`sample/importplan.ts`). **Each file keeps the folder that was open when it was chosen.** Opening
+ * another folder does not move it, and a second Import adds to the list, so one Upload can fill
+ * several folders. Upload sends the files one by one, and VERIFY and LIST prove each one
  * (`putAndVerify`).
  *
  * ## Only where the store answers
@@ -125,8 +127,8 @@ export interface SampleMode {
   reconnected(): Promise<boolean>;
 }
 
-/** A converted file waiting for Upload. */
-type Staged = ReturnType<typeof prepareWav>;
+/** A converted file waiting for Upload, and the folder that gets it. */
+type Staged = ReturnType<typeof prepareWav> & { folder: string };
 
 /** What the last read found. */
 interface StoreReading {
@@ -165,7 +167,7 @@ export function wireSamples(host: SampleHost): SampleMode {
   let unconverted: { name: string; why: string }[] = [];
   let converter: ReturnType<typeof loadConverter> | undefined;
   let audio: AudioContext | undefined;
-  let playing: { name: string; source: AudioBufferSourceNode } | undefined;
+  let playing: { file: Staged; source: AudioBufferSourceNode } | undefined;
 
   function listing(): StoreListing | undefined {
     return reading ? listFolder(reading.entries, folder) : undefined;
@@ -214,6 +216,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     const grid = $("samplestoreGrid");
     grid.classList.toggle("locked", on);
     grid.setAttribute("aria-busy", String(on));
+    for (const button of $("samplestoreStageList").querySelectorAll<HTMLButtonElement>(".stageRemove")) button.disabled = on;
     if (!on) controls();
   }
 
@@ -258,12 +261,34 @@ export function wireSamples(host: SampleHost): SampleMode {
     const plan = currentPlan();
     const upload = $<HTMLButtonElement>("samplestoreUpload");
     upload.disabled = !plan || plan.problem !== undefined;
-    upload.title = !plan ? "Choose WAV files first." : plan.problem ?? `Send ${plan.sent} to ${folderPath(folder)}/.`;
+    upload.title = !plan ? "Choose WAV files first." : plan.problem ?? `Send ${plan.sent} to ${destination()}.`;
   }
 
   function currentPlan(): ImportPlan | undefined {
     if (!reading || staged.length === 0) return undefined;
-    return planImport(reading.entries, folder, staged, reading.free);
+    return planImport(reading.entries, staged, reading.free);
+  }
+
+  /** Where the sendable files go: one folder by name, or how many folders. */
+  function destination(): string {
+    const plan = currentPlan();
+    const folders = new Set(staged.filter((_, i) => !plan?.files[i]?.problem).map((file) => file.folder));
+    return folders.size === 1 ? `${folderPath([...folders][0]!)}/` : `${folders.size} folders`;
+  }
+
+  /** A remove button for a row of the import list. */
+  function removeButton(remove: () => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = "btn stageRemove";
+    button.textContent = "Remove";
+    button.title = "Take this file off the list. Nothing is sent.";
+    button.disabled = busy;
+    button.addEventListener("click", () => {
+      if (busy) return;
+      remove();
+      render();
+    });
+    return button;
   }
 
   function heading(left: string, leftSub: string, right: string, rightSub: string): void {
@@ -306,7 +331,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     list.innerHTML = "";
     const table = document.createElement("table");
     table.className = "libtable";
-    table.innerHTML = "<thead><tr><th>To import</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>To import</th><th>Folder</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
     const body = document.createElement("tbody");
     staged.forEach((file, i) => {
       const row = plan?.files[i];
@@ -322,28 +347,39 @@ export function wireSamples(host: SampleHost): SampleMode {
           ? `<span class="warn">replaces the sample of this name</span>`
           : "";
       tr.innerHTML =
-        `<td class="name">${escapeHtml(file.name)}</td><td class="use">${audioText}</td>` +
+        `<td class="name">${escapeHtml(file.name)}</td>` +
+        `<td class="use"><code>${escapeHtml(folderPath(file.folder))}/</code></td><td class="use">${audioText}</td>` +
         `<td class="n">${kib(file.stored.length)}</td><td>${state}</td><td></td>`;
       const play = document.createElement("button");
       play.className = "btn";
-      play.textContent = playing?.name === file.name ? "Stop" : "Play";
+      play.textContent = playing?.file === file ? "Stop" : "Play";
       play.title = "Play the converted audio on this computer.";
       play.addEventListener("click", () => preview(file));
-      tr.lastElementChild!.append(play);
+      tr.lastElementChild!.append(
+        play,
+        " ",
+        removeButton(() => {
+          if (playing?.file === file) stopPreview();
+          staged = staged.filter((other) => other !== file);
+        }),
+      );
       body.append(tr);
     });
     for (const bad of unconverted) {
       const tr = document.createElement("tr");
       tr.className = "occupied";
       tr.innerHTML =
-        `<td class="name">${escapeHtml(bad.name)}</td><td class="use"></td><td class="n"></td>` +
+        `<td class="name">${escapeHtml(bad.name)}</td><td class="use"></td><td class="use"></td><td class="n"></td>` +
         `<td><span class="warn">${escapeHtml(bad.why)}</span></td><td></td>`;
+      tr.lastElementChild!.append(removeButton(() => {
+        unconverted = unconverted.filter((other) => other !== bad);
+      }));
       body.append(tr);
     }
     table.append(body);
     list.append(table);
     $("samplestoreStageSum").textContent = plan
-      ? plan.problem ?? `${plan.sent} ${plan.sent === 1 ? "sample" : "samples"}, ${mib(plan.bytes)}, to ${folderPath(folder)}/`
+      ? plan.problem ?? `${plan.sent} ${plan.sent === 1 ? "sample" : "samples"}, ${mib(plan.bytes)}, to ${destination()}`
       : "No file can be sent.";
   }
 
@@ -398,18 +434,21 @@ export function wireSamples(host: SampleHost): SampleMode {
         : `<td class="name">${escapeHtml(row.name)}/</td>` +
           `<td class="n">${row.files === 0 ? "empty" : `${row.files} ${row.files === 1 ? "sample" : "samples"}`}</td>` +
           `<td class="use"><span class="hint">folder</span></td>`;
-      tr.addEventListener("click", () => {
+      /*
+       * **The second click opens, not `dblclick`.** Each click rebuilds this table, so `dblclick`
+       * arrives on a row that has already left the page. Whether a browser still delivers it there
+       * is not something to rely on, and a click always lands on the row under the pointer.
+       */
+      tr.addEventListener("click", (event) => {
         if (busy) return;
+        if (!isFile(row) && event.detail >= 2) {
+          open(row.path.slice(STORE_FOLDER.length + 1));
+          return;
+        }
         picked = row.path;
         render();
       });
-      if (!isFile(row)) {
-        tr.title = "Double-click to open";
-        tr.addEventListener("dblclick", () => {
-          if (busy) return;
-          open(row.path.slice(STORE_FOLDER.length + 1));
-        });
-      }
+      if (!isFile(row)) tr.title = "Double-click to open";
       body.append(tr);
     }
     if (body.childElementCount === 0) {
@@ -552,7 +591,7 @@ export function wireSamples(host: SampleHost): SampleMode {
 
   /** Play `file`'s converted audio here, or stop it when it is the one playing. */
   function preview(file: Staged): void {
-    const same = playing?.name === file.name;
+    const same = playing?.file === file;
     stopPreview();
     if (same) {
       renderStage();
@@ -570,7 +609,7 @@ export function wireSamples(host: SampleHost): SampleMode {
         if (playing?.source === source) playing = undefined;
         renderStage();
       };
-      playing = { name: file.name, source };
+      playing = { file, source };
       void audio.resume();
       source.start();
     } catch (error) {
@@ -579,7 +618,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     renderStage();
   }
 
-  /** Convert the chosen WAV files. Nothing is sent. */
+  /** Convert the chosen WAV files and add them to the list, for the open folder. Nothing is sent. */
   async function choose(files: readonly File[]): Promise<void> {
     if (files.length === 0) return;
     stopPreview();
@@ -590,11 +629,9 @@ export function wireSamples(host: SampleHost): SampleMode {
         return loadConverter(await response.arrayBuffer());
       });
       const sample = await converter;
-      staged = [];
-      unconverted = [];
       for (const file of files) {
         try {
-          staged.push(prepareWav(sample, file.name, new Uint8Array(await file.arrayBuffer())));
+          staged.push({ ...prepareWav(sample, file.name, new Uint8Array(await file.arrayBuffer())), folder });
         } catch (error) {
           unconverted.push({ name: file.name, why: messageOf(error) });
         }
@@ -608,7 +645,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     const plan = currentPlan();
     host.status(
       plan && !plan.problem
-        ? `Converted. Press Upload to send ${plan.sent} to ${folderPath(folder)}/.`
+        ? `Converted. Press Upload to send ${plan.sent} to ${destination()}.`
         : "Converted. Some files cannot be sent. The list says why.",
       plan && !plan.problem ? "ok" : "warn",
     );
@@ -625,15 +662,15 @@ export function wireSamples(host: SampleHost): SampleMode {
     const plan = currentPlan();
     if (!plan || plan.problem) return;
     const going = staged.filter((_, i) => !plan.files[i]!.problem);
-    const replacing = plan.files.filter((f) => !f.problem && f.replaces).map((f) => f.name);
+    const replacing = plan.files.filter((f) => !f.problem && f.replaces).map((f) => f.path);
     const ok = await askConfirm({
-      title: `Upload ${plan.sent} ${plan.sent === 1 ? "sample" : "samples"} to ${folderPath(folder)}/?`,
+      title: `Upload ${plan.sent} ${plan.sent === 1 ? "sample" : "samples"} to ${destination()}?`,
       body: [
         "DNX checks each file on the card after it is sent.",
         ...(replacing.length > 0 ? [`This replaces ${replacing.join(", ")}.`] : []),
         "Do not load a project on the instrument until the upload is done.",
       ],
-      list: plan.files.filter((f) => !f.problem).map((f) => `${f.name}: ${kib(f.size)}`),
+      list: plan.files.filter((f) => !f.problem).map((f) => `${f.path}: ${kib(f.size)}`),
       confirmLabel: replacing.length > 0 ? "Replace and upload" : "Upload",
       danger: true,
     });
@@ -642,17 +679,17 @@ export function wireSamples(host: SampleHost): SampleMode {
       return;
     }
     stopPreview();
-    const into = folder;
-    const sent: string[] = [];
+    const where = destination();
+    const sent: Staged[] = [];
     try {
       requireWriteEnabled();
       const ran = await withStore((store) => whileWriting(async () => {
         try {
           for (const file of going) {
             const n = sent.length + 1;
-            await putAndVerify(store, into, file, (done, total) =>
+            await putAndVerify(store, file.folder, file, (done, total) =>
               host.status(`Sending ${file.name} (${n} of ${going.length}): ${Math.round((100 * done) / Math.max(1, total))} %`));
-            sent.push(file.name);
+            sent.push(file);
           }
         } finally {
           await read(store).catch(() => {});
@@ -660,16 +697,17 @@ export function wireSamples(host: SampleHost): SampleMode {
         return true;
       }));
       if (ran === undefined) return;
-      staged = [];
+      // A file that could not go stays on the list, with its reason.
+      staged = staged.filter((file) => !sent.includes(file));
       unconverted = [];
       render();
-      host.status(`Uploaded ${sent.length} to ${folderPath(into)}/. Each one is verified on the card.`, "ok");
+      host.status(`Uploaded ${sent.length} to ${where}. Each one is verified on the card.`, "ok");
     } catch (error) {
-      staged = staged.filter((file) => !sent.includes(file.name));
+      staged = staged.filter((file) => !sent.includes(file));
       render();
       host.status(
         `The upload stopped. ${messageOf(error).replace(/([^.])$/, "$1.")}` +
-          (sent.length > 0 ? ` Sent and verified: ${sent.join(", ")}.` : " No file was verified."),
+          (sent.length > 0 ? ` Sent and verified: ${sent.map((file) => file.name).join(", ")}.` : " No file was verified."),
         "error",
       );
     }

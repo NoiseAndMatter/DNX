@@ -800,15 +800,19 @@ You cannot rename or move a sample yet.`,
       {
         id: "sample-import",
         heading: "Putting samples on the instrument",
-        body: `Import WAV files into the open folder of the store.
+        body: `Import WAV files into folders of the store.
 
 1. Open the folder that gets the samples.
 2. Push **Import WAV…**.
 3. Choose one or more WAV files.
-4. Push **Play** next to a file to hear it. DNX plays it on this computer.
-5. Turn on **WRITE** in the toolbar.
-6. Push **Upload**.
-7. Confirm the upload.
+4. For another folder, open it and do steps 2 and 3 again.
+5. Push **Play** next to a file to hear it. DNX plays it on this computer.
+6. Turn on **WRITE** in the toolbar.
+7. Push **Upload**.
+8. Confirm the upload.
+
+Each file stays with the folder that was open when you chose it. The list shows that folder. To
+take one file off the list, push **Remove**. To take all files off the list, push **Clear**.
 
 DNX converts each file to 16-bit 48 kHz before it sends it. A mono file stays mono, and a stereo
 file stays stereo. **Play** plays the converted audio, which is what the instrument gets.

@@ -158,7 +158,8 @@ The Samples entry shows only when the instrument answers digikit's INFO. The pag
 
 **Import.** Import WAV converts the chosen files on the host with `dksample.wasm`. Nothing is sent until Upload.
 
-- `importplan.ts` plans the import into the open folder. It gives the path of each file and whether the file replaces a sample. It also says why DNX refuses a file: its name, a second file of that name, or a folder of that name.
+- Each file keeps the folder that was open when it was chosen. A second Import adds to the list, so one Upload can fill several folders.
+- `importplan.ts` plans the import, with a folder for each file. It gives the path of each file and whether the file replaces a sample. It also says why DNX refuses a file: its name, a second file of that name, or a folder of that name.
 - `fitProblem` in `importplan.ts` is the check that a batch fits. Today it compares the bytes with the free space. A pool budget check goes there later. The first-fit rule (above) means a batch that passes can still get E_FULL.
 - `nativepcm.ts` reads the converted file back for the preview. Stereo frames are interleaved L, R. The test checks this against a file that digikit's converter wrote.
 - Upload sends the files one by one with `putAndVerify`. A failure stops the batch and names the files already sent and verified.
