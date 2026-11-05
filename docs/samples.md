@@ -152,13 +152,14 @@ What the protocol does and does not do:
 
 The store holds the sha256 of each file. A link from a sound by sha256 would survive a move. That is not agreed with digikit yet: its sampler design binds by path. DNX's own identity (above) is xxHash64, not sha256.
 
-The Library's **Samples** mode shows the store (`web/src/library/samples.ts`). It lists one folder at a time with the free space. It verifies a sample against the card, makes a folder, and deletes a sample or an empty folder. `storelisting.ts` turns a LIST into one folder and holds the store's path rules. A delete keeps no copy, because a copy needs a download, and the owner has not approved one yet. Rename, move and the pool wait on digikit and the owner.
+The Library's **Samples** mode shows the store (`web/src/library/samples.ts`) as one outline with the free space (`sample/storeoutline.ts`). LIST gives the whole store in one call, so the outline and the search make no further request. It verifies a sample against the card, makes a folder, and deletes a sample or an empty folder. `storelisting.ts` turns a LIST into one folder and holds the store's path rules. A delete keeps no copy, because a copy needs a download, and the owner has not approved one yet. Rename, move and the pool wait on digikit and the owner.
 
 The Samples entry shows only when the instrument answers digikit's INFO. The page sends one INFO with a one-second try when an instrument connects. Firmware without the runtime does not answer, so its users see no change.
 
 **Import.** Import WAV converts the chosen files on the host with `dksample.wasm`. Nothing is sent until Upload.
 
-- Each file keeps the folder that was open when it was chosen. A second Import adds to the list, so one Upload can fill several folders.
+- Each file keeps the folder that was selected when it was chosen. A second Import adds to the list, so one Upload can fill several folders.
+- A drop goes to the folder under it, and a dropped folder keeps its subfolders (`web/src/library/droppedfiles.ts`). The store makes a sample's folders from its path. A row of the list can be dragged to another folder. The left pane holds this list until the sample pool exists.
 - `importplan.ts` plans the import, with a folder for each file. It gives the path of each file and whether the file replaces a sample. It also says why DNX refuses a file: its name, a second file of that name, or a folder of that name.
 - `fitProblem` in `importplan.ts` is the check that a batch fits. Today it compares the bytes with the free space. A pool budget check goes there later. The first-fit rule (above) means a batch that passes can still get E_FULL.
 - `nativepcm.ts` reads the converted file back for the preview. Stereo frames are interleaved L, R. The test checks this against a file that digikit's converter wrote.
