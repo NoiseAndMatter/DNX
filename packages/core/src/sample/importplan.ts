@@ -1,9 +1,10 @@
 /**
- * What an import into one folder of digikit's sample store would do, before anything is sent.
+ * What an import into digikit's sample store would do, before anything is sent.
  *
  * **One job: the plan.** The page converts the WAV files (digikit's converter) and passes the
- * results here with the store's listing. The plan says, file by file, where each one goes, whether
- * it replaces a sample, and why a file cannot go. It also gives the one check on the whole batch.
+ * results here with the store's listing. Each file names its own folder, so one batch can fill
+ * several folders. The plan says, file by file, where each one goes, whether it replaces a sample,
+ * and why a file cannot go. It also gives the one check on the whole batch.
  *
  * ## The fits check
  *
@@ -13,7 +14,7 @@
  * project's pool budget) goes into this function, so the page does not change.
  */
 
-import { cleanFolder, folderPath, isFolderEntry, sampleNameProblem } from "./storelisting.js";
+import { folderPath, isFolderEntry, sampleNameProblem } from "./storelisting.js";
 
 /** The least the plan needs of a listed entry (digikit's `DkEntry`). */
 export interface ListedEntry {
@@ -28,6 +29,8 @@ export interface ConvertedFile {
   name: string;
   /** The file the store holds. */
   stored: Uint8Array;
+  /** The folder that gets it, relative to `samples/`. */
+  folder: string;
 }
 
 export interface PlannedFile {
@@ -42,7 +45,6 @@ export interface PlannedFile {
 }
 
 export interface ImportPlan {
-  folder: string;
   files: PlannedFile[];
   /** The files that are sent. */
   sent: number;
@@ -61,20 +63,18 @@ export function fitProblem(bytes: number, free: number): string | undefined {
 
 export function planImport(
   entries: readonly ListedEntry[],
-  folder: string,
   files: readonly ConvertedFile[],
   free: number,
 ): ImportPlan {
-  const base = folderPath(folder);
   const listed = new Set(entries.filter((e) => !isFolderEntry(e)).map((e) => e.path));
   const folders = new Set(entries.filter((e) => isFolderEntry(e)).map((e) => e.path));
   const taken = new Set<string>();
   const planned: PlannedFile[] = [];
 
   for (const file of files) {
-    const path = `${base}/${file.name}`;
-    let problem = sampleNameProblem(folder, file.name);
-    if (!problem && taken.has(path)) problem = `Another file in this import is also called ${file.name}.`;
+    const path = `${folderPath(file.folder)}/${file.name}`;
+    let problem = sampleNameProblem(file.folder, file.name);
+    if (!problem && taken.has(path)) problem = `Another file for this folder is also called ${file.name}.`;
     // A folder of that name: its path is the sample's path, and a sample cannot replace a folder.
     if (!problem && (folders.has(path) || entries.some((e) => e.path.startsWith(`${path}/`)))) {
       problem = `${file.name} is a folder here.`;
@@ -93,5 +93,5 @@ export function planImport(
   // A replaced sample's space comes back, but only after its upload, so it is not counted as free.
   const bytes = going.reduce((sum, p) => sum + p.size, 0);
   const problem = going.length === 0 ? "No file can be sent." : fitProblem(bytes, free);
-  return { folder: cleanFolder(folder), files: planned, sent: going.length, bytes, ...(problem ? { problem } : {}) };
+  return { files: planned, sent: going.length, bytes, ...(problem ? { problem } : {}) };
 }

@@ -21,10 +21,10 @@ const ENTRIES = [
   { path: "samples/drums/kick", size: 96_080, sha256: SHA },
   { path: "samples/pads/warm", size: 50_000, sha256: SHA },
 ];
-const file = (name: string, size: number) => ({ name, stored: new Uint8Array(size) });
+const file = (name: string, size: number, folder = "") => ({ name, stored: new Uint8Array(size), folder });
 
-test("each file goes to the open folder, and one with a listed path replaces it", () => {
-  const plan = planImport(ENTRIES, "drums", [file("kick", 1000), file("snare", 2000)], 10_000);
+test("each file goes to its own folder, and one with a listed path replaces it", () => {
+  const plan = planImport(ENTRIES, [file("kick", 1000, "drums"), file("snare", 2000, "drums")], 10_000);
   assert.deepEqual(plan.files.map((f) => [f.path, f.size, f.replaces, f.problem]), [
     ["samples/drums/kick", 1000, true, undefined],
     ["samples/drums/snare", 2000, false, undefined],
@@ -34,8 +34,17 @@ test("each file goes to the open folder, and one with a listed path replaces it"
   assert.equal(plan.problem, undefined);
 });
 
+test("one batch can fill several folders, and a name is taken only within its folder", () => {
+  const plan = planImport(ENTRIES, [file("hit", 10, "drums"), file("hit", 10, "pads"), file("hit", 10, "drums")], 1e9);
+  assert.deepEqual(plan.files.map((f) => f.path), ["samples/drums/hit", "samples/pads/hit", "samples/drums/hit"]);
+  assert.equal(plan.files[0]!.problem, undefined);
+  assert.equal(plan.files[1]!.problem, undefined);
+  assert.match(plan.files[2]!.problem!, /also called hit/);
+  assert.equal(plan.sent, 2);
+});
+
 test("a file is refused for its name, a second file of that name, or a folder in its way", () => {
-  const plan = planImport(ENTRIES, "", [file("café", 10), file("drums", 10), file("pads", 10), file("a", 10), file("a", 10)], 1e9);
+  const plan = planImport(ENTRIES, [file("café", 10), file("drums", 10), file("pads", 10), file("a", 10), file("a", 10)], 1e9);
   assert.match(plan.files[0]!.problem!, /ASCII/);
   assert.match(plan.files[1]!.problem!, /is a folder here/);
   assert.match(plan.files[2]!.problem!, /is a folder here/);
@@ -46,9 +55,9 @@ test("a file is refused for its name, a second file of that name, or a folder in
 });
 
 test("a batch larger than the free space is not sent, and a batch with nothing to send says so", () => {
-  assert.match(planImport(ENTRIES, "", [file("a", 600), file("b", 500)], 1000).problem!, /need 0\.0 MiB/);
+  assert.match(planImport(ENTRIES, [file("a", 600), file("b", 500)], 1000).problem!, /need 0\.0 MiB/);
   assert.equal(fitProblem(1000, 1000), undefined);
-  assert.match(planImport(ENTRIES, "", [file("a/b", 1)], 1000).problem!, /No file can be sent/);
+  assert.match(planImport(ENTRIES, [file("a/b", 1)], 1000).problem!, /No file can be sent/);
 });
 
 test("a sample name may use the whole path, a folder name must leave room", () => {
