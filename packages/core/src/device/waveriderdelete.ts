@@ -40,7 +40,8 @@
 
 import { type MessageIds, IDS_FOR } from "./messageids.js";
 import { type BackupHook, type ConfirmHook } from "./safewrite.js";
-import { type Entry, deleteRequest, listRequest, wholeListing } from "./storage.js";
+import { type Entry, deleteRequest } from "./storage.js";
+import { listOne } from "./pagedlisting.js";
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { readFormOption } from "./storagewrite.js";
 import { WAVERIDER, slotPath } from "./waveriderwrite.js";
@@ -112,13 +113,11 @@ async function entryFor(
   msgId: number,
   timeoutMs: number,
 ): Promise<Entry> {
-  const reply = await transport.request(listRequest(msgId, WAVERIDER), msgId, timeoutMs);
-  const listing = wholeListing(reply, WAVERIDER);
-  const entry = listing.entries.find((e) => e.index === slot);
+  const entry = await listOne(transport, WAVERIDER, slot, msgId, timeoutMs);
   if (!entry) {
     throw new WaveriderDeleteError(
       `slot ${slot} is not in the ${WAVERIDER} listing, so there is nothing to check before ` +
-        `deleting it. The listing held ${listing.entries.length} entries.`,
+        `deleting it.`,
     );
   }
   return entry;

@@ -486,7 +486,29 @@ fails the suite unless it is the probe's listing card, whose job is to show a pa
 The help's Safeguards page now has a section telling people to close both applications first.
 
 It does not page. Asking for the rest was one of the three wrong turns on 2026-09-06, and a directory
-larger than one reply has not been seen once the port was DNX's own.
+larger than one reply has not been seen once the port was DNX's own. The table store is the exception,
+in the next section.
+
+## The table store listing came back corrupt — FIXED 2026-11-09
+
+Reported from hardware: a batch of 137 tables stopped after three. The message said the listing
+"could not be read back", with an entry named `€€,€` and layout `0x00`. The three tables had landed.
+
+The store had 97 tables with long names, such as `ESW Real - Big Brass 02_wt4096`. A listing of
+`/waverider` without a page came back as 3,997 bytes with an end marker. Entries 0 to 125 were
+correct. Entry 126 gave index 114, and after it came bytes that are not an entry. The full listing
+is about 5,740 bytes.
+
+The same directory asked for in four pages of 64 came back clean. The firmware session confirmed that the store gives the instrument's router all 256 entries. The router builds the
+reply, so the cut is in the instrument's reply path.
+
+Every read of the table store and of the pool lists now goes through `pagedlisting.ts`. A whole
+listing asks for pages of 64, and a check of one slot asks for a page of one. Each reply stays under
+about 2 KB. `test/pagedlisting.test.ts` holds a fake store that corrupts any listing without a page,
+as the instrument did.
+
+Not yet known: whether the instrument only cuts the large reply, or also writes past a buffer. The
+firmware session will trace it in the emulator.
 
 ## A preset dropped into a pool was named after the listing, not itself — FIXED 2026-09-16
 
