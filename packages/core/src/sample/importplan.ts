@@ -14,7 +14,7 @@
  * project's pool budget) goes into this function, so the page does not change.
  */
 
-import { folderPath, isFolderEntry, sampleNameProblem } from "./storelisting.js";
+import { folderNameProblem, folderPath, isFolderEntry, sampleNameProblem } from "./storelisting.js";
 
 /** The least the plan needs of a listed entry (digikit's `DkEntry`). */
 export interface ListedEntry {
@@ -61,6 +61,15 @@ export function fitProblem(bytes: number, free: number): string | undefined {
   return `The samples need ${mib(bytes)}, and the store has ${mib(free)} free.`;
 }
 
+/** Why a folder on this path cannot exist. A dropped folder brings names nobody has checked. */
+function folderPartProblem(folder: string): string | undefined {
+  for (const part of folder.split("/").filter((p) => p !== "")) {
+    const why = folderNameProblem("", part);
+    if (why) return `Folder ${part}: ${why}`;
+  }
+  return undefined;
+}
+
 export function planImport(
   entries: readonly ListedEntry[],
   files: readonly ConvertedFile[],
@@ -73,7 +82,7 @@ export function planImport(
 
   for (const file of files) {
     const path = `${folderPath(file.folder)}/${file.name}`;
-    let problem = sampleNameProblem(file.folder, file.name);
+    let problem = folderPartProblem(file.folder) ?? sampleNameProblem(file.folder, file.name);
     if (!problem && taken.has(path)) problem = `Another file for this folder is also called ${file.name}.`;
     // A folder of that name: its path is the sample's path, and a sample cannot replace a folder.
     if (!problem && (folders.has(path) || entries.some((e) => e.path.startsWith(`${path}/`)))) {

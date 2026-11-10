@@ -2,8 +2,8 @@
  * The Samples mode of the Library page: the samples in digikit's card store.
  *
  * **One job: the sample half of this page.** It mirrors the Wavetables mode. The left pane is for
- * a project's sample pool and the right pane for the store. The pool is not built yet, so the
- * left pane says so. The store pane lists one folder at a time, with the free space above it.
+ * The right pane shows the store as one outline, with the free space above it. The pool is not
+ * built yet, so the left pane holds the files to send. The pool takes that pane when it exists.
  *
  * ## The store is digikit's
  *
@@ -32,7 +32,8 @@
  * The page shows each file with a preview of the converted audio, and the plan
  * (`sample/importplan.ts`). **Each file keeps the folder that was open when it was chosen.** Opening
  * another folder does not move it, and a second Import adds to the list, so one Upload can fill
- * several folders. Upload sends the files one by one, and VERIFY and LIST prove each one
+ * several folders. A drop goes to the folder under it and keeps the folders it came in, and a row
+ * of the list can be dragged to another folder. Upload sends the files one by one, and VERIFY and LIST prove each one
  * (`putAndVerify`).
  *
  * ## Only where the store answers
@@ -47,6 +48,7 @@ import { claimDevice, deviceJobRefusal } from "../devicejob.js";
 import { type ConnectedDevice } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
+import { type DropEntry, type DroppedFile, droppedEntries, readDropped } from "./droppedfiles.js";
 import { type StatusWriter } from "../statusbar.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { whileWriting } from "../writing.js";
@@ -64,13 +66,14 @@ import {
 } from "@noiseandmatter/dnx-core/sample/digikitstore.js";
 import { type ImportPlan, planImport } from "@noiseandmatter/dnx-core/sample/importplan.js";
 import { readNative } from "@noiseandmatter/dnx-core/sample/nativepcm.js";
+import { type OutlineRow, storeOutline, storeSearch } from "@noiseandmatter/dnx-core/sample/storeoutline.js";
 import {
   STORE_FOLDER,
   type StoreFile,
   type StoreFolder,
-  type StoreListing,
   folderNameProblem,
   folderPath,
+  isFolderEntry,
   listFolder,
   verifyTimeoutMs,
 } from "@noiseandmatter/dnx-core/sample/storelisting.js";
@@ -92,13 +95,12 @@ const SOUNDS_ONLY = [
 ] as const;
 
 /** Elements this mode owns. */
-const OURS = ["samplepoolNote", "samplestoreBar", "samplestoreNote", "samplestoreStage", "samplestoreGrid"] as const;
+const OURS = ["samplestageZone", "samplestoreBar", "samplestoreNote", "samplestoreGrid"] as const;
 
 /** Controls that reach the instrument, off together while a session runs. */
 const WHILE_BUSY = [
   "kind",
   "samplestoreRefresh",
-  "samplestoreUp",
   "samplestoreVerify",
   "samplestoreMkdir",
   "samplestoreDelete",
@@ -126,6 +128,9 @@ export interface SampleMode {
    */
   reconnected(): Promise<boolean>;
 }
+
+/** The drag type for a row of the list, so a drop can tell one from a file. */
+const STAGED_TYPE = "application/x-dnx-staged-sample";
 
 /** A converted file waiting for Upload, and the folder that gets it. */
 type Staged = ReturnType<typeof prepareWav> & { folder: string };
@@ -155,10 +160,18 @@ export function wireSamples(host: SampleHost): SampleMode {
   let reading: StoreReading | undefined;
   /** Why the store could not be read, when it could not. */
   let problem: string | undefined;
-  /** The folder on screen, relative to `samples/`. */
+  /** The selected folder, relative to `samples/`. New files and new folders go here. */
   let folder = "";
   /** The selected row's store path. */
   let picked: string | undefined;
+  /** The folders open in the outline, relative to `samples/`. */
+  const opened = new Set<string>();
+  /** What the search box holds. */
+  let query = "";
+  /** The row that takes the focus after the next draw, because each draw rebuilds the table. */
+  let focused: string | undefined;
+  /** The row of the list being dragged. */
+  let draggedFile: Staged | undefined;
   const hiddenBefore = new Map<string, boolean>();
   const titlesBefore = new Map<string, string>();
   const helpBefore = new Map<HTMLElement, string>();
@@ -169,13 +182,12 @@ export function wireSamples(host: SampleHost): SampleMode {
   let audio: AudioContext | undefined;
   let playing: { file: Staged; source: AudioBufferSourceNode } | undefined;
 
-  function listing(): StoreListing | undefined {
-    return reading ? listFolder(reading.entries, folder) : undefined;
-  }
-
   function pickedRow(): StoreFile | StoreFolder | undefined {
-    const shownNow = listing();
-    if (!shownNow || picked === undefined) return undefined;
+    if (!reading || picked === undefined) return undefined;
+    // The row's parent folder: its path without `samples/` and without its own name.
+    const inside = picked.slice(STORE_FOLDER.length + 1);
+    const parent = inside.includes("/") ? inside.slice(0, inside.lastIndexOf("/")) : "";
+    const shownNow = listFolder(reading.entries, parent);
     return [...shownNow.folders, ...shownNow.files].find((row) => row.path === picked);
   }
 
@@ -226,7 +238,6 @@ export function wireSamples(host: SampleHost): SampleMode {
     const connected = host.device() !== undefined;
     const row = pickedRow();
     $<HTMLButtonElement>("samplestoreRefresh").disabled = !connected;
-    $<HTMLButtonElement>("samplestoreUp").disabled = !reading || folder === "";
 
     const verify = $<HTMLButtonElement>("samplestoreVerify");
     verify.disabled = !row || !isFile(row);
@@ -325,19 +336,34 @@ export function wireSamples(host: SampleHost): SampleMode {
   function renderStage(): void {
     const stage = $("samplestoreStage");
     const plan = currentPlan();
-    stage.hidden = !reading || (staged.length === 0 && unconverted.length === 0);
+    stage.hidden = staged.length === 0 && unconverted.length === 0;
+    $("samplestageHint").hidden = !stage.hidden || !reading;
     if (stage.hidden) return;
     const list = $("samplestoreStageList");
     list.innerHTML = "";
     const table = document.createElement("table");
     table.className = "libtable";
-    table.innerHTML = "<thead><tr><th>To import</th><th>Folder</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>File</th><th>Folder</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
     const body = document.createElement("tbody");
     staged.forEach((file, i) => {
       const row = plan?.files[i];
       const info = file.info;
       const tr = document.createElement("tr");
       tr.className = "occupied";
+      tr.draggable = true;
+      tr.title = "Drag to a folder of the store to send this file there.";
+      tr.addEventListener("dragstart", (event) => {
+        if (busy) {
+          event.preventDefault();
+          return;
+        }
+        draggedFile = file;
+        event.dataTransfer?.setData(STAGED_TYPE, file.name);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      });
+      tr.addEventListener("dragend", () => {
+        draggedFile = undefined;
+      });
       const audioText = info
         ? `${info.channels === 2 ? "stereo" : "mono"}, ${(info.frames / 48_000).toFixed(2)} s`
         : "";
@@ -386,28 +412,33 @@ export function wireSamples(host: SampleHost): SampleMode {
   function render(): void {
     if (!shown) return;
     renderStage();
-    $("samplepoolNote").hidden = false;
+    $("samplestageZone").hidden = false;
     $("samplestoreBar").hidden = false;
     $("samplestorePath").textContent = `${folderPath(folder)}/`;
     const grid = $("samplestoreGrid");
     controls();
 
     if (!host.device()) {
-      heading("Sample pool", "", "Sample store", "— connect an instrument");
+      heading("To send", "", "Sample store", "— connect an instrument");
       note("<p><b>Connect an instrument.</b> The samples are read from its card store.</p>");
       grid.hidden = true;
       return;
     }
     if (!reading) {
-      heading("Sample pool", "", "Sample store", problem ? "— not read" : "");
+      heading("To send", "", "Sample store", problem ? "— not read" : "");
       note(problem ? `<p class="warn">${escapeHtml(problem)}</p>` : "");
       grid.hidden = true;
       return;
     }
 
-    const shownNow = listFolder(reading.entries, folder);
-    const count = shownNow.files.length;
-    heading("Sample pool", "", "Sample store", `— ${count} ${count === 1 ? "sample" : "samples"} here`);
+    const count = reading.entries.filter((entry) => !isFolderEntry(entry)).length;
+    const waiting = staged.length + unconverted.length;
+    heading(
+      "To send",
+      waiting === 0 ? "" : `— ${waiting} ${waiting === 1 ? "file" : "files"}`,
+      "Sample store",
+      `— ${count} ${count === 1 ? "sample" : "samples"}`,
+    );
     note(
       `<p>Free: <b>${mib(reading.free)}</b>${reading.total === null ? "" : ` of ${mib(reading.total)}`}. ` +
         `digikit ${escapeHtml(runtimeName(reading.info.runtime))}.</p>` +
@@ -418,49 +449,117 @@ export function wireSamples(host: SampleHost): SampleMode {
 
     const table = document.createElement("table");
     table.className = "libtable";
-    table.innerHTML = "<thead><tr><th>Name</th><th>Size</th><th>sha256</th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>";
     const body = document.createElement("tbody");
-
-    for (const row of [...shownNow.folders, ...shownNow.files]) {
-      const tr = document.createElement("tr");
-      tr.className = isFile(row) ? "occupied" : "occupied folder";
-      if (row.path === picked) {
-        tr.classList.add("selected");
-        tr.setAttribute("aria-selected", "true");
-      }
-      tr.innerHTML = isFile(row)
-        ? `<td class="name">${escapeHtml(row.name)}</td><td class="n">${kib(row.size)}</td>` +
-          `<td class="use"><code title="${row.sha256}">${row.sha256.slice(0, 12)}</code></td>`
-        : `<td class="name">${escapeHtml(row.name)}/</td>` +
-          `<td class="n">${row.files === 0 ? "empty" : `${row.files} ${row.files === 1 ? "sample" : "samples"}`}</td>` +
-          `<td class="use"><span class="hint">folder</span></td>`;
-      /*
-       * **The second click opens, not `dblclick`.** Each click rebuilds this table, so `dblclick`
-       * arrives on a row that has already left the page. Whether a browser still delivers it there
-       * is not something to rely on, and a click always lands on the row under the pointer.
-       */
-      tr.addEventListener("click", (event) => {
-        if (busy) return;
-        if (!isFile(row) && event.detail >= 2) {
-          open(row.path.slice(STORE_FOLDER.length + 1));
-          return;
-        }
-        picked = row.path;
-        render();
-      });
-      if (!isFile(row)) tr.title = "Double-click to open";
-      body.append(tr);
-    }
-    if (body.childElementCount === 0) {
-      body.innerHTML = `<tr class="free"><td class="name" colspan="3"><span class="hint">No samples in this folder.</span></td></tr>`;
+    const searching = query.trim() !== "";
+    if (!searching) body.append(topRow());
+    const rows = searching ? storeSearch(reading.entries, query) : storeOutline(reading.entries, opened);
+    for (const row of rows) body.append(outlineRow(row));
+    if (searching && rows.length === 0) {
+      body.innerHTML = `<tr class="free"><td class="name" colspan="3"><span class="hint">Nothing matches.</span></td></tr>`;
     }
     table.append(body);
     grid.append(table);
+    if (focused !== undefined) {
+      body.querySelector<HTMLElement>(`tr[data-path="${CSS.escape(focused)}"]`)?.focus();
+      focused = undefined;
+    }
   }
 
-  function open(next: string): void {
+  /** A row's button that makes a folder in `parent`. */
+  function folderButton(parent: string): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = "btn";
+    button.textContent = "+ folder";
+    button.title = `Make a folder in ${folderPath(parent)}/.`;
+    button.disabled = busy || !reading || !hasCap(reading.info, "FOLDERS");
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void makeFolder(parent);
+    });
+    return button;
+  }
+
+  /** The events every row shares: selected by a click or by Enter, and a drop target for its folder. */
+  function rowEvents(tr: HTMLTableRowElement, path: string, target: string, clicked: () => void): void {
+    tr.dataset["path"] = path;
+    tr.dataset["folder"] = target;
+    tr.tabIndex = 0;
+    tr.addEventListener("click", () => {
+      if (busy) return;
+      clicked();
+      render();
+    });
+    tr.addEventListener("keydown", (event) => {
+      if (event.target !== tr || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      if (busy) return;
+      focused = path;
+      clicked();
+      render();
+    });
+  }
+
+  /** The row of the store's top folder. */
+  function topRow(): HTMLTableRowElement {
+    const tr = document.createElement("tr");
+    tr.className = "occupied folder";
+    if (folder === "" && picked === undefined) tr.classList.add("selected");
+    tr.innerHTML = `<td class="name">${escapeHtml(STORE_FOLDER)}/</td><td class="n"></td><td class="acts"></td>`;
+    tr.lastElementChild!.append(folderButton(""));
+    rowEvents(tr, STORE_FOLDER, "", () => {
+      folder = "";
+      picked = undefined;
+    });
+    return tr;
+  }
+
+  function outlineRow(row: OutlineRow): HTMLTableRowElement {
+    const tr = document.createElement("tr");
+    tr.className = row.kind === "folder" ? "occupied folder" : "occupied";
+    if (row.path === picked) {
+      tr.classList.add("selected");
+      tr.setAttribute("aria-selected", "true");
+    }
+    const inset = `padding-left: calc(.5rem + ${row.depth + 1} * 1em)`;
+    if (row.kind === "file") {
+      tr.title = `sha256 ${row.sha256}`;
+      tr.innerHTML =
+        `<td class="name" style="${inset}"><span class="caret"></span>${escapeHtml(row.name)}</td>` +
+        `<td class="n">${kib(row.size)}</td><td class="acts"></td>`;
+      rowEvents(tr, row.path, row.folder, () => {
+        picked = row.path;
+        folder = row.folder;
+      });
+      return tr;
+    }
+    const searching = query.trim() !== "";
+    const closed = !searching && !row.open;
+    const empty = row.folders === 0 && row.files === 0;
+    tr.setAttribute("aria-expanded", String(row.open));
+    tr.innerHTML =
+      `<td class="name" style="${inset}"><span class="caret">${searching || empty ? "" : row.open ? "▾" : "▸"}</span>${escapeHtml(row.name)}/</td>` +
+      `<td class="n">${row.files === 0 ? "empty" : `${row.files} ${row.files === 1 ? "sample" : "samples"}`}</td>` +
+      `<td class="acts"></td>`;
+    tr.lastElementChild!.append(folderButton(row.folder));
+    rowEvents(tr, row.path, row.folder, () => {
+      // A closed folder opens. An open folder closes only when it is already the selected one.
+      if (closed && !empty) opened.add(row.folder);
+      else if (picked === row.path) opened.delete(row.folder);
+      picked = row.path;
+      folder = row.folder;
+    });
+    return tr;
+  }
+
+  /** Select `next` and open the folders down to it. */
+  function reveal(next: string): void {
     folder = next;
     picked = undefined;
+    query = "";
+    $<HTMLInputElement>("samplestoreFind").value = "";
+    const parts = next === "" ? [] : next.split("/");
+    parts.forEach((_, i) => opened.add(parts.slice(0, i + 1).join("/")));
     render();
   }
 
@@ -518,27 +617,27 @@ export function wireSamples(host: SampleHost): SampleMode {
     }
   }
 
-  async function makeFolder(): Promise<void> {
-    if (!reading) return;
+  async function makeFolder(parent: string): Promise<void> {
+    if (!reading || busy) return;
     const name = await askText({
-      title: `New folder in ${folderPath(folder)}/`,
+      title: `New folder in ${folderPath(parent)}/`,
       body: ["Use letters, digits, spaces and ASCII punctuation."],
       confirmLabel: "Make the folder",
     });
     if (name === undefined) return;
-    const why = folderNameProblem(folder, name);
+    const why = folderNameProblem(parent, name);
     if (why) {
       host.status(why, "warn");
       return;
     }
-    const inside = folder === "" ? name : `${folder}/${name}`;
+    const inside = parent === "" ? name : `${parent}/${name}`;
     try {
       requireWriteEnabled();
       await withStore((store) => whileWriting(async () => {
         await store.samples.mkdir(inside);
         await read(store);
       }));
-      open(inside);
+      reveal(inside);
       host.status(`Made ${folderPath(inside)}/.`, "ok");
     } catch (error) {
       host.status(`The folder was not made. ${messageOf(error)}`, "error");
@@ -618,8 +717,11 @@ export function wireSamples(host: SampleHost): SampleMode {
     renderStage();
   }
 
-  /** Convert the chosen WAV files and add them to the list, for the open folder. Nothing is sent. */
-  async function choose(files: readonly File[]): Promise<void> {
+  /**
+   * Convert the chosen WAV files and add them to the list, for `into` and the folders each one came
+   * in. Nothing is sent.
+   */
+  async function choose(files: readonly DroppedFile[], into: string): Promise<void> {
     if (files.length === 0) return;
     stopPreview();
     host.status(`Converting ${files.length} ${files.length === 1 ? "file" : "files"}…`);
@@ -629,9 +731,10 @@ export function wireSamples(host: SampleHost): SampleMode {
         return loadConverter(await response.arrayBuffer());
       });
       const sample = await converter;
-      for (const file of files) {
+      for (const { file, folder: from } of files) {
+        const target = into === "" || from === "" ? into || from : `${into}/${from}`;
         try {
-          staged.push({ ...prepareWav(sample, file.name, new Uint8Array(await file.arrayBuffer())), folder });
+          staged.push({ ...prepareWav(sample, file.name, new Uint8Array(await file.arrayBuffer())), folder: target });
         } catch (error) {
           unconverted.push({ name: file.name, why: messageOf(error) });
         }
@@ -649,6 +752,81 @@ export function wireSamples(host: SampleHost): SampleMode {
         : "Converted. Some files cannot be sent. The list says why.",
       plan && !plan.problem ? "ok" : "warn",
     );
+  }
+
+  /** Take a drop of files from this computer, for `into`. */
+  async function takeDrop(entries: readonly DropEntry[], into: string): Promise<void> {
+    const { wavs, skipped } = await readDropped(entries);
+    if (wavs.length === 0) {
+      host.status("The drop holds no WAV file.", "warn");
+      return;
+    }
+    await choose(wavs, into);
+    if (skipped > 0) host.status(`Added ${wavs.length}. ${skipped} ${skipped === 1 ? "file was" : "files were"} not WAV.`, "warn");
+  }
+
+  /**
+   * The two places that take a drop. A row of the store takes it for its folder, and the rest of
+   * the store and the list take it for the selected folder. A row of the list can go only to the
+   * store.
+   */
+  function wireDrops(): void {
+    const grid = $("samplestoreGrid");
+    const zone = $("samplestageZone");
+    const clear = (): void => {
+      for (const on of document.querySelectorAll(".dropon")) on.classList.remove("dropon");
+    };
+    const wanted = (event: DragEvent): boolean => {
+      const kinds = event.dataTransfer?.types ?? [];
+      return shown && !busy && reading !== undefined && kinds.includes("Files");
+    };
+    const rowUnder = (event: DragEvent): HTMLElement | null =>
+      (event.target as HTMLElement).closest<HTMLElement>("tr[data-folder]");
+
+    grid.addEventListener("dragover", (event) => {
+      const moving = event.dataTransfer?.types.includes(STAGED_TYPE) === true && draggedFile !== undefined;
+      if (!moving && !wanted(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = moving ? "move" : "copy";
+      clear();
+      (rowUnder(event) ?? grid).classList.add("dropon");
+    });
+    grid.addEventListener("dragleave", (event) => {
+      if (!grid.contains(event.relatedTarget as Node | null)) clear();
+    });
+    grid.addEventListener("drop", (event) => {
+      clear();
+      const into = rowUnder(event)?.dataset["folder"] ?? folder;
+      if (draggedFile) {
+        event.preventDefault();
+        const file = draggedFile;
+        draggedFile = undefined;
+        if (busy) return;
+        file.folder = into;
+        render();
+        host.status(`${file.name} goes to ${folderPath(into)}/.`, "ok");
+        return;
+      }
+      if (!wanted(event) || !event.dataTransfer) return;
+      event.preventDefault();
+      void takeDrop(droppedEntries(event.dataTransfer), into);
+    });
+
+    zone.addEventListener("dragover", (event) => {
+      if (!wanted(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      zone.classList.add("dropon");
+    });
+    zone.addEventListener("dragleave", (event) => {
+      if (!zone.contains(event.relatedTarget as Node | null)) clear();
+    });
+    zone.addEventListener("drop", (event) => {
+      clear();
+      if (!wanted(event) || !event.dataTransfer) return;
+      event.preventDefault();
+      void takeDrop(droppedEntries(event.dataTransfer), folder);
+    });
   }
 
   function clearStage(): void {
@@ -714,11 +892,8 @@ export function wireSamples(host: SampleHost): SampleMode {
   }
 
   $("samplestoreRefresh").addEventListener("click", () => void refresh());
-  $("samplestoreUp").addEventListener("click", () => {
-    if (folder !== "") open(folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "");
-  });
   $("samplestoreVerify").addEventListener("click", () => void verify());
-  $("samplestoreMkdir").addEventListener("click", () => void makeFolder());
+  $("samplestoreMkdir").addEventListener("click", () => void makeFolder(folder));
   $("samplestoreDelete").addEventListener("click", () => void remove());
   $("samplestoreImport").addEventListener("click", () => {
     const input = $<HTMLInputElement>("samplestoreFiles");
@@ -726,8 +901,14 @@ export function wireSamples(host: SampleHost): SampleMode {
     input.click();
   });
   $("samplestoreFiles").addEventListener("change", (event) => {
-    void choose([...((event.target as HTMLInputElement).files ?? [])]);
+    const files = [...((event.target as HTMLInputElement).files ?? [])];
+    void choose(files.map((file) => ({ file, folder: "" })), folder);
   });
+  $("samplestoreFind").addEventListener("input", (event) => {
+    query = (event.target as HTMLInputElement).value;
+    render();
+  });
+  wireDrops();
   $("samplestoreClear").addEventListener("click", () => clearStage());
   $("samplestoreUpload").addEventListener("click", () => void upload());
 
@@ -738,7 +919,7 @@ export function wireSamples(host: SampleHost): SampleMode {
         $(id).hidden = true;
       }
       for (const id of TITLES) titlesBefore.set(id, $(id).textContent ?? "");
-      helpFor("leftTitle", "library/sample-pool");
+      helpFor("leftTitle", "library/sample-import");
       helpFor("libraryTitle", "library/sample-store");
       shown = true;
       render();
@@ -768,6 +949,9 @@ export function wireSamples(host: SampleHost): SampleMode {
     problem = undefined;
     folder = "";
     picked = undefined;
+    opened.clear();
+    query = "";
+    $<HTMLInputElement>("samplestoreFind").value = "";
     clearStage();
     const has = await answers();
     if (shown && has) await refresh();
