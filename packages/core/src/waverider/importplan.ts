@@ -33,6 +33,7 @@
 import { convertTable, type ConvertedTable } from "./convert.js";
 import { WaveriderError } from "./errors.js";
 import { blendToWaves, fitToGeometry, type FitResult, type Geometry } from "./fit.js";
+import { type CyclePick, describePick, pickCycles } from "./cyclepick.js";
 import { INDEX_ENTRIES } from "./layout.js";
 import { tableName } from "./naming.js";
 import { type PendingSlot } from "./slotfile.js";
@@ -67,6 +68,14 @@ export interface ImportChoice {
    * can blend. Absent, `geometry` re-cuts the samples as it always has. See `blendToWaves`.
    */
   blendFrom?: Geometry;
+  /**
+   * Keep whole cycles of a file that has more of them than `geometry.waves`.
+   *
+   * `source` is the file's own shape. Absent, a file is cut into `geometry.waves` equal parts, and
+   * a part of a 256-cycle file holds 4 cycles. See `cyclepick.ts`. Refused together with
+   * `blendFrom`: one makes fewer waves than the file has, the other more.
+   */
+  pick?: CyclePick & { source: Geometry };
 }
 
 /** Everything the import decided, so a pane can show it before the write. */
@@ -91,9 +100,14 @@ export function planImport(source: AudioSource, choice: ImportChoice): PlannedIm
   }
   const interpolate = choice.interpolate ?? true;
 
+  if (choice.pick && choice.blendFrom) {
+    throw new WaveriderError("a table is either picked from the file's cycles or blended, not both");
+  }
   const fit = choice.blendFrom
     ? blendToWaves(source.samples, choice.blendFrom, geometry)
-    : fitToGeometry(source.samples, geometry);
+    : choice.pick
+      ? pickedFit(source.samples, geometry, choice.pick)
+      : fitToGeometry(source.samples, geometry);
   const converted = convertTable(fit.samples, geometry.waves, geometry.points);
 
   return {
@@ -110,6 +124,20 @@ export function planImport(source: AudioSource, choice: ImportChoice): PlannedIm
     },
     fit,
     converted,
+  };
+}
+
+/** Whole cycles picked from the file, then each resized to `geometry.points` on its own. */
+function pickedFit(
+  samples: Float32Array | readonly number[],
+  geometry: Geometry,
+  pick: CyclePick & { source: Geometry },
+): FitResult {
+  const picked = pickCycles(samples, pick.source, geometry.waves, pick);
+  const fit = fitToGeometry(picked, geometry);
+  return {
+    ...fit,
+    reason: `${describePick(pick.source, geometry.waves, pick)}, one cycle per frame. ${fit.reason}`,
   };
 }
 

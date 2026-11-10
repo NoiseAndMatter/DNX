@@ -39,6 +39,14 @@ export interface WavAudio {
   frames: number;
   /** What the file said it was, for the report: `"16 bit PCM"`, `"32 bit float"`. */
   format: string;
+  /**
+   * The cycle length the file declares, in samples, when it carries a `clm ` chunk.
+   *
+   * Serum writes this chunk, and packs made for Serum carry it: `<!>2048 ...` says every cycle is
+   * 2,048 samples. It is the one place a file states its own shape. Without it, the shape is a
+   * guess from the sample count. Absent when there is no chunk or it does not start with a number.
+   */
+  cycleLength?: number;
 }
 
 const FORMAT_PCM = 1;
@@ -73,6 +81,7 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
   let bitsPerSample = 0;
   let dataAt = -1;
   let dataBytes = 0;
+  let cycleLength: number | undefined;
 
   // Walk the chunk list from just past "WAVE".
   let at = 12;
@@ -90,6 +99,10 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
         // The real format is the first two bytes of the sub-format GUID.
         formatTag = view.getUint16(body + 24, true);
       }
+    } else if (id === "clm " && size >= 4) {
+      const text = String.fromCharCode(...bytes.subarray(body, body + Math.min(size, 16)));
+      const declared = /^<!>(\d+)/.exec(text);
+      if (declared) cycleLength = Number(declared[1]);
     } else if (id === "data") {
       dataAt = body;
       /*
@@ -159,7 +172,7 @@ export function readWavFile(bytes: Uint8Array): WavAudio {
     }
   }
 
-  return { channels, sampleRate, frames, format: name };
+  return { channels, sampleRate, frames, format: name, ...(cycleLength ? { cycleLength } : {}) };
 }
 
 /**

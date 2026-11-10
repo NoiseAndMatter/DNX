@@ -379,6 +379,21 @@
             <label class="lbl" for="wavimportBlend">blend</label>
             <input id="wavimportBlend" type="checkbox" title="Keep the file's own waves and mix new ones between them, instead of cutting the file into more pieces.">
           </div>
+          <!-- Shown only for a file with more whole cycles than the table gets. Off: spread across the file. On: cycles in a row. -->
+          <div class="bar" id="wavimportCycleBar" hidden>
+            <label class="lbl" for="wavimportWindow">window</label>
+            <input id="wavimportWindow" type="checkbox" title="Off: keep cycles spread across the whole file. On: keep cycles in a row, from the start you choose.">
+            <label class="lbl" for="wavimportFirst">start</label>
+            <input id="wavimportFirst" type="range" min="0" max="0" step="1" value="0" title="The first cycle of the window.">
+            <span class="hint" id="wavimportCycleNote"></span>
+          </div>
+          <!-- One frame of the converted table, as the instrument will get it. -->
+          <div class="bar" id="wavimportPreview">
+            <svg id="wavimportFrame" viewBox="0 0 256 64" preserveAspectRatio="none" aria-label="One frame of the converted table"><line x1="0" y1="32" x2="256" y2="32" class="axis"></line><polyline id="wavimportFrameLine" points=""></polyline></svg>
+            <label class="lbl" for="wavimportFrameNo">frame</label>
+            <input id="wavimportFrameNo" type="range" min="0" max="0" step="1" value="0" title="Which frame to show.">
+            <span id="wavimportFrameNote"></span>
+          </div>
           <div class="bar">
             <button class="btn" id="wavimportPlay" title="Hear this table at middle C">Play</button>
             <button class="btn" id="wavimportSweep" title="Hear it travel from the first frame to the last">Sweep</button>

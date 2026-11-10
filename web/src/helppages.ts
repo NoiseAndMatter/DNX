@@ -643,6 +643,20 @@ resamples the file.
 - **The instrument cannot play some shapes.** DNX writes the table, but it does not play. The panel
   tells you before you write.
 
+Some files tell their cycle length. Tables made for Serum do. DNX uses that length when the file
+has it.
+
+**A file can have more cycles than the instrument plays.** Many packs have 256 cycles, and the
+instrument plays 64 frames. DNX then keeps whole cycles, one cycle in each frame. The **window**
+row shows which cycles DNX keeps:
+
+- **window** off: DNX keeps cycles from the whole file, for example every 4th cycle.
+- **window** on: DNX keeps cycles in a row. Move **start** to choose the first cycle.
+
+**Check a frame before you write.** The frame preview shows one frame of the table that DNX
+writes. Move **frame** to see the other frames. If a frame has more than one cycle, the preview
+tells you. That frame plays higher than the note.
+
 DNX makes each table as loud as possible. Thus tables from different files have the same level.`,
       },
       {

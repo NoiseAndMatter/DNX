@@ -842,6 +842,12 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 #wavimportNote .ok { color: var(--teal); }
 #wavimportNote p { margin: .35rem 0; }
 #wavimportNote code { color: var(--amber); }
+#wavimportFrame { width: 256px; max-width: 100%; height: 64px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 3px; }
+#wavimportFrame polyline { fill: none; stroke: var(--teal); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+#wavimportFrame .axis { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#wavimportFrameNote.ok { color: var(--teal); }
+#wavimportFrameNote.warn { color: var(--salmon); }
+#wavimportFirst:disabled { opacity: .35; }
 
 /* ---- progress, in the status bar ------------------------------------------------------
  *

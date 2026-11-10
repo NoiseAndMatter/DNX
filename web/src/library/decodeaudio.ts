@@ -59,6 +59,8 @@ export interface DecodedFile {
   resampled: boolean;
   /** One phrase for the pane: `"24 bit PCM, 48000 Hz"`. */
   describedAs: string;
+  /** The cycle length a WAV's `clm ` chunk declares. Absent for anything else. */
+  cycleLength?: number;
 }
 
 /** How much of the peak has to survive the mono mix before it counts as cancellation. */
@@ -88,6 +90,7 @@ export async function decodeTableFile(file: File): Promise<DecodedFile> {
       cancelled: firstChannelPeak > 0 && peak < firstChannelPeak * CANCELLED_BELOW,
       resampled: false,
       describedAs: `${wav.format}, ${wav.sampleRate.toLocaleString()} Hz`,
+      ...(wav.cycleLength === undefined ? {} : { cycleLength: wav.cycleLength }),
     };
   }
 

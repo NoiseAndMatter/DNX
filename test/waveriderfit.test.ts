@@ -73,16 +73,50 @@ test("a Serum-shaped file is proposed as frames of 2048", () => {
   assert.match(proposal.reason, /convention rather than a measurement/);
 });
 
-test("a count whose conventional shape has too many frames falls through to the next", () => {
+test("a count with too many cycles keeps its cycle length and picks cycles", () => {
   /*
-   * 204,800 is 100 frames of 2,048, which no build loads, and 50 frames of 4,096, which stage3d
-   * does. Taking the first length that divides without checking the frame count against the bounds
-   * is the obvious bug here, and it would propose a table that is stored and silent.
+   * 204,800 is 100 cycles of 2,048, more than any build loads. This used to fall through to 50
+   * frames of 4,096, which is inside the bounds and holds two cycles in every frame: it plays an
+   * octave above the note. The proposal now keeps 2,048 and asks for 64 of the 100 cycles, and it
+   * still never leaves the bounds.
    */
   const proposal = proposeGeometry(100 * 2048, STAGE3D_BOUNDS);
-  assert.deepEqual(proposal.geometry, { waves: 50, points: 4096 });
-  assert.equal(proposal.exact, true);
+  assert.deepEqual(proposal.geometry, { waves: 64, points: 2048 });
+  assert.deepEqual(proposal.source, { waves: 100, points: 2048 });
+  assert.equal(proposal.exact, false);
+  assert.match(proposal.reason, /64 whole cycles are picked/);
   assert.ok(proposal.geometry.waves <= STAGE3D_BOUNDS.maxWaves);
+});
+
+test("a 256-cycle pack table is proposed as 64 of its 2,048-sample cycles, not 64 cuts of 8,192", () => {
+  // The shape of ESW Analog - 303 Saw.wav, the table the owner saw four cycles in on 2026-11-09.
+  const proposal = proposeGeometry(256 * 2048, STAGE3D_BOUNDS, 2048);
+  assert.deepEqual(proposal.geometry, { waves: 64, points: 2048 });
+  assert.deepEqual(proposal.source, { waves: 256, points: 2048 });
+  assert.match(proposal.reason, /as its clm chunk declares/);
+
+  // Without the chunk, convention reads it the same way.
+  assert.deepEqual(proposeGeometry(256 * 2048, STAGE3D_BOUNDS).source, { waves: 256, points: 2048 });
+});
+
+test("a declared cycle length wins over the convention", () => {
+  // 131,072 samples is 64 x 2048 by convention. A file that says its cycles are 1,024 is 128 of them.
+  const declared = proposeGeometry(131_072, STAGE3D_BOUNDS, 1024);
+  assert.deepEqual(declared.source, { waves: 128, points: 1024 });
+  assert.deepEqual(declared.geometry, { waves: 64, points: 1024 });
+
+  // A declaration that does not divide the file is ignored, and the convention applies.
+  const ragged = proposeGeometry(131_072, STAGE3D_BOUNDS, 3000);
+  assert.deepEqual(ragged.geometry, { waves: 64, points: 2048 });
+  assert.equal(ragged.exact, true);
+});
+
+test("a declared cycle the instrument does not play is resized, one cycle per frame", () => {
+  // A stock build plays 512 points and 16 frames. A 16 x 2048 file that says so stays 16 cycles.
+  const proposal = proposeGeometry(16 * 2048, STOCK_BOUNDS, 2048);
+  assert.deepEqual(proposal.geometry, { waves: 16, points: 512 });
+  assert.deepEqual(proposal.source, { waves: 16, points: 2048 });
+  assert.match(proposal.reason, /resized to 512 points/);
 });
 
 test("a stock build is only ever proposed 512 points", () => {

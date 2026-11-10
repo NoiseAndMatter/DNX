@@ -61,6 +61,13 @@ import {
   stemFromFileName,
 } from "@noiseandmatter/dnx-core/waverider/importplan.js";
 import { unplayableReason } from "@noiseandmatter/dnx-core/waverider/pool.js";
+import {
+  type CyclePick,
+  cyclesInFrame,
+  describePick,
+  lastWindowStart,
+  pickedCycle,
+} from "@noiseandmatter/dnx-core/waverider/cyclepick.js";
 import { whileWriting } from "../writing.js";
 
 /** The drag type for moving a staged table, so a drop can tell one from a file. */
@@ -140,6 +147,11 @@ type Staged =
        * the re-cut is the default the owner chose to keep. Only offered when `source` exists.
        */
       blend: boolean;
+      /**
+       * Which whole cycles to keep when the file has more than `geometry.waves`. Spread unless
+       * somebody turns on the window. See `cyclePickFor`.
+       */
+      pick: CyclePick;
     }
   | {
       kind: "copy";
@@ -162,6 +174,20 @@ function geometryOf(entry: Staged): Geometry {
     : entry.geometry;
 }
 
+/**
+ * The cycle pick for an import, when it needs one: the file is whole cycles and has more of them
+ * than the table gets. A window that no longer fits after the waves changed moves back to fit.
+ */
+function cyclePickFor(
+  entry: Extract<Staged, { kind: "audio" }>,
+): (CyclePick & { source: Geometry }) | undefined {
+  const source = entry.source;
+  if (!source || entry.geometry.waves >= source.waves) return undefined;
+  if (entry.pick.mode === "spread") return { mode: "spread", source };
+  const first = Math.min(entry.pick.first, lastWindowStart(source, entry.geometry.waves));
+  return { mode: "window", first, source };
+}
+
 export function wireImport(host: ImportHost): ImportStaging {
   /** Staged tables by store slot, which is also the uniqueness rule: one per slot. */
   const staged = new Map<number, Staged>();
@@ -177,6 +203,11 @@ export function wireImport(host: ImportHost): ImportStaging {
   const wavesBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportWaves");
   const pointsBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportPoints");
   const blendBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportBlend");
+  const windowBox = (): HTMLInputElement => $<HTMLInputElement>("wavimportWindow");
+  const firstSlider = (): HTMLInputElement => $<HTMLInputElement>("wavimportFirst");
+  const frameSlider = (): HTMLInputElement => $<HTMLInputElement>("wavimportFrameNo");
+  /** The frame the preview shows, kept across a replan so moving the window does not reset it. */
+  let previewFrame = 0;
 
   /** Rebuild `plan` for the picked table, or clear it and say why. */
   /**
@@ -186,11 +217,14 @@ export function wireImport(host: ImportHost): ImportStaging {
    * divides into nothing has no cycles to keep, and the toggle is disabled for it anyway.
    */
   function choiceFor(entry: Extract<Staged, { kind: "audio" }>): ImportChoice {
+    // A file with more cycles than the table keeps whole cycles, and the blend does not apply:
+    // blending makes more waves than the file has, a pick makes fewer.
+    const pick = cyclePickFor(entry);
     return {
       slot: entry.slot,
       stem: entry.stem,
       geometry: entry.geometry,
-      ...(entry.blend && entry.source ? { blendFrom: entry.source } : {}),
+      ...(pick ? { pick } : entry.blend && entry.source ? { blendFrom: entry.source } : {}),
     };
   }
 
@@ -264,9 +298,22 @@ export function wireImport(host: ImportHost): ImportStaging {
     wavesBox().disabled = isCopy;
     pointsBox().disabled = isCopy;
     nameBox().disabled = isCopy;
+    const pick = entry.kind === "audio" ? cyclePickFor(entry) : undefined;
     const blend = blendBox();
-    blend.checked = entry.kind === "audio" && entry.blend;
-    blend.disabled = entry.kind !== "audio" || entry.source === undefined;
+    blend.checked = entry.kind === "audio" && entry.blend && pick === undefined;
+    blend.disabled = entry.kind !== "audio" || entry.source === undefined || pick !== undefined;
+
+    // The cycle row shows only for a file with more whole cycles than the table gets.
+    $("wavimportCycleBar").hidden = pick === undefined;
+    if (pick) {
+      windowBox().checked = pick.mode === "window";
+      const slider = firstSlider();
+      slider.max = String(lastWindowStart(pick.source, geometry.waves));
+      slider.value = String(pick.mode === "window" ? pick.first : 0);
+      slider.disabled = pick.mode !== "window";
+      $("wavimportCycleNote").textContent = describePick(pick.source, geometry.waves, pick);
+    }
+    renderPreview(entry, pick);
 
     const bounds = host.bounds();
     const notes: string[] = [];
@@ -310,11 +357,18 @@ export function wireImport(host: ImportHost): ImportStaging {
         ? `${entry.source.waves} x ${entry.source.points}`
         : `${entry.decoded.samples.length.toLocaleString()} samples`;
       notes.push(
-        `<p>Going to store slot <strong>${entry.slot}</strong>` +
-          (plan.fit.method === "exact"
-            ? ` as ${fitted.waves} x ${fitted.points} — no resample required.</p>`
-            : ` — ${plan.fit.method === "blended" ? "blended" : "resampled"} from ${from} to ` +
-              `${fitted.waves} x ${fitted.points}.</p>`),
+        pick
+          ? `<p>Going to store slot <strong>${entry.slot}</strong> as ${fitted.waves} x ` +
+              `${fitted.points}: ${escapeHtml(describePick(pick.source, fitted.waves, pick))}, ` +
+              `one cycle per frame` +
+              (plan.fit.method === "exact"
+                ? `.</p>`
+                : `, each resized from ${pick.source.points} points.</p>`)
+          : `<p>Going to store slot <strong>${entry.slot}</strong>` +
+              (plan.fit.method === "exact"
+                ? ` as ${fitted.waves} x ${fitted.points} — no resample required.</p>`
+                : ` — ${plan.fit.method === "blended" ? "blended" : "resampled"} from ${from} to ` +
+                  `${fitted.waves} x ${fitted.points}.</p>`),
       );
       const gain = plan.converted.gain;
       if (gain > 1.001) {
@@ -354,6 +408,43 @@ export function wireImport(host: ImportHost): ImportStaging {
       );
     }
     $("wavimportNote").innerHTML = notes.join("");
+  }
+
+  /**
+   * Draw one frame of the table that will be written, and say how many cycles it holds.
+   *
+   * From the converted table, as the audition is, so the preview is what the instrument gets. A
+   * frame of more than one cycle is the shape to catch before sending: it plays above the note.
+   */
+  function renderPreview(entry: Staged, pick: (CyclePick & { source: Geometry }) | undefined): void {
+    const line = $("wavimportFrameLine");
+    const note = $("wavimportFrameNote");
+    const pending = pendingFor(entry, plan);
+    const shape = geometryOf(entry);
+    const slider = frameSlider();
+    slider.max = String(Math.max(0, shape.waves - 1));
+    previewFrame = Math.max(0, Math.min(previewFrame, shape.waves - 1));
+    slider.value = String(previewFrame);
+    if (!pending) {
+      line.setAttribute("points", "");
+      note.textContent = "";
+      return;
+    }
+    const table = readTableSamples(pending.table);
+    const frame = table.subarray(previewFrame * shape.points, (previewFrame + 1) * shape.points);
+    const coords: string[] = [];
+    const columns = Math.min(shape.points, 512);
+    for (let x = 0; x < columns; x++) {
+      const value = frame[Math.floor((x * shape.points) / columns)]! / 32_768;
+      coords.push(`${((x / (columns - 1)) * 256).toFixed(1)},${(32 - value * 30).toFixed(1)}`);
+    }
+    line.setAttribute("points", coords.join(" "));
+    const cycles = cyclesInFrame(frame);
+    const from = pick ? ` from cycle ${pickedCycle(pick.source, shape.waves, pick, previewFrame) + 1}` : "";
+    note.className = cycles === 1 ? "ok" : "warn";
+    note.textContent =
+      `frame ${previewFrame + 1} of ${shape.waves}${from} · ` +
+      (cycles === 1 ? "1 cycle" : `${cycles} cycles, plays above the note`);
   }
 
   /** Draw the staged tables onto the store body the pane just built. */
@@ -458,7 +549,7 @@ export function wireImport(host: ImportHost): ImportStaging {
         }
 
         const decoded = await decodeTableFile(file);
-        const proposal = proposeGeometry(decoded.samples.length, bounds);
+        const proposal = proposeGeometry(decoded.samples.length, bounds, decoded.cycleLength);
         staged.set(slot, {
           kind: "audio",
           slot,
@@ -466,8 +557,9 @@ export function wireImport(host: ImportHost): ImportStaging {
           stem: stemFromFileName(file.name),
           decoded,
           geometry: proposal.geometry,
-          ...(proposal.exact ? { source: proposal.geometry } : {}),
+          ...(proposal.source ? { source: proposal.source } : {}),
           blend: false,
+          pick: { mode: "spread" },
         });
         picked ??= slot;
       } catch (error: unknown) {
@@ -722,6 +814,9 @@ export function wireImport(host: ImportHost): ImportStaging {
       if (entry.kind === "copy") return;
       entry.stem = nameBox().value.trim() || entry.stem;
       entry.blend = blendBox().checked && entry.source !== undefined;
+      entry.pick = windowBox().checked
+        ? { mode: "window", first: Number(firstSlider().value) }
+        : { mode: "spread" };
       const waves = Number(wavesBox().value);
       const points = Number(pointsBox().value);
       if (Number.isInteger(waves) && waves > 0 && Number.isInteger(points) && points > 0) {
@@ -733,9 +828,16 @@ export function wireImport(host: ImportHost): ImportStaging {
       // redrawn and the store was not.
       host.redraw();
     };
-    for (const id of ["wavimportName", "wavimportWaves", "wavimportPoints", "wavimportBlend"]) {
+    for (const id of ["wavimportName", "wavimportWaves", "wavimportPoints", "wavimportBlend", "wavimportWindow"]) {
       $(id).addEventListener("change", rebuild);
     }
+    // The window moves while the slider is dragged, so the preview follows the hand.
+    $("wavimportFirst").addEventListener("input", rebuild);
+    $("wavimportFrameNo").addEventListener("input", () => {
+      previewFrame = Number(frameSlider().value);
+      const entry = picked === undefined ? undefined : staged.get(picked);
+      if (entry) renderPreview(entry, entry.kind === "audio" ? cyclePickFor(entry) : undefined);
+    });
 
     $("wavimportPlay").addEventListener("click", () => {
       if (!plan) {
