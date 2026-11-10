@@ -105,6 +105,42 @@ export interface GeometryProposal {
   exact: boolean;
   /** One sentence for a pane to show, saying what was decided and on what grounds. */
   reason: string;
+  /**
+   * The file's own shape, when it is whole cycles: `256 x 2048` for a 256-cycle pack table.
+   *
+   * Differs from `geometry` when the file has more cycles than the instrument plays, or cycles of
+   * a length it does not play. Then the import keeps whole cycles (`cyclepick.ts`) rather than
+   * cutting the file into `geometry.waves` equal parts. Absent when nothing divided.
+   */
+  source?: Geometry;
+}
+
+/** Cycle lengths a file is read as when it does not declare one. The three in common use. */
+const SHAPE_POINTS: readonly number[] = [2048, 1024, 4096];
+
+/**
+ * The file's own shape: the length its `clm ` chunk declares, else the first common one that divides.
+ *
+ * Only 2,048, 1,024 and 4,096 are tried without a declaration. A smaller length divides nearly
+ * any file, so it says nothing about the file.
+ */
+function fileShape(
+  sampleCount: number,
+  cycleLength: number | undefined,
+): (Geometry & { declared: boolean }) | undefined {
+  if (cycleLength !== undefined && Number.isInteger(cycleLength) && cycleLength > 0) {
+    if (sampleCount % cycleLength === 0) {
+      return { waves: sampleCount / cycleLength, points: cycleLength, declared: true };
+    }
+  }
+  const points = SHAPE_POINTS.find((length) => sampleCount % length === 0);
+  return points === undefined ? undefined : { waves: sampleCount / points, points, declared: false };
+}
+
+/** The allowed length nearest `points`: the largest at or below it, else the smallest. */
+function nearestAllowed(points: number, candidates: readonly number[]): number {
+  const below = candidates.filter((length) => length <= points);
+  return below.length > 0 ? Math.max(...below) : Math.min(...candidates);
 }
 
 function allowedPoints(bounds: FitBounds): number[] {
@@ -123,7 +159,11 @@ function allowedPoints(bounds: FitBounds): number[] {
  * and leaves a frame count inside the bounds. Failing that, proposes the largest allowed cycle
  * length that fits in the file at all, with the frame count rounded, and says it will be resampled.
  */
-export function proposeGeometry(sampleCount: number, bounds: FitBounds): GeometryProposal {
+export function proposeGeometry(
+  sampleCount: number,
+  bounds: FitBounds,
+  cycleLength?: number,
+): GeometryProposal {
   if (!Number.isInteger(sampleCount) || sampleCount <= 0) {
     throw new WaveriderError(`a sample count must be a positive integer, got ${sampleCount}`);
   }
@@ -135,6 +175,36 @@ export function proposeGeometry(sampleCount: number, bounds: FitBounds): Geometr
     );
   }
 
+  /*
+   * **Whole cycles first.** A file that declares its cycle length, or has more cycles than the
+   * instrument plays, keeps its cycles. The loop below used to move on to a longer frame instead:
+   * 100 cycles of 2,048 became 50 frames of 4,096, two cycles in each frame, and 256 cycles fell
+   * through to 64 frames of 4 cycles. Both play above the note.
+   */
+  const shape = fileShape(sampleCount, cycleLength);
+  if (shape && (shape.declared || shape.waves > bounds.maxWaves)) {
+    const points = candidates.includes(shape.points)
+      ? shape.points
+      : nearestAllowed(shape.points, candidates);
+    const waves = Math.min(shape.waves, bounds.maxWaves);
+    const source = { waves: shape.waves, points: shape.points };
+    const grounds = shape.declared ? "as its clm chunk declares" : "by convention";
+    const exact = waves === shape.waves && points === shape.points;
+    return {
+      geometry: { waves, points },
+      exact,
+      source,
+      reason:
+        `${sampleCount.toLocaleString()} samples is ${shape.waves} cycles of ${shape.points}, ` +
+        `${grounds}.` +
+        (waves < shape.waves
+          ? ` The instrument plays ${bounds.maxWaves} frames at most, so ${waves} whole cycles ` +
+            `are picked from it.`
+          : "") +
+        (points !== shape.points ? ` Each cycle is resized to ${points} points.` : ""),
+    };
+  }
+
   for (const points of candidates) {
     if (sampleCount % points !== 0) continue;
     const waves = sampleCount / points;
@@ -142,6 +212,7 @@ export function proposeGeometry(sampleCount: number, bounds: FitBounds): Geometr
     return {
       geometry: { waves, points },
       exact: true,
+      source: { waves, points },
       reason:
         `${sampleCount.toLocaleString()} samples divides into ${waves} frames of ${points} points ` +
         `exactly. Other shapes divide it too, so this is the convention rather than a measurement.`,

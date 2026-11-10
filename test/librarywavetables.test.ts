@@ -518,8 +518,10 @@ test("a resample names where it started, not only where it ended", () => {
    * when its sample count divides exactly — or its sample count when it divides into nothing.
    */
   assert.match(STAGING, /source\?: Geometry;/, "the staged entry keeps the shape the file already was");
-  assert.match(STAGING, /proposal\.exact \? \{ source: proposal\.geometry \}/,
-    "and only when the proposal divided exactly: anything else was never that shape");
+  // The proposal's `source`, which it sets only for a file of whole cycles. Since 2026-11-10 that
+  // includes a file with more cycles than the table, whose staged geometry is not its shape.
+  assert.match(STAGING, /proposal\.source \? \{ source: proposal\.source \}/,
+    "and only when the proposal found whole cycles: anything else was never that shape");
   // "resampled" or "blended", then both ends.
   assert.match(STAGING, /"resampled"\} from \$\{from\} to /, "the line says both ends");
 });
