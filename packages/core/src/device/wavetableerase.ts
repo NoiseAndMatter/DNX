@@ -43,7 +43,8 @@
 
 import { type MessageIds, IDS_FOR } from "./messageids.js";
 import { type BackupHook, type ConfirmHook } from "./safewrite.js";
-import { type Entry, listRequest, wholeListing } from "./storage.js";
+import { type Entry } from "./storage.js";
+import { listInPages } from "./pagedlisting.js";
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { readFormOption } from "./storagewrite.js";
 import { safeWriteControl } from "./safewrite.js";
@@ -107,9 +108,8 @@ async function census(
   timeoutMs: number,
 ): Promise<{ tables: Entry[]; lists: Entry[] }> {
   const read = async (root: string): Promise<Entry[]> => {
-    const msgId = ids.reserve(IDS_FOR.oneMessage);
-    const reply = await transport.request(listRequest(msgId, root), msgId, timeoutMs);
-    return wholeListing(reply, root).entries.filter((entry) => entry.occupied === true);
+    const entries = await listInPages(transport, root, () => ids.reserve(IDS_FOR.oneMessage), timeoutMs);
+    return entries.filter((entry) => entry.occupied === true);
   };
   return { tables: await read(WAVERIDER), lists: await read(WAVEPOOL) };
 }

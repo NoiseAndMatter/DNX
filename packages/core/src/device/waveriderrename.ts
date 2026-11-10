@@ -41,7 +41,8 @@
 import { type ApiTransport } from "./storagesession.js";
 import { type DriveWriteHost } from "./driveproject.js";
 import { WAVERIDER, slotPath } from "./waveriderwrite.js";
-import { type Entry, ListingError, listRequest, wholeListing } from "./storage.js";
+import { type Entry, ListingError } from "./storage.js";
+import { listOne } from "./pagedlisting.js";
 import { IDS_FOR } from "./messageids.js";
 import { type BackupHook, type SafeFileWriteResult, safeWriteFile } from "./safewrite.js";
 import { ENTRY, encodeEntryName } from "../waverider/entries.js";
@@ -133,8 +134,7 @@ async function entryForSlot(
   msgId: number,
   timeoutMs: number,
 ): Promise<Entry> {
-  const reply = await transport.request(listRequest(msgId, WAVERIDER), msgId, timeoutMs);
-  const entry = wholeListing(reply, WAVERIDER).entries.find((e) => e.index === slot);
+  const entry = await listOne(transport, WAVERIDER, slot, msgId, timeoutMs);
   if (!entry) {
     throw new WaveriderRenameError(
       `slot ${slot} is not in the ${WAVERIDER} listing, so there is nothing to rename`,

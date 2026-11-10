@@ -16,7 +16,7 @@
 
 import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { type MessageIds, IDS_FOR } from "./messageids.js";
-import { listRequest, wholeListing } from "./storage.js";
+import { listInPages } from "./pagedlisting.js";
 import { readFormOption } from "./storagewrite.js";
 import { WAVERIDER } from "./waveriderwrite.js";
 import { poolPath } from "./wavepoolwrite.js";
@@ -63,9 +63,8 @@ export async function readStoreListing(
   ids: MessageIds,
   timeoutMs = 10_000,
 ): Promise<StoreSlotFacts[]> {
-  const id = ids.reserve(IDS_FOR.oneMessage);
-  const reply = await transport.request(listRequest(id, WAVERIDER), id, timeoutMs);
-  return wholeListing(reply, WAVERIDER).entries
+  const entries = await listInPages(transport, WAVERIDER, () => ids.reserve(IDS_FOR.oneMessage), timeoutMs);
+  return entries
     .filter((entry) => entry.index < INDEX_ENTRIES)
     .map((entry) => ({
       slot: entry.index,

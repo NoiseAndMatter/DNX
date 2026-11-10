@@ -36,7 +36,8 @@
 import { type ApiTransport } from "./storagesession.js";
 import { type BackupHook, type SafeFileWriteResult, safeWriteFile } from "./safewrite.js";
 import { type DriveWriteHost } from "./driveproject.js";
-import { type Entry, ListingError, listRequest, wholeListing } from "./storage.js";
+import { type Entry, ListingError } from "./storage.js";
+import { listOne } from "./pagedlisting.js";
 import { IDS_FOR } from "./messageids.js";
 import { type PendingSlot, buildSlotFile } from "../waverider/slotfile.js";
 import { INDEX_ENTRIES } from "../waverider/layout.js";
@@ -106,13 +107,11 @@ async function entryForSlot(
   msgId: number,
   timeoutMs: number,
 ): Promise<Entry> {
-  const reply = await transport.request(listRequest(msgId, WAVERIDER), msgId, timeoutMs);
-  const listing = wholeListing(reply, WAVERIDER);
-  const entry = listing.entries.find((e) => e.index === slot);
+  const entry = await listOne(transport, WAVERIDER, slot, msgId, timeoutMs);
   if (!entry) {
     throw new WaveriderWriteError(
       `slot ${slot} is not in the ${WAVERIDER} listing, so there is nothing to check before ` +
-        `writing to it. The listing held ${listing.entries.length} entries.`,
+        `writing to it.`,
     );
   }
   return entry;

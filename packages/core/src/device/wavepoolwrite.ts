@@ -42,7 +42,8 @@ import { type ApiTransport, readStoredFile } from "./storagesession.js";
 import { type BackupHook, type SafeFileWriteResult, safeWriteFile } from "./safewrite.js";
 import { type DriveWriteHost } from "./driveproject.js";
 import { readFormOption } from "./storagewrite.js";
-import { type Entry, ListingError, listRequest, wholeListing } from "./storage.js";
+import { type Entry, ListingError } from "./storage.js";
+import { listOne } from "./pagedlisting.js";
 import { IDS_FOR } from "./messageids.js";
 import {
   type PoolRecord,
@@ -160,8 +161,7 @@ async function entryFor(
   msgId: number,
   timeoutMs: number,
 ): Promise<Entry> {
-  const reply = await transport.request(listRequest(msgId, WAVEPOOL), msgId, timeoutMs);
-  const entry = wholeListing(reply, WAVEPOOL).entries.find((e) => e.index === projectSlot);
+  const entry = await listOne(transport, WAVEPOOL, projectSlot, msgId, timeoutMs);
   if (!entry) {
     throw new WavepoolWriteError(
       `project slot ${projectSlot} is not in the ${WAVEPOOL} listing, so there is nothing to ` +

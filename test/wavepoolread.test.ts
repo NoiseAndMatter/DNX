@@ -24,16 +24,18 @@ const put32 = (b: Uint8Array, at: number, v: number): void => {
   b[at + 3] = v & 0xff;
 };
 
-/** A `/waverider` listing: 256 file entries, named ones in use. */
-function storeListing(used: Record<number, string>): Uint8Array {
+/** A page of the `/waverider` listing of 256 file entries, named ones in use. */
+function storeListing(used: Record<number, string>, first = 0, end = INDEX_ENTRIES): Uint8Array {
+  const last = Math.min(end, INDEX_ENTRIES);
+  const count = Math.max(0, last - first);
   const out: number[] = [1];
   const push32 = (v: number): void => {
     out.push((v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
   };
-  push32(0);
-  push32(INDEX_ENTRIES + 1);
-  push32(INDEX_ENTRIES);
-  for (let slot = 0; slot < INDEX_ENTRIES; slot++) {
+  push32(first);
+  push32(first + count);
+  push32(count);
+  for (let slot = first; slot < last; slot++) {
     const name = used[slot];
     for (const ch of name ?? "") out.push(ch.charCodeAt(0));
     // name NUL, kind 00 (a file), layout 02 (index, size, permissions, occupancy)
@@ -60,8 +62,13 @@ function device(file: Uint8Array, used: Record<number, string>): ApiTransport & 
         });
 
       switch (code) {
-        case StorageCode.List:
-          return reply(storeListing(used));
+        case StorageCode.List: {
+          // The page the request asks for, after the path's NUL: u32 first, u32 end.
+          const at = body.indexOf(0) + 1;
+          const u32 = (i: number): number =>
+            ((body[i]! << 24) | (body[i + 1]! << 16) | (body[i + 2]! << 8) | body[i + 3]!) >>> 0;
+          return reply(body.length >= at + 8 ? storeListing(used, u32(at), u32(at + 4)) : storeListing(used));
+        }
         case StorageCode.Open:
           return reply(Uint8Array.of(1, 0, 0, 0, 1, 0, 0, 8, 0, 1));
         case StorageCode.Read: {
