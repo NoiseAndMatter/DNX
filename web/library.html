@@ -85,6 +85,16 @@
 #samplestoreStage .bar { margin-top: .4rem; }
 #samplestoreStage .warn { color: var(--salmon); }
 #samplestoreStage .libtable td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+#samplestoreStage .planhead { margin: .5rem 0 .2rem; font-size: .7rem; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+#samplestoreStage .planlist { list-style: none; margin: 0; padding: 0; }
+#samplestoreStage .planlist li { display: flex; gap: .4rem; align-items: baseline; padding: .15rem 0; border-bottom: 1px solid var(--line); }
+#samplestoreStage .planlist code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+#samplestoreGrid .libtable tr.gone td.name { text-decoration: line-through; color: var(--muted); }
+#samplestoreGrid .libtable tr.gone { box-shadow: inset 2px 0 0 var(--salmon); }
+#samplestoreGrid .libtable tr.planned { box-shadow: inset 2px 0 0 var(--teal); }
+#samplestoreGrid .tag { margin-left: .5rem; font-size: .68rem; white-space: nowrap; }
+#samplestoreGrid .tag.new { color: var(--teal); }
+#samplestoreGrid .tag.bad { color: var(--salmon); }
 
 /* Findings sit under the pool they describe, never beside the library. */
 #findings { margin-top: .8rem; }
@@ -235,18 +245,19 @@
       <div class="grid" id="wavepoolGrid" hidden></div>
 
       <!--
-        The files to send: the WAV files chosen, converted on this computer, with a preview each.
-        Nothing reaches the instrument until Upload. The sample pool takes this pane when it exists.
+        The plan: new folders, deletes, and the WAV files chosen, converted on this computer, with a
+        preview each. Nothing reaches the instrument until Send plan. The sample pool takes this pane
+        when it exists.
       -->
       <div id="samplestageZone" hidden>
-        <p class="plan hint" id="samplestageHint">No files to send. Drop WAV files or a folder here, or on a folder of the store.</p>
+        <p class="plan hint" id="samplestageHint">The plan is empty. Drop WAV files or a folder here, or on a folder of the store.</p>
         <div class="plan" id="samplestoreStage" hidden>
           <div id="samplestoreStageList"></div>
           <div class="bar" data-help="library/sample-import">
             <span class="hint" id="samplestoreStageSum"></span>
             <span class="spacer"></span>
-            <button class="btn" id="samplestoreClear">Clear</button>
-            <button class="btn danger" data-writes-device id="samplestoreUpload" disabled>Upload</button>
+            <button class="btn" id="samplestoreClear">Discard plan</button>
+            <button class="btn danger" data-writes-device id="samplestoreUpload" disabled>Send plan</button>
           </div>
         </div>
       </div>
@@ -291,8 +302,8 @@
         <code id="samplestorePath" title="The selected folder"></code>
         <button class="btn" id="samplestoreRefresh" disabled title="Read the store again">Refresh</button>
         <button class="btn" id="samplestoreVerify" disabled title="Click a sample first.">Verify</button>
-        <button class="btn danger" data-writes-device id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
-        <button class="btn danger" data-writes-device id="samplestoreDelete" disabled title="Click a sample or an empty folder first.">Delete</button>
+        <button class="btn" id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
+        <button class="btn" id="samplestoreDelete" disabled title="Click a sample or a folder first.">Delete</button>
         <button class="btn" id="samplestoreImport" disabled title="Read the store first.">Import WAV…</button>
         <input type="file" id="samplestoreFiles" accept=".wav,audio/wav,audio/x-wav" multiple hidden>
       </div>

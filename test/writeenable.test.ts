@@ -342,9 +342,11 @@ test("every control that writes is marked, and every dangerous one has been cons
     // because a copy needs a download the owner has not approved, so the question says so.
     // `samplestoreUpload` joined on 2026-11-01: it sends the imported WAV files to the store.
     // Import WAV itself only converts on this computer, so it is not in the list.
+    // `samplestoreMkdir` and `samplestoreDelete` left on 2026-11-10: they only add to the plan, and
+    // `samplestoreUpload` (Send plan) now runs the folders and deletes with the uploads.
     // `wavepoolOriginals` and `wavepoolKeepOld` joined on 2026-11-03: they install the two original
     // tables and shift an older project's pool. Both show only on a build reporting `poolOnly`.
-    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "samplestoreDelete", "samplestoreMkdir", "samplestoreUpload", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolKeepOld", "wavepoolOriginals", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
+    ["dodrivesave", "eraseWavetables", "fileWrite", "libraryRename", "poolWrite", "samplestoreUpload", "tableDelete", "tableWrite", "tableWriteAll", "waveTableDelete", "wavepoolAdd", "wavepoolKeepOld", "wavepoolOriginals", "wavepoolRemove", "wavimportWrite", "writeBack", "writeDevice", "writeSlot", "writedevice"],
     "the set of controls that write has changed; check the new one is gated and update this list");
 });
 
