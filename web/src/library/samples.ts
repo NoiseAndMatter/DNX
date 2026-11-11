@@ -18,23 +18,27 @@
  * page's device claim, so a +Drive job and a store job cannot run at once. The transport passes
  * only digikit's messages, so the stock API's replies cannot reach it.
  *
- * ## The writes
+ * ## The plan
  *
- * New folder, Delete and Upload write to the store. Each needs the WRITE switch, and Delete and
- * Upload ask first. **A delete keeps no copy.** A copy would need a download, and the owner has
- * not approved one yet. So the question says to keep the original file. Rename, move and the pool
- * are not here: they wait on the owner and digikit.
+ * New folder, Delete and the files to send do not write. They wait in the plan, in the left pane,
+ * where each one has Undo. **Send plan** asks once, with every step listed, and needs the WRITE
+ * switch. `sample/sendplan.ts` gives the order: new folders, then uploads, then deletes, unless the
+ * uploads need the space the deletes give back. A send that stops says which steps finished.
+ *
+ * Delete on a folder takes everything listed in it. **A delete keeps no copy.** A copy would need
+ * a download, and the owner has not approved one yet. So the question says to keep the original
+ * files. Rename, move and the pool are not here: they wait on the owner and digikit.
  *
  * ## Import
  *
  * Import WAV converts the chosen files on this computer with digikit's converter
  * (`web/vendor/dksample.wasm`, 16-bit 48 kHz, mono or stereo as the file is). Nothing is sent yet.
- * The page shows each file with a preview of the converted audio, and the plan
+ * The page shows each file with a preview of the converted audio, and what its upload does
  * (`sample/importplan.ts`). **Each file keeps the folder that was open when it was chosen.** Opening
  * another folder does not move it, and a second Import adds to the list, so one Upload can fill
  * several folders. A drop goes to the folder under it and keeps the folders it came in, and a row
- * of the list can be dragged to another folder. Upload sends the files one by one, and VERIFY and LIST prove each one
- * (`putAndVerify`).
+ * of the list can be dragged to another folder. Send plan sends the files one by one, and VERIFY
+ * and LIST prove each one (`putAndVerify`).
  *
  * ## Only where the store answers
  *
@@ -64,7 +68,7 @@ import {
   type DkEntry,
   type DkInfoFull,
 } from "@noiseandmatter/dnx-core/sample/digikitstore.js";
-import { type ImportPlan, planImport } from "@noiseandmatter/dnx-core/sample/importplan.js";
+import { type SendPlan, type SendStep, describeDone, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
 import { readNative } from "@noiseandmatter/dnx-core/sample/nativepcm.js";
 import { type OutlineRow, storeOutline, storeSearch } from "@noiseandmatter/dnx-core/sample/storeoutline.js";
 import {
@@ -129,6 +133,9 @@ export interface SampleMode {
   reconnected(): Promise<boolean>;
 }
 
+/** The sha256 the store lists for a folder. */
+const ZERO_SHA = "0".repeat(64);
+
 /** The drag type for a row of the list, so a drop can tell one from a file. */
 const STAGED_TYPE = "application/x-dnx-staged-sample";
 
@@ -178,6 +185,10 @@ export function wireSamples(host: SampleHost): SampleMode {
   /** The converted files waiting for Upload, and the files that could not be converted. */
   let staged: Staged[] = [];
   let unconverted: { name: string; why: string }[] = [];
+  /** The folders to make when the plan is sent, relative to `samples/`. */
+  const newFolders = new Set<string>();
+  /** The store paths to delete when the plan is sent. */
+  const deletes = new Set<string>();
   let converter: ReturnType<typeof loadConverter> | undefined;
   let audio: AudioContext | undefined;
   let playing: { file: Staged; source: AudioBufferSourceNode } | undefined;
@@ -187,11 +198,21 @@ export function wireSamples(host: SampleHost): SampleMode {
     // The row's parent folder: its path without `samples/` and without its own name.
     const inside = picked.slice(STORE_FOLDER.length + 1);
     const parent = inside.includes("/") ? inside.slice(0, inside.lastIndexOf("/")) : "";
-    const shownNow = listFolder(reading.entries, parent);
+    const shownNow = listFolder(shownEntries(), parent);
     return [...shownNow.folders, ...shownNow.files].find((row) => row.path === picked);
   }
 
   const isFile = (row: StoreFile | StoreFolder): row is StoreFile => "sha256" in row;
+
+  /** The store's listing, with the folders of the plan as empty folders. */
+  function shownEntries(): DkEntry[] {
+    if (!reading) return [];
+    const planned = [...newFolders].map((inside) => ({ path: folderPath(inside), size: 0, sha256: ZERO_SHA }));
+    return [...reading.entries, ...planned];
+  }
+
+  /** Something waits to be sent: a folder, a file or a delete. */
+  const planned = (): boolean => newFolders.size + deletes.size + staged.length > 0;
 
   /** Run `work` in a session of its own. Undefined when nothing ran. */
   async function withStore<T>(
@@ -251,39 +272,61 @@ export function wireSamples(host: SampleHost): SampleMode {
     mkdir.title = !reading
       ? "Read the store first."
       : folders
-        ? `Make a folder in ${folderPath(folder)}/.`
+        ? `Add a new folder in ${folderPath(folder)}/ to the plan.`
         : `digikit ${runtimeName(reading.info.runtime)} cannot make an empty folder.`;
 
     const remove = $<HTMLButtonElement>("samplestoreDelete");
-    const empty = row !== undefined && !isFile(row) && row.files === 0 && row.entry;
-    remove.disabled = !row || (!isFile(row) && !empty);
+    const undo = row !== undefined && isMarked(row.path);
+    remove.textContent = undo ? "Undo delete" : "Delete";
+    remove.disabled = !row;
     remove.title = !row
-      ? "Click a sample or an empty folder first."
-      : isFile(row)
-        ? `Delete ${row.name} from the instrument. No copy is kept.`
-        : empty
-          ? `Delete the empty folder ${row.name}.`
-          : `${row.name} holds samples. Delete them first.`;
+      ? "Click a sample or a folder first."
+      : undo
+        ? `Take ${row.name} off the plan's deletes.`
+        : newFolders.has(row.path.slice(STORE_FOLDER.length + 1))
+          ? `Take the new folder ${row.name} off the plan.`
+          : isFile(row)
+            ? `Add ${row.name} to the plan's deletes. No copy is kept.`
+            : `Add ${row.name} and everything in it to the plan's deletes. No copy is kept.`;
 
     const pick = $<HTMLButtonElement>("samplestoreImport");
     pick.disabled = !reading;
     pick.title = reading ? `Choose WAV files for ${folderPath(folder)}/.` : "Read the store first.";
 
     const plan = currentPlan();
-    const upload = $<HTMLButtonElement>("samplestoreUpload");
-    upload.disabled = !plan || plan.problem !== undefined;
-    upload.title = !plan ? "Choose WAV files first." : plan.problem ?? `Send ${plan.sent} to ${destination()}.`;
+    const send = $<HTMLButtonElement>("samplestoreUpload");
+    send.disabled = !plan || plan.problem !== undefined;
+    send.title = !plan ? "The plan is empty." : plan.problem ?? `Run the ${plan.steps.length} steps of the plan.`;
+    $<HTMLButtonElement>("samplestoreClear").disabled = busy || (!planned() && unconverted.length === 0);
   }
 
-  function currentPlan(): ImportPlan | undefined {
-    if (!reading || staged.length === 0) return undefined;
-    return planImport(reading.entries, staged, reading.free);
+  function currentPlan(): SendPlan | undefined {
+    if (!reading || !planned()) return undefined;
+    return planSend({
+      entries: reading.entries,
+      folders: [...newFolders],
+      uploads: staged,
+      deletes: [...deletes],
+      free: reading.free,
+    });
+  }
+
+  /** The store entries at `path` and under it. */
+  function subtree(path: string): DkEntry[] {
+    return (reading?.entries ?? []).filter((e) => e.path === path || e.path.startsWith(`${path}/`));
+  }
+
+  /** The path is in the plan's deletes: the path itself, or all that is listed under a folder. */
+  function isMarked(path: string): boolean {
+    if (deletes.has(path)) return true;
+    const under = subtree(path);
+    return under.length > 0 && under.every((e) => deletes.has(e.path));
   }
 
   /** Where the sendable files go: one folder by name, or how many folders. */
   function destination(): string {
     const plan = currentPlan();
-    const folders = new Set(staged.filter((_, i) => !plan?.files[i]?.problem).map((file) => file.folder));
+    const folders = new Set(staged.filter((_, i) => !plan?.uploads.files[i]?.problem).map((file) => file.folder));
     return folders.size === 1 ? `${folderPath([...folders][0]!)}/` : `${folders.size} folders`;
   }
 
@@ -336,17 +379,33 @@ export function wireSamples(host: SampleHost): SampleMode {
   function renderStage(): void {
     const stage = $("samplestoreStage");
     const plan = currentPlan();
-    stage.hidden = staged.length === 0 && unconverted.length === 0;
+    stage.hidden = !planned() && unconverted.length === 0;
     $("samplestageHint").hidden = !stage.hidden || !reading;
     if (stage.hidden) return;
     const list = $("samplestoreStageList");
     list.innerHTML = "";
+    list.append(...planSection("New folders", [...newFolders].sort().map((inside) => ({
+      text: `${folderPath(inside)}/`,
+      undo: () => dropNewFolder(inside),
+    }))));
+    list.append(...planSection("Delete", [...deletes].sort().map((path) => ({
+      text: reading?.entries.some((e) => e.path === path && isFolderEntry(e)) ? `${path}/` : path,
+      undo: () => {
+        deletes.delete(path);
+      },
+    }))));
+    if (staged.length + unconverted.length > 0 && list.childElementCount > 0) {
+      const send = document.createElement("h3");
+      send.className = "planhead";
+      send.textContent = "Send";
+      list.append(send);
+    }
     const table = document.createElement("table");
     table.className = "libtable";
     table.innerHTML = "<thead><tr><th>File</th><th>Folder</th><th>Audio</th><th>Size</th><th></th><th></th></tr></thead>";
     const body = document.createElement("tbody");
     staged.forEach((file, i) => {
-      const row = plan?.files[i];
+      const row = plan?.uploads.files[i];
       const info = file.info;
       const tr = document.createElement("tr");
       tr.className = "occupied";
@@ -403,10 +462,51 @@ export function wireSamples(host: SampleHost): SampleMode {
       body.append(tr);
     }
     table.append(body);
-    list.append(table);
-    $("samplestoreStageSum").textContent = plan
-      ? plan.problem ?? `${plan.sent} ${plan.sent === 1 ? "sample" : "samples"}, ${mib(plan.bytes)}, to ${destination()}`
-      : "No file can be sent.";
+    if (body.childElementCount > 0) list.append(table);
+    $("samplestoreStageSum").textContent = plan ? plan.problem ?? planSummary(plan) : "No file can be sent.";
+  }
+
+  /** The plan in one line: what it sends, what it frees, and the free space after. */
+  function planSummary(plan: SendPlan): string {
+    const sent = plan.uploads.sent;
+    return [
+      ...(sent > 0 ? [`${sent} ${sent === 1 ? "sample" : "samples"}, ${mib(plan.bytes)}, to ${destination()}`] : []),
+      ...(plan.freed > 0 ? [`${mib(plan.freed)} freed`] : []),
+      `${mib(plan.freeAfter)} free after`,
+    ].join(" · ");
+  }
+
+  /** A heading and one row per change, each with an Undo button. Nothing when there are no changes. */
+  function planSection(title: string, rows: { text: string; undo: () => void }[]): HTMLElement[] {
+    if (rows.length === 0) return [];
+    const head = document.createElement("h3");
+    head.className = "planhead";
+    head.textContent = title;
+    const ul = document.createElement("ul");
+    ul.className = "planlist";
+    for (const row of rows) {
+      const li = document.createElement("li");
+      const code = document.createElement("code");
+      code.textContent = row.text;
+      const undo = document.createElement("button");
+      undo.className = "btn stageRemove";
+      undo.textContent = "Undo";
+      undo.title = "Take this change off the plan. Nothing is sent.";
+      undo.disabled = busy;
+      undo.addEventListener("click", () => {
+        if (busy) return;
+        row.undo();
+        render();
+      });
+      li.append(code, " ", undo);
+      ul.append(li);
+    }
+    return [head, ul];
+  }
+
+  /** Take a new folder, and the new folders in it, off the plan. Files staged for it stay, and their upload makes it. */
+  function dropNewFolder(inside: string): void {
+    for (const other of [...newFolders]) if (other === inside || other.startsWith(`${inside}/`)) newFolders.delete(other);
   }
 
   function render(): void {
@@ -419,23 +519,23 @@ export function wireSamples(host: SampleHost): SampleMode {
     controls();
 
     if (!host.device()) {
-      heading("To send", "", "Sample store", "— connect an instrument");
+      heading("Plan", "", "Sample store", "— connect an instrument");
       note("<p><b>Connect an instrument.</b> The samples are read from its card store.</p>");
       grid.hidden = true;
       return;
     }
     if (!reading) {
-      heading("To send", "", "Sample store", problem ? "— not read" : "");
+      heading("Plan", "", "Sample store", problem ? "— not read" : "");
       note(problem ? `<p class="warn">${escapeHtml(problem)}</p>` : "");
       grid.hidden = true;
       return;
     }
 
     const count = reading.entries.filter((entry) => !isFolderEntry(entry)).length;
-    const waiting = staged.length + unconverted.length;
+    const waiting = newFolders.size + deletes.size + staged.length + unconverted.length;
     heading(
-      "To send",
-      waiting === 0 ? "" : `— ${waiting} ${waiting === 1 ? "file" : "files"}`,
+      "Plan",
+      waiting === 0 ? "" : `— ${waiting} ${waiting === 1 ? "change" : "changes"}`,
       "Sample store",
       `— ${count} ${count === 1 ? "sample" : "samples"}`,
     );
@@ -453,7 +553,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     const body = document.createElement("tbody");
     const searching = query.trim() !== "";
     if (!searching) body.append(topRow());
-    const rows = searching ? storeSearch(reading.entries, query) : storeOutline(reading.entries, opened);
+    const rows = searching ? storeSearch(shownEntries(), query) : storeOutline(shownEntries(), opened);
     for (const row of rows) body.append(outlineRow(row));
     if (searching && rows.length === 0) {
       body.innerHTML = `<tr class="free"><td class="name" colspan="3"><span class="hint">Nothing matches.</span></td></tr>`;
@@ -522,10 +622,15 @@ export function wireSamples(host: SampleHost): SampleMode {
       tr.setAttribute("aria-selected", "true");
     }
     const inset = `padding-left: calc(.5rem + ${row.depth + 1} * 1em)`;
+    const marked = isMarked(row.path);
+    const isNew = row.kind === "folder" && newFolders.has(row.folder);
+    if (marked) tr.classList.add("gone");
+    if (isNew) tr.classList.add("planned");
+    const tag = marked ? `<span class="tag bad">to delete</span>` : isNew ? `<span class="tag new">new</span>` : "";
     if (row.kind === "file") {
       tr.title = `sha256 ${row.sha256}`;
       tr.innerHTML =
-        `<td class="name" style="${inset}"><span class="caret"></span>${escapeHtml(row.name)}</td>` +
+        `<td class="name" style="${inset}"><span class="caret"></span>${escapeHtml(row.name)}${tag}</td>` +
         `<td class="n">${kib(row.size)}</td><td class="acts"></td>`;
       rowEvents(tr, row.path, row.folder, () => {
         picked = row.path;
@@ -538,7 +643,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     const empty = row.folders === 0 && row.files === 0;
     tr.setAttribute("aria-expanded", String(row.open));
     tr.innerHTML =
-      `<td class="name" style="${inset}"><span class="caret">${searching || empty ? "" : row.open ? "▾" : "▸"}</span>${escapeHtml(row.name)}/</td>` +
+      `<td class="name" style="${inset}"><span class="caret">${searching || empty ? "" : row.open ? "▾" : "▸"}</span>${escapeHtml(row.name)}/${tag}</td>` +
       `<td class="n">${row.files === 0 ? "empty" : `${row.files} ${row.files === 1 ? "sample" : "samples"}`}</td>` +
       `<td class="acts"></td>`;
     tr.lastElementChild!.append(folderButton(row.folder));
@@ -579,8 +684,12 @@ export function wireSamples(host: SampleHost): SampleMode {
     const space = await storeSpace(store.session, info);
     reading = { info, entries, free: space.free, total: space.total };
     problem = undefined;
+    // A change the store already shows is no longer a change.
+    for (const path of [...deletes]) if (!entries.some((e) => e.path === path)) deletes.delete(path);
+    for (const inside of [...newFolders]) if (entries.some((e) => e.path === folderPath(inside))) newFolders.delete(inside);
     // A folder that went away (deleted, or emptied of its last file) is left for the nearest one that remains.
-    while (folder !== "" && !entries.some((e) => e.path.startsWith(`${folderPath(folder)}/`) || e.path === folderPath(folder))) {
+    const here = shownEntries();
+    while (folder !== "" && !here.some((e) => e.path.startsWith(`${folderPath(folder)}/`) || e.path === folderPath(folder))) {
       folder = folder.includes("/") ? folder.slice(0, folder.lastIndexOf("/")) : "";
     }
     if (picked !== undefined && !pickedRow()) picked = undefined;
@@ -631,53 +740,43 @@ export function wireSamples(host: SampleHost): SampleMode {
       return;
     }
     const inside = parent === "" ? name : `${parent}/${name}`;
-    try {
-      requireWriteEnabled();
-      await withStore((store) => whileWriting(async () => {
-        await store.samples.mkdir(inside);
-        await read(store);
-      }));
-      reveal(inside);
-      host.status(`Made ${folderPath(inside)}/.`, "ok");
-    } catch (error) {
-      host.status(`The folder was not made. ${messageOf(error)}`, "error");
-    }
-  }
-
-  async function remove(): Promise<void> {
-    const row = pickedRow();
-    if (!row) return;
-    const file = isFile(row);
-    const ok = await askConfirm({
-      title: file ? `Delete ${row.name}?` : `Delete the folder ${row.name}?`,
-      body: file
-        ? [
-            `${row.path} is removed from the instrument's card store.`,
-            "DNX keeps no copy. Keep your original file if you want this sample again.",
-          ]
-        : [`The empty folder ${row.path} is removed.`],
-      confirmLabel: file ? "Delete the sample" : "Delete the folder",
-      danger: true,
-    });
-    if (!ok) {
-      host.status("Cancelled. Nothing was sent.", "warn");
+    const path = folderPath(inside);
+    if (shownEntries().some((e) => e.path === path || e.path.startsWith(`${path}/`))) {
+      host.status(`${path}/ is already in the store or the plan.`, "warn");
       return;
     }
-    try {
-      requireWriteEnabled();
-      const gone = await withStore((store) => whileWriting(async () => {
-        await store.session.delete(row.path);
-        await read(store);
-        return !reading?.entries.some((e) => e.path === row.path);
-      }));
-      if (gone === undefined) return;
-      picked = undefined;
+    newFolders.add(inside);
+    reveal(inside);
+    host.status(`${path}/ is in the plan. Push Send plan to make it.`, "ok");
+  }
+
+  /**
+   * Add the selected row to the plan's deletes, or take it off. A folder takes everything listed
+   * in it. A new folder of the plan leaves the plan. Nothing is sent.
+   */
+  function remove(): void {
+    const row = pickedRow();
+    if (!row || busy) return;
+    const inside = row.path.slice(STORE_FOLDER.length + 1);
+    if (newFolders.has(inside)) {
+      dropNewFolder(inside);
       render();
-      host.status(gone ? `Deleted ${row.path}.` : `${row.path} is still in the store.`, gone ? "ok" : "error");
-    } catch (error) {
-      host.status(`The delete failed. ${messageOf(error)}`, "error");
-      render();
+      host.status(`${row.path}/ is off the plan.`, "ok");
+      return;
     }
+    const paths = isFile(row) ? [row.path] : subtree(row.path).map((e) => e.path);
+    if (isMarked(row.path)) {
+      for (const path of paths) deletes.delete(path);
+      render();
+      host.status(`${row.name} is off the plan's deletes.`, "ok");
+      return;
+    }
+    for (const path of paths) deletes.add(path);
+    render();
+    host.status(
+      `${row.name} is in the plan's deletes${paths.length > 1 ? `, with ${paths.length - 1} more` : ""}. Push Send plan to delete.`,
+      "ok",
+    );
   }
 
   function stopPreview(): void {
@@ -748,7 +847,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     const plan = currentPlan();
     host.status(
       plan && !plan.problem
-        ? `Converted. Press Upload to send ${plan.sent} to ${destination()}.`
+        ? `Converted. ${plan.uploads.sent} ${plan.uploads.sent === 1 ? "file is" : "files are"} in the plan for ${destination()}.`
         : "Converted. Some files cannot be sent. The list says why.",
       plan && !plan.problem ? "ok" : "warn",
     );
@@ -829,27 +928,39 @@ export function wireSamples(host: SampleHost): SampleMode {
     });
   }
 
-  function clearStage(): void {
+  /** Take every change off the plan. Nothing is sent. */
+  function discardPlan(): void {
     stopPreview();
     staged = [];
     unconverted = [];
+    newFolders.clear();
+    deletes.clear();
     render();
   }
 
-  async function upload(): Promise<void> {
+  /** One step of the plan as a line of the confirmation, and of the status when it stops. */
+  function stepText(plan: SendPlan, step: SendStep): string {
+    if (step.kind === "mkdir") return `Make ${folderPath(step.folder)}/`;
+    if (step.kind === "delete") return `Delete ${step.path}${step.folder ? "/" : ""}`;
+    const file = plan.uploads.files[step.index]!;
+    return `Send ${file.path}, ${kib(file.size)}${file.replaces ? ", replaces the sample" : ""}`;
+  }
+
+  /** Run the plan's steps in their order, after one confirmation. */
+  async function sendPlan(): Promise<void> {
     const plan = currentPlan();
     if (!plan || plan.problem) return;
-    const going = staged.filter((_, i) => !plan.files[i]!.problem);
-    const replacing = plan.files.filter((f) => !f.problem && f.replaces).map((f) => f.path);
+    const deleting = plan.steps.some((step) => step.kind === "delete");
     const ok = await askConfirm({
-      title: `Upload ${plan.sent} ${plan.sent === 1 ? "sample" : "samples"} to ${destination()}?`,
+      title: `Send the plan? ${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}`,
       body: [
         "DNX checks each file on the card after it is sent.",
-        ...(replacing.length > 0 ? [`This replaces ${replacing.join(", ")}.`] : []),
-        "Do not load a project on the instrument until the upload is done.",
+        ...(deleting ? ["DNX keeps no copy of a sample that it deletes. Keep your original files."] : []),
+        ...(plan.deletesFirst ? ["The deletes run first, because the files to send need their space."] : []),
+        "Do not load a project on the instrument until the plan is done.",
       ],
-      list: plan.files.filter((f) => !f.problem).map((f) => `${f.path}: ${kib(f.size)}`),
-      confirmLabel: replacing.length > 0 ? "Replace and upload" : "Upload",
+      list: plan.steps.map((step) => stepText(plan, step)),
+      confirmLabel: "Send the plan",
       danger: true,
     });
     if (!ok) {
@@ -857,18 +968,33 @@ export function wireSamples(host: SampleHost): SampleMode {
       return;
     }
     stopPreview();
-    const where = destination();
-    const sent: Staged[] = [];
+    const done: SendStep[] = [];
+    const sentFiles = (): Staged[] => done.flatMap((step) => (step.kind === "upload" ? [staged[step.index]!] : []));
+    let failed: SendStep | undefined;
     try {
       requireWriteEnabled();
       const ran = await withStore((store) => whileWriting(async () => {
         try {
-          for (const file of going) {
-            const n = sent.length + 1;
-            await putAndVerify(store, file.folder, file, (done, total) =>
-              host.status(`Sending ${file.name} (${n} of ${going.length}): ${Math.round((100 * done) / Math.max(1, total))} %`));
-            sent.push(file);
+          const uploads = plan.steps.filter((step) => step.kind === "upload").length;
+          let n = 0;
+          for (const step of plan.steps) {
+            failed = step;
+            if (step.kind === "mkdir") {
+              host.status(`Making ${folderPath(step.folder)}/…`);
+              await store.samples.mkdir(step.folder);
+            } else if (step.kind === "delete") {
+              host.status(`Deleting ${step.path}…`);
+              await store.session.delete(step.path);
+            } else {
+              const file = staged[step.index]!;
+              n += 1;
+              const at = n;
+              await putAndVerify(store, file.folder, file, (sent, total) =>
+                host.status(`Sending ${file.name} (${at} of ${uploads}): ${Math.round((100 * sent) / Math.max(1, total))} %`));
+            }
+            done.push(step);
           }
+          failed = undefined;
         } finally {
           await read(store).catch(() => {});
         }
@@ -876,16 +1002,18 @@ export function wireSamples(host: SampleHost): SampleMode {
       }));
       if (ran === undefined) return;
       // A file that could not go stays on the list, with its reason.
+      const sent = sentFiles();
       staged = staged.filter((file) => !sent.includes(file));
       unconverted = [];
       render();
-      host.status(`Uploaded ${sent.length} to ${where}. Each one is verified on the card.`, "ok");
+      host.status(`Sent the plan: ${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}. Each file is verified on the card.`, "ok");
     } catch (error) {
+      const sent = sentFiles();
       staged = staged.filter((file) => !sent.includes(file));
       render();
       host.status(
-        `The upload stopped. ${messageOf(error).replace(/([^.])$/, "$1.")}` +
-          (sent.length > 0 ? ` Sent and verified: ${sent.map((file) => file.name).join(", ")}.` : " No file was verified."),
+        `The plan stopped${failed ? ` at "${stepText(plan, failed)}"` : ""}. ${messageOf(error).replace(/([^.])$/, "$1.")} ` +
+          describeDone(done, (index) => plan.uploads.files[index]!.name),
         "error",
       );
     }
@@ -894,7 +1022,7 @@ export function wireSamples(host: SampleHost): SampleMode {
   $("samplestoreRefresh").addEventListener("click", () => void refresh());
   $("samplestoreVerify").addEventListener("click", () => void verify());
   $("samplestoreMkdir").addEventListener("click", () => void makeFolder(folder));
-  $("samplestoreDelete").addEventListener("click", () => void remove());
+  $("samplestoreDelete").addEventListener("click", () => remove());
   $("samplestoreImport").addEventListener("click", () => {
     const input = $<HTMLInputElement>("samplestoreFiles");
     input.value = "";
@@ -909,8 +1037,8 @@ export function wireSamples(host: SampleHost): SampleMode {
     render();
   });
   wireDrops();
-  $("samplestoreClear").addEventListener("click", () => clearStage());
-  $("samplestoreUpload").addEventListener("click", () => void upload());
+  $("samplestoreClear").addEventListener("click", () => discardPlan());
+  $("samplestoreUpload").addEventListener("click", () => void sendPlan());
 
   async function show(on: boolean): Promise<void> {
     if (on) {
@@ -952,7 +1080,7 @@ export function wireSamples(host: SampleHost): SampleMode {
     opened.clear();
     query = "";
     $<HTMLInputElement>("samplestoreFind").value = "";
-    clearStage();
+    discardPlan();
     const has = await answers();
     if (shown && has) await refresh();
     return has;
