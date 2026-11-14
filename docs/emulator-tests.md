@@ -18,6 +18,9 @@ the whole suite goes from 32 skipped to 1 — 1,910 passing, measured on 2026-10
 | `DNX_DEVSLOTS_FIRMWARE` | A diagnostics image with `/devslots` rev 2 (`devslotsfull1` or later), for the diagnostics capture |
 | `DNX_EMU_STATE` | Optional. A booted snapshot, which saves about 30 s per bridge start |
 | `DNX_DN2_CARD_IMAGE` | Optional. A formatted +Drive underneath, so stock directories are real |
+| `DNX_SAMPLES_BRIDGE` | digikit **main**'s `sysex_bridge.exe`, for the `/samples` test. Only that build models the card's store area |
+| `DNX_SAMPLES_FIRMWARE` | An image with the `/samples` route |
+| `DNX_SAMPLES_BASE` | Optional. The stock image's SHA-256, which main's bridge takes as `--base`. OS 1.11 when it is not set |
 
 **The two firmware variables are not interchangeable, and pointing both at the modded image fails
 three tests in a way that looks like a firmware fault.** `stock has no /waverider route, and says

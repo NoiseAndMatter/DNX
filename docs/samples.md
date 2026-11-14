@@ -36,7 +36,8 @@ Everything is in `packages/core/src/sample/`, except the two audio readers and t
 | `transfer.ts` | What a transfer would send |
 | `devicestore.ts` | The device's store, as an interface only |
 | `web/src/samplepreview.ts` | Play a stored sample in the browser |
-| `digikitstore.ts` | digikit's card store, through digikit's own client |
+| `digikitstore.ts` | digikit's converter, and digikit's own client for a build with its runtime |
+| `routerecords.ts` | the bytes of the firmware's `/samples` route |
 | `../vendor/digikit/` | digikit's client and converter, copied unchanged |
 
 The WAV reader moved from `waverider/` to `audio/` when the sample importer became its second
@@ -131,42 +132,51 @@ bytes only.
 `devicestore.ts` is an interface with three methods: `holdings`, `put` and `remove`. Nothing
 implements it yet. The implementation follows format v1 and the transport choice.
 
-## digikit's card store
+## The sample store
 
-On 2026-10-30 the owner chose digikit's card store as the sample storage for every sample machine. Wavetables keep their own store.
+On 2026-10-30 the owner chose digikit's card store as the sample storage for every sample machine. Wavetables keep their own store. On 2026-11-12 the owner dropped the digikit runtime from our builds. The store keeps digikit's format (store v3), and our own firmware reads and writes it.
 
-- The store is the `samples/` folder of digikit's store, on DN2 sectors `0x800000` to the card end (about 22 GiB). Folders are part of the paths.
-- Only digikit's runtime writes the store. So an upload needs the digikit runtime in the image. DNX does not keep a second client: `vendor/digikit/` is digikit's own client at commit `11ad79ee`, and its `README.md` says how to update it.
-- `digikitstore.ts` adds a transport over DNX's `SysexPort`. The transport passes only digikit messages (`F0 7D 64 6B`), so traffic for the Elektron API cannot reach the session.
-- digikit's converter, `web/vendor/dksample.wasm`, turns a WAV into the DT2 native file: a 64-byte header, big-endian 16-bit PCM at 48 kHz, and a 16-byte zero trailer.
-- An upload is proven by VERIFY. The runtime reads the file again from the card and sends its sha256, and DNX compares it with the sha256 of the bytes sent. LIST then gives the path, the size and the sha256. LIST does not give the first sector.
+- The store is the `samples/` folder of the card store, on DN2 sectors `0x800000` to the card end (about 22 GiB). Folders are part of the paths.
+- The id of a file is the SHA-256 of the whole native file. DNX computes it, and the instrument stores it.
+- digikit's converter, `web/vendor/dksample.wasm`, turns a WAV into the DT2 native file: a 64-byte header, big-endian 16-bit PCM at 48 kHz, and a 16-byte zero trailer. The converter runs on the host only.
 
-What the protocol does and does not do:
+### The `/samples` route
 
-- It uploads, lists, deletes, makes folders, reports the free space and verifies.
-- It has no rename and no move. A move is a new upload and a delete.
-- It reads at most 768 bytes per request. DNX has no download yet.
-- On the unit on 2026-10-29, uploads ran at about 216 KB/s. A minute of mono audio takes about 27 s.
-- The runtime puts a file in the first gap that holds it. A file larger than the largest gap is refused, even when the total free space is larger.
-- An upload while the unit loads a sample makes that load fail. It does not damage the store. Do not upload while the unit loads a project.
+The firmware writes the store through a `/samples` route on the Data API. The contract is the firmware's `docs/for-dnx-samples.md` (2026-11-15). `sample/routerecords.ts` holds the bytes, and `device/samplesroute.ts` holds the conversation.
 
-The store holds the sha256 of each file. A link from a sound by sha256 would survive a move. That is not agreed with digikit yet: its sampler design binds by path. DNX's own identity (above) is xxHash64, not sha256.
+| Request | Path | What it does |
+|---|---|---|
+| LIST | `/` | lists `samples` when the build has the route |
+| READ | `/samples/info` | 96 bytes: the part size, the free space, and the state of the open upload |
+| READ | `/samples/index` | the id, the length and the path of each file, at most 1,024 |
+| WRITE | `/samples/<n>` | part `n` of a file |
+| DELETE | `/samples/<id>/` | removes the file, or drops the open upload with that id |
 
-The Library's **Samples** mode shows the store (`web/src/library/samples.ts`) as one outline with the free space (`sample/storeoutline.ts`). LIST gives the whole store in one call, so the outline and the search make no further request. It verifies a sample against the card, makes a folder, and deletes a sample or an empty folder. `storelisting.ts` turns a LIST into one folder and holds the store's path rules. A delete keeps no copy, because a copy needs a download, and the owner has not approved one yet. Rename, move and the pool wait on digikit and the owner.
+- A file goes up in parts. The part size comes from `info` (524,288 bytes today). Each part is one write session: a raw container of kind `0x53`, then a 256-byte part record, then the part's bytes. One file is at most 64 MiB.
+- Stock answers the commit before the firmware's code runs. So after each part DNX reads `info`. The part went in when four things are true. The handled count moved, and the result is 0. The xxHash32 is DNX's own of the part, and the upload expects the next part.
+- The firmware reads each part back from the card for that xxHash32. After the last part, `index` must list the id with the path and the length sent.
+- A send that stops leaves the upload open. The next send of the same file goes on from the part that `info` expects. A send of another file drops the open upload first. An open upload is not a stored file, so the drop loses no sample.
+- One id is one file. The firmware refuses a second copy of a sound under another path, so DNX reads `index` first and sends nothing when the id is there.
+- The firmware refuses a path that is taken. A replace deletes the old file, then sends the new one.
+- `safeWriteSamplePart` in `safewrite.ts` is the only door to `/samples/<n>`. A part is not a slot, so the slot rules have nothing to check. The proof is the firmware's xxHash32.
 
-The Samples entry shows only when the instrument answers digikit's INFO. The page sends one INFO with a one-second try when an instrument connects. Firmware without the runtime does not answer, so its users see no change.
+Version 1 of the route has no read of a stored file, no empty folders, no rename and no move. Paths use ASCII 0x20 to 0x7E only.
 
-**Import.** Import WAV converts the chosen files on the host with `dksample.wasm`. Nothing is sent until Upload.
+The Library's **Samples** mode shows the store (`web/src/library/samples.ts`) as one outline with the free space (`sample/storeoutline.ts`). One read of `index` gives the whole store, so the outline and the search make no further request. `storelisting.ts` turns the rows into one folder and holds the store's path rules. A delete keeps no copy, because the route cannot read a file back. Rename, move and the pool wait on the firmware and the owner.
 
-- Each file keeps the folder that was selected when it was chosen. A second Import adds to the list, so one Upload can fill several folders.
+The Samples entry shows only when `/` lists `samples`. The page asks once when an instrument connects.
+
+**Import.** Import WAV converts the chosen files on the host with `dksample.wasm`. Nothing is sent until Send plan.
+
+- Each file keeps the folder that was selected when it was chosen. A second Import adds to the list, so one send can fill several folders.
 - A drop goes to the folder under it, and a dropped folder keeps its subfolders (`web/src/library/droppedfiles.ts`). The store makes a sample's folders from its path. A row of the list can be dragged to another folder. The left pane holds this list until the sample pool exists.
 - `importplan.ts` plans the import, with a folder for each file. It gives the path of each file and whether the file replaces a sample. It also says why DNX refuses a file: its name, a second file of that name, or a folder of that name.
-- `fitProblem` in `importplan.ts` is the check that a batch fits. Today it compares the bytes with the free space. A pool budget check goes there later. The first-fit rule (above) means a batch that passes can still get E_FULL.
+- `fitProblem` in `importplan.ts` is the check that a batch fits. Today it compares the bytes with the free space. A pool budget check goes there later. The firmware puts a file in a free gap that holds it, so a batch that passes can still get result -52 (no free gap).
 - `nativepcm.ts` reads the converted file back for the preview. Stereo frames are interleaved L, R. The test checks this against a file that digikit's converter wrote.
-- Upload sends the files one by one with `putAndVerify`. A failure stops the batch and names the files already sent and verified.
-- DNX cannot see when the unit loads a project. The confirmation and the help tell the user not to load one during an upload.
+- Send plan sends the files one by one with `uploadSample`. A failure stops the batch and names the files already sent.
+- DNX cannot see when the unit loads a project. The confirmation and the help tell the user not to load one during a send.
 
-The test in `test/digikitstore.test.ts` checks the transport and the converter. Only digikit's runtime can answer the protocol, so `scripts/digikit-emu-store.mjs` runs the store path against digikit's DN2 emulator.
+`test/samplesroute.test.ts` checks the bytes against the contract's tables. `test/samplesroutebridge.test.ts` runs the client against the firmware's route in the emulator: `docs/emulator-tests.md` gives its variables. `test/digikitstore.test.ts` still checks the converter.
 
 ## Open questions for format v1
 
@@ -191,4 +201,4 @@ These need an answer from the firmware side, and the owner, before DNX writes a 
 - No page uses the library, the import or the preview.
 - Nothing stores the master copy's bytes. The DNX folder is the likely place.
 - No project format holds a sample list, because the DN2 has no sample machine yet.
-- No device implementation of `devicestore.ts`. `digikitstore.ts` does not implement it yet.
+- No device implementation of `devicestore.ts`. `samplesroute.ts` gives what it needs, and the map from DNX's xxHash64 id to the store's SHA-256 is not built.

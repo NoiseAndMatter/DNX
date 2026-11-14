@@ -264,6 +264,12 @@ export const STORED_FORM_BY_ROOT: Readonly<Record<string, number>> = {
    * reach the codec as a hash mismatch on a healthy record.
    */
   modinfo: FORM_RAW,
+  /**
+   * The firmware's sample upload: each part, `info` and `index` are raw (`for-dnx-samples.md`,
+   * 2026-11-15, byte +29 is 0). Checked in the emulator against the reference sender's frames,
+   * **not on hardware**.
+   */
+  samples: FORM_RAW,
 };
 
 /** The form the route in `path` stores. The compressed one for a route nobody has listed. */

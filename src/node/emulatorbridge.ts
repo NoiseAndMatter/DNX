@@ -79,6 +79,13 @@ export interface BridgeOptions {
    * directories the firmware reads on the way are real rather than empty.
    */
   cardImage?: string;
+  /**
+   * The stock image's SHA-256, for a bridge that takes a patched image with `--base`.
+   *
+   * digikit main's bridge needs it, and the older digikit-rust build does not know the flag. Only
+   * the `/samples` tests pass it, because only main's bridge models the card's store area.
+   */
+  base?: string;
   /** How long to wait for the process to say it is ready. */
   startupMs?: number;
 }
@@ -181,6 +188,7 @@ export class EmulatorBridge implements ApiTransport {
       "--capture", "0x401233f2:0:1",
       ...(options.settle === undefined ? [] : ["--settle", String(options.settle)]),
       ...(options.cardImage === undefined ? [] : ["--card-image", options.cardImage]),
+      ...(options.base === undefined ? [] : ["--base", options.base]),
       ...(options.cardExtents ?? []).flatMap((e) => ["--card-extent", `${e.sector}:${e.file}`]),
     ];
 
