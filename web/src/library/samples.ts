@@ -1,33 +1,33 @@
 /**
- * The Samples mode of the Library page: the samples in digikit's card store.
+ * The Samples mode of the Library page: the samples in the instrument's sample store.
  *
- * **One job: the sample half of this page.** It mirrors the Wavetables mode. The left pane is for
- * The right pane shows the store as one outline, with the free space above it. The pool is not
- * built yet, so the left pane holds the files to send. The pool takes that pane when it exists.
+ * **One job: the sample half of this page.** It mirrors the Wavetables mode. The right pane shows
+ * the store as one outline, with the free space above it. The pool is not built yet, so the left
+ * pane holds the files to send. The pool takes that pane when it exists.
  *
- * ## The store is digikit's
+ * ## The store and the route
  *
- * On 2026-10-30 the owner chose digikit's card store as the sample storage for every sample
- * machine. Only digikit's runtime writes the store, through digikit's own client
- * (`vendor/digikit/`, through `sample/digikitstore.ts`). An instrument without the runtime does
- * not answer, and the mode says so.
+ * The store keeps digikit's card format (store v3, the id is a file's SHA-256), and the firmware
+ * writes it itself through the `/samples` route on the Data API (`device/samplesroute.ts`). The
+ * owner dropped the digikit runtime from our builds on 2026-11-12. An instrument whose `/` does
+ * not list `samples` has no store, and the mode says so.
  *
- * ## One session per operation
+ * ## One claim per operation
  *
- * Each press opens a session on the page's port and closes it at the end. The session takes the
- * page's device claim, so a +Drive job and a store job cannot run at once. The transport passes
- * only digikit's messages, so the stock API's replies cannot reach it.
+ * Each press takes the page's device claim and gives it back at the end, so a +Drive job and a
+ * store job cannot run at once.
  *
  * ## The plan
  *
- * New folder, Delete and the files to send do not write. They wait in the plan, in the left pane,
- * where each one has Undo. **Send plan** asks once, with every step listed, and needs the WRITE
- * switch. `sample/sendplan.ts` gives the order: new folders, then uploads, then deletes, unless the
- * uploads need the space the deletes give back. A send that stops says which steps finished.
+ * Delete and the files to send do not write. They wait in the plan, in the left pane, where each
+ * one has Undo. **Send plan** asks once, with every step listed, and needs the WRITE switch.
+ * `sample/sendplan.ts` gives the order: uploads, then deletes, unless the uploads need the space
+ * the deletes give back. A send that stops says which steps finished. A file whose upload stopped
+ * goes on from its last good part when the plan is sent again.
  *
- * Delete on a folder takes everything listed in it. **A delete keeps no copy.** A copy would need
- * a download, and the owner has not approved one yet. So the question says to keep the original
- * files. Rename, move and the pool are not here: they wait on the owner and digikit.
+ * Delete on a folder takes every sample in it. **A delete keeps no copy.** Version 1 of the route
+ * cannot read a file back, so the question says to keep the original files. Version 1 has no
+ * empty folders, rename or move: a folder is the part of a sample's path before its name.
  *
  * ## Import
  *
@@ -37,37 +37,39 @@
  * (`sample/importplan.ts`). **Each file keeps the folder that was open when it was chosen.** Opening
  * another folder does not move it, and a second Import adds to the list, so one Upload can fill
  * several folders. A drop goes to the folder under it and keeps the folders it came in, and a row
- * of the list can be dragged to another folder. Send plan sends the files one by one, and VERIFY
- * and LIST prove each one (`putAndVerify`).
+ * of the list can be dragged to another folder. Send plan sends the files one by one. The
+ * instrument checks each part on the card, and the index proves each file (`uploadSample`).
+ *
+ * The store holds one file for each sound, under one name. A file whose sound the store holds
+ * already is not sent again.
  *
  * ## Only where the store answers
  *
- * The Samples entry of the dropdown is hidden until the instrument answers digikit's INFO. The
- * page asks once when an instrument connects (`reconnected`), with a one-second try. Firmware
- * without digikit's runtime does not answer, and the entry stays hidden.
+ * The Samples entry of the dropdown is hidden until the instrument lists `/samples`. The page asks
+ * once when an instrument connects (`reconnected`).
  */
 
 import { askConfirm, askText } from "../dialog.js";
 import { claimDevice, deviceJobRefusal } from "../devicejob.js";
-import { type ConnectedDevice } from "../devicesource.js";
+import { type ConnectedDevice, apiTransport } from "../devicesource.js";
 import { $, escapeHtml } from "../dom.js";
 import { installHelpMarkers } from "../helpmarker.js";
 import { type DropEntry, type DroppedFile, droppedEntries, readDropped } from "./droppedfiles.js";
 import { type StatusWriter } from "../statusbar.js";
 import { requireWriteEnabled } from "../writeenable.js";
 import { whileWriting } from "../writing.js";
+import { loadConverter, prepareWav } from "@noiseandmatter/dnx-core/sample/digikitstore.js";
 import {
-  DkError,
-  dkTransport,
-  hasCap,
-  loadConverter,
-  openDigikitStore,
-  prepareWav,
-  putAndVerify,
-  storeSpace,
-  type DkEntry,
-  type DkInfoFull,
-} from "@noiseandmatter/dnx-core/sample/digikitstore.js";
+  type RouteHost,
+  deleteSample,
+  hasSamplesRoute,
+  readIndex,
+  readInfo,
+  uploadSample,
+} from "@noiseandmatter/dnx-core/device/samplesroute.js";
+import { type ListedEntry } from "@noiseandmatter/dnx-core/sample/importplan.js";
+import { type SamplesInfo, sha256Hex } from "@noiseandmatter/dnx-core/sample/routerecords.js";
+import { pageMessageIds } from "../messageids.js";
 import { type SendPlan, type SendStep, describeDone, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
 import { readNative } from "@noiseandmatter/dnx-core/sample/nativepcm.js";
 import { type OutlineRow, storeOutline, storeSearch } from "@noiseandmatter/dnx-core/sample/storeoutline.js";
@@ -79,7 +81,6 @@ import {
   folderPath,
   isFolderEntry,
   listFolder,
-  verifyTimeoutMs,
 } from "@noiseandmatter/dnx-core/sample/storelisting.js";
 
 /** Elements of Sounds mode with no meaning here. Saved on the way in, restored on the way out. */
@@ -133,7 +134,7 @@ export interface SampleMode {
   reconnected(): Promise<boolean>;
 }
 
-/** The sha256 the store lists for a folder. */
+/** The id of a planned folder, as digikit marks a folder entry. */
 const ZERO_SHA = "0".repeat(64);
 
 /** The drag type for a row of the list, so a drop can tell one from a file. */
@@ -144,22 +145,21 @@ type Staged = ReturnType<typeof prepareWav> & { folder: string };
 
 /** What the last read found. */
 interface StoreReading {
-  info: DkInfoFull;
-  entries: DkEntry[];
+  info: SamplesInfo;
+  /** One entry for each stored file. `sha256` is the file's id. */
+  entries: ListedEntry[];
   free: number;
   total: number | null;
 }
 
-/** A store session for `work`, on the instrument's port. */
-type Store = ReturnType<typeof openDigikitStore>;
+/** The route, on the instrument's port. */
+type Store = RouteHost;
 
 /** An error's own words, without the "Error: " that `String` adds. */
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const mib = (bytes: number): string => `${(bytes / 1_048_576).toFixed(1)} MiB`;
 const kib = (bytes: number): string => `${Math.ceil(bytes / 1024).toLocaleString()} KiB`;
-const runtimeName = (packed: number): string =>
-  `${packed >>> 16}.${(packed >>> 8) & 255}.${packed & 255}`;
 
 export function wireSamples(host: SampleHost): SampleMode {
   let shown = false;
@@ -205,7 +205,7 @@ export function wireSamples(host: SampleHost): SampleMode {
   const isFile = (row: StoreFile | StoreFolder): row is StoreFile => "sha256" in row;
 
   /** The store's listing, with the folders of the plan as empty folders. */
-  function shownEntries(): DkEntry[] {
+  function shownEntries(): ListedEntry[] {
     if (!reading) return [];
     const planned = [...newFolders].map((inside) => ({ path: folderPath(inside), size: 0, sha256: ZERO_SHA }));
     return [...reading.entries, ...planned];
@@ -230,11 +230,14 @@ export function wireSamples(host: SampleHost): SampleMode {
       return undefined;
     }
     setBusy(true);
-    const transport = dkTransport(device.io);
     try {
-      return await work(openDigikitStore(transport, timeoutMs === undefined ? undefined : { timeoutMs }));
+      return await work({
+        transport: apiTransport(device),
+        ids: pageMessageIds,
+        gate: requireWriteEnabled,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
     } finally {
-      transport.close();
       release();
       setBusy(false);
     }
@@ -261,19 +264,12 @@ export function wireSamples(host: SampleHost): SampleMode {
     $<HTMLButtonElement>("samplestoreRefresh").disabled = !connected;
 
     const verify = $<HTMLButtonElement>("samplestoreVerify");
-    verify.disabled = !row || !isFile(row);
-    verify.title = row && isFile(row)
-      ? `Read ${row.name} from the card again and compare its sha256 with the store's.`
-      : "Click a sample first.";
+    verify.disabled = true;
+    verify.title = "The instrument checks each part on the card when it arrives. This store cannot read a sample back yet.";
 
     const mkdir = $<HTMLButtonElement>("samplestoreMkdir");
-    const folders = reading !== undefined && hasCap(reading.info, "FOLDERS");
-    mkdir.disabled = !folders;
-    mkdir.title = !reading
-      ? "Read the store first."
-      : folders
-        ? `Add a new folder in ${folderPath(folder)}/ to the plan.`
-        : `digikit ${runtimeName(reading.info.runtime)} cannot make an empty folder.`;
+    mkdir.disabled = true;
+    mkdir.title = "This store has no empty folders yet. Drop a folder of WAV files to send them into a folder.";
 
     const remove = $<HTMLButtonElement>("samplestoreDelete");
     const undo = row !== undefined && isMarked(row.path);
@@ -312,7 +308,7 @@ export function wireSamples(host: SampleHost): SampleMode {
   }
 
   /** The store entries at `path` and under it. */
-  function subtree(path: string): DkEntry[] {
+  function subtree(path: string): ListedEntry[] {
     return (reading?.entries ?? []).filter((e) => e.path === path || e.path.startsWith(`${path}/`));
   }
 
@@ -540,9 +536,10 @@ export function wireSamples(host: SampleHost): SampleMode {
       `— ${count} ${count === 1 ? "sample" : "samples"}`,
     );
     note(
-      `<p>Free: <b>${mib(reading.free)}</b>${reading.total === null ? "" : ` of ${mib(reading.total)}`}. ` +
-        `digikit ${escapeHtml(runtimeName(reading.info.runtime))}.</p>` +
-        (reading.info.safe_mode ? `<p class="warn">digikit is in safe mode.</p>` : ""),
+      `<p>Free: <b>${mib(reading.free)}</b>${reading.total === null ? "" : ` of ${mib(reading.total)}`}.</p>` +
+        (reading.info.open
+          ? `<p class="warn">An upload of ${mib(reading.info.whole)} is not finished. Send the plan again to go on.</p>`
+          : ""),
     );
     grid.hidden = false;
     grid.innerHTML = "";
@@ -571,8 +568,8 @@ export function wireSamples(host: SampleHost): SampleMode {
     const button = document.createElement("button");
     button.className = "btn";
     button.textContent = "+ folder";
-    button.title = `Make a folder in ${folderPath(parent)}/.`;
-    button.disabled = busy || !reading || !hasCap(reading.info, "FOLDERS");
+    button.title = "This store has no empty folders yet.";
+    button.disabled = true;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       void makeFolder(parent);
@@ -670,19 +667,15 @@ export function wireSamples(host: SampleHost): SampleMode {
 
   /** Read INFO, the listing and the free space. */
   async function read(store: Store): Promise<void> {
-    let info: DkInfoFull;
-    try {
-      info = await store.session.info(true);
-    } catch (error) {
+    if (!(await hasSamplesRoute(store))) {
       reading = undefined;
-      problem = error instanceof DkError && error.kind === "timeout"
-        ? "This instrument did not answer digikit. The sample store needs firmware with the digikit runtime."
-        : `The store could not be read. ${messageOf(error)}`;
+      problem = "This instrument has no sample store. The store needs firmware with the /samples route.";
       return;
     }
-    const entries = await store.session.list(`${STORE_FOLDER}/`);
-    const space = await storeSpace(store.session, info);
-    reading = { info, entries, free: space.free, total: space.total };
+    const info = await readInfo(store);
+    const index = await readIndex(store);
+    const entries = index.rows.map((row) => ({ path: row.path, size: row.length, sha256: row.id }));
+    reading = { info, entries, free: info.freeKiB * 1024, total: info.storeKiB * 1024 };
     problem = undefined;
     // A change the store already shows is no longer a change.
     for (const path of [...deletes]) if (!entries.some((e) => e.path === path)) deletes.delete(path);
@@ -710,20 +703,6 @@ export function wireSamples(host: SampleHost): SampleMode {
     // Nothing ran: `withStore` has already said why.
     if (ran === undefined) return;
     host.status(problem ?? "Read the sample store.", problem ? "warn" : "ok");
-  }
-
-  async function verify(): Promise<void> {
-    const row = pickedRow();
-    if (!row || !isFile(row)) return;
-    host.status(`Reading ${row.name} from the card…`);
-    try {
-      const card = await withStore((store) => store.session.verify(row.path), verifyTimeoutMs(row.size));
-      if (card === undefined) return;
-      if (card === row.sha256) host.status(`${row.name}: the card holds the bytes the store lists.`, "ok");
-      else host.status(`${row.name}: the card's sha256 is ${card.slice(0, 12)}, not ${row.sha256.slice(0, 12)}.`, "error");
-    } catch (error) {
-      host.status(`The verify failed. ${messageOf(error)}`, "error");
-    }
   }
 
   async function makeFolder(parent: string): Promise<void> {
@@ -951,10 +930,16 @@ export function wireSamples(host: SampleHost): SampleMode {
     const plan = currentPlan();
     if (!plan || plan.problem) return;
     const deleting = plan.steps.some((step) => step.kind === "delete");
+    const sending = plan.steps.some((step) => step.kind === "upload");
     const ok = await askConfirm({
       title: `Send the plan? ${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}`,
       body: [
-        "DNX checks each file on the card after it is sent.",
+        ...(sending
+          ? [
+              "The instrument checks each part on the card when it arrives.",
+              "If the send stops, send the plan again. A file goes on from its last good part.",
+            ]
+          : []),
         ...(deleting ? ["DNX keeps no copy of a sample that it deletes. Keep your original files."] : []),
         ...(plan.deletesFirst ? ["The deletes run first, because the files to send need their space."] : []),
         "Do not load a project on the instrument until the plan is done.",
@@ -971,6 +956,14 @@ export function wireSamples(host: SampleHost): SampleMode {
     const done: SendStep[] = [];
     const sentFiles = (): Staged[] => done.flatMap((step) => (step.kind === "upload" ? [staged[step.index]!] : []));
     let failed: SendStep | undefined;
+    /** Files the store held already under another path, so nothing was sent. */
+    const present: string[] = [];
+    /** The id of the stored sample at `path`. */
+    const idOf = (path: string): string => {
+      const entry = reading?.entries.find((one) => one.path === path);
+      if (!entry) throw new Error(`${path} is not in the store`);
+      return entry.sha256;
+    };
     try {
       requireWriteEnabled();
       const ran = await withStore((store) => whileWriting(async () => {
@@ -980,17 +973,31 @@ export function wireSamples(host: SampleHost): SampleMode {
           for (const step of plan.steps) {
             failed = step;
             if (step.kind === "mkdir") {
-              host.status(`Making ${folderPath(step.folder)}/…`);
-              await store.samples.mkdir(step.folder);
+              throw new Error("this store has no empty folders");
             } else if (step.kind === "delete") {
               host.status(`Deleting ${step.path}…`);
-              await store.session.delete(step.path);
+              await deleteSample(store, idOf(step.path));
             } else {
               const file = staged[step.index]!;
+              const path = plan.uploads.files[step.index]!.path;
               n += 1;
               const at = n;
-              await putAndVerify(store, file.folder, file, (sent, total) =>
-                host.status(`Sending ${file.name} (${at} of ${uploads}): ${Math.round((100 * sent) / Math.max(1, total))} %`));
+              const id = await sha256Hex(file.stored);
+              const old = reading?.entries.find((entry) => entry.path === path);
+              // The store refuses a taken path, so a replace deletes the old sample first. A sample
+              // with the same sound stays where it is, and the upload finds it.
+              if (old && old.sha256 !== id) {
+                host.status(`Deleting the old ${path}…`);
+                await deleteSample(store, old.sha256);
+              }
+              const outcome = await uploadSample(store, {
+                path,
+                file: file.stored,
+                onStatus: (message) => host.status(`${file.name}: ${message}`),
+                onProgress: (sent, total) =>
+                  host.status(`Sending ${file.name} (${at} of ${uploads}): ${Math.round((100 * sent) / Math.max(1, total))} %`),
+              });
+              if (outcome.kind === "present" && outcome.path !== path) present.push(`${file.name} as ${outcome.path}`);
             }
             done.push(step);
           }
@@ -1006,7 +1013,11 @@ export function wireSamples(host: SampleHost): SampleMode {
       staged = staged.filter((file) => !sent.includes(file));
       unconverted = [];
       render();
-      host.status(`Sent the plan: ${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}. Each file is verified on the card.`, "ok");
+      host.status(
+        `Sent the plan: ${plan.steps.length} ${plan.steps.length === 1 ? "step" : "steps"}.${sending ? " The instrument checked each part on the card." : ""}` +
+          (present.length > 0 ? ` The store held these already: ${present.join(", ")}.` : ""),
+        "ok",
+      );
     } catch (error) {
       const sent = sentFiles();
       staged = staged.filter((file) => !sent.includes(file));
@@ -1020,7 +1031,6 @@ export function wireSamples(host: SampleHost): SampleMode {
   }
 
   $("samplestoreRefresh").addEventListener("click", () => void refresh());
-  $("samplestoreVerify").addEventListener("click", () => void verify());
   $("samplestoreMkdir").addEventListener("click", () => void makeFolder(folder));
   $("samplestoreDelete").addEventListener("click", () => remove());
   $("samplestoreImport").addEventListener("click", () => {
@@ -1062,11 +1072,11 @@ export function wireSamples(host: SampleHost): SampleMode {
     shown = false;
   }
 
-  /** Whether this instrument answers digikit, from one quick INFO. */
+  /** Whether this instrument has the store: `/` lists `samples`. */
   async function answers(): Promise<boolean> {
     if (!host.device()) return false;
     try {
-      return (await withStore((store) => store.session.info(true).then(() => true))) === true;
+      return (await withStore((store) => hasSamplesRoute(store))) === true;
     } catch {
       return false;
     }

@@ -963,3 +963,46 @@ export async function safeWriteControl(options: SafeControlWriteOptions): Promis
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
   });
 }
+
+/** A part of the firmware's sample upload: `/samples/<n>`, `n` in decimal from 0. */
+const SAMPLE_PART_PATH = /^\/samples\/(0|[1-9][0-9]*)$/;
+
+export interface SafeSamplePartOptions {
+  transport: ApiTransport;
+  /** `/samples/<n>`. Anything else is refused here. */
+  path: string;
+  /** The part's container, from `sample/routerecords.ts`. */
+  bytes: Uint8Array;
+  /** The page's write switch, called before anything is sent. */
+  gate: () => void;
+  msgId?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * Send one part of a sample upload.
+ *
+ * **A third door, for the same reason as `safeWriteControl`.** `/samples/<n>` is not a slot. LIST
+ * does not show it, it holds nothing, and a read of it is refused. The firmware itself refuses a
+ * path that is taken. So the slot rules have nothing to check, and a made-up listing entry would
+ * forge the evidence they exist to demand.
+ *
+ * The proof is the firmware's, and the caller reads it: `/samples/info` after each part gives the
+ * xxHash32 of the bytes read back from the card (`device/samplesroute.ts`). The question is the
+ * page's, asked once for the whole plan.
+ */
+export async function safeWriteSamplePart(options: SafeSamplePartOptions): Promise<void> {
+  const { transport, path, bytes } = options;
+  requireGate(options.gate);
+  if (!SAMPLE_PART_PATH.test(path)) {
+    throw new WriteRefusal(`${path} is not a sample part. A part goes to /samples/<n>.`);
+  }
+  if (bytes.length === 0) throw new WriteRefusal("refusing to send an empty part");
+  await writeStoredFile(path, bytes, undefined, {
+    transport,
+    control: true,
+    permit: PERMIT,
+    ...(options.msgId === undefined ? {} : { msgId: options.msgId }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  });
+}

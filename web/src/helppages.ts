@@ -783,9 +783,9 @@ on the screen.`,
       {
         id: "sample-store",
         heading: "The Samples mode",
-        body: `See and manage the samples on the instrument. The samples are in the card store of
-**digikit**. The instrument must run firmware with the digikit runtime. DNX asks the instrument
-when you connect it. If the instrument does not answer, the list next to **Browse** does not show
+        body: `See and manage the samples on the instrument. The samples are in the sample store on
+the card. The instrument must run firmware with the sample store. DNX asks the instrument when
+you connect it. If the instrument has no sample store, the list next to **Browse** does not show
 **Samples**.
 
 The right pane shows the whole store as an outline. The line above it shows the free space.
@@ -794,16 +794,11 @@ The right pane shows the whole store as an outline. The line above it shows the 
 - To find a sample or a folder, type in the search box.
 - To read the store again, push **Refresh**.
 
-New files and new folders go to the selected folder. Its path is next to the search box.
+New files go to the selected folder. Its path is next to the search box.
 
-**Verify** reads the selected sample from the card again. Then it compares the sha256 of what it
-read with the sha256 that the store lists. It does not change anything.
+**Delete** does not change the instrument. It adds a change to the plan in the left pane. The
+instrument changes only when you push **Send plan**.
 
-**+ folder**, **New folder…** and **Delete** do not change the instrument. They add a change to the
-plan in the left pane. The instrument changes only when you push **Send plan**.
-
-- **+ folder** on a row adds a new folder inside that row's folder. The outline shows it with
-  **new**.
 - **Delete** adds the selected sample to the deletes of the plan. On a folder, it adds the folder
   and all that is in it. The outline shows each one with **to delete**.
 - To take a delete off the plan, select its row and push **Undo delete**.
@@ -811,24 +806,28 @@ plan in the left pane. The instrument changes only when you push **Send plan**.
 
 DNX keeps no copy of a sample that you delete. Keep your original files.
 
-A folder goes away when you delete its last sample. This is also true for a folder that you made
-with **New folder…**.
+A folder goes away when you delete its last sample.
+
+The store cannot make an empty folder yet, so **Verify**, **New folder…** and **+ folder** are
+off. To make a folder, drop a folder of WAV files on the store.
 
 The store puts a sample in the first free gap that is large enough. A large sample can be refused
 when the free space is enough in total but no single gap is large enough.
+
+The store keeps one copy of each sound. If you send a sound that the store has already, DNX does
+not send it again. The status bar gives the name that the store has for it.
 
 You cannot rename or move a sample yet.`,
       },
       {
         id: "sample-import",
         heading: "Putting samples on the instrument",
-        body: `Put WAV files in folders of the store, and make and delete folders and samples, in one
-send.
+        body: `Put WAV files in folders of the store, and delete samples, in one send.
 
 1. Drop WAV files or a folder on a folder of the store.
 2. For another folder, do step 1 again.
 3. Push **Play** next to a file to hear it. DNX plays it on this computer.
-4. Add new folders and deletes to the plan, if you need them.
+4. Add deletes to the plan, if you need them.
 5. Turn on **WRITE** in the toolbar.
 6. Push **Send plan**.
 7. Read the list of steps in the confirmation.
@@ -839,32 +838,32 @@ left pane or on an empty part of the store goes to the selected folder.
 
 A folder that you drop keeps its subfolders. DNX adds only its WAV files.
 
-The left pane shows the plan. It lists the new folders, the deletes and the files to send. Each
+The left pane shows the plan. It lists the deletes and the files to send. Each
 file shows its folder. To send a file to another folder, drag its row to that folder. To take one file off
 the plan, push **Remove**. To take all changes off the plan, push **Discard plan**.
 
-DNX makes the new folders first. Then it sends the files, and then it deletes. Thus a failed
-upload deletes nothing. If the files fit only in the space that the deletes give back, DNX deletes
+DNX sends the files first, and then it deletes. Thus a failed upload deletes nothing. If the files fit only in the space that the deletes give back, DNX deletes
 the samples first. The confirmation tells you when this occurs.
 
 If the send stops, the status bar tells you which steps are done. The changes that are not done
-stay in the plan.
+stay in the plan. Push **Send plan** again. A file continues from the last part that the
+instrument has.
 
 DNX converts each file to 16-bit 48 kHz before it sends it. A mono file stays mono, and a stereo
 file stays stereo. **Play** plays the converted audio, which is what the instrument gets.
 
 The list shows each file that DNX cannot send, and why. A name must use ASCII letters, digits,
 spaces and punctuation only. A file with the name of a sample in the folder replaces that sample.
-The plan tells you before you send it.
+The plan tells you before you send it. DNX deletes the old sample just before it sends the new one.
 
-After DNX sends a file, the instrument reads the file again from its card. DNX compares the two.
-The status bar shows each file when it is sent and checked.
+DNX sends each file in parts. After each part, the instrument reads the part again from its card.
+DNX compares it with the part that it sent. The status bar shows each file when it is sent and
+checked.
 
 **Do not load a project on the instrument during a send.** A sample that the instrument loads
 during a send does not load. The store is not damaged. Load the project again after the send.
 
-An upload is slow. A minute of mono audio takes about 30 seconds. A minute of stereo audio takes
-about one minute.`,
+An upload is slow. A minute of mono audio is about 5.8 MB.`,
       },
     ],
   },

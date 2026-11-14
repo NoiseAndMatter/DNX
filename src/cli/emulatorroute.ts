@@ -58,11 +58,29 @@ const IMAGES = [
   { key: "waverider", env: "DNX_WAVERIDER_FIRMWARE", label: "waverider" },
   { key: "erase", env: "DNX_ERASE_FIRMWARE", label: "waverider + erase" },
   { key: "stock", env: "DNX_EMU_FIRMWARE", label: "stock" },
+  /**
+   * The `/samples` route. Only digikit main's bridge models the card's store area, so this image
+   * names its own bridge and the stock image's SHA-256 for `--base` (`docs/emulator-tests.md`).
+   */
+  { key: "samples", env: "DNX_SAMPLES_FIRMWARE", label: "samples", exe: "DNX_SAMPLES_BRIDGE", base: "DNX_SAMPLES_BASE" },
 ] as const;
+
+/** OS 1.11's SHA-256, the `--base` of the samples image when `DNX_SAMPLES_BASE` is not set. */
+const STOCK_111_SHA256 = "2af43e65e3d8390b41c9f66222620f8cce027d73ed87db00c80b440f628472e0";
+
+/** The bridge options of a configured image: its firmware, and its own bridge when it has one. */
+function bridgeOptionsFor(image: (typeof IMAGES)[number]): { firmware: string; exe?: string; base?: string } | undefined {
+  const firmware = process.env[image.env];
+  if (!firmware) return undefined;
+  if (!("exe" in image)) return { firmware };
+  const exe = process.env[image.exe];
+  if (!exe) return undefined;
+  return { firmware, exe, base: process.env[image.base] ?? STOCK_111_SHA256 };
+}
 
 /** One emulator image the page may ask for. */
 export interface EmulatorImage {
-  /** `waverider`, `erase` or `stock` — what the page sends back to open it. */
+  /** `waverider`, `erase`, `stock` or `samples`: what the page sends back to open it. */
   key: string;
   /** What kind of build it is, for the picker. */
   label: string;
@@ -73,12 +91,12 @@ export interface EmulatorImage {
 /** Every image configured **and present on disk**, in the order the picker should show them. */
 export function emulatorImages(): EmulatorImage[] {
   return IMAGES.flatMap((image) => {
-    const firmware = process.env[image.env];
+    const options = bridgeOptionsFor(image);
     // `bridgePaths` is the one authority on whether a bridge can actually start: it checks the
     // executable as well, and resolves both against the emulator's own working directory. An
     // entry offered here that cannot boot is worse than no entry at all.
-    if (!firmware || !bridgePaths({ firmware })) return [];
-    return [{ key: image.key, label: image.label, file: basename(firmware) }];
+    if (!options || !bridgePaths(options)) return [];
+    return [{ key: image.key, label: image.label, file: basename(options.firmware) }];
   });
 }
 
@@ -177,14 +195,14 @@ async function openImage(key: string | null): Promise<EmulatorIdentity & { image
   // one bridge about another's routes is the mistake `docs/emulator-tests.md` warns about.
   await closeEmulator();
 
-  const firmware = process.env[IMAGES.find((i) => i.key === wanted.key)!.env]!;
+  const options = bridgeOptionsFor(IMAGES.find((i) => i.key === wanted.key)!)!;
   /*
    * **90 s, not the test suite's three minutes.** A boot measured on this machine is about 12 s,
    * and the person on the other end of this is looking at a page that says half a minute. A
    * generous ceiling is right — a cold cache is slower — but one so generous that a boot which
    * will never finish takes three minutes to say so is the wrong trade for an interactive page.
    */
-  const bridge = await EmulatorBridge.start({ firmware, startupMs: 90_000 });
+  const bridge = await EmulatorBridge.start({ ...options, startupMs: 90_000 });
   try {
     const identity = await identifyEmulator(bridge);
     open = { key: wanted.key, bridge, identity };
