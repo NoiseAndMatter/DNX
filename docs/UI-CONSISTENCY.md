@@ -163,3 +163,20 @@ comparison above is the one to trust.
 Step 3 is the one that makes this stick. The measurement in §2 is a script
 (`web/dnx.css` against each page's `<style>`) and it belongs in `test/web.test.ts` rather than in a
 document nobody re-runs.
+
+## 8. Panes measure their container, 2026-11-15
+
+An audit on 2026-11-15 measured each page at 1,500, 1,110, 800 and 480 px. The library's two panes
+used window breakpoints (92rem and 68rem). Between them a pane was as narrow as 530 px. The buttons
+of a plan row stacked, and the store toolbar wrapped to three lines.
+
+The rule is now in `dnx.css`, and it has no window breakpoint:
+
+- `body.page > main` is a size container.
+- `.panes` is one column. It is two columns when the container has 73rem, which is 36rem for each pane and the gap.
+- The 17rem timeline goes beside the two panes when the container has 91rem.
+
+The expander's `.assign .cols` rule had no element to style, so it is gone.
+
+The manager's `main.split` is as wide as the window. Below 48rem its side panel goes under the grid.
+The pattern grid had 150 px in a 480 px window before that.

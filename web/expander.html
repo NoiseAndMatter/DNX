@@ -27,9 +27,6 @@
    short, which is the behaviour we want rather than a rule to guard. */
 .between { position: sticky; top: 0; z-index: 5; }
 
-/* The assignment table is the most important thing on the page, so it gets the full width. */
-.assign .cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.1rem; }
-@media (max-width: 62rem) { .assign .cols { grid-template-columns: minmax(0, 1fr); } }
 
 .plan ul { margin: .3rem 0; padding-left: 1.1rem; }
 
