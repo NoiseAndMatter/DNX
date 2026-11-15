@@ -70,7 +70,7 @@
    * On the bar rather than on each child, because the next thing added to it would inherit the page
    * again otherwise. `--*`-sized children are unaffected: they use `rem`, which is root-relative.
    */
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 /** Pushes everything after it to the right — the one layout primitive the bar needs. */
@@ -106,7 +106,7 @@
  * Measured in a browser rather than reasoned about: 23px on the probe against 22px on the other
  * three, brand and nav otherwise identical at x=14 and x=58.
  */
-.toolnav { display: flex; align-items: baseline; gap: .9rem; font-size: 13px; line-height: 19px; }
+.toolnav { display: flex; align-items: baseline; gap: .9rem; font-size: var(--fs-base); line-height: 19px; }
 .toolnav .tool {
   position: relative; color: var(--muted); text-decoration: none; font-weight: 500;
   padding: .1rem 0; transition: color .12s ease;
@@ -214,9 +214,9 @@ body.sliding > *:not(.status) {
 }
 .toolnav .writeenable:hover { opacity: .85; }
 .toolnav .writeenable[aria-pressed="true"] {
-  background: var(--crit, #b03b2e);
-  border-color: var(--crit, #b03b2e);
-  color: #fff;
+  background: var(--crit, var(--danger-strong));
+  border-color: var(--crit, var(--danger-strong));
+  color: var(--white);
   opacity: 1;
   font-weight: 600;
 }
@@ -236,7 +236,7 @@ body.sliding > *:not(.status) {
  * row has already had over its size, its position and its height. An outline needs no such
  * decision.
  */
-.write-refused { outline: 2px solid var(--crit, #b03b2e); outline-offset: 1px; }
+.write-refused { outline: 2px solid var(--crit, var(--danger-strong)); outline-offset: 1px; }
 
 /*
  * The whole page is edged in red while writing is armed.
@@ -250,7 +250,7 @@ html.write-armed::after {
   content: "";
   position: fixed;
   inset: 0;
-  border: 2px solid var(--crit, #b03b2e);
+  border: 2px solid var(--crit, var(--danger-strong));
   pointer-events: none;
   z-index: 9998;
 }
@@ -280,7 +280,7 @@ html.write-armed::after {
   padding: 1rem 1.2rem 2.5rem; overflow: auto; box-shadow: -18px 0 40px rgba(0, 0, 0, .45);
 }
 .sheet header { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .7rem; }
-.sheet header h3 { margin: 0; font-size: .95rem; }
+.sheet header h3 { margin: 0; font-size: var(--fs-l); }
 .sheet .sheet-close {
   margin-left: auto; font: inherit; font-size: .82em; padding: .18rem .6rem;
   background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
@@ -289,7 +289,7 @@ html.write-armed::after {
 .set-group { border-top: 1px solid var(--line); padding: .8rem 0 .2rem; }
 .set-group:first-of-type { border-top: 0; }
 .set-group > h4 {
-  margin: 0 0 .5rem; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  margin: 0 0 .5rem; font-size: var(--fs-s); letter-spacing: .09em; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
 }
 .set-row { display: flex; align-items: flex-start; gap: .9rem; padding: .42rem 0; }
@@ -366,7 +366,7 @@ html.write-armed::after {
 .set-progress .fill {
   height: 100%;
   width: 0;
-  background: var(--teal-dim, #2b6b74);
+  background: var(--teal-dim, var(--info-strong));
   transition: width .15s linear;
 }
 .set-progress .count {
@@ -375,7 +375,7 @@ html.write-armed::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: .72rem;
+  font-size: var(--fs-s);
   letter-spacing: .02em;
   color: var(--fg);
 }
@@ -392,7 +392,7 @@ html.write-armed::after {
   grid-template-columns: 5.2rem 5.2rem 5.6rem 1fr;
   align-items: center;
   gap: .5rem;
-  font-size: .78rem;
+  font-size: var(--fs-m);
 }
 .set-stages .what { color: var(--fg); }
 .set-stages .count { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -404,7 +404,7 @@ html.write-armed::after {
   background: var(--panel-2);
   overflow: hidden;
 }
-.set-stages .track .fill { display: block; height: 100%; background: var(--teal-dim, #2b6b74); }
+.set-stages .track .fill { display: block; height: 100%; background: var(--teal-dim, var(--info-strong)); }
 .set-stages .stage[data-state="reading"] .state { color: var(--teal); }
 .set-stages .stage[data-state="done"] .state { color: var(--fg); opacity: .75; }
 .set-stages .stage[data-state="done"] .track .fill { background: var(--teal); }
@@ -431,7 +431,7 @@ html.write-armed::after {
   display: flex; align-items: baseline; gap: .6rem;
   padding: .7rem 1rem; border-bottom: 1px solid var(--line);
 }
-.help-panel > header h2 { margin: 0; font-size: .95rem; }
+.help-panel > header h2 { margin: 0; font-size: var(--fs-l); }
 .help-close {
   margin-left: auto; font: inherit; font-size: .82em; padding: .18rem .6rem;
   background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
@@ -443,7 +443,7 @@ html.write-armed::after {
   flex: 0 0 11rem; border-right: 1px solid var(--line); padding: .6rem 0; overflow: auto;
 }
 .help-nav button {
-  display: block; width: 100%; text-align: left; font: inherit; font-size: .84rem;
+  display: block; width: 100%; text-align: left; font: inherit; font-size: var(--fs-base);
   padding: .32rem 1rem; background: none; border: 0; color: var(--muted); cursor: pointer;
 }
 .help-nav button:hover { color: var(--fg); }
@@ -453,12 +453,12 @@ html.write-armed::after {
 }
 
 .help-body { flex: 1; min-width: 0; overflow: auto; padding: 1rem 1.4rem 2rem; }
-.help-body > h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
+.help-body > h2 { margin: 0 0 .3rem; font-size: var(--fs-xl); }
 .help-intro { color: var(--muted); margin-bottom: .5rem; }
 
 .help-section { border-top: 1px solid var(--line); padding-top: .9rem; margin-top: .9rem; }
 .help-section:first-of-type { border-top: 0; }
-.help-section > h3 { margin: 0 0 .5rem; font-size: .88rem; }
+.help-section > h3 { margin: 0 0 .5rem; font-size: var(--fs-l); }
 
 /* Body left, screenshot right. One column when there is no room for two. */
 .help-row { display: flex; gap: 1.2rem; align-items: flex-start; }
@@ -475,9 +475,9 @@ html.write-armed::after {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: .35rem; text-align: center; min-height: 6rem; padding: 1rem .8rem;
   border: 1px dashed var(--line); border-radius: 3px; background: var(--panel-2);
-  color: var(--muted); font-size: .78rem;
+  color: var(--muted); font-size: var(--fs-m);
 }
-.help-pending .label { text-transform: uppercase; letter-spacing: .08em; font-size: .68rem; }
+.help-pending .label { text-transform: uppercase; letter-spacing: .08em; font-size: var(--fs-s); }
 
 .lightbox {
   position: fixed; inset: 0; z-index: 94; cursor: zoom-out;
@@ -487,7 +487,7 @@ html.write-armed::after {
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 3px; }
 
 /* Markdown rendered by `markdown.ts`. Tight, because help is read in a hurry. */
-.help-md { font-size: .84rem; line-height: 1.5; color: var(--fg); }
+.help-md { font-size: var(--fs-base); line-height: 1.5; color: var(--fg); }
 .help-md p { margin: 0 0 .5rem; }
 .help-md ul, .help-md ol { margin: 0 0 .6rem; padding-left: 1.15rem; }
 .help-md li { margin: .12rem 0; }
@@ -507,7 +507,7 @@ html.write-armed::after {
 .help-md th { font-weight: 600; color: var(--muted); }
 .help-md blockquote {
   margin: 0 0 .6rem; padding: .1rem 0 .1rem .7rem;
-  border-left: 2px solid var(--teal-dim, #2b6b74); color: var(--muted);
+  border-left: 2px solid var(--teal-dim, var(--info-strong)); color: var(--muted);
 }
 .help-md a { color: var(--teal); }
 
@@ -524,7 +524,7 @@ html.write-armed::after {
   width: 1.05rem; height: 1.05rem; padding: 0; line-height: 1;
   flex: none; vertical-align: middle;
   background: none; border: 1px solid currentColor; border-radius: 50%;
-  color: var(--muted); font: inherit; font-size: .66rem; font-weight: 600;
+  color: var(--muted); font: inherit; font-size: var(--fs-xs); font-weight: 600;
   opacity: .32; cursor: help;
   /*
    * No transition, and no `prefers-reduced-motion` block to switch one off. `arrival.js` decides
@@ -560,13 +560,13 @@ html.write-armed::after {
  */
 .pick-warn {
   margin: 0 0 .6rem; padding: .5rem .7rem; font-size: .86em;
-  border: 1px solid var(--warn, #b7791f); border-radius: 3px;
-  background: color-mix(in srgb, var(--warn, #b7791f) 12%, transparent);
+  border: 1px solid var(--warn, var(--warn-strong)); border-radius: 3px;
+  background: color-mix(in srgb, var(--warn, var(--warn-strong)) 12%, transparent);
 }
 .pick-note { margin: .2rem 0 .4rem; color: var(--muted); font-size: .86em; }
 .pick-group { border-top: 1px solid var(--line); padding: .8rem 0 .2rem; }
 .pick-group > h4 {
-  margin: 0 0 .5rem; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  margin: 0 0 .5rem; font-size: var(--fs-s); letter-spacing: .09em; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
 }
 .pick-list { display: flex; flex-direction: column; }
@@ -590,8 +590,8 @@ html.write-armed::after {
 .othertraffic {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem .9rem;
   margin: .7rem 0 0; padding: .55rem .75rem; font-size: .86em;
-  border: 1px solid var(--warn, #b7791f); border-radius: 3px;
-  background: color-mix(in srgb, var(--warn, #b7791f) 12%, transparent);
+  border: 1px solid var(--warn, var(--warn-strong)); border-radius: 3px;
+  background: color-mix(in srgb, var(--warn, var(--warn-strong)) 12%, transparent);
 }
 .othertraffic-say { margin: 0; flex: 1 1 22rem; min-width: 0; }
 .othertraffic-count {
@@ -601,7 +601,7 @@ html.write-armed::after {
   font: inherit; color: var(--fg); background: transparent; cursor: pointer;
   border: 1px solid var(--line); border-radius: 3px; padding: .15rem .55rem;
 }
-.othertraffic-close:hover { border-color: var(--warn, #b7791f); }
+.othertraffic-close:hover { border-color: var(--warn, var(--warn-strong)); }
 
 /*
  * Reporting a problem, from the tool it was met in.
@@ -617,7 +617,7 @@ html.write-armed::after {
 
 .report-form { display: flex; flex-direction: column; gap: .45rem; padding: 0 1rem 1rem; }
 .report-form > label {
-  font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  font-size: var(--fs-s); letter-spacing: .09em; text-transform: uppercase;
   color: var(--muted); font-weight: 600; margin-top: .5rem;
 }
 .report-form > input, .report-form > textarea {
@@ -628,7 +628,7 @@ html.write-armed::after {
 .report-form > textarea { resize: vertical; min-height: 7rem; font-family: var(--mono, ui-monospace, monospace); font-size: .88em; }
 
 .report-heading {
-  margin: .8rem 0 0; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  margin: .8rem 0 0; font-size: var(--fs-s); letter-spacing: .09em; text-transform: uppercase;
   color: var(--muted); font-weight: 600;
 }
 /* Scrolls rather than growing: the sheet must not push its own buttons off the bottom. */
