@@ -70,7 +70,7 @@ import {
 import { type ListedEntry } from "@noiseandmatter/dnx-core/sample/importplan.js";
 import { type SamplesInfo, sha256Hex } from "@noiseandmatter/dnx-core/sample/routerecords.js";
 import { pageMessageIds } from "../messageids.js";
-import { type SendPlan, type SendStep, describeDone, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
+import { type SendPlan, type SendStep, describeDone, movedFrom, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
 import { readNative } from "@noiseandmatter/dnx-core/sample/nativepcm.js";
 import { type OutlineRow, storeOutline, storeSearch } from "@noiseandmatter/dnx-core/sample/storeoutline.js";
 import {
@@ -958,6 +958,8 @@ export function wireSamples(host: SampleHost): SampleMode {
     let failed: SendStep | undefined;
     /** Files the store held already under another path, so nothing was sent. */
     const present: string[] = [];
+    /** Old paths that an upload of the same sound deleted already: the plan moved the sample. */
+    const moved = new Set<string>();
     /** The id of the stored sample at `path`. */
     const idOf = (path: string): string => {
       const entry = reading?.entries.find((one) => one.path === path);
@@ -974,6 +976,8 @@ export function wireSamples(host: SampleHost): SampleMode {
             failed = step;
             if (step.kind === "mkdir") {
               throw new Error("this store has no empty folders");
+            } else if (step.kind === "delete" && moved.has(step.path)) {
+              // The upload of this sound deleted the old copy. Its id is now the new sample's.
             } else if (step.kind === "delete") {
               host.status(`Deleting ${step.path}…`);
               await deleteSample(store, idOf(step.path));
@@ -989,6 +993,15 @@ export function wireSamples(host: SampleHost): SampleMode {
               if (old && old.sha256 !== id) {
                 host.status(`Deleting the old ${path}…`);
                 await deleteSample(store, old.sha256);
+              }
+              // A move: the plan sends this sound here and deletes its old copy. The store keeps one
+              // copy of a sound, so the old copy goes first. See `sendplan.ts`.
+              const waiting = plan.steps.flatMap((other) => (other.kind === "delete" && !done.includes(other) ? [other.path] : []));
+              const from = movedFrom(reading?.entries ?? [], id, path, waiting);
+              if (from) {
+                host.status(`Moving ${from} to ${path}…`);
+                await deleteSample(store, id);
+                moved.add(from);
               }
               const outcome = await uploadSample(store, {
                 path,

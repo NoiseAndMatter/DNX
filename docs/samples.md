@@ -158,6 +158,7 @@ The firmware writes the store through a `/samples` route on the Data API. The co
 - A send that stops leaves the upload open. The next send of the same file goes on from the part that `info` expects. A send of another file drops the open upload first. An open upload is not a stored file, so the drop loses no sample.
 - One id is one file. The firmware refuses a second copy of a sound under another path, so DNX reads `index` first and sends nothing when the id is there.
 - The firmware refuses a path that is taken. A replace deletes the old file, then sends the new one.
+- A plan that sends a sound to a new path and deletes its old path is a move. The page deletes the old copy just before the upload (`movedFrom` in `sendplan.ts`). Before 2026-11-16 the upload ran first and sent nothing, and the delete then removed the only copy.
 - `safeWriteSamplePart` in `safewrite.ts` is the only door to `/samples/<n>`. A part is not a slot, so the slot rules have nothing to check. The proof is the firmware's xxHash32.
 
 Version 1 of the route has no read of a stored file, no empty folders, no rename and no move. Paths use ASCII 0x20 to 0x7E only.
