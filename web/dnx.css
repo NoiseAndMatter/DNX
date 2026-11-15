@@ -50,6 +50,38 @@
   --salmon: #cf6f62;
   --steel: #6f95b5;
   --focus: #8fd4c6;
+
+  /*
+   * Type sizes. Seven steps, and a rule takes one of them.
+   *
+   * There were 21 rem sizes in the three stylesheets, many of them a third of a pixel apart:
+   * .66, .67 and .68rem, or .74, .75 and .76rem. Nobody chose those differences. `base` is the
+   * body's 13px. `em` sizes stay as they are, because they follow the text they sit in.
+   */
+  --fs-xs: .64rem;
+  --fs-s: .7rem;
+  --fs-m: .76rem;
+  --fs-base: .8125rem;
+  --fs-l: .9rem;
+  --fs-xl: 1.1rem;
+  --fs-xxl: 1.3rem;
+
+  /* The height of a control in a bar: a button, a list and a text box line up. */
+  --control-h: 2rem;
+
+  /* Surfaces and inks that more than one rule uses. */
+  --btn-bg: #232a2c;
+  --field-bg: #1b2123;
+  --row-hover: #1d2726;
+  --status-bg: #1a1f21;
+  --sunk: #171c1e;
+  --teal-wash: #24322f;
+  --on-accent: #eafffb;
+  --white: #fff;
+  /* The strong signal colours of the top bar: write armed, danger, and a note. */
+  --warn-strong: #b7791f;
+  --danger-strong: #b03b2e;
+  --info-strong: #2b6b74;
 }
 * { box-sizing: border-box; }
 /*
@@ -85,7 +117,7 @@ button, input, select { font: inherit; color: inherit; }
  * control added anywhere on the page is legible without anyone remembering this.
  */
 select {
-  background: #1b2123;
+  background: var(--field-bg);
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: .22rem .4rem;
@@ -98,7 +130,7 @@ select:disabled { opacity: .45; }
  * UA's white unless the options say otherwise. Styling only the closed control leaves the open
  * list unreadable — which is the half the user is actually reading when it matters.
  */
-select option { background: #1b2123; color: var(--fg); }
+select option { background: var(--field-bg); color: var(--fg); }
 
 /*
  * `hidden` works by a UA rule of `display: none`, which *any* author rule setting `display`
@@ -120,7 +152,7 @@ select option { background: #1b2123; color: var(--fg); }
  * to sit in a different place on the manager. Only what a *page* puts inside the bar stays here.
  */
 .device {
-  font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .09em;
   border: 1px solid var(--teal-dim); color: var(--teal);
   padding: .12rem .45rem; border-radius: 3px;
 }
@@ -129,28 +161,28 @@ select option { background: #1b2123; color: var(--fg); }
 /* ---- generic panel ------------------------------------------------------------------ */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
 .panel > h2 {
-  margin: 0; padding: .45rem .7rem; font-size: .67rem; font-weight: 600;
+  margin: 0; padding: .45rem .7rem; font-size: var(--fs-s); font-weight: 600;
   text-transform: uppercase; letter-spacing: .11em; color: var(--dim);
   border-bottom: 1px solid var(--line-soft);
   display: flex; align-items: center; gap: .5rem;
 }
 .panel > h2 .btn.ghost {
   margin-left: auto; background: none; border-color: var(--line-soft);
-  font-size: .64rem; letter-spacing: .07em; text-transform: uppercase;
+  font-size: var(--fs-xs); letter-spacing: .07em; text-transform: uppercase;
   padding: .18rem .5rem; color: var(--muted);
 }
 .panel > .body { padding: .7rem; }
 
 /* ---- tab strip, the Overbridge TRK bar ---------------------------------------------- */
-.tabs { display: flex; gap: 2px; padding: .5rem .9rem 0; background: #1a1f21; }
+.tabs { display: flex; gap: 2px; padding: .5rem .9rem 0; background: var(--status-bg); }
 .tab {
   background: #1e2426; border: 1px solid var(--line); border-bottom: none;
   border-radius: 3px 3px 0 0; padding: .35rem .95rem; cursor: pointer;
-  color: var(--muted); font-size: .78rem; letter-spacing: .04em;
+  color: var(--muted); font-size: var(--fs-m); letter-spacing: .04em;
 }
 .tab:hover { color: var(--fg); }
-.tab[aria-selected="true"] { background: var(--panel-2); color: #fff; border-color: var(--line); }
-.tab .n { color: var(--dim); font-size: .68rem; margin-left: .4rem; }
+.tab[aria-selected="true"] { background: var(--panel-2); color: var(--white); border-color: var(--line); }
+.tab .n { color: var(--dim); font-size: var(--fs-s); margin-left: .4rem; }
 .tab[aria-selected="true"] .n { color: var(--teal); }
 /* Listed and empty, which is not the same as not listed yet. An empty bank carries no number,
    because a row of zeroes is noise, so the dimming is all that separates it from a bank nobody has
@@ -300,7 +332,7 @@ body.page > main { container-type: inline-size; }
      to be narrower than its longest word before the track above can honour its share. */
   min-width: 0;
   position: relative; text-align: left; cursor: pointer; min-height: 4.1rem;
-  background: #1b2123; border: 1px solid var(--line-soft); border-radius: 3px;
+  background: var(--field-bg); border: 1px solid var(--line-soft); border-radius: 3px;
   padding: .32rem .4rem; display: flex; flex-direction: column; gap: .1rem;
   transition: border-color .08s, background .08s;
 }
@@ -312,18 +344,18 @@ body.page > main { container-type: inline-size; }
  * outline was subtle enough to get away with it; a word across the middle is not.
  */
 .slot > span { pointer-events: none; }
-.slot .id { font-size: .66rem; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+.slot .id { font-size: var(--fs-xs); letter-spacing: .06em; color: var(--dim); font-weight: 600; }
 .slot .nm {
-  font-size: .74rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  font-size: var(--fs-m); color: var(--muted); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-family: ui-monospace, Consolas, monospace;
 }
-.slot .tc { margin-top: auto; font-size: .64rem; color: var(--dim); }
-.slot.occupied { background: #1d2726; border-color: var(--teal-dim); }
+.slot .tc { margin-top: auto; font-size: var(--fs-xs); color: var(--dim); }
+.slot.occupied { background: var(--row-hover); border-color: var(--teal-dim); }
 .slot.occupied .id { color: var(--teal); }
 .slot.occupied .nm { color: var(--fg); }
 .slot.occupied .tc { color: var(--teal); opacity: .8; }
 .slot.unsupported { border-style: dashed; border-color: var(--amber); }
-.slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: #24322f; }
+.slot[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--teal-wash); }
 /*
  * A preset that is in the pool and locked by nothing.
  *
@@ -348,7 +380,7 @@ body.page > main { container-type: inline-size; }
  * Inheriting rather than restating `repeat(8, 1fr)` is deliberate — two numbers that must agree
  * are two numbers that can disagree.
  */
-.slot .mc { font-size: .62rem; color: var(--dim); letter-spacing: .04em; }
+.slot .mc { font-size: var(--fs-xs); color: var(--dim); letter-spacing: .04em; }
 .slot.midi { border-color: var(--amber); }
 .slot.midi .id, .slot.midi .mc { color: var(--amber); }
 /* The pattern whose tracks are shown below, so the two sections are visibly connected. */
@@ -384,12 +416,12 @@ body.page > main { container-type: inline-size; }
  */
 .sub { margin-top: 1.4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
 .sub h3 {
-  margin: 0 0 .6rem; font-size: .67rem; font-weight: 600; text-transform: uppercase;
+  margin: 0 0 .6rem; font-size: var(--fs-s); font-weight: 600; text-transform: uppercase;
   letter-spacing: .11em; color: var(--teal); display: flex; align-items: center; gap: .5rem;
 }
 .sub h3 .btn.ghost {
   margin-left: auto; background: none; border-color: var(--line-soft); color: var(--muted);
-  font-size: .64rem; padding: .1rem .45rem; line-height: 1.2;
+  font-size: var(--fs-xs); padding: .1rem .45rem; line-height: 1.2;
 }
 
 /*
@@ -426,7 +458,7 @@ body.page > main { container-type: inline-size; }
   content: attr(data-action);
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: .78rem; font-weight: 700; letter-spacing: .16em;
+  font-size: var(--fs-m); font-weight: 700; letter-spacing: .16em;
   color: var(--drop);
   background: rgba(10, 13, 14, .72);   /* a scrim, so the word is legible over a full cell */
   pointer-events: none;                /* or the cell stops receiving its own dragover */
@@ -437,26 +469,26 @@ kbd {
 }
 
 /* ---- scope selector ----------------------------------------------------------------- */
-.lbl { display: block; font-size: .66rem; letter-spacing: .07em; text-transform: uppercase;
+.lbl { display: block; font-size: var(--fs-xs); letter-spacing: .07em; text-transform: uppercase;
   color: var(--dim); margin-bottom: .3rem; }
 #scope { width: 100%; background: var(--panel-2); border: 1px solid var(--line-soft);
-  border-radius: 3px; padding: .34rem .4rem; font-size: .76rem; }
+  border-radius: 3px; padding: .34rem .4rem; font-size: var(--fs-m); }
 #scope:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* ---- operation bar ------------------------------------------------------------------ */
 .ops { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
 .btn {
-  background: #232a2c; border: 1px solid var(--line); border-radius: 3px;
+  background: var(--btn-bg); border: 1px solid var(--line); border-radius: 3px;
   padding: .34rem .7rem; cursor: pointer; color: var(--fg); letter-spacing: .02em;
 }
-.btn:hover:not(:disabled) { border-color: var(--teal); color: #fff; }
+.btn:hover:not(:disabled) { border-color: var(--teal); color: var(--white); }
 .btn:disabled { opacity: .35; cursor: default; }
 .btn.danger:hover:not(:disabled) { border-color: var(--salmon); color: var(--salmon); }
-.btn.primary { background: var(--teal-dim); border-color: var(--teal); color: #eafffb; }
-.hint { color: var(--dim); font-size: .72rem; }
+.btn.primary { background: var(--teal-dim); border-color: var(--teal); color: var(--on-accent); }
+.hint { color: var(--dim); font-size: var(--fs-s); }
 
 /* ---- history ------------------------------------------------------------------------ */
-.hist { list-style: none; margin: 0; padding: 0; font-size: .75rem; }
+.hist { list-style: none; margin: 0; padding: 0; font-size: var(--fs-m); }
 .hist li { padding: .22rem .1rem; color: var(--muted); border-bottom: 1px solid var(--line-soft); }
 .hist li:first-child { color: var(--fg); }
 /*
@@ -478,12 +510,12 @@ kbd {
  */
 .hist li.ahead { color: var(--dim); font-style: italic; }
 .hist li.ahead::before { content: "↷ "; }
-.hist .b { color: var(--dim); float: right; font-size: .68rem; }
+.hist .b { color: var(--dim); float: right; font-size: var(--fs-s); }
 
 /* ---- status ------------------------------------------------------------------------- */
 .status {
-  padding: .45rem .9rem; border-top: 1px solid var(--line); background: #1a1f21;
-  font-size: .76rem; color: var(--muted); min-height: 2rem;
+  padding: .45rem .9rem; border-top: 1px solid var(--line); background: var(--status-bg);
+  font-size: var(--fs-m); color: var(--muted); min-height: 2rem;
 }
 /*
  * On a flowing page the status bar is pinned, because otherwise it is not a status bar.
@@ -502,7 +534,7 @@ body.page > .status { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20
 .dropzone strong { color: var(--fg); }
 label.file { display: inline-block; cursor: pointer; }
 label.file input { display: none; }
-.legend { display: flex; gap: .9rem; font-size: .68rem; color: var(--dim); margin-top: .55rem; }
+.legend { display: flex; gap: .9rem; font-size: var(--fs-s); color: var(--dim); margin-top: .55rem; }
 .legend i { display: inline-block; width: .6rem; height: .6rem; border-radius: 2px;
   margin-right: .25rem; vertical-align: -1px; }
 /*
@@ -511,17 +543,17 @@ label.file input { display: none; }
  * class guard in `web.test.ts` now catches. Each one matches the state it stands for.
  */
 .legend .sw { border: 1px solid var(--line); background: var(--panel-2); }
-.legend .sw.occupied { background: #1d2726; border-color: var(--teal-dim); }
-.legend .sw.sel { background: #24322f; border-color: var(--focus); }
+.legend .sw.occupied { background: var(--row-hover); border-color: var(--teal-dim); }
+.legend .sw.sel { background: var(--teal-wash); border-color: var(--focus); }
 .legend .sw.pending { background: transparent; border-color: var(--amber); }
 
 /* ---- a section of a flowing page ------------------------------------------------------ */
 .section { margin: 0 0 1.1rem; }
 .section > h2 {
-  margin: 0 0 .45rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+  margin: 0 0 .45rem; font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .1em;
   color: var(--teal); font-weight: 600;
 }
-.section > .sub { margin: -.2rem 0 .5rem; color: var(--muted); font-size: .76rem; }
+.section > .sub { margin: -.2rem 0 .5rem; color: var(--muted); font-size: var(--fs-m); }
 
 /*
  * A strip of controls that wraps rather than overflowing.
@@ -545,6 +577,14 @@ label.file input { display: none; }
   the wrap is concerned and its separator travels with what it separates.
 */
 .bar .bargroup { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+/*
+ * One height for the controls of a bar.
+ *
+ * A button was 32px, a list 27 or 28px and a search box 25, 28 or 29px, in the same row. The
+ * small buttons of a table row are not bar controls and keep their own size.
+ */
+.bar .btn, .bar select, .bar input[type="search"], .bar input[type="text"],
+.libfind .btn, .libfind input[type="search"] { min-height: var(--control-h); box-sizing: border-box; }
 
 /*
  * A command row directly under the chrome bar, on a full-height app page.
@@ -575,22 +615,22 @@ label.file input { display: none; }
   margin: 0 0 .7rem; }
 .stats > div { background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
   padding: .5rem .65rem; }
-.stats strong { display: block; font-size: 1.35rem; line-height: 1.1; color: var(--fg); }
-.stats span { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .07em; }
+.stats strong { display: block; font-size: var(--fs-xxl); line-height: 1.1; color: var(--fg); }
+.stats span { color: var(--muted); font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .07em; }
 
-table { border-collapse: collapse; width: 100%; font-size: .78rem; }
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-m); }
 th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--line-soft); }
-th { color: var(--muted); font-weight: 600; font-size: .66rem; text-transform: uppercase;
+th { color: var(--muted); font-weight: 600; font-size: var(--fs-xs); text-transform: uppercase;
   letter-spacing: .07em; }
 td.track { font-weight: 700; color: var(--teal); }
 td.num { text-align: right; }
-td.from, td.patterns { color: var(--muted); font-size: .74rem; }
+td.from, td.patterns { color: var(--muted); font-size: var(--fs-m); }
 
-h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+h3 { font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
   font-weight: 600; margin: 1rem 0 .35rem; }
 
 /* Two columns where there is room: a long list of names reads badly as one tall column. */
-ul.overflow { columns: 2; column-gap: 1.4rem; margin: .3rem 0; padding-left: 1.1rem; font-size: .78rem; }
+ul.overflow { columns: 2; column-gap: 1.4rem; margin: .3rem 0; padding-left: 1.1rem; font-size: var(--fs-m); }
 @media (max-width: 46rem) { ul.overflow { columns: 1; } }
 
 .good { color: var(--teal); }
@@ -614,7 +654,7 @@ ul.overflow { columns: 2; column-gap: 1.4rem; margin: .3rem 0; padding-left: 1.1
   margin-left: auto; flex: none;
   width: 1.15rem; height: 1.15rem; padding: 0; line-height: 1;
   background: none; border: 1px solid var(--line); border-radius: 50%;
-  color: var(--muted); font-size: .72rem; font-weight: 600; cursor: pointer;
+  color: var(--muted); font-size: var(--fs-s); font-weight: 600; cursor: pointer;
 }
 .helpq:hover { border-color: var(--teal); color: var(--teal); }
 .helpq:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
@@ -637,7 +677,7 @@ dialog.help::backdrop { background: rgba(10, 13, 14, .66); }
 /* `min-height: 0`, or a flex child refuses to shrink below its content and the panel overflows. */
 .helpbody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; }
 .helpbody > h2 {
-  margin: 0 0 .7rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+  margin: 0 0 .7rem; font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .1em;
   color: var(--teal); font-weight: 600;
 }
 .helpbody [data-topic] {
@@ -645,10 +685,10 @@ dialog.help::backdrop { background: rgba(10, 13, 14, .66); }
 }
 .helpbody [data-topic]:first-of-type { border-top: none; padding-top: 0; }
 .helpbody [data-topic] h3 {
-  margin: 0 0 .35rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+  margin: 0 0 .35rem; font-size: var(--fs-s); text-transform: uppercase; letter-spacing: .09em;
   color: var(--muted); font-weight: 600;
 }
-.helpbody [data-topic] p { margin: 0 0 .5rem; color: var(--muted); font-size: .8rem; }
+.helpbody [data-topic] p { margin: 0 0 .5rem; color: var(--muted); font-size: var(--fs-base); }
 .helpbody [data-topic] p:last-child { margin-bottom: 0; }
 .helpbody strong { color: var(--fg); font-weight: 600; }
 /*
@@ -687,7 +727,7 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 
 /* The device settings table. A differing row is marked by its first cell as well as its colour. */
 .settable-wrap { overflow-x: auto; margin: 0 0 .7rem; }
-.settable { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.settable { width: 100%; border-collapse: collapse; font-size: var(--fs-m); }
 .settable th, .settable td {
   text-align: left; padding: .22rem .5rem; border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
@@ -699,14 +739,14 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .settable td.mark { width: 1rem; color: var(--amber); }
 /* Last, so an info or differing row keeps its offset dim. */
 .settable tr td.off { font-family: ui-monospace, Consolas, monospace; color: var(--dim); }
-.setraw { font-size: .7rem; color: var(--muted); margin: 0 0 .7rem; }
-.setraw pre { margin: .4rem 0 0; font-size: .68rem; color: var(--dim); overflow-x: auto; }
+.setraw { font-size: var(--fs-s); color: var(--muted); margin: 0 0 .7rem; }
+.setraw pre { margin: .4rem 0 0; font-size: var(--fs-s); color: var(--dim); overflow-x: auto; }
 .askbody { overflow: auto; min-height: 0; padding: 1rem 1.2rem; }
 .askbody > h2 {
-  margin: 0 0 .7rem; font-size: .78rem; letter-spacing: .02em;
+  margin: 0 0 .7rem; font-size: var(--fs-m); letter-spacing: .02em;
   color: var(--fg); font-weight: 600;
 }
-.askbody > p { margin: 0 0 .6rem; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.askbody > p { margin: 0 0 .6rem; color: var(--muted); font-size: var(--fs-base); line-height: 1.5; }
 
 /*
  * The itemised half — tracks about to be destroyed, findings of a plan. Scrolls on its own so a
@@ -717,7 +757,7 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
   margin: 0 0 .7rem; padding: .5rem .7rem; list-style: none;
   max-height: 14rem; overflow: auto;
   background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 3px;
-  font-size: .75rem; color: var(--muted);
+  font-size: var(--fs-m); color: var(--muted);
 }
 .asklist li { padding: .16rem 0; border-bottom: 1px solid var(--line-soft); }
 .asklist li:last-child { border-bottom: none; }
@@ -762,19 +802,19 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 
 .tagchips { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0 0 .55rem; }
 .tagchip {
-  background: #1b2123; border: 1px solid var(--line-soft); border-radius: 999px;
+  background: var(--field-bg); border: 1px solid var(--line-soft); border-radius: 999px;
   padding: .18rem .55rem; cursor: pointer; color: var(--muted);
-  font-size: .68rem; letter-spacing: .06em; display: inline-flex; align-items: center; gap: .3rem;
+  font-size: var(--fs-s); letter-spacing: .06em; display: inline-flex; align-items: center; gap: .3rem;
 }
 .tagchip:hover { border-color: var(--teal); color: var(--fg); }
 .tagchip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.tagchip .n { color: var(--dim); font-size: .64rem; }
+.tagchip .n { color: var(--dim); font-size: var(--fs-xs); }
 /* Pressed is a state the button reports, so the styling hangs off the same attribute a screen
    reader uses rather than a class that could disagree with it. */
 .tagchip[aria-pressed="true"] {
-  background: var(--teal-dim); border-color: var(--teal); color: #eafffb;
+  background: var(--teal-dim); border-color: var(--teal); color: var(--on-accent);
 }
-.tagchip[aria-pressed="true"] .n { color: #eafffb; opacity: .75; }
+.tagchip[aria-pressed="true"] .n { color: var(--on-accent); opacity: .75; }
 /* Unreachable: no row left carries it as well as the tags already chosen. Dimmed and disabled
    rather than removed, because a chip vanishing under the pointer moves the ones beside it, and
    the cloud is also a map of what this bank holds. Disabled for real, so a press that would do
@@ -786,16 +826,16 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 /* The rows scroll, the header does not — a 256-row bank is exactly when you stop knowing which
    column is which. `overflow-x: auto` keeps a narrow pane from pushing the page sideways. */
 .libtablewrap { max-height: 30rem; overflow: auto; border: 1px solid var(--line-soft); border-radius: 3px; }
-.libtable { width: 100%; border-collapse: collapse; font-size: .75rem; }
+.libtable { width: 100%; border-collapse: collapse; font-size: var(--fs-m); }
 .libtable thead th {
   position: sticky; top: 0; z-index: 1;
   background: var(--panel-2); border-bottom: 1px solid var(--line);
   padding: .35rem .5rem; text-align: left; font-weight: 600;
-  font-size: .66rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
 }
 .libtable td { padding: .28rem .5rem; border-bottom: 1px solid var(--line-soft); }
 .libtable tbody tr.occupied { cursor: grab; }
-.libtable tbody tr.occupied:hover { background: #1d2726; }
+.libtable tbody tr.occupied:hover { background: var(--row-hover); }
 .libtable tbody tr.selected,
 .libtable tbody tr.selected:hover { background: #20312f; box-shadow: inset 3px 0 0 var(--teal); }
 .libtable tbody tr.selected td.name { color: var(--text, #e6f2ef); font-weight: 600; }
@@ -805,8 +845,8 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .libtable td.machine, .libtable td.state { color: var(--muted); white-space: nowrap; }
 .libtable td.tags { line-height: 1.7; }
 .libtable .tag {
-  background: #232a2c; border: 1px solid var(--line-soft); border-radius: 2px;
-  padding: .04rem .28rem; font-size: .64rem; letter-spacing: .05em; color: var(--muted);
+  background: var(--btn-bg); border: 1px solid var(--line-soft); border-radius: 2px;
+  padding: .04rem .28rem; font-size: var(--fs-xs); letter-spacing: .05em; color: var(--muted);
 }
 /* Three states, not two: nobody has read this slot is not the same as this slot has no tags. */
 .libtable .unread { color: var(--dim); font-style: italic; }
@@ -826,7 +866,7 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 .libtable tbody tr.pending.selected { background: #2a2419; box-shadow: inset 3px 0 0 var(--amber); }
 .libtable tbody tr.pending td.name { color: var(--amber); font-weight: 600; }
 .pendingmark {
-  font-size: .62rem;
+  font-size: var(--fs-xs);
   letter-spacing: .08em;
   text-transform: uppercase;
   border: 1px dashed var(--amber);
@@ -899,12 +939,12 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
   box-shadow: 0 6px 20px rgb(0 0 0 / .45);
 }
 .progress > span {
-  grid-column: 1; font-size: .78rem; color: var(--fg);
+  grid-column: 1; font-size: var(--fs-m); color: var(--fg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .progress > b {
   grid-column: 2; justify-self: end;
-  font-size: .72rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-s); font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .progress > .progresstrack {
   grid-column: 1 / -1; position: relative; overflow: hidden;
@@ -985,7 +1025,7 @@ body.app > main.split > .side {
   font: inherit; color: inherit; letter-spacing: inherit; text-align: left;
 }
 .songfold:hover { color: var(--fg); }
-.songfold .caret { color: var(--teal); font-size: .9rem; }
+.songfold .caret { color: var(--teal); font-size: var(--fs-l); }
 /*
  * Shorter than the library's 30rem. This panel is *above* the pattern grid, so every pixel it takes
  * pushes the grid down — at 30rem the patterns were off the bottom of a 1512px-tall window, which
@@ -1028,7 +1068,7 @@ body.app > main.split > .side {
 /* Wide enough for the longest label the device offers, so none is shown cut off. */
 .songtable select.rowedit { min-width: 6.5rem; }
 .songtable td.dim { color: var(--dim); }
-.songtable tbody tr:hover { background: #1d2726; }
+.songtable tbody tr:hover { background: var(--row-hover); }
 
 /* ---- song row editing ----------------------------------------------------------------
  *
@@ -1036,8 +1076,8 @@ body.app > main.split > .side {
  * a table and an editor beside it would mean holding "which row am I changing" in your head.
  */
 .songtable input.rowedit, .songtable select.rowedit {
-  background: #171c1e; color: var(--fg); border: 1px solid var(--line-soft);
-  border-radius: 2px; padding: .1rem .25rem; font: inherit; font-size: .75rem; width: 100%;
+  background: var(--sunk); color: var(--fg); border: 1px solid var(--line-soft);
+  border-radius: 2px; padding: .1rem .25rem; font: inherit; font-size: var(--fs-m); width: 100%;
 }
 .songtable input.rowedit { text-align: right; max-width: 5.5rem; }
 .songtable select.rowedit { max-width: 8rem; }
@@ -1045,27 +1085,27 @@ body.app > main.split > .side {
 /* The slot stays scannable down the column; the name reads as prose beside it. */
 .songtable td.ptn { white-space: nowrap; }
 .songtable .ptnid { font-weight: 600; color: var(--teal); }
-.songtable .ptnname { color: var(--muted); margin-left: .45rem; font-size: .72rem; }
+.songtable .ptnname { color: var(--muted); margin-left: .45rem; font-size: var(--fs-s); }
 /*
   A row naming a pattern the project does not have. Amber rather than salmon: the file is
   damaged, not about to be destroyed, and every other row on the page is fine. The raw stored
   number sits where a pattern name like A5 normally does, so the column still scans.
 */
 .songtable td.ptn.damaged .ptnid { color: var(--amber); }
-.songtable .ptnbad { color: var(--amber); margin-left: .45rem; font-size: .72rem; font-style: italic; }
+.songtable .ptnbad { color: var(--amber); margin-left: .45rem; font-size: var(--fs-s); font-style: italic; }
 .songtable tr.damagedrow td { background: rgba(200, 160, 106, .07); }
-#songRows p.warn { color: var(--amber); margin: 0 0 .5rem; font-size: .78rem; line-height: 1.45; }
+#songRows p.warn { color: var(--amber); margin: 0 0 .5rem; font-size: var(--fs-m); line-height: 1.45; }
 /* Sixteen chips, so muting is a click on a numbered track exactly as it is on the instrument. */
 .songtable td.mutes { white-space: nowrap; line-height: 1; }
 .mutechip {
-  background: #171c1e; color: var(--dim); border: 1px solid var(--line-soft);
+  background: var(--sunk); color: var(--dim); border: 1px solid var(--line-soft);
   border-radius: 2px; width: 1.35rem; padding: .1rem 0; margin-right: 1px;
-  font-size: .62rem; cursor: pointer;
+  font-size: var(--fs-xs); cursor: pointer;
 }
 .mutechip:hover { color: var(--fg); border-color: var(--line); }
 .mutechip.on { background: var(--amber); color: #14181a; border-color: var(--amber); font-weight: 700; }
 .songtable td.rowacts { white-space: nowrap; text-align: right; }
-.btn.tiny { padding: .05rem .3rem; font-size: .7rem; min-width: 0; }
+.btn.tiny { padding: .05rem .3rem; font-size: var(--fs-s); min-width: 0; }
 /* A row being dragged onto, using the same marks the pattern grid uses. */
 .songtable tbody tr.target { outline: 1px solid var(--teal); outline-offset: -1px; }
 .songtable tbody tr.dragging { opacity: .5; }
@@ -1074,7 +1114,7 @@ body.app > main.split > .side {
 .songcontrols { display: flex; align-items: center; gap: .4rem; padding: 0 0 .55rem; flex-wrap: wrap; }
 .songcontrols .songtempo {
   display: flex; align-items: center; gap: .35rem;
-  font-size: .7rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase;
+  font-size: var(--fs-s); letter-spacing: .04em; color: var(--muted); text-transform: uppercase;
 }
 .songcontrols .songtempo input { max-width: 5rem; }
 
@@ -1133,7 +1173,7 @@ body.app.insights .slot { cursor: pointer; }
  * vocabulary for the same meaning.
  */
 .bar .btn[aria-pressed="true"] {
-  border-color: var(--teal-dim); color: var(--teal); background: #1d2726;
+  border-color: var(--teal-dim); color: var(--teal); background: var(--row-hover);
 }
 
 /*
@@ -1151,14 +1191,14 @@ body.app.insights .slot { cursor: pointer; }
 .wfpanel { margin-top: .75rem; display: flex; flex-direction: column; gap: .7rem; }
 .wfhead { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
   border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
-.wflabel { font-size: .66rem; letter-spacing: .08em; text-transform: uppercase;
+.wflabel { font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase;
   font-weight: 600; color: var(--teal); }
-.wfmeta { font-family: ui-monospace, Consolas, monospace; font-size: .72rem; color: var(--muted); }
+.wfmeta { font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-s); color: var(--muted); }
 .wfspacer { flex-grow: 1; }
 .wfstage { min-height: 16rem; background: var(--panel); border: 1px solid var(--line);
   border-radius: 3px; padding: .6rem; display: flex; }
 .wfstage svg { width: 100%; height: auto; max-height: 24rem; }
-.wfstage .wfempty { margin: auto; color: var(--muted); font-size: .8rem; text-align: center;
+.wfstage .wfempty { margin: auto; color: var(--muted); font-size: var(--fs-base); text-align: center;
   max-width: 28rem; line-height: 1.5; }
 .wfcontrols { display: flex; align-items: center; gap: .8rem; background: var(--panel);
   border: 1px solid var(--line); border-radius: 3px; padding: .6rem .75rem; }
@@ -1209,7 +1249,7 @@ body.app.insights .slot { cursor: pointer; }
 .wfcontrols input.wfvol::-moz-range-thumb { background: var(--teal-dim); }
 /* While a note sounds, the marker follows the audio rather than the pointer. */
 .wfstage.sounding { border-color: var(--teal-dim); }
-.wfpos { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--fg);
+.wfpos { font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-base); color: var(--fg);
   min-width: 9.5rem; text-align: right; flex-shrink: 0; }
 @media (max-width: 40rem) {
   .wfcontrols { flex-wrap: wrap; }
