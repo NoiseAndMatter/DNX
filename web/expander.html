@@ -28,19 +28,6 @@
 .between { position: sticky; top: 0; z-index: 5; }
 
 
-.plan ul { margin: .3rem 0; padding-left: 1.1rem; }
-
-/* The plan panel closes the assignment section, separated from the table above it. It used to sit
-   in the sticky strip, where a merge reporting every conversion note grew taller than the page and
-   drew the rest of the tool underneath it — hence the folded notes below, and nothing here that can
-   grow without bound. */
-#devicePlan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
-.notes { margin-top: .4rem; }
-.notes summary { cursor: pointer; color: var(--muted); }
-.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
-.notes b { color: var(--fg); font-weight: 600; }
-.bad { color: var(--salmon); }
-.count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
 </style>
 </head>
 <body class="page">
@@ -146,7 +133,7 @@
   <section class="section assign">
     <h2 data-help="expander/expander-options">Sounds on tracks <span class="count" id="reportScope"></span></h2>
     <div id="plan"><p class="hint">Load a project to see how its sounds would be laid out.</p></div>
-    <div class="plan hint" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
+    <div class="plan hint deviceplan" id="devicePlan">Pick a destination, then drag patterns onto it.</div>
   </section>
 
   <!-- 5. Everything that takes data out. -->

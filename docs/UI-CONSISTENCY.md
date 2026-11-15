@@ -136,6 +136,7 @@ about. Leave it.
 | 2 | the probe adopts `body.app` | kills the third unnamed layout | **done 2026-08-12** |
 | 3 | a guard: no page's `<style>` may re-declare a `dnx.css` selector | this drifted back once already | **done — budget is 0** |
 | 4 | split `probe/main.ts`, still 2,156 lines | easier once its stylesheet is small | started |
+| 5 | the library's and the expander's own rules move to `dnx.css`, keyed by class | a rule keyed by id missed the second table of its kind | **done 2026-11-15** |
 
 ## 7. What steps 1–3 actually did — 2026-08-12
 
