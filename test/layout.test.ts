@@ -13,7 +13,7 @@
  * test starts the browser headless with a profile folder of its own, so it does not touch the
  * browser that is open on the desk. Each page is measured as it opens: no project, no instrument.
  *
- * Checks marked `todo` fail on purpose today. Each one names the fault it waits for.
+ * A check marked `todo` fails on purpose today. It names the fault it waits for.
  */
 
 import assert from "node:assert/strict";
@@ -37,8 +37,10 @@ const skip = !CHROME || !existsSync(CHROME)
 
 const PAGES = ["index", "expander", "manager", "library", "probe"] as const;
 const WIDTHS = [1500, 1110, 800, 480] as const;
-/** Below this width the top bar's tool row does not wrap yet, so every page scrolls sideways. */
+/** Below this width a group of buttons is wider than the window, and the labels in it break. */
 const NARROW = 515;
+/** The pages with such a group: the manager's Open group, and the library's Instrument group. */
+const BREAKS = new Set<string>(["manager", "library"]);
 const HEIGHT = 900;
 const TYPES: Record<string, string> = {
   ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".json": "application/json",
@@ -193,18 +195,16 @@ test("each page fits its window at four widths", { skip, timeout: 120_000 }, asy
     for (const width of WIDTHS) {
       const at = `${page} at ${width}px`;
       const measured = await tab.measure(`${origin}/${page}.html`, width);
-      const narrow = width < NARROW;
+      const breaks = width < NARROW && BREAKS.has(page);
 
-      // The tool row of the top bar does not wrap, so it is wider than a narrow window.
-      await t.test(`${at}: no sideways scroll`, { todo: narrow && "the tool row does not wrap yet" }, () => {
+      await t.test(`${at}: no sideways scroll`, () => {
         assert.equal(measured.sideways, 0, `the page is ${measured.sideways}px wider than the window`);
       });
-      // In a narrow window the labels of the top bar and of the manager's bar break.
-      await t.test(`${at}: each button's label is on one line`, { todo: narrow && "labels break below 515px" }, () => {
+      // A group does not wrap inside, so its buttons get narrow and their labels break.
+      await t.test(`${at}: each button's label is on one line`, { todo: breaks && "a group of buttons has no narrow form" }, () => {
         assert.deepEqual(measured.brokenLabels, []);
       });
-      // Three lines is the most a bar takes today at 800px and up. Eleven controls wrap to five at 480px.
-      await t.test(`${at}: no bar takes more than three lines`, { todo: narrow && "bars have no narrow form yet" }, () => {
+      await t.test(`${at}: no bar takes more than three lines`, () => {
         assert.ok(measured.barLines <= 3, `${measured.worstBar} takes ${measured.barLines} lines`);
       });
     }

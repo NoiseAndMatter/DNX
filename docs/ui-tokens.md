@@ -39,4 +39,4 @@ A colour that two or more rules use has a name.
 
 A colour that one rule uses stays in that rule. There are 12 of them in `dnx.css`.
 
-The pages' own `<style>` blocks do not use the tokens yet.
+The front page and the Probe have a `<style>` block of their own. Those blocks do not use the tokens yet.
