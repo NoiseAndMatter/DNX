@@ -20,6 +20,14 @@
  * - A sample that is sent and deleted in the same plan. The two steps would undo each other.
  * - A folder that is deleted while it still holds a sample, a folder, or a file to send.
  * - A plan with nothing to do.
+ *
+ * ## A move
+ *
+ * The store keeps one copy of a sound, so it does not take a sound that it holds under another
+ * path. A plan that sends a sound to a new path and deletes the old path is a move. The upload
+ * must not run before the delete: the store answers that it has the sound, nothing is sent, and
+ * the delete then removes the only copy. `movedFrom` finds that case, and the caller deletes the
+ * old copy just before the upload.
  */
 
 import { type ConvertedFile, type ImportPlan, type ListedEntry, fitProblem, planImport } from "./importplan.js";
@@ -123,6 +131,23 @@ export function planSend(changes: SendChanges): SendPlan {
 }
 
 /** What finished, for the status line when a send stops partway. */
+/**
+ * The path of the stored copy of a sound, when the plan deletes that copy and sends the sound to `path`.
+ *
+ * `id` is the SHA-256 of the file to send. `deletes` holds the paths that the plan has still to
+ * delete. Undefined when the store does not hold the sound elsewhere, or when the plan keeps
+ * that copy: the upload then sends nothing and the copy stays.
+ */
+export function movedFrom(
+  entries: readonly ListedEntry[],
+  id: string,
+  path: string,
+  deletes: readonly string[],
+): string | undefined {
+  const held = entries.find((entry) => entry.sha256 === id && entry.path !== path);
+  return held && deletes.includes(held.path) ? held.path : undefined;
+}
+
 export function describeDone(done: readonly SendStep[], names: (index: number) => string): string {
   const made = done.filter((step) => step.kind === "mkdir").length;
   const sent = done.flatMap((step) => (step.kind === "upload" ? [names(step.index)] : []));

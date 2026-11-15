@@ -817,7 +817,10 @@ when the free space is enough in total but no single gap is large enough.
 The store keeps one copy of each sound. If you send a sound that the store has already, DNX does
 not send it again. The status bar gives the name that the store has for it.
 
-You cannot rename or move a sample yet.`,
+To move a sample, you must have its WAV file. Put the file in the plan for the new folder. Delete
+the old sample in the same plan. DNX deletes the old sample just before it sends the file.
+
+You cannot rename a sample yet.`,
       },
       {
         id: "sample-import",
@@ -844,6 +847,9 @@ the plan, push **Remove**. To take all changes off the plan, push **Discard plan
 
 DNX sends the files first, and then it deletes. Thus a failed upload deletes nothing. If the files fit only in the space that the deletes give back, DNX deletes
 the samples first. The confirmation tells you when this occurs.
+
+A move is different. When the plan sends a sound and deletes the old sample with that sound, DNX
+deletes the old sample just before it sends the file. The store keeps only one copy of a sound.
 
 If the send stops, the status bar tells you which steps are done. The changes that are not done
 stay in the plan. Push **Send plan** again. A file continues from the last part that the

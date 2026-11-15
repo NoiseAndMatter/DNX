@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type SendStep, describeDone, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
+import { type SendStep, describeDone, movedFrom, planSend } from "@noiseandmatter/dnx-core/sample/sendplan.js";
 
 const ZERO = "0".repeat(64);
 const SHA = "ab".repeat(32);
@@ -129,4 +129,30 @@ test("a send that stops names what finished", () => {
     describeDone([{ kind: "delete", path: "samples/x", folder: false }], names),
     "Done before it stopped: deleted 1.",
   );
+});
+
+/*
+ * A move. The store keeps one copy of a sound, so an upload of a sound that it holds sends nothing.
+ * If the plan also deletes that copy, the delete must come before the upload. On 2026-11-15 the
+ * upload ran first, and a plan that moved a folder would have removed its samples from the store.
+ */
+const KICK = "c1".repeat(32);
+const SNARE = "c2".repeat(32);
+const STORE = [
+  { path: "samples/loops/deep/kick", size: 5_000, sha256: KICK },
+  { path: "samples/loops/snare", size: 3_000, sha256: SNARE },
+];
+
+test("a sound that the plan sends to a new path and deletes at its old path is a move", () => {
+  assert.equal(movedFrom(STORE, KICK, "samples/kick", ["samples/loops/deep/kick"]), "samples/loops/deep/kick");
+});
+
+test("a sound that the store keeps under another path is not a move", () => {
+  assert.equal(movedFrom(STORE, KICK, "samples/kick", []), undefined);
+  assert.equal(movedFrom(STORE, KICK, "samples/kick", ["samples/loops/snare"]), undefined);
+});
+
+test("a sound that the store does not hold, or holds at the path it goes to, is not a move", () => {
+  assert.equal(movedFrom(STORE, "c3".repeat(32), "samples/kick", ["samples/loops/deep/kick"]), undefined);
+  assert.equal(movedFrom(STORE, KICK, "samples/loops/deep/kick", ["samples/loops/deep/kick"]), undefined);
 });
