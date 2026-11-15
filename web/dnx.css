@@ -293,6 +293,9 @@ body.page > .status { padding-left: calc((100% - min(var(--page-max), 100%)) / 2
 /*
  * Panes that sit side by side only while each one has room.
  *
+ * The library shows two collections side by side because the work moves things between them:
+ * a preset into the pool, a kit into a pattern. A drag from one pane to the other is the gesture.
+ *
  * The measure is the page's column, not the window: `main` is the container, and the panes ask it
  * how wide it is. The library had window breakpoints of its own (92rem and 68rem), and between
  * them a pane went as narrow as 530px. The buttons of a row stacked and a toolbar wrapped to three
@@ -1306,8 +1309,8 @@ h2 .count { color: var(--muted); font-weight: 400; text-transform: none; letter-
 .samplestore .libtable tbody tr.dropon { outline: 2px dashed var(--teal); outline-offset: -2px; background: #1d2b29; }
 .samplestore .libtable tbody tr { cursor: pointer; }
 .samplestore .libtable td.n { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-.samplestore .libtable td.acts { text-align: right; white-space: nowrap; width: 1%; padding-block: .1rem; }
-.samplestore .libtable td.acts .btn { padding: 0 .4rem; font-size: .68rem; }
+.samplestore .libtable td.acts { padding-block: .1rem; }
+.samplestore .libtable td.acts .btn { padding: 0 .4rem; font-size: var(--fs-s); }
 .samplestore .caret { display: inline-block; width: 1em; color: var(--muted); }
 .bar input[type="search"] { flex: 1 1 8rem; min-width: 6rem; }
 .sampleplan tbody tr { cursor: grab; }
@@ -1316,14 +1319,14 @@ h2 .count { color: var(--muted); font-weight: 400; text-transform: none; letter-
 .sampleplan .bar { margin-top: .4rem; }
 .sampleplan .warn { color: var(--salmon); }
 .sampleplan .libtable td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.sampleplan .planhead { margin: .5rem 0 .2rem; font-size: .7rem; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+.sampleplan .planhead { margin: .5rem 0 .2rem; font-size: var(--fs-s); font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
 .sampleplan .planlist { list-style: none; margin: 0; padding: 0; }
 .sampleplan .planlist li { display: flex; gap: .4rem; align-items: baseline; padding: .15rem 0; border-bottom: 1px solid var(--line); }
 .sampleplan .planlist code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .samplestore .libtable tr.gone td.name { text-decoration: line-through; color: var(--muted); }
 .samplestore .libtable tr.gone { box-shadow: inset 2px 0 0 var(--salmon); }
 .samplestore .libtable tr.planned { box-shadow: inset 2px 0 0 var(--teal); }
-.samplestore .tag { margin-left: .5rem; font-size: .68rem; white-space: nowrap; }
+.samplestore .tag { margin-left: .5rem; font-size: var(--fs-s); white-space: nowrap; }
 .samplestore .tag.new { color: var(--teal); }
 .samplestore .tag.bad { color: var(--salmon); }
 
@@ -1342,6 +1345,6 @@ h2 .count { color: var(--muted); font-weight: 400; text-transform: none; letter-
 .deviceplan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
 .notes { margin-top: .4rem; }
 .notes summary { cursor: pointer; color: var(--muted); }
-.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
+.notes ul { max-height: 18vh; overflow-y: auto; font-size: var(--fs-base); }
 .notes b { color: var(--fg); font-weight: 600; }
 .deviceplan .bad { color: var(--salmon); }

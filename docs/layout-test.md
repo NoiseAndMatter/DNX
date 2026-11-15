@@ -26,10 +26,11 @@ Each page is measured as it opens, with no project and no instrument. The test d
 
 ## The checks marked todo
 
-The three checks at 480 px are marked `todo`, because main fails them on 2026-11-15:
+One check is marked `todo` on two pages at 480 px: each button's label is on one line.
 
-- every page scrolls sideways by 32 to 97 px, because the tool row of the top bar does not wrap
-- WRITE OFF and four buttons of the manager's bar break into two lines
-- the expander's bar of 11 controls wraps to five lines
+- In the manager, the four buttons of the Open group break into two lines.
+- In the library, the Connect button breaks into two lines.
 
-A `todo` check that fails does not fail the run. When a fault is fixed, remove the `todo` from its check.
+A group of buttons does not wrap inside. In a narrow window its buttons get narrow, and their labels break.
+
+A `todo` check that fails does not fail the run. When the fault is fixed, remove the `todo` from the check.
