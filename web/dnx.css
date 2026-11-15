@@ -1182,3 +1182,93 @@ body.app.insights .slot { cursor: pointer; }
   .wfcontrols { flex-wrap: wrap; }
   .wfpos { min-width: 0; text-align: left; }
 }
+
+/* ---- rules that lived in a page's own <style> ---------------------------------------
+ *
+ * The library's and the expander's rules for their own parts, moved here on 2026-11-15 and keyed
+ * by class. They were keyed by id in the page, so a second table of the same kind did not get
+ * them: the plan table had no rule for its button cell, because the rule named the store table's
+ * id. A part that looks the same now takes the same class.
+ */
+/* The number after a title: how many, in the text colour of a note. */
+h2 .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* -- the library -- */
+.pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
+
+/*
+ * A pattern whose kit was replaced this session.
+ *
+ * Amber, which is this app's colour for the kit — teal is the sequencer. That mapping is the whole
+ * reason it reads at a glance: a kit load changes the sound and leaves the trigs alone, and the
+ * cell says so in the one colour that already means "kit" everywhere else.
+ */
+.slot.justApplied { border-color: var(--amber); }
+.slot.justApplied .tc { color: var(--amber); }
+
+.applied { margin: .3rem 0 0; padding-left: 1.1rem; }
+.applied li { margin: .2rem 0; color: var(--muted); }
+
+/*
+ * A pool slot whose table was deleted.
+ *
+ * It already draws dashed amber, because the mode hands the grid `supported: false` — the paint
+ * for *there is something here I cannot read*, which is what a MISSING entry is. **Salmon on the
+ * name is the second half of the distinction**: an unreadable pattern is a format DNX does not
+ * know, and this is a sound of yours that now plays the wrong thing. They must not read alike.
+ */
+.slot.missing .nm { color: var(--salmon); font-weight: 600; }
+.slot.missing .tc { color: var(--salmon); }
+
+/* The store row a selected pool slot names. Marked, not selected: the user picked the cell. */
+.libtable tbody tr.landing { box-shadow: inset 3px 0 0 var(--amber); }
+.libtable td.use { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Each warning the wavetable note carries. The pool's faults are not the page's status line. */
+.pane .plan.hint p { margin: .35rem 0; }
+.pane .plan.hint .warn { color: var(--salmon); }
+/* The list of files to send fills the left pane, and takes a drop anywhere in it. */
+.samplestage { min-height: 12rem; }
+.samplestage.dropon, .samplestore.dropon { outline: 2px dashed var(--teal); outline-offset: -2px; }
+.samplestore .libtable tbody tr.dropon { outline: 2px dashed var(--teal); outline-offset: -2px; background: #1d2b29; }
+.samplestore .libtable tbody tr { cursor: pointer; }
+.samplestore .libtable td.n { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.samplestore .libtable td.acts { text-align: right; white-space: nowrap; width: 1%; padding-block: .1rem; }
+.samplestore .libtable td.acts .btn { padding: 0 .4rem; font-size: .68rem; }
+.samplestore .caret { display: inline-block; width: 1em; color: var(--muted); }
+.bar input[type="search"] { flex: 1 1 8rem; min-width: 6rem; }
+.sampleplan tbody tr { cursor: grab; }
+.sampleplan { display: block; margin: 0 0 .8rem; }
+.sampleplan .libtable { width: 100%; }
+.sampleplan .bar { margin-top: .4rem; }
+.sampleplan .warn { color: var(--salmon); }
+.sampleplan .libtable td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sampleplan .planhead { margin: .5rem 0 .2rem; font-size: .7rem; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+.sampleplan .planlist { list-style: none; margin: 0; padding: 0; }
+.sampleplan .planlist li { display: flex; gap: .4rem; align-items: baseline; padding: .15rem 0; border-bottom: 1px solid var(--line); }
+.sampleplan .planlist code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.samplestore .libtable tr.gone td.name { text-decoration: line-through; color: var(--muted); }
+.samplestore .libtable tr.gone { box-shadow: inset 2px 0 0 var(--salmon); }
+.samplestore .libtable tr.planned { box-shadow: inset 2px 0 0 var(--teal); }
+.samplestore .tag { margin-left: .5rem; font-size: .68rem; white-space: nowrap; }
+.samplestore .tag.new { color: var(--teal); }
+.samplestore .tag.bad { color: var(--salmon); }
+
+/* Findings sit under the pool they describe, never beside the library. */
+.findings { margin-top: .8rem; }
+.findings li { margin: .2rem 0; }
+.findings .none { color: var(--muted); font-style: italic; }
+
+/* -- the expander -- */
+.deviceplan ul { margin: .3rem 0; padding-left: 1.1rem; }
+
+/* The plan panel closes the assignment section, separated from the table above it. It used to sit
+   in the sticky strip, where a merge reporting every conversion note grew taller than the page and
+   drew the rest of the tool underneath it — hence the folded notes below, and nothing here that can
+   grow without bound. */
+.deviceplan { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line-soft); }
+.notes { margin-top: .4rem; }
+.notes summary { cursor: pointer; color: var(--muted); }
+.notes ul { max-height: 18vh; overflow-y: auto; font-size: .82rem; }
+.notes b { color: var(--fg); font-weight: 600; }
+.deviceplan .bad { color: var(--salmon); }

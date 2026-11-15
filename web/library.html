@@ -33,73 +33,6 @@
 }
 @media (max-width: 68rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
 
-.pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
-.pane .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
-
-/*
- * A pattern whose kit was replaced this session.
- *
- * Amber, which is this app's colour for the kit — teal is the sequencer. That mapping is the whole
- * reason it reads at a glance: a kit load changes the sound and leaves the trigs alone, and the
- * cell says so in the one colour that already means "kit" everywhere else.
- */
-.slot.justApplied { border-color: var(--amber); }
-.slot.justApplied .tc { color: var(--amber); }
-
-.applied { margin: .3rem 0 0; padding-left: 1.1rem; }
-.applied li { margin: .2rem 0; color: var(--muted); }
-
-/*
- * A pool slot whose table was deleted.
- *
- * It already draws dashed amber, because the mode hands the grid `supported: false` — the paint
- * for *there is something here I cannot read*, which is what a MISSING entry is. **Salmon on the
- * name is the second half of the distinction**: an unreadable pattern is a format DNX does not
- * know, and this is a sound of yours that now plays the wrong thing. They must not read alike.
- */
-.slot.missing .nm { color: var(--salmon); font-weight: 600; }
-.slot.missing .tc { color: var(--salmon); }
-
-/* The store row a selected pool slot names. Marked, not selected: the user picked the cell. */
-.libtable tbody tr.landing { box-shadow: inset 3px 0 0 var(--amber); }
-.libtable td.use { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-/* Each warning the wavetable note carries. The pool's faults are not the page's status line. */
-#wavepoolNote p { margin: .35rem 0; }
-#wavepoolNote .warn { color: var(--salmon); }
-#samplestoreNote p { margin: .35rem 0; }
-#samplestoreNote .warn { color: var(--salmon); }
-/* The list of files to send fills the left pane, and takes a drop anywhere in it. */
-#samplestageZone { min-height: 12rem; }
-#samplestageZone.dropon, #samplestoreGrid.dropon { outline: 2px dashed var(--teal); outline-offset: -2px; }
-#samplestoreGrid .libtable tbody tr.dropon { outline: 2px dashed var(--teal); outline-offset: -2px; background: #1d2b29; }
-#samplestoreGrid .libtable tbody tr { cursor: pointer; }
-#samplestoreGrid .libtable td.n { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-#samplestoreGrid .libtable td.acts { text-align: right; white-space: nowrap; width: 1%; padding-block: .1rem; }
-#samplestoreGrid .libtable td.acts .btn { padding: 0 .4rem; font-size: .68rem; }
-#samplestoreGrid .caret { display: inline-block; width: 1em; color: var(--muted); }
-#samplestoreFind { flex: 1 1 8rem; min-width: 6rem; }
-#samplestoreStage tbody tr { cursor: grab; }
-#samplestoreStage { display: block; margin: 0 0 .8rem; }
-#samplestoreStage .libtable { width: 100%; }
-#samplestoreStage .bar { margin-top: .4rem; }
-#samplestoreStage .warn { color: var(--salmon); }
-#samplestoreStage .libtable td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
-#samplestoreStage .planhead { margin: .5rem 0 .2rem; font-size: .7rem; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
-#samplestoreStage .planlist { list-style: none; margin: 0; padding: 0; }
-#samplestoreStage .planlist li { display: flex; gap: .4rem; align-items: baseline; padding: .15rem 0; border-bottom: 1px solid var(--line); }
-#samplestoreStage .planlist code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-#samplestoreGrid .libtable tr.gone td.name { text-decoration: line-through; color: var(--muted); }
-#samplestoreGrid .libtable tr.gone { box-shadow: inset 2px 0 0 var(--salmon); }
-#samplestoreGrid .libtable tr.planned { box-shadow: inset 2px 0 0 var(--teal); }
-#samplestoreGrid .tag { margin-left: .5rem; font-size: .68rem; white-space: nowrap; }
-#samplestoreGrid .tag.new { color: var(--teal); }
-#samplestoreGrid .tag.bad { color: var(--salmon); }
-
-/* Findings sit under the pool they describe, never beside the library. */
-#findings { margin-top: .8rem; }
-#findings li { margin: .2rem 0; }
-#findings .none { color: var(--muted); font-style: italic; }
 </style>
 </head>
 <!-- `wide`: two panes of data, not a column of prose. See `body.page.wide` in dnx.css. -->
@@ -211,7 +144,7 @@
       <h2 data-help="library/pool-vs-library"><span id="leftTitle">Preset pool</span> <span class="count" id="poolSub">— open a Digitone II project</span></h2>
       <div class="grid" id="poolGrid" hidden></div>
       <div class="grid" id="patternGrid" hidden></div>
-      <div class="plan hint" id="findings">Open a project to audit its pool.</div>
+      <div class="plan hint findings" id="findings">Open a project to audit its pool.</div>
 
       <!--
         The wavetable pool, which is **not in the project file**: it is a record on the +Drive, one
@@ -249,9 +182,9 @@
         preview each. Nothing reaches the instrument until Send plan. The sample pool takes this pane
         when it exists.
       -->
-      <div id="samplestageZone" hidden>
+      <div class="samplestage" id="samplestageZone" hidden>
         <p class="plan hint" id="samplestageHint">The plan is empty. Drop WAV files or a folder here, or on a folder of the store.</p>
-        <div class="plan" id="samplestoreStage" hidden>
+        <div class="plan sampleplan" id="samplestoreStage" hidden>
           <div id="samplestoreStageList"></div>
           <div class="bar" data-help="library/sample-import">
             <span class="hint" id="samplestoreStageSum"></span>
@@ -308,7 +241,7 @@
         <input type="file" id="samplestoreFiles" accept=".wav,audio/wav,audio/x-wav" multiple hidden>
       </div>
       <div class="plan hint" id="samplestoreNote" hidden></div>
-      <div class="libtablewrap" id="samplestoreGrid" hidden></div>
+      <div class="libtablewrap samplestore" id="samplestoreGrid" hidden></div>
 
       <!--
         **What the table actually looks like, which no row can say.**
