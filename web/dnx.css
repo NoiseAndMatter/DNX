@@ -790,6 +790,8 @@ dialog.ask::backdrop { background: rgba(10, 13, 14, .66); }
 /* Three states, not two: nobody has read this slot is not the same as this slot has no tags. */
 .libtable .unread { color: var(--dim); font-style: italic; }
 .libtable .untagged { color: var(--dim); }
+/* The buttons of a row stay on one line, and their column takes only the width they need. */
+.libtable td.acts { text-align: right; white-space: nowrap; width: 1%; }
 
 /*
  * Staged wavetable imports, drawn on the store's own rows.

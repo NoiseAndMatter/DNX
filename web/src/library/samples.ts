@@ -86,6 +86,7 @@ import {
 /** Elements of Sounds mode with no meaning here. Saved on the way in, restored on the way out. */
 const SOUNDS_ONLY = [
   "browse",
+  "projectGroup",
   "projectFileButton",
   "driveBrowse",
   "driveOpen",
@@ -430,7 +431,7 @@ export function wireSamples(host: SampleHost): SampleMode {
       tr.innerHTML =
         `<td class="name">${escapeHtml(file.name)}</td>` +
         `<td class="use"><code>${escapeHtml(folderPath(file.folder))}/</code></td><td class="use">${audioText}</td>` +
-        `<td class="n">${kib(file.stored.length)}</td><td>${state}</td><td></td>`;
+        `<td class="n">${kib(file.stored.length)}</td><td>${state}</td><td class="acts"></td>`;
       const play = document.createElement("button");
       play.className = "btn";
       play.textContent = playing?.file === file ? "Stop" : "Play";
@@ -451,7 +452,7 @@ export function wireSamples(host: SampleHost): SampleMode {
       tr.className = "occupied";
       tr.innerHTML =
         `<td class="name">${escapeHtml(bad.name)}</td><td class="use"></td><td class="use"></td><td class="n"></td>` +
-        `<td><span class="warn">${escapeHtml(bad.why)}</span></td><td></td>`;
+        `<td><span class="warn">${escapeHtml(bad.why)}</span></td><td class="acts"></td>`;
       tr.lastElementChild!.append(removeButton(() => {
         unconverted = unconverted.filter((other) => other !== bad);
       }));
