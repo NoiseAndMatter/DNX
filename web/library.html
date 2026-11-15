@@ -21,17 +21,6 @@
  * Same two-grid shape as the expander, for the same reason: it is the layout that makes a drag from
  * one collection to another an obvious gesture rather than a feature to explain.
  */
-/*
- * Two collections and the timeline. The history column is fixed at 17rem — it holds short labels
- * and a size, and letting it share the growth would take width from the table that needs it.
- */
-.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 17rem; gap: .9rem; }
-/* Below this the timeline drops under the two collections rather than squeezing them. */
-@media (max-width: 92rem) {
-  .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .histpane { grid-column: 1 / -1; }
-}
-@media (max-width: 68rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
 
 .pane > h2 { display: flex; align-items: baseline; gap: .5rem; }
 .pane .count { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }

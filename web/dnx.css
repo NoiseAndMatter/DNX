@@ -258,6 +258,27 @@ body.page > main { display: block; padding: .9rem; max-width: var(--page-max); m
  */
 body.page > .status { padding-left: calc((100% - min(var(--page-max), 100%)) / 2 + .9rem); padding-right: calc((100% - min(var(--page-max), 100%)) / 2 + .9rem); }
 .side { display: flex; flex-direction: column; gap: .7rem; min-height: 0; overflow: auto; }
+/*
+ * Panes that sit side by side only while each one has room.
+ *
+ * The measure is the page's column, not the window: `main` is the container, and the panes ask it
+ * how wide it is. The library had window breakpoints of its own (92rem and 68rem), and between
+ * them a pane went as narrow as 530px. The buttons of a row stacked and a toolbar wrapped to three
+ * lines. A pane now gets 36rem or it goes under the other one.
+ *
+ * 73rem is two panes of 36rem and the gap. 91rem adds the 17rem timeline and its gap.
+ */
+body.page > main { container-type: inline-size; }
+.panes { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; }
+@container (min-width: 73rem) {
+  .panes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The timeline holds short labels and a size. Under the two collections it takes the full row. */
+  .panes > .histpane { grid-column: 1 / -1; }
+}
+@container (min-width: 91rem) {
+  .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 17rem; }
+  .panes > .histpane { grid-column: auto; }
+}
 
 /* ---- the slot grid, after Overbridge's T1..T16 layer panel --------------------------- */
 /*
@@ -1086,6 +1107,16 @@ body.app.insights { height: auto; }
 body.app.insights > main { min-height: auto; }
 body.app.insights > main.split { grid-template-columns: minmax(0, 1fr); }
 body.app.insights > main.split > .side { display: none; }
+/*
+ * The manager below 48rem: the side panel goes under the grid.
+ *
+ * `main.split` is as wide as the window, so the window is its container. With the panel fixed at
+ * 20rem beside it, the pattern grid had 150px in a 480px window.
+ */
+@media (max-width: 48rem) {
+  body.app > main.split { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  body.app > main.split > .side { grid-column: 1; grid-row: auto; position: static; max-height: none; overflow: visible; }
+}
 /*
  * The drill-down is hidden too. It answers "what is on this pattern's tracks", which is the
  * question the charts below answer in more detail — two answers to one question, one of them
