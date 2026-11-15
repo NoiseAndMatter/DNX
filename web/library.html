@@ -256,8 +256,10 @@
           <div class="bar" data-help="library/sample-import">
             <span class="hint" id="samplestoreStageSum"></span>
             <span class="spacer"></span>
-            <button class="btn" id="samplestoreClear">Discard plan</button>
-            <button class="btn danger" data-writes-device id="samplestoreUpload" disabled>Send plan</button>
+            <span class="bargroup">
+              <button class="btn" id="samplestoreClear">Discard plan</button>
+              <button class="btn danger" data-writes-device id="samplestoreUpload" disabled>Send plan</button>
+            </span>
           </div>
         </div>
       </div>
@@ -298,13 +300,20 @@
         `/samples/index` gives the whole store, so the outline and the search make no further request.
       -->
       <div class="bar" id="samplestoreBar" data-help="library/sample-store" hidden>
-        <input type="search" id="samplestoreFind" placeholder="Find a sample or folder" aria-label="Find a sample or folder" autocomplete="off">
-        <code id="samplestorePath" title="The selected folder"></code>
-        <button class="btn" id="samplestoreRefresh" disabled title="Read the store again">Refresh</button>
-        <button class="btn" id="samplestoreVerify" disabled title="Click a sample first.">Verify</button>
-        <button class="btn" id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
-        <button class="btn" id="samplestoreDelete" disabled title="Click a sample or a folder first.">Delete</button>
-        <button class="btn" id="samplestoreImport" disabled title="Read the store first.">Import WAV…</button>
+        <!-- Three groups, so the row wraps between them: where you are, what you do there, what you bring in. -->
+        <span class="bargroup">
+          <input type="search" id="samplestoreFind" placeholder="Find a sample or folder" aria-label="Find a sample or folder" autocomplete="off">
+          <code id="samplestorePath" title="The selected folder"></code>
+        </span>
+        <span class="bargroup">
+          <button class="btn" id="samplestoreRefresh" disabled title="Read the store again">Refresh</button>
+          <button class="btn" id="samplestoreVerify" disabled title="Click a sample first.">Verify</button>
+          <button class="btn" id="samplestoreMkdir" disabled title="Read the store first.">New folder…</button>
+          <button class="btn" id="samplestoreDelete" disabled title="Click a sample or a folder first.">Delete</button>
+        </span>
+        <span class="bargroup">
+          <button class="btn" id="samplestoreImport" disabled title="Read the store first.">Import WAV…</button>
+        </span>
         <input type="file" id="samplestoreFiles" accept=".wav,audio/wav,audio/x-wav" multiple hidden>
       </div>
       <div class="plan hint" id="samplestoreNote" hidden></div>

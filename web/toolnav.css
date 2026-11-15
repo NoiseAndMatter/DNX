@@ -644,3 +644,13 @@ html.write-armed::after {
 .report-note { margin: .2rem 0 0; color: var(--muted); font-size: .86em; }
 .report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-top: .6rem; }
 .report-said { color: var(--muted); font-size: .86em; }
+
+/*
+ * The tool row in a narrow window.
+ *
+ * The row did not wrap, so below about 515px it was wider than the window and every page scrolled
+ * sideways by 32 to 97px. It wraps now, and a control keeps its label on one line: WRITE OFF broke
+ * into two lines and doubled the height of the bar.
+ */
+.toolnav { flex-wrap: wrap; row-gap: .3rem; min-width: 0; }
+.toolnav > * { white-space: nowrap; }
