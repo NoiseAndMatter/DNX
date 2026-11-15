@@ -96,7 +96,9 @@ export function partBytes(file: Uint8Array, n: number, partSize: number): Uint8A
  * Why `path` cannot be a store path in version 1, or undefined when it can.
  *
  * The firmware's rule: at most 159 characters, no empty, `.` or `..` part. Version 1 takes the
- * characters 0x20 to 0x7E only, because nobody has checked what the instrument draws for others.
+ * characters 0x20 to 0x7E only. The firmware side checked the others in the emulator on
+ * 2026-11-15: no fault, but a byte from 0x7F to 0xFF draws as one of the instrument's symbols, a
+ * UTF-8 letter as two symbols, and a byte below 0x20 as a gap.
  */
 export function storePathProblem(path: string): string | undefined {
   if (!path.startsWith(`${SAMPLES_FOLDER}/`)) return `a sample path starts with ${SAMPLES_FOLDER}/, not "${path}"`;
