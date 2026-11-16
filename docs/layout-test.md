@@ -24,13 +24,8 @@ For each of the five pages, at each width:
 
 Each page is measured as it opens, with no project and no instrument. The test does not see a table with rows, so it does not find a fault in a row.
 
-## The checks marked todo
+## No check is marked todo
 
-One check is marked `todo` on two pages at 480 px: each button's label is on one line.
+Every check passes at every width. At 480 px the manager's Open group and the library's Instrument group are wider than the window, so each group wraps inside (`.bar .bargroup` in `web/dnx.css`).
 
-- In the manager, the four buttons of the Open group break into two lines.
-- In the library, the Connect button breaks into two lines.
-
-A group of buttons does not wrap inside. In a narrow window its buttons get narrow, and their labels break.
-
-A `todo` check that fails does not fail the run. When the fault is fixed, remove the `todo` from the check.
+If a new fault must wait, mark its check `todo` and name the fault. A `todo` check that fails does not fail the run.

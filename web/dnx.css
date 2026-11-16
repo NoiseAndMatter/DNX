@@ -578,8 +578,11 @@ label.file input { display: none; }
   sighting was *Export project* alone on a second line with the separator that belongs to it left
   dangling at the end of the first. A group is a flex box of its own, so it is one item as far as
   the wrap is concerned and its separator travels with what it separates.
+
+  A group wraps inside only when it is wider than the bar by itself, as the manager's Open group is
+  in a 480px window. Without that, its buttons got narrow and their labels broke into two lines.
 */
-.bar .bargroup { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.bar .bargroup { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; min-width: 0; }
 /*
  * One height for the controls of a bar.
  *
