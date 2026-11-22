@@ -1,18 +1,21 @@
 /**
  * The import graph, read out of the source.
  *
- * Three tests ask questions of the same graph: `web.test.ts` (does a page reach Node?),
+ * Several tests ask questions of the same graph: `web.test.ts` (does a page reach Node?),
  * `analysis.test.ts` (do the charts stay pure?) and `layers.test.ts` (does each folder import only
  * what its layer allows?). They used to carry their own copies of the walk, with regexes that had
  * already drifted apart. The walk lives here once; each test still asks its own question of it.
+ *
+ * **It lives in `src/review/` because the review map is its second kind of caller.** It was
+ * `test/importgraph.ts` until `npm run review` needed the same walk to draw the diagram.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The repository root. */
-export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * Import and export statements only. A looser pattern picks up prose in doc comments:
@@ -85,6 +88,28 @@ export function importGraph(entry: string): { files: string[]; external: string[
   }
 
   return { files: [...seen], external };
+}
+
+/** Every `.ts` file under `dir`, at any depth, as absolute paths. */
+function tsFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return tsFiles(path);
+    return entry.name.endsWith(".ts") ? [path] : [];
+  });
+}
+
+/**
+ * Every source file of the repository: the core, `src/` and `web/src/`. Tests are not source.
+ *
+ * The layer test walks this list to check each file, and the review map walks it to draw each one.
+ */
+export function sourceFiles(): string[] {
+  return [
+    ...tsFiles(join(ROOT, "packages", "core", "src")),
+    ...tsFiles(join(ROOT, "src")),
+    ...tsFiles(join(ROOT, "web", "src")),
+  ];
 }
 
 /** Source with comments removed, so prose about `document` is not read as a use of it. */

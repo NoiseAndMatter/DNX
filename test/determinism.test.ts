@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ROOT, code, repoPath } from "./importgraph.js";
+import { ROOT, code, repoPath } from "../src/review/importgraph.js";
 import { mintProjectId } from "@noiseandmatter/dnx-core/project/dn2image.js";
 
 /** Where core lives. The whole package is bound by this; nothing else is. */

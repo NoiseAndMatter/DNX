@@ -49,6 +49,7 @@ src/node/           the three modules that need a filesystem.
 src/sheet/          the hardware-test sheets.
 src/research/       what we built to ask an instrument a question.
 src/hardwaretest/   what we built to check an answer on one.
+src/review/         the review map: reads this repository's source, git and coverage.
 web/src/*.ts        shared browser code: dom, statusbar, grid, devicesource, project, render.
 web/src/<page>/     one page and nothing else.
 test/               one file per subject.

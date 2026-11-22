@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { code, importGraph } from "./importgraph.js";
+import { code, importGraph } from "../src/review/importgraph.js";
 import { NO_CORPUS, corpusPath, requireCorpusFile, DN1_PROJECTS } from "./corpus.js";
 import { parseProject } from "../src/node/projectfile.js";
 import { buildZip, crc32, readZip } from "../web/src/zip.js";
@@ -53,9 +53,11 @@ for (const [name, entry] of ENTRIES) {
  * somebody had to remember to update. They are in `src/node/` now, the config excludes the
  * directory, and this makes the rule enforceable rather than remembered.
  */
-test("only src/node and src/cli may depend on Node", () => {
+test("only src/node, src/cli and src/review may depend on Node", () => {
   const SRC = resolve(HERE, "../src");
-  const allowed = ["node", "cli"];
+  // `src/review` is the review map: it reads this repository's files, git and coverage, and never
+  // reaches a browser. `test/layers.test.ts` keeps it that way, since no web layer may import it.
+  const allowed = ["node", "cli", "review"];
   const offenders: string[] = [];
 
   const walk = (dir: string): void => {
