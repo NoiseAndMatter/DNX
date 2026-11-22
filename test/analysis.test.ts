@@ -24,7 +24,7 @@ import {
 import { cycleBars, microDiverging, realignBars } from "../web/src/analysis/charts.js";
 import { compareSubjects, summariseComparison } from "@noiseandmatter/dnx-core/analysis/compare.js";
 import { MACHINE } from "@noiseandmatter/dnx-core/project/machine.js";
-import { browserGlobalsIn, code, importGraph, repoPath, specifiersOf } from "./importgraph.js";
+import { browserGlobalsIn, code, importGraph, repoPath, specifiersOf } from "../src/review/importgraph.js";
 import { noteLengthSteps } from "@noiseandmatter/dnx-core/project/dn2pattern.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

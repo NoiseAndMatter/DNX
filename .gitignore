@@ -3,6 +3,9 @@ dist/
 
 # The progress pane's job files: live state of this machine's runs, not of the project.
 out/progress/
+
+# The review map (npm run review): coverage, model and page of one run on this machine.
+out/review/
 *.tsbuildinfo
 .DS_Store
 

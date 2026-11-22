@@ -21,7 +21,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import ts from "typescript";
-import { ROOT, repoPath } from "./importgraph.js";
+import { ROOT, repoPath } from "../src/review/importgraph.js";
 
 /** Each name, and the one file allowed to declare it. */
 const HOMES: Record<string, string> = {

@@ -41,7 +41,8 @@
     "web": "npm run build:web && tsx src/cli/serve.ts",
     "projectdiff": "tsx src/cli/projectdiff.ts",
     "jobs": "tsx src/cli/jobs.ts",
-    "job": "tsx src/cli/progress.ts"
+    "job": "tsx src/cli/progress.ts",
+    "review": "tsx src/cli/review.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
